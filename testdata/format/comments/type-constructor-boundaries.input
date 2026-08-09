@@ -1,0 +1,19 @@
+package comments
+type Pointer * /* after pointer star */ Item
+type Slice [] /* before slice element */ Item
+type Array [/* before array length */ 3 /* before array close */] /* before array element */ Item
+type NestedArray [len([1]int{})]byte
+type LineArray [ // after array open
+3]int
+type LineSlice [ // after slice open
+]Item
+type Dictionary map /* before map open */ [/* before map key */ string /* before map close */] /* before map value */ Item
+type LineDictionary map[ // after map open
+string]int
+type Send chan /* before send arrow */ <- /* before sent value */ Item
+type Receive <- /* before receive chan */ chan /* before received value */ Item
+type Both chan /* before channel value */ Item
+type Variadic func(values ... /* after ellipsis */ Item)
+type Record struct /* before struct open */ {/* before struct field */ Value int}
+type Contract interface // before interface open line
+{/* before method */ Read()}

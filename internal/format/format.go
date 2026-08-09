@@ -307,6 +307,39 @@ func (l *lowerer) uniqueTokenBetween(kind token.Token, start, end int) (source.T
 	return result, nil
 }
 
+func (l *lowerer) matchingTokenBetween(
+	openingKind token.Token,
+	closingKind token.Token,
+	opening int,
+	end int,
+) (source.Token, error) {
+	if opening < 0 || end <= opening || end > len(l.physical) {
+		return source.Token{}, errors.New("matching token lookup has an invalid physical range")
+	}
+	first := sort.Search(len(l.tokens), func(index int) bool {
+		return l.tokens[index].Range.Start >= opening
+	})
+	if first >= len(l.tokens) || l.tokens[first].Range.Start != opening || l.tokens[first].Kind != openingKind {
+		return source.Token{}, fmt.Errorf("physical range does not start with %s", openingKind)
+	}
+	depth := 0
+	for _, item := range l.tokens[first:] {
+		if item.Range.Start >= end {
+			break
+		}
+		switch item.Kind {
+		case openingKind:
+			depth++
+		case closingKind:
+			depth--
+			if depth == 0 {
+				return item, nil
+			}
+		}
+	}
+	return source.Token{}, fmt.Errorf("physical range contains no matching %s token", closingKind)
+}
+
 func (l *lowerer) declaration(declaration ast.Decl) (doc.ID, error) {
 	switch value := declaration.(type) {
 	case *ast.FuncDecl:
@@ -725,10 +758,20 @@ func (l *lowerer) keywordHeader(
 	if !found {
 		return doc.ID{}, fmt.Errorf("%s has no physical keyword boundary", keyword)
 	}
+	return l.physicalHeader(keywordOffset, keyword, separator, following, operand), nil
+}
+
+func (l *lowerer) physicalHeader(
+	keywordOffset int,
+	keyword string,
+	separator string,
+	following int,
+	operand doc.ID,
+) doc.ID {
 	boundary := keywordOffset + len(keyword)
 	comments := l.commentsBetween(boundary, following)
 	if len(comments) == 0 {
-		return l.arena.Concat(l.arena.Text(keyword+separator), operand), nil
+		return l.arena.Concat(l.arena.Text(keyword+separator), operand)
 	}
 	parts := []doc.ID{l.arena.Text(keyword)}
 	previousWasLineComment := false
@@ -748,7 +791,7 @@ func (l *lowerer) keywordHeader(
 		parts = append(parts, l.commentGap(boundary, following))
 	}
 	parts = append(parts, operand)
-	return l.arena.Concat(parts...), nil
+	return l.arena.Concat(parts...)
 }
 
 func (l *lowerer) hasBlankPhysicalGap(start, end int) (bool, error) {
@@ -2581,20 +2624,77 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(l.arena.Text("*"), operand), nil
+		operandStart, found := l.source.PhysicalOffset(value.X.Pos())
+		if !found {
+			return doc.ID{}, errors.New("pointer type has no physical operand boundary")
+		}
+		return l.keywordHeader(value.Star, "*", "", operandStart, operand)
 	case *ast.ArrayType:
 		element, err := l.expression(value.Elt)
 		if err != nil {
 			return doc.ID{}, err
 		}
+		opening, openingFound := l.source.PhysicalOffset(value.Lbrack)
+		elementStart, elementFound := l.source.PhysicalOffset(value.Elt.Pos())
+		if !openingFound || !elementFound {
+			return doc.ID{}, errors.New("array type has no physical boundary")
+		}
+		closing, err := l.matchingTokenBetween(token.LBRACK, token.RBRACK, opening, elementStart)
+		if err != nil {
+			return doc.ID{}, fmt.Errorf("array type closing boundary: %w", err)
+		}
+		afterClose, err := l.inlineCommentsWithSpacing(
+			l.commentsBetween(closing.Range.End, elementStart),
+			true,
+			true,
+		)
+		if err != nil {
+			return doc.ID{}, err
+		}
 		if value.Len == nil {
-			return l.arena.Concat(l.arena.Text("[]"), element), nil
+			inside, err := l.openingBoundary(
+				l.commentsBetween(opening+len("["), closing.Range.Start),
+				closing.Range.Start,
+				l.arena.Text("]"),
+				false,
+				false,
+			)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			return l.arena.Concat(l.arena.Text("["), inside, afterClose, element), nil
 		}
 		length, err := l.expression(value.Len)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(l.arena.Text("["), length, l.arena.Text("]"), element), nil
+		lengthStart, startFound := l.source.PhysicalOffset(value.Len.Pos())
+		lengthEnd, endFound := l.source.PhysicalOffset(value.Len.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("array length has no physical boundary")
+		}
+		lengthWithComments, err := l.openingBoundary(
+			l.commentsBetween(opening+len("["), lengthStart),
+			lengthStart,
+			length,
+			true,
+			true,
+		)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		beforeClose, err := l.inlineComments(l.commentsBetween(lengthEnd, closing.Range.Start), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(
+			l.arena.Text("["),
+			lengthWithComments,
+			beforeClose,
+			l.arena.Text("]"),
+			afterClose,
+			element,
+		), nil
 	case *ast.MapType:
 		key, err := l.expression(value.Key)
 		if err != nil {
@@ -2604,20 +2704,80 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(l.arena.Text("map["), key, l.arena.Text("]"), element), nil
+		keyStart, keyStartFound := l.source.PhysicalOffset(value.Key.Pos())
+		keyEnd, keyEndFound := l.source.PhysicalOffset(value.Key.End())
+		elementStart, elementFound := l.source.PhysicalOffset(value.Value.Pos())
+		mapOffset, mapFound := l.source.PhysicalOffset(value.Map)
+		if !keyStartFound || !keyEndFound || !elementFound || !mapFound {
+			return doc.ID{}, errors.New("map type has no physical boundary")
+		}
+		opening, err := l.uniqueTokenBetween(token.LBRACK, mapOffset+len("map"), keyStart)
+		if err != nil {
+			return doc.ID{}, fmt.Errorf("map type opening boundary: %w", err)
+		}
+		closing, err := l.uniqueTokenBetween(token.RBRACK, keyEnd, elementStart)
+		if err != nil {
+			return doc.ID{}, fmt.Errorf("map type closing boundary: %w", err)
+		}
+		keyWithComments, err := l.openingBoundary(
+			l.commentsBetween(opening.Range.End, keyStart),
+			keyStart,
+			key,
+			true,
+			true,
+		)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		beforeClose, err := l.inlineComments(l.commentsBetween(keyEnd, closing.Range.Start), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		afterClose, err := l.inlineCommentsWithSpacing(
+			l.commentsBetween(closing.Range.End, elementStart),
+			true,
+			true,
+		)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		brackets := l.arena.Concat(
+			l.arena.Text("["),
+			keyWithComments,
+			beforeClose,
+			l.arena.Text("]"),
+			afterClose,
+			element,
+		)
+		return l.physicalHeader(mapOffset, "map", "", opening.Range.Start, brackets), nil
 	case *ast.ChanType:
 		element, err := l.expression(value.Value)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		prefix := "chan "
+		valueStart, valueFound := l.source.PhysicalOffset(value.Value.Pos())
+		begin, beginFound := l.source.PhysicalOffset(value.Begin)
+		if !valueFound || !beginFound {
+			return doc.ID{}, errors.New("channel type has no physical boundary")
+		}
 		switch value.Dir {
 		case ast.SEND:
-			prefix = "chan<- "
+			arrow, arrowFound := l.source.PhysicalOffset(value.Arrow)
+			if !arrowFound {
+				return doc.ID{}, errors.New("send channel type has no physical arrow boundary")
+			}
+			afterArrow := l.physicalHeader(arrow, "<-", " ", valueStart, element)
+			return l.physicalHeader(begin, "chan", "", arrow, afterArrow), nil
 		case ast.RECV:
-			prefix = "<-chan "
+			channel, err := l.uniqueTokenBetween(token.CHAN, begin+len("<-"), valueStart)
+			if err != nil {
+				return doc.ID{}, fmt.Errorf("receive channel type keyword boundary: %w", err)
+			}
+			afterChannel := l.physicalHeader(channel.Range.Start, "chan", " ", valueStart, element)
+			return l.physicalHeader(begin, "<-", "", channel.Range.Start, afterChannel), nil
+		default:
+			return l.physicalHeader(begin, "chan", " ", valueStart, element), nil
 		}
-		return l.arena.Concat(l.arena.Text(prefix), element), nil
 	case *ast.Ellipsis:
 		if value.Elt == nil {
 			return l.arena.Text("..."), nil
@@ -2626,7 +2786,11 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(l.arena.Text("..."), element), nil
+		elementStart, found := l.source.PhysicalOffset(value.Elt.Pos())
+		if !found {
+			return doc.ID{}, errors.New("ellipsis has no physical element boundary")
+		}
+		return l.keywordHeader(value.Ellipsis, "...", "", elementStart, element)
 	case *ast.FuncType:
 		return l.functionType(value, true)
 	case *ast.FuncLit:
@@ -2649,9 +2813,9 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		}
 		return l.arena.Concat(signature, beforeBody, l.arena.Text(" "), body), nil
 	case *ast.StructType:
-		return l.aggregateType("struct", value.Fields, false)
+		return l.aggregateType(value.Struct, "struct", value.Fields, false)
 	case *ast.InterfaceType:
-		return l.aggregateType("interface", value.Methods, true)
+		return l.aggregateType(value.Interface, "interface", value.Methods, true)
 	default:
 		return doc.ID{}, fmt.Errorf("unsupported expression %T", expression)
 	}
@@ -3009,15 +3173,15 @@ func (l *lowerer) functionType(function *ast.FuncType, includeKeyword bool) (doc
 	return l.keywordHeader(function.Func, "func", "", firstStart, document)
 }
 
-func (l *lowerer) aggregateType(keyword string, fields *ast.FieldList, methods bool) (doc.ID, error) {
+func (l *lowerer) aggregateType(keywordPosition token.Pos, keyword string, fields *ast.FieldList, methods bool) (doc.ID, error) {
 	if fields == nil {
 		return l.arena.Text(keyword + "{}"), nil
 	}
-	boundary, found := l.source.PhysicalOffset(fields.Opening)
+	opening, found := l.source.PhysicalOffset(fields.Opening)
 	if !found {
 		return doc.ID{}, fmt.Errorf("%s opening delimiter has no physical offset", keyword)
 	}
-	boundary++
+	boundary := opening + len("{")
 	closing, found := l.source.PhysicalOffset(fields.Closing)
 	if !found {
 		return doc.ID{}, fmt.Errorf("%s closing delimiter has no physical offset", keyword)
@@ -3065,14 +3229,16 @@ func (l *lowerer) aggregateType(keyword string, fields *ast.FieldList, methods b
 		items = append(items, l.commentsDocument(closingComments))
 	}
 	if len(items) == 0 {
-		return l.arena.Text(keyword + "{}"), nil
+		group := l.arena.Text("{}")
+		return l.keywordHeader(keywordPosition, keyword, "", opening, group)
 	}
-	return l.arena.Concat(
-		l.arena.Text(keyword+" {"),
+	group := l.arena.Concat(
+		l.arena.Text("{"),
 		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.join(l.arena.HardLine(), items))),
 		l.arena.HardLine(),
 		l.arena.Text("}"),
-	), nil
+	)
+	return l.keywordHeader(keywordPosition, keyword, " ", opening, group)
 }
 
 func (l *lowerer) call(call *ast.CallExpr) (doc.ID, error) {
@@ -3296,6 +3462,35 @@ func (l *lowerer) binary(expression *ast.BinaryExpr) (doc.ID, error) {
 
 func (l *lowerer) inlineComments(comments []source.Comment, leadingSpace bool) (doc.ID, error) {
 	return l.inlineCommentsWithSpacing(comments, leadingSpace, !leadingSpace)
+}
+
+func (l *lowerer) openingBoundary(
+	comments []source.Comment,
+	following int,
+	operand doc.ID,
+	trailingSpace bool,
+	indentFollowing bool,
+) (doc.ID, error) {
+	hasLineComment := false
+	for _, comment := range comments {
+		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+	}
+	if !hasLineComment {
+		commentsDocument, err := l.inlineCommentsWithSpacing(comments, false, trailingSpace)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(commentsDocument, operand), nil
+	}
+	boundary := l.arena.Concat(
+		l.arena.Text(" "),
+		l.boundaryCommentsDocument(comments, following),
+		operand,
+	)
+	if indentFollowing {
+		boundary = l.arena.Indent(boundary)
+	}
+	return boundary, nil
 }
 
 func (l *lowerer) inlineCommentsWithSpacing(
