@@ -822,19 +822,7 @@ func (l *lowerer) statement(statement ast.Stmt) (doc.ID, error) {
 		}
 		return l.arena.Concat(expression, l.arena.Text(value.Tok.String())), nil
 	case *ast.SendStmt:
-		channel, err := l.expression(value.Chan)
-		if err != nil {
-			return doc.ID{}, err
-		}
-		sent, err := l.expression(value.Value)
-		if err != nil {
-			return doc.ID{}, err
-		}
-		return l.arena.Group(l.arena.Concat(
-			channel,
-			l.arena.Text(" <-"),
-			l.arena.Indent(l.arena.Concat(l.arena.Line(), sent)),
-		)), nil
+		return l.sendStatement(value)
 	case *ast.GoStmt:
 		call, err := l.call(value.Call)
 		if err != nil {
@@ -1518,7 +1506,7 @@ func (l *lowerer) typeSwitchGuard(statement ast.Stmt) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(left, l.arena.Text(" "+value.Tok.String()+" "), assertion), nil
+		return l.assignmentWithDocuments(value, left, assertion, false)
 	default:
 		return doc.ID{}, fmt.Errorf("unsupported type-switch guard %T", statement)
 	}
@@ -1767,22 +1755,14 @@ func (l *lowerer) communicationStatement(statement ast.Stmt) (doc.ID, error) {
 	if !ok {
 		return l.statement(statement)
 	}
-	left, err := l.expressions(assignment.Lhs)
-	if err != nil {
-		return doc.ID{}, err
-	}
-	right, err := l.expressions(assignment.Rhs)
-	if err != nil {
-		return doc.ID{}, err
-	}
-	return l.arena.Group(l.arena.Concat(
-		left,
-		l.arena.Text(" "+assignment.Tok.String()),
-		l.arena.Indent(l.arena.Concat(l.arena.Line(), right)),
-	)), nil
+	return l.assignmentDocument(assignment, true)
 }
 
 func (l *lowerer) assignment(assignment *ast.AssignStmt) (doc.ID, error) {
+	return l.assignmentDocument(assignment, false)
+}
+
+func (l *lowerer) assignmentDocument(assignment *ast.AssignStmt, breakRight bool) (doc.ID, error) {
 	left, err := l.expressions(assignment.Lhs)
 	if err != nil {
 		return doc.ID{}, err
@@ -1791,11 +1771,94 @@ func (l *lowerer) assignment(assignment *ast.AssignStmt) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	return l.arena.Concat(
-		left,
-		l.arena.Text(" "+assignment.Tok.String()+" "),
-		right,
-	), nil
+	return l.assignmentWithDocuments(assignment, left, right, breakRight)
+}
+
+func (l *lowerer) assignmentWithDocuments(
+	assignment *ast.AssignStmt,
+	left doc.ID,
+	right doc.ID,
+	breakRight bool,
+) (doc.ID, error) {
+	if len(assignment.Lhs) == 0 || len(assignment.Rhs) == 0 {
+		return doc.ID{}, errors.New("assignment requires left and right expressions")
+	}
+	leftEnd, leftEndFound := l.source.PhysicalOffset(assignment.Lhs[len(assignment.Lhs)-1].End())
+	operatorOffset, operatorFound := l.source.PhysicalOffset(assignment.TokPos)
+	rightStart, rightStartFound := l.source.PhysicalOffset(assignment.Rhs[0].Pos())
+	if !leftEndFound || !operatorFound || !rightStartFound {
+		return doc.ID{}, errors.New("assignment has no physical operator boundary")
+	}
+	beforeOperator, err := l.inlineComments(l.commentsBetween(leftEnd, operatorOffset), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	afterOperator := l.commentsBetween(operatorOffset+len(assignment.Tok.String()), rightStart)
+	parts := []doc.ID{left, beforeOperator, l.arena.Text(" " + assignment.Tok.String())}
+	hasLineComment := false
+	for _, comment := range afterOperator {
+		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+	}
+	if hasLineComment {
+		parts = append(parts, l.arena.Indent(l.arena.Concat(
+			l.arena.HardLine(),
+			l.boundaryCommentsDocument(afterOperator, rightStart),
+			right,
+		)))
+	} else {
+		afterOperatorDocument, err := l.inlineComments(afterOperator, true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, afterOperatorDocument)
+		if breakRight {
+			parts = append(parts, l.arena.Indent(l.arena.Concat(l.arena.Line(), right)))
+		} else {
+			parts = append(parts, l.arena.Text(" "), right)
+		}
+	}
+	return l.arena.Group(l.arena.Concat(parts...)), nil
+}
+
+func (l *lowerer) sendStatement(statement *ast.SendStmt) (doc.ID, error) {
+	channel, err := l.expression(statement.Chan)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	sent, err := l.expression(statement.Value)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	channelEnd, channelEndFound := l.source.PhysicalOffset(statement.Chan.End())
+	arrowOffset, arrowFound := l.source.PhysicalOffset(statement.Arrow)
+	valueStart, valueStartFound := l.source.PhysicalOffset(statement.Value.Pos())
+	if !channelEndFound || !arrowFound || !valueStartFound {
+		return doc.ID{}, errors.New("send statement has no physical operator boundary")
+	}
+	beforeArrow, err := l.inlineComments(l.commentsBetween(channelEnd, arrowOffset), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	afterArrow := l.commentsBetween(arrowOffset+len("<-"), valueStart)
+	parts := []doc.ID{channel, beforeArrow, l.arena.Text(" <-")}
+	hasLineComment := false
+	for _, comment := range afterArrow {
+		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+	}
+	if hasLineComment {
+		parts = append(parts, l.arena.Indent(l.arena.Concat(
+			l.arena.HardLine(),
+			l.boundaryCommentsDocument(afterArrow, valueStart),
+			sent,
+		)))
+	} else {
+		afterArrowDocument, err := l.inlineComments(afterArrow, true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, afterArrowDocument, l.arena.Indent(l.arena.Concat(l.arena.Line(), sent)))
+	}
+	return l.arena.Group(l.arena.Concat(parts...)), nil
 }
 
 func (l *lowerer) ifStatement(statement *ast.IfStmt) (doc.ID, error) {
@@ -1898,15 +1961,55 @@ func (l *lowerer) ifStatement(statement *ast.IfStmt) (doc.ID, error) {
 }
 
 func (l *lowerer) expressions(expressions []ast.Expr) (doc.ID, error) {
-	items := make([]doc.ID, 0, len(expressions))
+	if len(expressions) == 0 {
+		return l.arena.Empty(), nil
+	}
+	items := make([]delimitedItem, 0, len(expressions))
 	for _, expression := range expressions {
-		item, err := l.expression(expression)
+		document, err := l.expression(expression)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		items = append(items, item)
+		start, startFound := l.source.PhysicalOffset(expression.Pos())
+		end, endFound := l.source.PhysicalOffset(expression.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("expression list item has no physical boundary")
+		}
+		items = append(items, delimitedItem{document: document, start: start, end: end})
 	}
-	return l.join(l.arena.Text(", "), items), nil
+	parts := []doc.ID{items[0].document}
+	for index := 1; index < len(items); index++ {
+		previous := items[index-1]
+		current := items[index]
+		comma, err := l.uniqueTokenBetween(token.COMMA, previous.end, current.start)
+		if err != nil {
+			return doc.ID{}, fmt.Errorf("expression list boundary: %w", err)
+		}
+		afterPrevious, err := l.inlineComments(l.commentsBetween(previous.end, comma.Range.Start), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, afterPrevious, l.arena.Text(","))
+		beforeCurrent := l.commentsBetween(comma.Range.End, current.start)
+		hasLineComment := false
+		for _, comment := range beforeCurrent {
+			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+		}
+		if hasLineComment {
+			parts = append(parts, l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(beforeCurrent, current.start),
+				current.document,
+			)))
+		} else {
+			beforeCurrentDocument, err := l.inlineComments(beforeCurrent, true)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			parts = append(parts, beforeCurrentDocument, l.arena.Text(" "), current.document)
+		}
+	}
+	return l.arena.Concat(parts...), nil
 }
 
 func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
@@ -1992,11 +2095,7 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 	case *ast.BinaryExpr:
 		return l.binary(value)
 	case *ast.UnaryExpr:
-		operand, err := l.expression(value.X)
-		if err != nil {
-			return doc.ID{}, err
-		}
-		return l.arena.Concat(l.arena.Text(value.Op.String()), operand), nil
+		return l.unary(value)
 	case *ast.ParenExpr:
 		inner, err := l.expression(value.X)
 		if err != nil {
@@ -2082,6 +2181,42 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 	default:
 		return doc.ID{}, fmt.Errorf("unsupported expression %T", expression)
 	}
+}
+
+func (l *lowerer) unary(expression *ast.UnaryExpr) (doc.ID, error) {
+	operand, err := l.expression(expression.X)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	operatorOffset, operatorFound := l.source.PhysicalOffset(expression.OpPos)
+	operandStart, operandStartFound := l.source.PhysicalOffset(expression.X.Pos())
+	operatorRaw, tokenFound := l.source.RawToken(expression.OpPos)
+	if !operatorFound || !operandStartFound || !tokenFound {
+		return doc.ID{}, errors.New("unary expression has no physical operator boundary")
+	}
+	comments := l.commentsBetween(operatorOffset+len(operatorRaw), operandStart)
+	if len(comments) == 0 {
+		return l.arena.Concat(l.arena.Text(operatorRaw), operand), nil
+	}
+	hasLineComment := false
+	for _, comment := range comments {
+		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+	}
+	if hasLineComment {
+		return l.arena.Concat(
+			l.arena.Text(operatorRaw),
+			l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(comments, operandStart),
+				operand,
+			)),
+		), nil
+	}
+	commentsDocument, err := l.inlineComments(comments, true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(l.arena.Text(operatorRaw), commentsDocument, l.arena.Text(" "), operand), nil
 }
 
 func (l *lowerer) compositeLiteral(literal *ast.CompositeLit) (doc.ID, error) {

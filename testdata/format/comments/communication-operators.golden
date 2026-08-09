@@ -1,0 +1,35 @@
+package comments
+
+func communicate(ready <-chan int, output chan<- int) {
+	select {
+	case <- /* receive */ ready:
+		work()
+	case
+		<-
+			// receive line
+			ready:
+		work()
+	case item /* lhs */, /* ok */ ok /* assign */ := /* rhs */ <- /* operand */ ready:
+		_, _ = item, ok
+	case
+		item, ok :=
+			// assign line
+			<-
+				// operand line
+				ready:
+		_, _ = item, ok
+	case
+		item,
+			// ok line
+			ok :=
+			<-ready:
+		_, _ = item, ok
+	case output /* channel */ <- /* value */ 1:
+		work()
+	case
+		output <-
+			// value line
+			1:
+		work()
+	}
+}

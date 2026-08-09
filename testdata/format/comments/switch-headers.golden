@@ -69,4 +69,15 @@ func classify(value any) {
 	default:
 		work()
 	}
+	switch current /* before guard assign */ := /* after guard assign */ prepared.(type) {
+	default:
+		_ = current
+	}
+	switch
+		current :=
+			// after guard assign line
+			prepared.(type) {
+	default:
+		_ = current
+	}
 }
