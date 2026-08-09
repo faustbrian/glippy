@@ -239,6 +239,30 @@ func TestFormatPreservesRangeBoundaryComments(t *testing.T) {
 	}
 }
 
+func TestFormatPreservesSwitchHeaderComments(t *testing.T) {
+	t.Parallel()
+
+	input, err := os.ReadFile("../../testdata/format/comments/switch-headers.input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile("../../testdata/format/comments/switch-headers.golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load("switch_headers.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatPreservesFilePrefixCommentsAndDirectives(t *testing.T) {
 	t.Parallel()
 

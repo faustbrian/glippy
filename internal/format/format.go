@@ -1229,48 +1229,174 @@ func (l *lowerer) labeledStatement(statement *ast.LabeledStmt) (doc.ID, error) {
 }
 
 func (l *lowerer) switchStatement(statement *ast.SwitchStmt) (doc.ID, error) {
-	parts := []doc.ID{l.arena.Text("switch")}
-	if statement.Init != nil {
-		initializer, err := l.statement(statement.Init)
-		if err != nil {
-			return doc.ID{}, err
-		}
-		parts = append(parts, l.arena.Text(" "), initializer, l.arena.Text(";"))
-	}
+	var tag doc.ID
 	if statement.Tag != nil {
-		tag, err := l.expression(statement.Tag)
+		var err error
+		tag, err = l.expression(statement.Tag)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, l.arena.Indent(l.arena.Concat(l.arena.Line(), tag)))
+	}
+	header, err := l.switchHeader(statement.Switch, statement.Init, statement.Tag, tag, statement.Body.Lbrace)
+	if err != nil {
+		return doc.ID{}, err
 	}
 	tail, err := l.blockTail(statement.Body)
 	if err != nil {
 		return doc.ID{}, err
 	}
-	parts = append(parts, l.arena.Text(" {"))
-	return l.arena.Concat(l.arena.Group(l.arena.Concat(parts...)), tail), nil
+	return l.arena.Concat(header, tail), nil
 }
 
 func (l *lowerer) typeSwitchStatement(statement *ast.TypeSwitchStmt) (doc.ID, error) {
-	parts := []doc.ID{l.arena.Text("switch")}
-	if statement.Init != nil {
-		initializer, err := l.statement(statement.Init)
-		if err != nil {
-			return doc.ID{}, err
-		}
-		parts = append(parts, l.arena.Text(" "), initializer, l.arena.Text(";"))
-	}
 	guard, err := l.typeSwitchGuard(statement.Assign)
 	if err != nil {
 		return doc.ID{}, err
 	}
+	header, err := l.switchHeader(statement.Switch, statement.Init, statement.Assign, guard, statement.Body.Lbrace)
+	if err != nil {
+		return doc.ID{}, err
+	}
 	tail, err := l.blockTail(statement.Body)
 	if err != nil {
 		return doc.ID{}, err
 	}
-	parts = append(parts, l.arena.Indent(l.arena.Concat(l.arena.Line(), guard)), l.arena.Text(" {"))
-	return l.arena.Concat(l.arena.Group(l.arena.Concat(parts...)), tail), nil
+	return l.arena.Concat(header, tail), nil
+}
+
+func (l *lowerer) switchHeader(
+	keywordPosition token.Pos,
+	initializer ast.Stmt,
+	subject ast.Node,
+	subjectDocument doc.ID,
+	bracePosition token.Pos,
+) (doc.ID, error) {
+	keywordOffset, keywordFound := l.source.PhysicalOffset(keywordPosition)
+	braceOffset, braceFound := l.source.PhysicalOffset(bracePosition)
+	if !keywordFound || !braceFound {
+		return doc.ID{}, errors.New("switch header has no physical boundary")
+	}
+
+	if subject == nil && initializer == nil {
+		comments := l.commentsBetween(keywordOffset+len("switch"), braceOffset)
+		if len(comments) == 0 {
+			return l.arena.Text("switch {"), nil
+		}
+		hasLineComment := false
+		for _, comment := range comments {
+			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+		}
+		if !hasLineComment {
+			commentsDocument, err := l.inlineComments(comments, true)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			return l.arena.Concat(l.arena.Text("switch"), commentsDocument, l.arena.Text(" {")), nil
+		}
+		return l.arena.Concat(
+			l.arena.Text("switch"),
+			l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.boundaryCommentsBody(comments))),
+			l.commentGap(comments[len(comments)-1].Range.End, braceOffset),
+			l.arena.Text("{"),
+		), nil
+	}
+
+	subjectStart := braceOffset
+	subjectEnd := braceOffset
+	if subject != nil {
+		var startFound, endFound bool
+		subjectStart, startFound = l.source.PhysicalOffset(subject.Pos())
+		subjectEnd, endFound = l.source.PhysicalOffset(subject.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("switch subject has no physical boundary")
+		}
+	}
+
+	var initializerDocument doc.ID
+	initializerStart := subjectStart
+	initializerEnd := subjectStart
+	if initializer != nil {
+		var err error
+		initializerDocument, err = l.statement(initializer)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		var startFound, endFound bool
+		initializerStart, startFound = l.source.PhysicalOffset(initializer.Pos())
+		initializerEnd, endFound = l.source.PhysicalOffset(initializer.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("switch initializer has no physical boundary")
+		}
+	}
+
+	leading := l.commentsBetween(keywordOffset+len("switch"), initializerStart)
+	var between []source.Comment
+	if initializer != nil && subject != nil {
+		between = l.commentsBetween(initializerEnd, subjectStart)
+	}
+	trailingDocument, err := l.inlineComments(l.commentsBetween(subjectEnd, braceOffset), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+
+	parts := []doc.ID{l.arena.Text("switch")}
+	if initializer != nil {
+		if len(leading) > 0 {
+			parts = append(parts, l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(leading, initializerStart),
+				initializerDocument,
+			)))
+		} else {
+			parts = append(parts, l.arena.Text(" "), initializerDocument)
+		}
+		parts = append(parts, l.arena.Text(";"))
+	}
+
+	if subject != nil {
+		if initializer != nil && len(between) > 0 {
+			parts = append(parts, l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(between, subjectStart),
+				subjectDocument,
+			)))
+		} else if initializer == nil && len(leading) > 0 {
+			parts = append(parts, l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(leading, subjectStart),
+				subjectDocument,
+			)))
+		} else {
+			parts = append(parts, l.arena.Indent(l.arena.Concat(l.arena.Line(), subjectDocument)))
+		}
+		parts = append(parts, trailingDocument, l.arena.Text(" {"))
+		if len(leading) > 0 || len(between) > 0 {
+			return l.arena.Concat(parts...), nil
+		}
+		return l.arena.Group(l.arena.Concat(parts...)), nil
+	}
+
+	comments := l.commentsBetween(initializerEnd, braceOffset)
+	if len(comments) == 0 {
+		return l.arena.Concat(append(parts, l.arena.Text(" {"))...), nil
+	}
+	hasLineComment := false
+	for _, comment := range comments {
+		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+	}
+	if !hasLineComment {
+		commentsDocument, err := l.inlineComments(comments, true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(append(parts, commentsDocument, l.arena.Text(" {"))...), nil
+	}
+	return l.arena.Concat(
+		l.arena.Concat(parts...),
+		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.boundaryCommentsBody(comments))),
+		l.commentGap(comments[len(comments)-1].Range.End, braceOffset),
+		l.arena.Text("{"),
+	), nil
 }
 
 func (l *lowerer) typeSwitchGuard(statement ast.Stmt) (doc.ID, error) {
