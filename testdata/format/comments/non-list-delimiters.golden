@@ -1,0 +1,10 @@
+package comments
+
+func use(value any) {
+	_ = (
+		/* before value */
+		value /* after value */)
+	_ = value.(
+		/* before type */
+		string /* after type */)
+}

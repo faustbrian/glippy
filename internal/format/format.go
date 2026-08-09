@@ -1277,7 +1277,20 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(base, l.arena.Text(".("), asserted, l.arena.Text(")")), nil
+		start, startFound := l.source.PhysicalOffset(value.Type.Pos())
+		end, endFound := l.source.PhysicalOffset(value.Type.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("type assertion has no physical range")
+		}
+		suffix, err := l.delimitedSingle(value.Lparen, value.Rparen, "(", ")", delimitedItem{
+			document: asserted,
+			start:    start,
+			end:      end,
+		})
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(base, l.arena.Text("."), suffix), nil
 	case *ast.BinaryExpr:
 		return l.binary(value)
 	case *ast.UnaryExpr:
@@ -1291,7 +1304,16 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(l.arena.Text("("), inner, l.arena.Text(")")), nil
+		start, startFound := l.source.PhysicalOffset(value.X.Pos())
+		end, endFound := l.source.PhysicalOffset(value.X.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("parenthesized expression has no physical range")
+		}
+		return l.delimitedSingle(value.Lparen, value.Rparen, "(", ")", delimitedItem{
+			document: inner,
+			start:    start,
+			end:      end,
+		})
 	case *ast.StarExpr:
 		operand, err := l.expression(value.X)
 		if err != nil {
