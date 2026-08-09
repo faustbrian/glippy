@@ -1,0 +1,6 @@
+package comments
+func use(value any){_=value /* before selector dot */ . /* after selector dot */ Field;_=value. // after selector dot line
+Field;_=value /* before first chain dot */ . /* after first chain dot */ First(). /* after second chain dot */ Second;_=value /* before assertion dot */ . /* after assertion dot */ (/* before asserted type */ Widget /* after asserted type */);_=value. // after assertion dot line
+(Widget)}
+func classify(value any){switch value /* before type switch dot */ . /* after type switch dot */ (type){default:work()};switch value. // after type switch dot line
+(type){default:work()}}

@@ -1723,7 +1723,11 @@ func (l *lowerer) typeSwitchAssertion(expression ast.Expr) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	return l.arena.Concat(base, l.arena.Text("."), suffix), nil
+	dotSuffix, err := l.dotSuffix(assertion.X, assertion.Lparen, suffix, false)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(base, dotSuffix), nil
 }
 
 func (l *lowerer) caseClause(clause *ast.CaseClause, _ int) (doc.ID, error) {
@@ -2214,7 +2218,11 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(left, l.arena.Text("."), l.arena.Text(value.Sel.Name)), nil
+		suffix, err := l.dotSuffix(value.X, value.Sel.Pos(), l.arena.Text(value.Sel.Name), false)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(left, suffix), nil
 	case *ast.CallExpr:
 		return l.call(value)
 	case *ast.CompositeLit:
@@ -2276,7 +2284,11 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(base, l.arena.Text("."), suffix), nil
+		dotSuffix, err := l.dotSuffix(value.X, value.Lparen, suffix, false)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(base, dotSuffix), nil
 	case *ast.BinaryExpr:
 		return l.binary(value)
 	case *ast.UnaryExpr:
@@ -2643,12 +2655,16 @@ func (l *lowerer) selectorChain(expression ast.Expr) (doc.ID, bool, error) {
 			for index := len(parts) - 1; index >= 0; index-- {
 				part := parts[index]
 				if part.selector != nil {
-					continuation = append(
-						continuation,
-						l.arena.Text("."),
-						l.arena.SoftLine(),
+					suffix, err := l.dotSuffix(
+						part.selector.X,
+						part.selector.Sel.Pos(),
 						l.arena.Text(part.selector.Sel.Name),
+						true,
 					)
+					if err != nil {
+						return doc.ID{}, false, err
+					}
+					continuation = append(continuation, suffix)
 					continue
 				}
 				switch {
@@ -2678,6 +2694,57 @@ func (l *lowerer) selectorChain(expression ast.Expr) (doc.ID, bool, error) {
 			)), true, nil
 		}
 	}
+}
+
+func (l *lowerer) dotSuffix(
+	left ast.Expr,
+	rightPosition token.Pos,
+	suffix doc.ID,
+	breakable bool,
+) (doc.ID, error) {
+	leftEnd, leftEndFound := l.source.PhysicalOffset(left.End())
+	rightStart, rightStartFound := l.source.PhysicalOffset(rightPosition)
+	if !leftEndFound || !rightStartFound {
+		return doc.ID{}, errors.New("dot expression has no physical boundary")
+	}
+	dot, err := l.uniqueTokenBetween(token.PERIOD, leftEnd, rightStart)
+	if err != nil {
+		return doc.ID{}, fmt.Errorf("dot expression boundary: %w", err)
+	}
+	beforeDot, err := l.inlineComments(l.commentsBetween(leftEnd, dot.Range.Start), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	afterDot := l.commentsBetween(dot.Range.End, rightStart)
+	parts := []doc.ID{beforeDot, l.arena.Text(".")}
+	hasLineComment := false
+	for _, comment := range afterDot {
+		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+	}
+	if hasLineComment {
+		parts = append(parts, l.arena.Indent(l.arena.Concat(
+			l.arena.HardLine(),
+			l.boundaryCommentsDocument(afterDot, rightStart),
+			suffix,
+		)))
+		return l.arena.Concat(parts...), nil
+	}
+	if len(afterDot) > 0 {
+		afterDotDocument, err := l.inlineComments(afterDot, true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, afterDotDocument)
+		if breakable {
+			parts = append(parts, l.arena.Line())
+		} else {
+			parts = append(parts, l.arena.Text(" "))
+		}
+	} else if breakable {
+		parts = append(parts, l.arena.SoftLine())
+	}
+	parts = append(parts, suffix)
+	return l.arena.Concat(parts...), nil
 }
 
 func (l *lowerer) callArguments(call *ast.CallExpr) (doc.ID, error) {
