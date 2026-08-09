@@ -246,6 +246,23 @@ func (f *File) RawToken(position token.Pos) (string, bool) {
 	return f.tokens[index].Raw, true
 }
 
+// PhysicalOffset maps a parsed position to the exact source byte offset.
+func (f *File) PhysicalOffset(position token.Pos) (int, bool) {
+	if !position.IsValid() || f.tokenFile == nil {
+		return 0, false
+	}
+	offset := f.tokenFile.Offset(position)
+	return offset, offset >= 0 && offset <= len(f.bytes)
+}
+
+// Slice returns exact physical source text for a valid byte range.
+func (f *File) Slice(sourceRange Range) (string, bool) {
+	if sourceRange.Start < 0 || sourceRange.End < sourceRange.Start || sourceRange.End > len(f.bytes) {
+		return "", false
+	}
+	return string(f.bytes[sourceRange.Start:sourceRange.End]), true
+}
+
 // ValidateEquivalent verifies the normalized syntax and source-accounting
 // invariants required before formatted output can be accepted.
 func ValidateEquivalent(before, after *File) error {

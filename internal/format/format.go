@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"strings"
 
 	"github.com/faustbrian/gox/internal/format/doc"
 	"github.com/faustbrian/gox/internal/source"
@@ -26,9 +27,6 @@ func File(file *source.File, options Options) ([]byte, error) {
 	}
 	if options.Width <= 0 || options.TabWidth <= 0 || options.FitBudget <= 0 {
 		return nil, errors.New("width, tab width, and fit budget must be positive")
-	}
-	if len(file.Comments()) > 0 {
-		return nil, errors.New("comment ownership lowering is not implemented")
 	}
 	result, err := render(file, options)
 	if err != nil {
@@ -83,7 +81,29 @@ type lowerer struct {
 }
 
 func (l *lowerer) file(file *ast.File) (doc.ID, error) {
-	parts := []doc.ID{l.arena.Text("package "), l.arena.Text(file.Name.Name)}
+	parts := make([]doc.ID, 0, len(file.Decls)*3+3)
+	packageOffset, found := l.source.PhysicalOffset(file.Package)
+	if !found {
+		return doc.ID{}, errors.New("package clause has no physical offset")
+	}
+	comments := l.source.Comments()
+	for _, comment := range comments {
+		if comment.Range.End > packageOffset {
+			return doc.ID{}, errors.New("comment ownership lowering is not implemented outside the file prefix")
+		}
+	}
+	if len(comments) > 0 {
+		prefixStart := 0
+		if l.source.Metadata().HasBOM {
+			prefixStart = 3
+		}
+		prefix, ok := l.source.Slice(source.Range{Start: prefixStart, End: packageOffset})
+		if !ok {
+			return doc.ID{}, errors.New("file prefix has an invalid physical range")
+		}
+		parts = append(parts, l.arena.Verbatim(prefix))
+	}
+	parts = append(parts, l.arena.Text("package "), l.arena.Text(file.Name.Name))
 	for _, declaration := range file.Decls {
 		lowered, err := l.declaration(declaration)
 		if err != nil {
@@ -98,9 +118,69 @@ func (l *lowerer) declaration(declaration ast.Decl) (doc.ID, error) {
 	switch value := declaration.(type) {
 	case *ast.FuncDecl:
 		return l.function(value)
+	case *ast.GenDecl:
+		if value.Tok != token.IMPORT {
+			return doc.ID{}, fmt.Errorf("unsupported declaration token %s", value.Tok)
+		}
+		return l.importDeclaration(value)
 	default:
 		return doc.ID{}, fmt.Errorf("unsupported declaration %T", declaration)
 	}
+}
+
+func (l *lowerer) importDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
+	imports := make([]doc.ID, 0, len(declaration.Specs))
+	for _, rawSpec := range declaration.Specs {
+		spec, ok := rawSpec.(*ast.ImportSpec)
+		if !ok {
+			return doc.ID{}, fmt.Errorf("import declaration contains %T", rawSpec)
+		}
+		path, found := l.source.RawToken(spec.Path.Pos())
+		if !found {
+			return doc.ID{}, errors.New("import path has no physical token")
+		}
+		parts := make([]doc.ID, 0, 2)
+		if spec.Name != nil {
+			parts = append(parts, l.arena.Text(spec.Name.Name), l.arena.Text(" "))
+		}
+		parts = append(parts, l.arena.Verbatim(path))
+		imports = append(imports, l.arena.Concat(parts...))
+	}
+	if !declaration.Lparen.IsValid() {
+		if len(imports) != 1 {
+			return doc.ID{}, errors.New("ungrouped import declaration must contain one spec")
+		}
+		return l.arena.Concat(l.arena.Text("import "), imports[0]), nil
+	}
+	if len(imports) == 0 {
+		return l.arena.Text("import ()"), nil
+	}
+	body := make([]doc.ID, 0, len(imports)*3-1)
+	for index, item := range imports {
+		if index > 0 {
+			separator := l.arena.HardLine()
+			previousEnd, previousFound := l.source.PhysicalOffset(declaration.Specs[index-1].End())
+			currentStart, currentFound := l.source.PhysicalOffset(declaration.Specs[index].Pos())
+			if !previousFound || !currentFound {
+				return doc.ID{}, errors.New("import group has no physical gap")
+			}
+			gap, valid := l.source.Slice(source.Range{Start: previousEnd, End: currentStart})
+			if !valid {
+				return doc.ID{}, errors.New("import group has an invalid physical gap")
+			}
+			body = append(body, separator)
+			if strings.Count(gap, "\n") >= 2 {
+				body = append(body, l.arena.HardLine())
+			}
+		}
+		body = append(body, item)
+	}
+	return l.arena.Concat(
+		l.arena.Text("import ("),
+		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.arena.Concat(body...))),
+		l.arena.HardLine(),
+		l.arena.Text(")"),
+	), nil
 }
 
 func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {

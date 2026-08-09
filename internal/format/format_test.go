@@ -85,6 +85,24 @@ func TestFormatRefusesCommentsUntilOwnershipCanBePreserved(t *testing.T) {
 	}
 }
 
+func TestFormatPreservesFilePrefixCommentsAndDirectives(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("//go:build linux\n\n// Package prefix documents the package.\npackage prefix\nfunc run(){}\n")
+	file, err := source.Load("prefix.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "//go:build linux\n\n// Package prefix documents the package.\npackage prefix\n\nfunc run() {}\n"
+	if string(got) != want {
+		t.Fatalf("File() = %q, want exact anchored prefix comments", got)
+	}
+}
+
 func TestFormatPreservesAcceptedByteOrderMark(t *testing.T) {
 	t.Parallel()
 
@@ -129,5 +147,23 @@ func TestFormatRejectsUnmodeledSyntaxDifferences(t *testing.T) {
 	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
 	if err == nil || len(got) != 0 {
 		t.Fatalf("File() = (%q, %v), want syntax-equivalence refusal", got, err)
+	}
+}
+
+func TestFormatPreservesImportGroupsOrderAliasesAndLiterals(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package imports\nimport(z \"z.example/pkg\";_ `a.example/side`\n\n. \"dot.example/pkg\")\nfunc run(){}\n")
+	file, err := source.Load("imports.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package imports\n\nimport (\n\tz \"z.example/pkg\"\n\t_ `a.example/side`\n\n\t. \"dot.example/pkg\"\n)\n\nfunc run() {}\n"
+	if string(got) != want {
+		t.Fatalf("File() = %q, want import identity and order preserved", got)
 	}
 }
