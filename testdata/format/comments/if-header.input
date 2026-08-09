@@ -1,0 +1,3 @@
+package comments
+func use(value any){if /* before init */ current:=value /* after init */; /* before condition */ current!=nil /* after condition */ {work()};if /* before condition only */ value!=nil /* after condition only */ {work()};if current:=value; // between initializer and condition
+current!=nil {work()}}

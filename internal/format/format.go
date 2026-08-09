@@ -1171,24 +1171,94 @@ func (l *lowerer) assignment(assignment *ast.AssignStmt) (doc.ID, error) {
 }
 
 func (l *lowerer) ifStatement(statement *ast.IfStmt) (doc.ID, error) {
+	ifOffset, ifFound := l.source.PhysicalOffset(statement.If)
+	conditionStart, conditionStartFound := l.source.PhysicalOffset(statement.Cond.Pos())
+	conditionEnd, conditionEndFound := l.source.PhysicalOffset(statement.Cond.End())
+	braceOffset, braceFound := l.source.PhysicalOffset(statement.Body.Lbrace)
+	if !ifFound || !conditionStartFound || !conditionEndFound || !braceFound {
+		return doc.ID{}, errors.New("if header has no physical boundary")
+	}
+
+	condition, err := l.expression(statement.Cond)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	trailingDocument, err := l.inlineComments(l.commentsBetween(conditionEnd, braceOffset), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+
 	parts := []doc.ID{l.arena.Text("if")}
 	if statement.Init != nil {
 		initializer, err := l.statement(statement.Init)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, l.arena.Text(" "), initializer, l.arena.Text(";"))
-	}
-	condition, err := l.expression(statement.Cond)
-	if err != nil {
-		return doc.ID{}, err
+		initializerStart, startFound := l.source.PhysicalOffset(statement.Init.Pos())
+		initializerEnd, endFound := l.source.PhysicalOffset(statement.Init.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("if initializer has no physical boundary")
+		}
+		leading := l.commentsBetween(ifOffset+len("if"), initializerStart)
+		between := l.commentsBetween(initializerEnd, conditionStart)
+		if len(leading) > 0 || len(between) > 0 {
+			if len(leading) > 0 {
+				parts = append(parts, l.arena.Indent(l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(leading, initializerStart),
+					initializer,
+				)))
+			} else {
+				parts = append(parts, l.arena.Text(" "), initializer)
+			}
+			continuation := []doc.ID{l.arena.HardLine()}
+			if len(between) > 0 {
+				continuation = append(continuation, l.boundaryCommentsDocument(between, conditionStart))
+			}
+			continuation = append(continuation, condition)
+			parts = append(parts,
+				l.arena.Text(";"),
+				l.arena.Indent(l.arena.Concat(continuation...)),
+				trailingDocument,
+				l.arena.Text(" {"),
+			)
+		} else {
+			parts = append(parts,
+				l.arena.Text(" "),
+				initializer,
+				l.arena.Text(";"),
+				l.arena.Indent(l.arena.Concat(l.arena.Line(), condition)),
+				trailingDocument,
+				l.arena.Text(" {"),
+			)
+			parts = []doc.ID{l.arena.Group(l.arena.Concat(parts...))}
+		}
+	} else {
+		leading := l.commentsBetween(ifOffset+len("if"), conditionStart)
+		if len(leading) > 0 {
+			parts = append(parts,
+				l.arena.Indent(l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(leading, conditionStart),
+					condition,
+				)),
+				trailingDocument,
+				l.arena.Text(" {"),
+			)
+		} else {
+			parts = append(parts,
+				l.arena.Indent(l.arena.Concat(l.arena.Line(), condition)),
+				trailingDocument,
+				l.arena.Text(" {"),
+			)
+			parts = []doc.ID{l.arena.Group(l.arena.Concat(parts...))}
+		}
 	}
 	tail, err := l.blockTail(statement.Body)
 	if err != nil {
 		return doc.ID{}, err
 	}
-	parts = append(parts, l.arena.Indent(l.arena.Concat(l.arena.Line(), condition)), l.arena.Text(" {"))
-	result := []doc.ID{l.arena.Group(l.arena.Concat(parts...)), tail}
+	result := []doc.ID{l.arena.Concat(parts...), tail}
 	if statement.Else != nil {
 		alternative, err := l.statement(statement.Else)
 		if err != nil {
