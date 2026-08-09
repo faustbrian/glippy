@@ -153,6 +153,38 @@ func TestLoadIndexesTriviaCommentsAndAnchoredDirectives(t *testing.T) {
 	}
 }
 
+func TestValidateEquivalentRejectsCommentMovementAcrossSignificantTokens(t *testing.T) {
+	t.Parallel()
+
+	before, err := source.Load("ownership.go", []byte("package ownership\nvar _ = combine(first /* keep */, second)\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := source.Load("ownership.go", []byte("package ownership\nvar _ = combine(first, second /* keep */)\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.ValidateEquivalent(before, after); err == nil {
+		t.Fatal("ValidateEquivalent() must reject a comment moved across an argument")
+	}
+}
+
+func TestValidateEquivalentAllowsCommentMovementAcrossFormatterPunctuation(t *testing.T) {
+	t.Parallel()
+
+	before, err := source.Load("punctuation.go", []byte("package ownership\nvar _ = combine(first /* keep */, second)\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := source.Load("punctuation.go", []byte("package ownership\nvar _ = combine(first, /* keep */ second)\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.ValidateEquivalent(before, after); err != nil {
+		t.Fatalf("ValidateEquivalent() rejected formatter punctuation movement: %v", err)
+	}
+}
+
 func reconstruct(pieces []source.Piece) []byte {
 	var result []byte
 	for _, piece := range pieces {

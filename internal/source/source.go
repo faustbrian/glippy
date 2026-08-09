@@ -280,6 +280,9 @@ func ValidateEquivalent(before, after *File) error {
 	}) {
 		return errors.New("comment identity or ordering changed")
 	}
+	if !slices.Equal(commentOwnershipFingerprint(before.tokens), commentOwnershipFingerprint(after.tokens)) {
+		return errors.New("comment source ownership changed")
+	}
 	if !slices.EqualFunc(before.directives, after.directives, func(left, right Directive) bool {
 		return left.Kind == right.Kind && left.Raw == right.Raw
 	}) {
@@ -297,6 +300,21 @@ func ValidateEquivalent(before, after *File) error {
 		return errors.New("normalized syntax tree changed")
 	}
 	return nil
+}
+
+func commentOwnershipFingerprint(tokens []Token) []int {
+	result := make([]int, 0)
+	significantTokens := 0
+	for _, item := range tokens {
+		switch item.Kind {
+		case token.COMMENT:
+			result = append(result, significantTokens)
+		case token.SEMICOLON, token.COMMA:
+		default:
+			significantTokens++
+		}
+	}
+	return result
 }
 
 func equivalentTokens(before, after []Token) bool {
