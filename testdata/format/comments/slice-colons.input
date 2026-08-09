@@ -1,0 +1,6 @@
+package comments
+func slice(values []int){_=values[low /* before first colon */ : /* after first colon */ high /* before second colon */ : /* after second colon */ max];_=values[low: // after first colon line
+high];_=values[/* before omitted low */ : /* after omitted low */ high];_=values[low:high: // after second colon line
+max];_=values[indices[low:high][0]:limit];_=values /* before slice bracket */ [low:high];_=values[ // after opening line
+low:high];_=values[low: // after colon before close line
+];_=values[:high /* before close */ ]}

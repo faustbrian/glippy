@@ -2518,24 +2518,155 @@ func (l *lowerer) slice(expression *ast.SliceExpr) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	parts := []doc.ID{base, l.arena.Text("[")}
-	for index, bound := range []ast.Expr{expression.Low, expression.High, expression.Max} {
-		if index == 2 && !expression.Slice3 {
-			break
+	baseEnd, baseEndFound := l.source.PhysicalOffset(expression.X.End())
+	opening, openingFound := l.source.PhysicalOffset(expression.Lbrack)
+	closing, closingFound := l.source.PhysicalOffset(expression.Rbrack)
+	if !baseEndFound || !openingFound || !closingFound {
+		return doc.ID{}, errors.New("slice expression has no physical delimiter boundary")
+	}
+	beforeOpening, err := l.inlineComments(l.commentsBetween(baseEnd, opening), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	colons, err := l.sliceColons(expression, opening, closing)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	type slicePiece struct {
+		document doc.ID
+		start    int
+		end      int
+		colon    bool
+		closing  bool
+	}
+	pieces := make([]slicePiece, 0, 6)
+	appendBound := func(bound ast.Expr) error {
+		if bound == nil {
+			return nil
 		}
-		if index > 0 {
-			parts = append(parts, l.arena.Text(":"))
+		document, lowerErr := l.expression(bound)
+		if lowerErr != nil {
+			return lowerErr
 		}
-		if bound != nil {
-			lowered, err := l.expression(bound)
+		start, startFound := l.source.PhysicalOffset(bound.Pos())
+		end, endFound := l.source.PhysicalOffset(bound.End())
+		if !startFound || !endFound {
+			return errors.New("slice bound has no physical boundary")
+		}
+		pieces = append(pieces, slicePiece{document: document, start: start, end: end})
+		return nil
+	}
+	if err := appendBound(expression.Low); err != nil {
+		return doc.ID{}, err
+	}
+	pieces = append(pieces, slicePiece{
+		document: l.arena.Text(":"),
+		start:    colons[0].Range.Start,
+		end:      colons[0].Range.End,
+		colon:    true,
+	})
+	if err := appendBound(expression.High); err != nil {
+		return doc.ID{}, err
+	}
+	if expression.Slice3 {
+		pieces = append(pieces, slicePiece{
+			document: l.arena.Text(":"),
+			start:    colons[1].Range.Start,
+			end:      colons[1].Range.End,
+			colon:    true,
+		})
+		if err := appendBound(expression.Max); err != nil {
+			return doc.ID{}, err
+		}
+	}
+	pieces = append(pieces, slicePiece{
+		document: l.arena.Text("]"),
+		start:    closing,
+		end:      closing + len("]"),
+		closing:  true,
+	})
+	parts := []doc.ID{base, beforeOpening, l.arena.Text("[")}
+	previousEnd := opening + len("[")
+	previousOpen := true
+	previousColon := false
+	for _, piece := range pieces {
+		comments := l.commentsBetween(previousEnd, piece.start)
+		hasLineComment := false
+		for _, comment := range comments {
+			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+		}
+		if hasLineComment {
+			if !previousOpen && !previousColon {
+				return doc.ID{}, errors.New("slice line comment has no grammar-safe break boundary")
+			}
+			parts = append(parts, l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(comments, piece.start),
+				piece.document,
+			)))
+		} else {
+			commentsDocument, err := l.inlineCommentsWithSpacing(
+				comments,
+				!previousOpen,
+				!piece.colon && !piece.closing,
+			)
 			if err != nil {
 				return doc.ID{}, err
 			}
-			parts = append(parts, lowered)
+			parts = append(parts, commentsDocument, piece.document)
+		}
+		previousEnd = piece.end
+		previousOpen = false
+		previousColon = piece.colon
+	}
+	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) sliceColons(expression *ast.SliceExpr, opening, closing int) ([]source.Token, error) {
+	parentheses := 0
+	brackets := 0
+	braces := 0
+	colons := make([]source.Token, 0, 2)
+	first := sort.Search(len(l.tokens), func(index int) bool {
+		return l.tokens[index].Range.Start > opening
+	})
+	for _, item := range l.tokens[first:] {
+		if item.Range.Start >= closing {
+			break
+		}
+		switch item.Kind {
+		case token.LPAREN:
+			parentheses++
+		case token.RPAREN:
+			parentheses--
+		case token.LBRACK:
+			brackets++
+		case token.RBRACK:
+			brackets--
+		case token.LBRACE:
+			braces++
+		case token.RBRACE:
+			braces--
+		case token.COLON:
+			if parentheses == 0 && brackets == 0 && braces == 0 {
+				colons = append(colons, item)
+			}
+		}
+		if parentheses < 0 || brackets < 0 || braces < 0 {
+			return nil, errors.New("slice token nesting is unbalanced")
 		}
 	}
-	parts = append(parts, l.arena.Text("]"))
-	return l.arena.Concat(parts...), nil
+	if parentheses != 0 || brackets != 0 || braces != 0 {
+		return nil, errors.New("slice token nesting is unbalanced")
+	}
+	want := 1
+	if expression.Slice3 {
+		want = 2
+	}
+	if len(colons) != want {
+		return nil, fmt.Errorf("slice expression contains %d top-level colons, want %d", len(colons), want)
+	}
+	return colons, nil
 }
 
 func (l *lowerer) functionType(function *ast.FuncType, includeKeyword bool) (doc.ID, error) {
@@ -2855,6 +2986,14 @@ func (l *lowerer) binary(expression *ast.BinaryExpr) (doc.ID, error) {
 }
 
 func (l *lowerer) inlineComments(comments []source.Comment, leadingSpace bool) (doc.ID, error) {
+	return l.inlineCommentsWithSpacing(comments, leadingSpace, !leadingSpace)
+}
+
+func (l *lowerer) inlineCommentsWithSpacing(
+	comments []source.Comment,
+	leadingSpace bool,
+	trailingSpace bool,
+) (doc.ID, error) {
 	if len(comments) == 0 {
 		return l.arena.Empty(), nil
 	}
@@ -2871,7 +3010,7 @@ func (l *lowerer) inlineComments(comments []source.Comment, leadingSpace bool) (
 		}
 		parts = append(parts, l.arena.Verbatim(comment.Raw))
 	}
-	if !leadingSpace {
+	if trailingSpace {
 		parts = append(parts, l.arena.Text(" "))
 	}
 	return l.arena.Concat(parts...), nil
