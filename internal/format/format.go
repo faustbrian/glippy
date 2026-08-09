@@ -571,6 +571,33 @@ func (l *lowerer) delimitedSingle(
 	if len(leading) == 0 && len(trailing) == 0 {
 		return l.arena.Concat(l.arena.Text(open), item.document, l.arena.Text(close)), nil
 	}
+	hasTrailingLineComment := false
+	for _, comment := range trailing {
+		hasTrailingLineComment = hasTrailingLineComment || strings.HasPrefix(comment.Raw, "//")
+	}
+	if hasTrailingLineComment {
+		body := item.document
+		if len(leading) > 0 {
+			body = l.arena.Concat(l.boundaryCommentsDocument(leading, item.start), body)
+		}
+		boundary := item.end
+		previousWasLineComment := false
+		for _, comment := range trailing {
+			if !previousWasLineComment && l.samePhysicalLine(boundary, comment.Range.Start) {
+				body = l.arena.Concat(body, l.arena.Text(" "), l.arena.Verbatim(comment.Raw))
+			} else {
+				body = l.arena.Concat(body, l.commentGap(boundary, comment.Range.Start), l.arena.Verbatim(comment.Raw))
+			}
+			boundary = comment.Range.End
+			previousWasLineComment = strings.HasPrefix(comment.Raw, "//")
+		}
+		return l.arena.Concat(
+			l.arena.Text(open),
+			l.arena.Indent(l.arena.Concat(l.arena.HardLine(), body)),
+			l.arena.HardLine(),
+			l.arena.Text(close),
+		), nil
+	}
 	trailingDocument, err := l.inlineComments(trailing, true)
 	if err != nil {
 		return doc.ID{}, err
@@ -1430,7 +1457,41 @@ func (l *lowerer) typeSwitchAssertion(expression ast.Expr) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	return l.arena.Concat(base, l.arena.Text(".(type)")), nil
+	opening, openingFound := l.source.PhysicalOffset(assertion.Lparen)
+	closing, closingFound := l.source.PhysicalOffset(assertion.Rparen)
+	if !openingFound || !closingFound {
+		return doc.ID{}, errors.New("type-switch assertion has no physical boundary")
+	}
+	first := sort.Search(len(l.tokens), func(index int) bool {
+		return l.tokens[index].Range.Start > opening
+	})
+	var keyword source.Token
+	keywordFound := false
+	for _, item := range l.tokens[first:] {
+		if item.Range.Start >= closing {
+			break
+		}
+		if item.Kind != token.TYPE {
+			continue
+		}
+		if keywordFound {
+			return doc.ID{}, errors.New("type-switch assertion contains multiple type tokens")
+		}
+		keyword = item
+		keywordFound = true
+	}
+	if !keywordFound {
+		return doc.ID{}, errors.New("type-switch assertion has no physical type token")
+	}
+	suffix, err := l.delimitedSingle(assertion.Lparen, assertion.Rparen, "(", ")", delimitedItem{
+		document: l.arena.Text(keyword.Raw),
+		start:    keyword.Range.Start,
+		end:      keyword.Range.End,
+	})
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(base, l.arena.Text("."), suffix), nil
 }
 
 func (l *lowerer) caseClause(clause *ast.CaseClause, _ int) (doc.ID, error) {

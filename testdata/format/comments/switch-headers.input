@@ -2,4 +2,6 @@ package comments
 func classify(value any){switch /* before init */ current:=value /* after init */; /* before tag */ current /* after tag */ {default:work()};switch current:=value; // before tag line
 current {default:work()};switch /* before tag only */ value /* after tag only */ {default:work()};switch // expressionless line
 {default:work()};switch current:=value; /* after initializer only */ {default:work()};switch current:=value; // after initializer line
-{default:work()};switch /* before type init */ prepared:=value /* after type init */; /* before guard */ current:=prepared.(type) /* after guard */ {default:_=current}}
+{default:work()};switch /* before type init */ prepared:=value /* after type init */; /* before guard */ current:=prepared.(type) /* after guard */ {default:_=current};switch current:=prepared.(/* before assertion type */ type /* after assertion type */){default:_=current};switch current:=prepared.(// before assertion type line
+type // after assertion type line
+){default:_=current};switch prepared.(/* before expression type */ type /* after expression type */){default:work()}}

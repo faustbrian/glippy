@@ -47,4 +47,26 @@ func classify(value any) {
 	default:
 		_ = current
 	}
+	switch
+		current := prepared.(
+			/* before assertion type */
+			type /* after assertion type */) {
+	default:
+		_ = current
+	}
+	switch
+		current := prepared.(
+			// before assertion type line
+			type // after assertion type line
+		) {
+	default:
+		_ = current
+	}
+	switch
+		prepared.(
+			/* before expression type */
+			type /* after expression type */) {
+	default:
+		work()
+	}
 }
