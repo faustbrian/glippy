@@ -2,6 +2,7 @@ package format_test
 
 import (
 	"bytes"
+	"os"
 	"testing"
 
 	goxformat "github.com/faustbrian/gox/internal/format"
@@ -75,7 +76,7 @@ func TestFormatExpandsMotivatingHostileGo(t *testing.T) {
 func TestFormatRefusesCommentsUntilOwnershipCanBePreserved(t *testing.T) {
 	t.Parallel()
 
-	file, err := source.Load("comment.go", []byte("package comments\n// keep me\nfunc run() {}\n"))
+	file, err := source.Load("comment.go", []byte("package comments\nfunc run(/* keep me */ value int){_=value}\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,6 +101,170 @@ func TestFormatPreservesFilePrefixCommentsAndDirectives(t *testing.T) {
 	want := "//go:build linux\n\n// Package prefix documents the package.\npackage prefix\n\nfunc run() {}\n"
 	if string(got) != want {
 		t.Fatalf("File() = %q, want exact anchored prefix comments", got)
+	}
+}
+
+func TestFormatPreservesDeclarationDocumentationAndTrailingComments(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package comments\n//go:generate go run example.invalid/generator\n// run performs work.\nfunc run(){} // keep trailing\n")
+	file, err := source.Load("comments.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\n//go:generate go run example.invalid/generator\n// run performs work.\nfunc run() {} // keep trailing\n"
+	if string(got) != want {
+		t.Fatalf("File() = %q, want declaration comments and directive anchored", got)
+	}
+}
+
+func TestFormatPreservesStandaloneTopLevelDirectives(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package comments\n\n//go:generate go run example.invalid/generator\n\nfunc run(){}\n")
+	file, err := source.Load("directive.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\n//go:generate go run example.invalid/generator\n\nfunc run() {}\n"
+	if string(got) != want {
+		t.Fatalf("File() = %q, want standalone directive boundary preserved", got)
+	}
+}
+
+func TestFormatPreservesFieldDocumentationAndTrailingComments(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package comments\ntype Config struct{// Value documents the field.\nValue string `json:\"value\"` // keep field\n}\n")
+	file, err := source.Load("fields.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\ntype Config struct {\n\t// Value documents the field.\n\tValue string `json:\"value\"` // keep field\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() = %q, want field comments anchored", got)
+	}
+}
+
+func TestFormatPreservesCommentsBeforeAggregateClosers(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package comments\ntype Config struct{Value string\n// after last field\n}\ntype Empty struct{/* inside empty aggregate */}\n")
+	file, err := source.Load("aggregate_closers.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\ntype Config struct {\n\tValue string\n\t// after last field\n}\n\ntype Empty struct {\n\t/* inside empty aggregate */\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() = %q, want aggregate closing-boundary comments anchored", got)
+	}
+}
+
+func TestFormatPreservesStatementBoundaryComments(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package comments\nfunc run(){// before first\nfirst() // after first\n// between statements\nsecond()\n// before close\n}\n")
+	file, err := source.Load("statements.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nfunc run() {\n\t// before first\n\tfirst() // after first\n\t// between statements\n\tsecond()\n\t// before close\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() = %q, want statement boundary comments anchored", got)
+	}
+}
+
+func TestFormatPreservesBlankLinesAfterBoundaryComments(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package comments\ntype Config struct{// standalone field\n\nValue string\n}\nfunc run(){// standalone statement\n\nwork()}\n")
+	file, err := source.Load("blank_comments.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\ntype Config struct {\n\t// standalone field\n\n\tValue string\n}\n\nfunc run() {\n\t// standalone statement\n\n\twork()\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatPreservesOperandAndListElementComments(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package comments\nfunc add(a,b int)int{return a /* left operand */ + /* right operand */ b}\nfunc values()[]int{return []int{1 /* first */,2 /* second */,3}}\n")
+	file, err := source.Load("expressions.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nfunc add(a, b int) int {\n\treturn a /* left operand */ + /* right operand */ b\n}\n\nfunc values() []int {\n\treturn []int{\n\t\t1, /* first */\n\t\t2, /* second */\n\t\t3,\n\t}\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatPreservesCallArgumentComments(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("arguments.go", []byte("package comments\nfunc run(){use(first /* first */,second /* second */)}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nfunc run() {\n\tuse(\n\t\tfirst, /* first */\n\t\tsecond, /* second */\n\t)\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() = %q, want call argument comments anchored", got)
+	}
+}
+
+func TestFormatHostileCommentCorpus(t *testing.T) {
+	t.Parallel()
+
+	input, err := os.ReadFile("../../testdata/corpus/hostile/comments.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load("comments.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "// Package hostile contains owned hostile-valid-Go fixtures.\npackage hostile\n\n//go:generate go run example.invalid/generator\n\nfunc comments(a, b int) int {\n\treturn a /* left operand */ + /* right operand */ b\n}\n\nfunc literal() []int {\n\treturn []int{\n\t\t1, /* first */\n\t\t2, /* second */\n\t\t3,\n\t}\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
 	}
 }
 

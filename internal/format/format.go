@@ -51,7 +51,7 @@ func File(file *source.File, options Options) ([]byte, error) {
 
 func render(file *source.File, options Options) ([]byte, error) {
 	arena := doc.NewArena()
-	lower := lowerer{arena: arena, source: file}
+	lower := newLowerer(arena, file)
 	var document doc.ID
 	if err := file.ReadSyntax(func(syntax *ast.File) error {
 		var err error
@@ -76,8 +76,28 @@ func render(file *source.File, options Options) ([]byte, error) {
 }
 
 type lowerer struct {
-	arena  *doc.Arena
-	source *source.File
+	arena          *doc.Arena
+	source         *source.File
+	physical       []byte
+	comments       []source.Comment
+	commentByStart map[int]int
+	emittedComment []bool
+}
+
+func newLowerer(arena *doc.Arena, file *source.File) lowerer {
+	comments := file.Comments()
+	commentByStart := make(map[int]int, len(comments))
+	for index, comment := range comments {
+		commentByStart[comment.Range.Start] = index
+	}
+	return lowerer{
+		arena:          arena,
+		source:         file,
+		physical:       file.Bytes(),
+		comments:       comments,
+		commentByStart: commentByStart,
+		emittedComment: make([]bool, len(comments)),
+	}
 }
 
 func (l *lowerer) file(file *ast.File) (doc.ID, error) {
@@ -86,13 +106,14 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 	if !found {
 		return doc.ID{}, errors.New("package clause has no physical offset")
 	}
-	comments := l.source.Comments()
-	for _, comment := range comments {
-		if comment.Range.End > packageOffset {
-			return doc.ID{}, errors.New("comment ownership lowering is not implemented outside the file prefix")
+	hasPrefixComments := false
+	for index, comment := range l.comments {
+		if comment.Range.End <= packageOffset {
+			l.emittedComment[index] = true
+			hasPrefixComments = true
 		}
 	}
-	if len(comments) > 0 {
+	if hasPrefixComments {
 		prefixStart := 0
 		if l.source.Metadata().HasBOM {
 			prefixStart = 3
@@ -104,14 +125,149 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 		parts = append(parts, l.arena.Verbatim(prefix))
 	}
 	parts = append(parts, l.arena.Text("package "), l.arena.Text(file.Name.Name))
-	for _, declaration := range file.Decls {
+	boundary, found := l.source.PhysicalOffset(file.Name.End())
+	if !found {
+		return doc.ID{}, errors.New("package name has no physical end offset")
+	}
+	firstDeclaration := len(l.physical)
+	if len(file.Decls) > 0 {
+		firstDeclaration, found = l.source.PhysicalOffset(file.Decls[0].Pos())
+		if !found {
+			return doc.ID{}, errors.New("first declaration has no physical offset")
+		}
+	}
+	parts = append(parts, l.withTrailingComments(l.arena.Empty(), l.trailingComments(boundary, firstDeclaration)))
+	for index, declaration := range file.Decls {
+		declarationStart, found := l.source.PhysicalOffset(declaration.Pos())
+		if !found {
+			return doc.ID{}, errors.New("declaration has no physical start offset")
+		}
+		leading := l.commentsBetween(boundary, declarationStart)
 		lowered, err := l.declaration(declaration)
 		if err != nil {
 			return doc.ID{}, err
 		}
+		if len(leading) > 0 {
+			lowered = l.arena.Concat(l.boundaryCommentsDocument(leading, declarationStart), lowered)
+		}
+		limit := len(l.physical)
+		if index+1 < len(file.Decls) {
+			var found bool
+			limit, found = l.source.PhysicalOffset(file.Decls[index+1].Pos())
+			if !found {
+				return doc.ID{}, errors.New("following declaration has no physical offset")
+			}
+		}
+		declarationEnd, found := l.source.PhysicalOffset(declaration.End())
+		if !found {
+			return doc.ID{}, errors.New("declaration has no physical end offset")
+		}
+		trailing := l.trailingComments(declarationEnd, limit)
+		lowered = l.withTrailingComments(lowered, trailing)
 		parts = append(parts, l.arena.HardLine(), l.arena.HardLine(), lowered)
+		boundary = declarationEnd
+	}
+	if suffix := l.commentsBetween(boundary, len(l.physical)); len(suffix) > 0 {
+		parts = append(parts, l.arena.HardLine(), l.arena.HardLine(), l.commentsDocument(suffix))
+	}
+	for index, emitted := range l.emittedComment {
+		if !emitted {
+			return doc.ID{}, fmt.Errorf("comment %d has no proven output owner", l.comments[index].ID)
+		}
 	}
 	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) commentsDocument(owned []source.Comment) doc.ID {
+	comments := make([]doc.ID, 0, len(owned))
+	for _, comment := range owned {
+		comments = append(comments, l.arena.Verbatim(comment.Raw))
+	}
+	return l.join(l.arena.HardLine(), comments)
+}
+
+func (l *lowerer) boundaryCommentsDocument(owned []source.Comment, following int) doc.ID {
+	parts := make([]doc.ID, 0, len(owned)*3)
+	for index, comment := range owned {
+		if index > 0 {
+			parts = append(parts, l.commentGap(owned[index-1].Range.End, comment.Range.Start))
+		}
+		parts = append(parts, l.arena.Verbatim(comment.Raw))
+	}
+	parts = append(parts, l.commentGap(owned[len(owned)-1].Range.End, following))
+	return l.arena.Concat(parts...)
+}
+
+func (l *lowerer) commentGap(start, end int) doc.ID {
+	if start >= 0 && end >= start && end <= len(l.physical) && bytes.Count(l.physical[start:end], []byte{'\n'}) >= 2 {
+		return l.arena.Concat(l.arena.HardLine(), l.arena.HardLine())
+	}
+	return l.arena.HardLine()
+}
+
+func (l *lowerer) consumeCommentGroup(group *ast.CommentGroup) ([]source.Comment, error) {
+	comments := make([]source.Comment, 0, len(group.List))
+	for _, astComment := range group.List {
+		start, found := l.source.PhysicalOffset(astComment.Slash)
+		if !found {
+			return nil, errors.New("attached comment has no physical offset")
+		}
+		index, found := l.commentByStart[start]
+		if !found {
+			return nil, fmt.Errorf("attached comment at byte %d has no stable identity", start)
+		}
+		if l.emittedComment[index] {
+			return nil, fmt.Errorf("comment %d has multiple output owners", l.comments[index].ID)
+		}
+		l.emittedComment[index] = true
+		comments = append(comments, l.comments[index])
+	}
+	return comments, nil
+}
+
+func (l *lowerer) trailingComments(start, limit int) []source.Comment {
+	var trailing []source.Comment
+	for index, comment := range l.comments {
+		if l.emittedComment[index] || comment.Range.Start < start || comment.Range.Start >= limit {
+			continue
+		}
+		if !l.samePhysicalLine(start, comment.Range.Start) {
+			continue
+		}
+		l.emittedComment[index] = true
+		trailing = append(trailing, comment)
+	}
+	return trailing
+}
+
+func (l *lowerer) commentsBetween(start, end int) []source.Comment {
+	var owned []source.Comment
+	for index, comment := range l.comments {
+		if l.emittedComment[index] || comment.Range.Start < start || comment.Range.End > end {
+			continue
+		}
+		l.emittedComment[index] = true
+		owned = append(owned, comment)
+	}
+	return owned
+}
+
+func (l *lowerer) withTrailingComments(item doc.ID, comments []source.Comment) doc.ID {
+	if len(comments) == 0 {
+		return item
+	}
+	suffix := make([]doc.ID, 0, len(comments)*2)
+	for _, comment := range comments {
+		suffix = append(suffix, l.arena.Text(" "), l.arena.Verbatim(comment.Raw))
+	}
+	return l.arena.Concat(item, l.arena.LineSuffix(l.arena.Concat(suffix...)))
+}
+
+func (l *lowerer) samePhysicalLine(left, right int) bool {
+	if left < 0 || right < left || right > len(l.physical) {
+		return false
+	}
+	return !bytes.ContainsRune(l.physical[left:right], '\n')
 }
 
 func (l *lowerer) declaration(declaration ast.Decl) (doc.ID, error) {
@@ -326,6 +482,21 @@ func (l *lowerer) fieldListWithDelimiters(fields *ast.FieldList, open, close str
 	return l.commaList(open, close, items), nil
 }
 
+func (l *lowerer) fieldComments(item doc.ID, field *ast.Field) (doc.ID, error) {
+	if field.Comment != nil {
+		comments, err := l.consumeCommentGroup(field.Comment)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		suffix := make([]doc.ID, 0, len(comments)*2)
+		for _, comment := range comments {
+			suffix = append(suffix, l.arena.Text(" "), l.arena.Verbatim(comment.Raw))
+		}
+		item = l.arena.Concat(item, l.arena.LineSuffix(l.arena.Concat(suffix...)))
+	}
+	return item, nil
+}
+
 func (l *lowerer) results(fields *ast.FieldList) (doc.ID, error) {
 	if !fields.Opening.IsValid() && len(fields.List) == 1 && len(fields.List[0].Names) == 0 {
 		return l.expression(fields.List[0].Type)
@@ -364,13 +535,43 @@ func (l *lowerer) field(field *ast.Field) (doc.ID, error) {
 }
 
 func (l *lowerer) block(block *ast.BlockStmt) (doc.ID, error) {
+	opening, openingFound := l.source.PhysicalOffset(block.Lbrace)
+	closing, closingFound := l.source.PhysicalOffset(block.Rbrace)
+	if !openingFound || !closingFound {
+		return doc.ID{}, errors.New("block delimiter has no physical offset")
+	}
+	boundary := opening + 1
 	statements := make([]doc.ID, 0, len(block.List))
-	for _, statement := range block.List {
+	for index, statement := range block.List {
+		statementStart, found := l.source.PhysicalOffset(statement.Pos())
+		if !found {
+			return doc.ID{}, errors.New("statement has no physical start offset")
+		}
+		leading := l.commentsBetween(boundary, statementStart)
 		lowered, err := l.statement(statement)
 		if err != nil {
 			return doc.ID{}, err
 		}
+		if len(leading) > 0 {
+			lowered = l.arena.Concat(l.boundaryCommentsDocument(leading, statementStart), lowered)
+		}
+		statementEnd, found := l.source.PhysicalOffset(statement.End())
+		if !found {
+			return doc.ID{}, errors.New("statement has no physical end offset")
+		}
+		limit := closing
+		if index+1 < len(block.List) {
+			limit, found = l.source.PhysicalOffset(block.List[index+1].Pos())
+			if !found {
+				return doc.ID{}, errors.New("following statement has no physical offset")
+			}
+		}
+		lowered = l.withTrailingComments(lowered, l.trailingComments(statementEnd, limit))
 		statements = append(statements, lowered)
+		boundary = statementEnd
+	}
+	if trailingBoundary := l.commentsBetween(boundary, closing); len(trailingBoundary) > 0 {
+		statements = append(statements, l.commentsDocument(trailingBoundary))
 	}
 	if len(statements) == 0 {
 		return l.arena.Text("{}"), nil
@@ -634,10 +835,28 @@ func (l *lowerer) compositeLiteral(literal *ast.CompositeLit) (doc.ID, error) {
 		parts = append(parts, typeDocument)
 	}
 	elements := make([]doc.ID, 0, len(literal.Elts))
-	for _, rawElement := range literal.Elts {
+	closing, closingFound := l.source.PhysicalOffset(literal.Rbrace)
+	if !closingFound {
+		return doc.ID{}, errors.New("composite literal has no physical closing offset")
+	}
+	for index, rawElement := range literal.Elts {
 		element, err := l.expression(rawElement)
 		if err != nil {
 			return doc.ID{}, err
+		}
+		elementEnd, found := l.source.PhysicalOffset(rawElement.End())
+		if !found {
+			return doc.ID{}, errors.New("composite element has no physical end offset")
+		}
+		limit := closing
+		if index+1 < len(literal.Elts) {
+			limit, found = l.source.PhysicalOffset(literal.Elts[index+1].Pos())
+			if !found {
+				return doc.ID{}, errors.New("following composite element has no physical offset")
+			}
+		}
+		if comments := l.commentsBetween(elementEnd, limit); len(comments) > 0 {
+			element = l.arena.Concat(l.withTrailingComments(element, comments), l.arena.BreakParent())
 		}
 		elements = append(elements, element)
 	}
@@ -702,10 +921,19 @@ func (l *lowerer) functionType(function *ast.FuncType, includeKeyword bool) (doc
 }
 
 func (l *lowerer) aggregateType(keyword string, fields *ast.FieldList, methods bool) (doc.ID, error) {
-	if fields == nil || len(fields.List) == 0 {
+	if fields == nil {
 		return l.arena.Text(keyword + "{}"), nil
 	}
-	items := make([]doc.ID, 0, len(fields.List))
+	boundary, found := l.source.PhysicalOffset(fields.Opening)
+	if !found {
+		return doc.ID{}, fmt.Errorf("%s opening delimiter has no physical offset", keyword)
+	}
+	boundary++
+	closing, found := l.source.PhysicalOffset(fields.Closing)
+	if !found {
+		return doc.ID{}, fmt.Errorf("%s closing delimiter has no physical offset", keyword)
+	}
+	items := make([]doc.ID, 0, len(fields.List)+1)
 	for _, field := range fields.List {
 		var (
 			item doc.ID
@@ -731,7 +959,28 @@ func (l *lowerer) aggregateType(keyword string, fields *ast.FieldList, methods b
 		if err != nil {
 			return doc.ID{}, err
 		}
+		fieldStart, found := l.source.PhysicalOffset(field.Pos())
+		if !found {
+			return doc.ID{}, errors.New("field has no physical start offset")
+		}
+		if leading := l.commentsBetween(boundary, fieldStart); len(leading) > 0 {
+			item = l.arena.Concat(l.boundaryCommentsDocument(leading, fieldStart), item)
+		}
+		item, err = l.fieldComments(item, field)
+		if err != nil {
+			return doc.ID{}, err
+		}
 		items = append(items, item)
+		boundary, found = l.source.PhysicalOffset(field.End())
+		if !found {
+			return doc.ID{}, errors.New("field has no physical end offset")
+		}
+	}
+	if closingComments := l.commentsBetween(boundary, closing); len(closingComments) > 0 {
+		items = append(items, l.commentsDocument(closingComments))
+	}
+	if len(items) == 0 {
+		return l.arena.Text(keyword + "{}"), nil
 	}
 	return l.arena.Concat(
 		l.arena.Text(keyword+" {"),
@@ -746,11 +995,29 @@ func (l *lowerer) call(call *ast.CallExpr) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
+	closing, closingFound := l.source.PhysicalOffset(call.Rparen)
+	if !closingFound {
+		return doc.ID{}, errors.New("call has no physical closing offset")
+	}
 	arguments := make([]doc.ID, 0, len(call.Args))
-	for _, argument := range call.Args {
+	for index, argument := range call.Args {
 		lowered, err := l.expression(argument)
 		if err != nil {
 			return doc.ID{}, err
+		}
+		argumentEnd, found := l.source.PhysicalOffset(argument.End())
+		if !found {
+			return doc.ID{}, errors.New("call argument has no physical end offset")
+		}
+		limit := closing
+		if index+1 < len(call.Args) {
+			limit, found = l.source.PhysicalOffset(call.Args[index+1].Pos())
+			if !found {
+				return doc.ID{}, errors.New("following call argument has no physical offset")
+			}
+		}
+		if comments := l.commentsBetween(argumentEnd, limit); len(comments) > 0 {
+			lowered = l.arena.Concat(l.withTrailingComments(lowered, comments), l.arena.BreakParent())
 		}
 		arguments = append(arguments, lowered)
 	}
@@ -769,17 +1036,42 @@ func (l *lowerer) call(call *ast.CallExpr) (doc.ID, error) {
 
 func (l *lowerer) binary(expression *ast.BinaryExpr) (doc.ID, error) {
 	operands := make([]ast.Expr, 0, 4)
-	l.flattenBinary(expression, expression.Op, &operands)
+	operators := make([]*ast.BinaryExpr, 0, 3)
+	l.flattenBinary(expression, expression.Op, &operands, &operators)
 	items := make([]doc.ID, 0, len(operands))
-	for index, operand := range operands {
+	for _, operand := range operands {
 		lowered, err := l.expression(operand)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		if index < len(operands)-1 {
-			lowered = l.arena.Concat(lowered, l.arena.Text(" "+expression.Op.String()))
-		}
 		items = append(items, lowered)
+	}
+	for index, operator := range operators {
+		operatorStart, found := l.source.PhysicalOffset(operator.OpPos)
+		if !found {
+			return doc.ID{}, errors.New("binary operator has no physical offset")
+		}
+		operatorRaw, found := l.source.RawToken(operator.OpPos)
+		if !found {
+			return doc.ID{}, errors.New("binary operator has no physical token")
+		}
+		leftEnd, leftFound := l.source.PhysicalOffset(operands[index].End())
+		rightStart, rightFound := l.source.PhysicalOffset(operands[index+1].Pos())
+		if !leftFound || !rightFound {
+			return doc.ID{}, errors.New("binary operand has no physical boundary")
+		}
+		leftComments := l.commentsBetween(leftEnd, operatorStart)
+		rightComments := l.commentsBetween(operatorStart+len(operatorRaw), rightStart)
+		leftDocument, err := l.inlineComments(leftComments, true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		rightDocument, err := l.inlineComments(rightComments, false)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		items[index] = l.arena.Concat(items[index], leftDocument, l.arena.Text(" "+operator.Op.String()))
+		items[index+1] = l.arena.Concat(rightDocument, items[index+1])
 	}
 	return l.arena.Group(l.arena.Concat(
 		items[0],
@@ -787,14 +1079,38 @@ func (l *lowerer) binary(expression *ast.BinaryExpr) (doc.ID, error) {
 	)), nil
 }
 
-func (l *lowerer) flattenBinary(expression ast.Expr, operator token.Token, result *[]ast.Expr) {
+func (l *lowerer) inlineComments(comments []source.Comment, leadingSpace bool) (doc.ID, error) {
+	if len(comments) == 0 {
+		return l.arena.Empty(), nil
+	}
+	parts := make([]doc.ID, 0, len(comments)*2+1)
+	if leadingSpace {
+		parts = append(parts, l.arena.Text(" "))
+	}
+	for index, comment := range comments {
+		if strings.HasPrefix(comment.Raw, "//") {
+			return doc.ID{}, fmt.Errorf("line comment %d requires a proven binary boundary layout", comment.ID)
+		}
+		if index > 0 {
+			parts = append(parts, l.arena.Text(" "))
+		}
+		parts = append(parts, l.arena.Verbatim(comment.Raw))
+	}
+	if !leadingSpace {
+		parts = append(parts, l.arena.Text(" "))
+	}
+	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) flattenBinary(expression ast.Expr, operator token.Token, operands *[]ast.Expr, operators *[]*ast.BinaryExpr) {
 	binary, ok := expression.(*ast.BinaryExpr)
 	if !ok || binary.Op != operator {
-		*result = append(*result, expression)
+		*operands = append(*operands, expression)
 		return
 	}
-	l.flattenBinary(binary.X, operator, result)
-	l.flattenBinary(binary.Y, operator, result)
+	l.flattenBinary(binary.X, operator, operands, operators)
+	*operators = append(*operators, binary)
+	l.flattenBinary(binary.Y, operator, operands, operators)
 }
 
 func (l *lowerer) commaList(open, close string, items []doc.ID) doc.ID {
