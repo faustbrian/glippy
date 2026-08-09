@@ -1,4 +1,5 @@
 package comments
 func iterate(values []int){for /* before clause */ index,value:= /* before range */ range /* before iterable */ values /* after iterable */ {_,_=index,value};for range // before iterable line
 values {work()};for index:= // before range line
-range values {_=index}}
+range values {_=index};for index /* after key */, /* before value */ value /* before assign */ :=range values{_,_=index,value};for index, // before value line
+value:=range values{_,_=index,value};for index /* before single assign */ :=range values{_=index}}

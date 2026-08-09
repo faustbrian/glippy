@@ -1138,24 +1138,12 @@ func (l *lowerer) rangeStatement(statement *ast.RangeStmt) (doc.ID, error) {
 	clause := make([]doc.ID, 0, 8)
 	var beforeRange []source.Comment
 	if statement.Key != nil {
-		clauseStart, forFound = l.source.PhysicalOffset(statement.Key.Pos())
-		operatorOffset, operatorFound := l.source.PhysicalOffset(statement.TokPos)
-		if !forFound || !operatorFound {
-			return doc.ID{}, errors.New("range assignment has no physical boundary")
-		}
-		key, err := l.expression(statement.Key)
+		assignment, assignmentStart, operatorOffset, err := l.rangeAssignment(statement)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		clause = append(clause, key)
-		if statement.Value != nil {
-			value, err := l.expression(statement.Value)
-			if err != nil {
-				return doc.ID{}, err
-			}
-			clause = append(clause, l.arena.Text(", "), value)
-		}
-		clause = append(clause, l.arena.Text(" "+statement.Tok.String()))
+		clauseStart = assignmentStart
+		clause = append(clause, assignment)
 		beforeRange = l.commentsBetween(operatorOffset+len(statement.Tok.String()), rangeOffset)
 		hasLineComment := false
 		for _, comment := range beforeRange {
@@ -1239,6 +1227,83 @@ func (l *lowerer) rangeStatement(statement *ast.RangeStmt) (doc.ID, error) {
 		))
 	}
 	return l.arena.Concat(header, tail), nil
+}
+
+func (l *lowerer) rangeAssignment(statement *ast.RangeStmt) (doc.ID, int, int, error) {
+	keyStart, keyStartFound := l.source.PhysicalOffset(statement.Key.Pos())
+	keyEnd, keyEndFound := l.source.PhysicalOffset(statement.Key.End())
+	operatorOffset, operatorFound := l.source.PhysicalOffset(statement.TokPos)
+	if !keyStartFound || !keyEndFound || !operatorFound {
+		return doc.ID{}, 0, 0, errors.New("range assignment has no physical boundary")
+	}
+	key, err := l.expression(statement.Key)
+	if err != nil {
+		return doc.ID{}, 0, 0, err
+	}
+	parts := []doc.ID{key}
+	boundary := keyEnd
+	if statement.Value != nil {
+		valueStart, valueStartFound := l.source.PhysicalOffset(statement.Value.Pos())
+		valueEnd, valueEndFound := l.source.PhysicalOffset(statement.Value.End())
+		if !valueStartFound || !valueEndFound {
+			return doc.ID{}, 0, 0, errors.New("range value has no physical boundary")
+		}
+		commaFound := false
+		var comma source.Token
+		first := sort.Search(len(l.tokens), func(index int) bool {
+			return l.tokens[index].Range.Start >= keyEnd
+		})
+		for _, item := range l.tokens[first:] {
+			if item.Range.Start >= valueStart {
+				break
+			}
+			if item.Kind != token.COMMA {
+				continue
+			}
+			if commaFound {
+				return doc.ID{}, 0, 0, errors.New("range assignment contains multiple boundary commas")
+			}
+			comma = item
+			commaFound = true
+		}
+		if !commaFound {
+			return doc.ID{}, 0, 0, errors.New("range assignment has no physical boundary comma")
+		}
+		afterKey, err := l.inlineComments(l.commentsBetween(keyEnd, comma.Range.Start), true)
+		if err != nil {
+			return doc.ID{}, 0, 0, err
+		}
+		parts = append(parts, afterKey, l.arena.Text(","))
+		value, err := l.expression(statement.Value)
+		if err != nil {
+			return doc.ID{}, 0, 0, err
+		}
+		beforeValue := l.commentsBetween(comma.Range.End, valueStart)
+		hasLineComment := false
+		for _, comment := range beforeValue {
+			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+		}
+		if hasLineComment {
+			parts = append(parts, l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(beforeValue, valueStart),
+				value,
+			)))
+		} else {
+			beforeValueDocument, err := l.inlineComments(beforeValue, true)
+			if err != nil {
+				return doc.ID{}, 0, 0, err
+			}
+			parts = append(parts, beforeValueDocument, l.arena.Text(" "), value)
+		}
+		boundary = valueEnd
+	}
+	beforeOperator, err := l.inlineComments(l.commentsBetween(boundary, operatorOffset), true)
+	if err != nil {
+		return doc.ID{}, 0, 0, err
+	}
+	parts = append(parts, beforeOperator, l.arena.Text(" "+statement.Tok.String()))
+	return l.arena.Concat(parts...), keyStart, operatorOffset, nil
 }
 
 func (l *lowerer) labeledStatement(statement *ast.LabeledStmt) (doc.ID, error) {

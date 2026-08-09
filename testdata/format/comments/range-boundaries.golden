@@ -20,4 +20,17 @@ func iterate(values []int) {
 		values {
 		_ = index
 	}
+	for index /* after key */, /* before value */ value /* before assign */ := range values {
+		_, _ = index, value
+	}
+	for
+		index,
+			// before value line
+			value := range
+		values {
+		_, _ = index, value
+	}
+	for index /* before single assign */ := range values {
+		_ = index
+	}
 }
