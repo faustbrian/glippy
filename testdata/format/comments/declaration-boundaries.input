@@ -1,0 +1,12 @@
+package comments
+var /* before ungrouped spec */ value=1
+var // before ungrouped line
+lineValue=2
+type /* before type spec */ Alias = int
+const /* before group open */ (/* before first spec */ first=1 // after first spec
+// before second spec
+second=2
+/* before close */)
+var(/* empty group comment */)
+var // before group open line
+(grouped=3)

@@ -325,41 +325,96 @@ func (l *lowerer) generalDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 	if declaration.Tok != token.CONST && declaration.Tok != token.VAR && declaration.Tok != token.TYPE {
 		return doc.ID{}, fmt.Errorf("unsupported declaration token %s", declaration.Tok)
 	}
-	specs := make([]doc.ID, 0, len(declaration.Specs))
-	for _, spec := range declaration.Specs {
-		var (
-			lowered doc.ID
-			err     error
-		)
-		switch value := spec.(type) {
-		case *ast.ValueSpec:
-			lowered, err = l.valueSpec(value)
-		case *ast.TypeSpec:
-			lowered, err = l.typeSpec(value)
-		default:
-			err = fmt.Errorf("%s declaration contains %T", declaration.Tok, spec)
+	keyword := declaration.Tok.String()
+	if !declaration.Lparen.IsValid() {
+		if len(declaration.Specs) != 1 {
+			return doc.ID{}, fmt.Errorf("ungrouped %s declaration must contain one spec", keyword)
 		}
+		spec, err := l.generalSpec(declaration.Tok, declaration.Specs[0])
 		if err != nil {
 			return doc.ID{}, err
 		}
-		specs = append(specs, lowered)
+		return l.keywordWithOperand(declaration.TokPos, keyword, declaration.Specs[0], spec)
 	}
-	keyword := declaration.Tok.String()
-	if !declaration.Lparen.IsValid() {
-		if len(specs) != 1 {
-			return doc.ID{}, fmt.Errorf("ungrouped %s declaration must contain one spec", keyword)
+	opening, openingFound := l.source.PhysicalOffset(declaration.Lparen)
+	closing, closingFound := l.source.PhysicalOffset(declaration.Rparen)
+	keywordOffset, keywordFound := l.source.PhysicalOffset(declaration.TokPos)
+	if !openingFound || !closingFound || !keywordFound {
+		return doc.ID{}, fmt.Errorf("grouped %s declaration has no physical boundary", keyword)
+	}
+	beforeOpening := l.commentsBetween(keywordOffset+len(keyword), opening)
+	hasLineComment := false
+	for _, comment := range beforeOpening {
+		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+	}
+	var header doc.ID
+	if hasLineComment {
+		header = l.arena.Concat(
+			l.arena.Text(keyword),
+			l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsBody(beforeOpening),
+			)),
+			l.commentGap(beforeOpening[len(beforeOpening)-1].Range.End, opening),
+			l.arena.Text("("),
+		)
+	} else {
+		beforeOpeningDocument, err := l.inlineComments(beforeOpening, true)
+		if err != nil {
+			return doc.ID{}, err
 		}
-		return l.arena.Concat(l.arena.Text(keyword+" "), specs[0]), nil
+		header = l.arena.Concat(l.arena.Text(keyword), beforeOpeningDocument, l.arena.Text(" ("))
 	}
-	if len(specs) == 0 {
-		return l.arena.Text(keyword + " ()"), nil
+	rows := make([]doc.ID, 0, len(declaration.Specs)+1)
+	boundary := opening + len("(")
+	for index, rawSpec := range declaration.Specs {
+		specStart, startFound := l.source.PhysicalOffset(rawSpec.Pos())
+		specEnd, endFound := l.source.PhysicalOffset(rawSpec.End())
+		if !startFound || !endFound {
+			return doc.ID{}, fmt.Errorf("%s declaration spec has no physical boundary", keyword)
+		}
+		limit := closing
+		if index+1 < len(declaration.Specs) {
+			limit, startFound = l.source.PhysicalOffset(declaration.Specs[index+1].Pos())
+			if !startFound {
+				return doc.ID{}, fmt.Errorf("%s declaration following spec has no physical boundary", keyword)
+			}
+		}
+		leading := l.commentsBetween(boundary, specStart)
+		lowered, err := l.generalSpec(declaration.Tok, rawSpec)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		lowered = l.withTrailingComments(lowered, l.trailingComments(specEnd, limit))
+		if len(leading) > 0 {
+			lowered = l.arena.Concat(l.boundaryCommentsDocument(leading, specStart), lowered)
+		}
+		rows = append(rows, lowered)
+		boundary = specEnd
+	}
+	if closingComments := l.commentsBetween(boundary, closing); len(closingComments) > 0 {
+		rows = append(rows, l.boundaryCommentsBody(closingComments))
+	}
+	if len(rows) == 0 {
+		return l.arena.Concat(header, l.arena.Text(")")), nil
 	}
 	return l.arena.Concat(
-		l.arena.Text(keyword+" ("),
-		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.join(l.arena.HardLine(), specs))),
+		header,
+		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.join(l.arena.HardLine(), rows))),
 		l.arena.HardLine(),
 		l.arena.Text(")"),
 	), nil
+}
+
+func (l *lowerer) generalSpec(kind token.Token, spec ast.Spec) (doc.ID, error) {
+	switch value := spec.(type) {
+	case *ast.ValueSpec:
+		return l.valueSpec(value)
+	case *ast.TypeSpec:
+		return l.typeSpec(value)
+	default:
+		return doc.ID{}, fmt.Errorf("%s declaration contains %T", kind, spec)
+	}
 }
 
 func (l *lowerer) valueSpec(spec *ast.ValueSpec) (doc.ID, error) {
