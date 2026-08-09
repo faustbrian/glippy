@@ -1,0 +1,23 @@
+package comments
+
+func iterate(values []int) {
+	for
+		/* before clause */
+		index, value := /* before range */ range
+		/* before iterable */
+		values /* after iterable */ {
+		_, _ = index, value
+	}
+	for range
+		// before iterable line
+		values {
+		work()
+	}
+	for
+		index :=
+		// before range line
+		range
+		values {
+		_ = index
+	}
+}

@@ -1098,8 +1098,24 @@ func (l *lowerer) classicForSemicolons(statement *ast.ForStmt) ([2]source.Token,
 }
 
 func (l *lowerer) rangeStatement(statement *ast.RangeStmt) (doc.ID, error) {
-	clause := make([]doc.ID, 0, 7)
+	forOffset, forFound := l.source.PhysicalOffset(statement.For)
+	rangeOffset, rangeFound := l.source.PhysicalOffset(statement.Range)
+	iterableStart, iterableStartFound := l.source.PhysicalOffset(statement.X.Pos())
+	iterableEnd, iterableEndFound := l.source.PhysicalOffset(statement.X.End())
+	braceOffset, braceFound := l.source.PhysicalOffset(statement.Body.Lbrace)
+	if !forFound || !rangeFound || !iterableStartFound || !iterableEndFound || !braceFound {
+		return doc.ID{}, errors.New("range header has no physical boundary")
+	}
+
+	clauseStart := rangeOffset
+	clause := make([]doc.ID, 0, 8)
+	var beforeRange []source.Comment
 	if statement.Key != nil {
+		clauseStart, forFound = l.source.PhysicalOffset(statement.Key.Pos())
+		operatorOffset, operatorFound := l.source.PhysicalOffset(statement.TokPos)
+		if !forFound || !operatorFound {
+			return doc.ID{}, errors.New("range assignment has no physical boundary")
+		}
 		key, err := l.expression(statement.Key)
 		if err != nil {
 			return doc.ID{}, err
@@ -1112,7 +1128,24 @@ func (l *lowerer) rangeStatement(statement *ast.RangeStmt) (doc.ID, error) {
 			}
 			clause = append(clause, l.arena.Text(", "), value)
 		}
-		clause = append(clause, l.arena.Text(" "+statement.Tok.String()+" "))
+		clause = append(clause, l.arena.Text(" "+statement.Tok.String()))
+		beforeRange = l.commentsBetween(operatorOffset+len(statement.Tok.String()), rangeOffset)
+		hasLineComment := false
+		for _, comment := range beforeRange {
+			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+		}
+		if hasLineComment {
+			clause = append(clause,
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(beforeRange, rangeOffset),
+			)
+		} else {
+			beforeRangeDocument, err := l.inlineComments(beforeRange, true)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			clause = append(clause, beforeRangeDocument, l.arena.Text(" "))
+		}
 	}
 	iterable, err := l.expression(statement.X)
 	if err != nil {
@@ -1122,12 +1155,62 @@ func (l *lowerer) rangeStatement(statement *ast.RangeStmt) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	clause = append(clause, l.arena.Text("range"), l.arena.Line(), iterable)
-	header := l.arena.Group(l.arena.Concat(
-		l.arena.Text("for"),
-		l.arena.Indent(l.arena.Concat(l.arena.Line(), l.arena.Concat(clause...))),
-		l.arena.Text(" {"),
-	))
+	clause = append(clause, l.arena.Text("range"))
+	clauseDocument := l.arena.Concat(clause...)
+	leadingClause := l.commentsBetween(forOffset+len("for"), clauseStart)
+	leadingIterable := l.commentsBetween(rangeOffset+len("range"), iterableStart)
+	trailingIterableDocument, err := l.inlineComments(l.commentsBetween(iterableEnd, braceOffset), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+
+	var header doc.ID
+	if len(leadingClause) > 0 {
+		body := []doc.ID{
+			l.arena.HardLine(),
+			l.boundaryCommentsDocument(leadingClause, clauseStart),
+			clauseDocument,
+		}
+		if len(leadingIterable) > 0 {
+			body = append(body,
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(leadingIterable, iterableStart),
+				iterable,
+			)
+		} else {
+			body = append(body, l.arena.Line(), iterable)
+		}
+		header = l.arena.Concat(
+			l.arena.Text("for"),
+			l.arena.Indent(l.arena.Concat(body...)),
+			trailingIterableDocument,
+			l.arena.Text(" {"),
+		)
+	} else if len(leadingIterable) > 0 {
+		header = l.arena.Concat(
+			l.arena.Text("for "),
+			clauseDocument,
+			l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(leadingIterable, iterableStart),
+				iterable,
+			)),
+			trailingIterableDocument,
+			l.arena.Text(" {"),
+		)
+	} else {
+		header = l.arena.Group(l.arena.Concat(
+			l.arena.Text("for"),
+			l.arena.Indent(l.arena.Concat(
+				l.arena.Line(),
+				clauseDocument,
+				l.arena.Line(),
+				iterable,
+			)),
+			trailingIterableDocument,
+			l.arena.Text(" {"),
+		))
+	}
 	return l.arena.Concat(header, tail), nil
 }
 
