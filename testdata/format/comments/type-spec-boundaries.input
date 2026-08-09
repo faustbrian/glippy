@@ -1,0 +1,7 @@
+package comments
+type Alias /* before alias equals */ = /* after alias equals */ Existing
+type AliasLine = // after alias equals line
+Existing
+type Defined /* before underlying */ Existing
+type Generic /* before type parameters */ [T any] /* before generic underlying */ Pair[T]
+type(/* before grouped spec */ Grouped /* before grouped equals */ = /* after grouped equals */ Existing)

@@ -521,22 +521,70 @@ func (l *lowerer) valueSpec(spec *ast.ValueSpec) (doc.ID, error) {
 
 func (l *lowerer) typeSpec(spec *ast.TypeSpec) (doc.ID, error) {
 	parts := []doc.ID{l.arena.Text(spec.Name.Name)}
+	boundary, boundaryFound := l.source.PhysicalOffset(spec.Name.End())
+	if !boundaryFound {
+		return doc.ID{}, errors.New("type specification name has no physical boundary")
+	}
 	if spec.TypeParams != nil {
 		typeParameters, err := l.fieldListWithDelimiters(spec.TypeParams, "[", "]")
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, typeParameters)
+		parametersStart, startFound := l.source.PhysicalOffset(spec.TypeParams.Pos())
+		parametersEnd, endFound := l.source.PhysicalOffset(spec.TypeParams.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("type specification parameters have no physical boundary")
+		}
+		beforeParameters, err := l.inlineComments(l.commentsBetween(boundary, parametersStart), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, beforeParameters, typeParameters)
+		boundary = parametersEnd
 	}
 	typeDocument, err := l.expression(spec.Type)
 	if err != nil {
 		return doc.ID{}, err
 	}
-	separator := " "
-	if spec.Assign.IsValid() {
-		separator = " = "
+	typeStart, startFound := l.source.PhysicalOffset(spec.Type.Pos())
+	if !startFound {
+		return doc.ID{}, errors.New("type specification underlying type has no physical boundary")
 	}
-	parts = append(parts, l.arena.Text(separator), typeDocument)
+	if spec.Assign.IsValid() {
+		assignOffset, assignFound := l.source.PhysicalOffset(spec.Assign)
+		if !assignFound {
+			return doc.ID{}, errors.New("type alias has no physical assignment boundary")
+		}
+		beforeAssign, err := l.inlineComments(l.commentsBetween(boundary, assignOffset), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, beforeAssign, l.arena.Text(" ="))
+		afterAssign := l.commentsBetween(assignOffset+len("="), typeStart)
+		hasLineComment := false
+		for _, comment := range afterAssign {
+			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+		}
+		if hasLineComment {
+			parts = append(parts, l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(afterAssign, typeStart),
+				typeDocument,
+			)))
+		} else {
+			afterAssignDocument, err := l.inlineComments(afterAssign, true)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			parts = append(parts, afterAssignDocument, l.arena.Text(" "), typeDocument)
+		}
+		return l.arena.Group(l.arena.Concat(parts...)), nil
+	}
+	beforeType, err := l.inlineComments(l.commentsBetween(boundary, typeStart), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	parts = append(parts, beforeType, l.arena.Text(" "), typeDocument)
 	return l.arena.Concat(parts...), nil
 }
 
