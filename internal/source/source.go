@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Range is a half-open physical byte range.
@@ -419,6 +420,12 @@ func physicalTokenEnd(input []byte, start int, kind token.Token, literal string)
 	switch kind {
 	case token.COMMENT:
 		return commentEnd(input, start)
+	case token.ILLEGAL:
+		_, width := utf8.DecodeRune(input[start:])
+		if width == 0 {
+			return 0, errors.New("illegal token has no physical width")
+		}
+		return start + width, nil
 	case token.STRING:
 		if input[start] == '`' {
 			return rawStringEnd(input, start)
