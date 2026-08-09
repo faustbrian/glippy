@@ -119,13 +119,98 @@ func (l *lowerer) declaration(declaration ast.Decl) (doc.ID, error) {
 	case *ast.FuncDecl:
 		return l.function(value)
 	case *ast.GenDecl:
-		if value.Tok != token.IMPORT {
-			return doc.ID{}, fmt.Errorf("unsupported declaration token %s", value.Tok)
+		if value.Tok == token.IMPORT {
+			return l.importDeclaration(value)
 		}
-		return l.importDeclaration(value)
+		return l.generalDeclaration(value)
 	default:
 		return doc.ID{}, fmt.Errorf("unsupported declaration %T", declaration)
 	}
+}
+
+func (l *lowerer) generalDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
+	if declaration.Tok != token.CONST && declaration.Tok != token.VAR && declaration.Tok != token.TYPE {
+		return doc.ID{}, fmt.Errorf("unsupported declaration token %s", declaration.Tok)
+	}
+	specs := make([]doc.ID, 0, len(declaration.Specs))
+	for _, spec := range declaration.Specs {
+		var (
+			lowered doc.ID
+			err     error
+		)
+		switch value := spec.(type) {
+		case *ast.ValueSpec:
+			lowered, err = l.valueSpec(value)
+		case *ast.TypeSpec:
+			lowered, err = l.typeSpec(value)
+		default:
+			err = fmt.Errorf("%s declaration contains %T", declaration.Tok, spec)
+		}
+		if err != nil {
+			return doc.ID{}, err
+		}
+		specs = append(specs, lowered)
+	}
+	keyword := declaration.Tok.String()
+	if !declaration.Lparen.IsValid() {
+		if len(specs) != 1 {
+			return doc.ID{}, fmt.Errorf("ungrouped %s declaration must contain one spec", keyword)
+		}
+		return l.arena.Concat(l.arena.Text(keyword+" "), specs[0]), nil
+	}
+	if len(specs) == 0 {
+		return l.arena.Text(keyword + " ()"), nil
+	}
+	return l.arena.Concat(
+		l.arena.Text(keyword+" ("),
+		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.join(l.arena.HardLine(), specs))),
+		l.arena.HardLine(),
+		l.arena.Text(")"),
+	), nil
+}
+
+func (l *lowerer) valueSpec(spec *ast.ValueSpec) (doc.ID, error) {
+	names := make([]doc.ID, 0, len(spec.Names))
+	for _, name := range spec.Names {
+		names = append(names, l.arena.Text(name.Name))
+	}
+	parts := []doc.ID{l.join(l.arena.Text(", "), names)}
+	if spec.Type != nil {
+		typeDocument, err := l.expression(spec.Type)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, l.arena.Text(" "), typeDocument)
+	}
+	if len(spec.Values) > 0 {
+		values, err := l.expressions(spec.Values)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, l.arena.Text(" = "), values)
+	}
+	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) typeSpec(spec *ast.TypeSpec) (doc.ID, error) {
+	parts := []doc.ID{l.arena.Text(spec.Name.Name)}
+	if spec.TypeParams != nil {
+		typeParameters, err := l.fieldListWithDelimiters(spec.TypeParams, "[", "]")
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, typeParameters)
+	}
+	typeDocument, err := l.expression(spec.Type)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	separator := " "
+	if spec.Assign.IsValid() {
+		separator = " = "
+	}
+	parts = append(parts, l.arena.Text(separator), typeDocument)
+	return l.arena.Concat(parts...), nil
 }
 
 func (l *lowerer) importDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
@@ -184,14 +269,27 @@ func (l *lowerer) importDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 }
 
 func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
-	if function.Recv != nil || function.Type.TypeParams != nil {
-		return doc.ID{}, errors.New("receivers and type parameters are not implemented")
-	}
 	parameters, err := l.fieldList(function.Type.Params)
 	if err != nil {
 		return doc.ID{}, err
 	}
-	parts := []doc.ID{l.arena.Text("func "), l.arena.Text(function.Name.Name), parameters}
+	parts := []doc.ID{l.arena.Text("func ")}
+	if function.Recv != nil {
+		receiver, err := l.fieldList(function.Recv)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, receiver, l.arena.Text(" "))
+	}
+	parts = append(parts, l.arena.Text(function.Name.Name))
+	if function.Type.TypeParams != nil {
+		typeParameters, err := l.fieldListWithDelimiters(function.Type.TypeParams, "[", "]")
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, typeParameters)
+	}
+	parts = append(parts, parameters)
 	if function.Type.Results != nil {
 		results, err := l.results(function.Type.Results)
 		if err != nil {
@@ -210,8 +308,12 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 }
 
 func (l *lowerer) fieldList(fields *ast.FieldList) (doc.ID, error) {
+	return l.fieldListWithDelimiters(fields, "(", ")")
+}
+
+func (l *lowerer) fieldListWithDelimiters(fields *ast.FieldList, open, close string) (doc.ID, error) {
 	if fields == nil || len(fields.List) == 0 {
-		return l.arena.Text("()"), nil
+		return l.arena.Text(open + close), nil
 	}
 	items := make([]doc.ID, 0, len(fields.List))
 	for _, field := range fields.List {
@@ -221,11 +323,11 @@ func (l *lowerer) fieldList(fields *ast.FieldList) (doc.ID, error) {
 		}
 		items = append(items, item)
 	}
-	return l.commaList("(", ")", items), nil
+	return l.commaList(open, close, items), nil
 }
 
 func (l *lowerer) results(fields *ast.FieldList) (doc.ID, error) {
-	if len(fields.List) == 1 && len(fields.List[0].Names) == 0 {
+	if !fields.Opening.IsValid() && len(fields.List) == 1 && len(fields.List[0].Names) == 0 {
 		return l.expression(fields.List[0].Type)
 	}
 	return l.fieldList(fields)
@@ -237,13 +339,28 @@ func (l *lowerer) field(field *ast.Field) (doc.ID, error) {
 		return doc.ID{}, err
 	}
 	if len(field.Names) == 0 {
-		return typeDocument, nil
+		if field.Tag == nil {
+			return typeDocument, nil
+		}
+		tag, found := l.source.RawToken(field.Tag.Pos())
+		if !found {
+			return doc.ID{}, errors.New("field tag has no physical token")
+		}
+		return l.arena.Concat(typeDocument, l.arena.Text(" "), l.arena.Verbatim(tag)), nil
 	}
 	names := make([]doc.ID, 0, len(field.Names))
 	for _, name := range field.Names {
 		names = append(names, l.arena.Text(name.Name))
 	}
-	return l.arena.Concat(l.join(l.arena.Text(", "), names), l.arena.Text(" "), typeDocument), nil
+	parts := []doc.ID{l.join(l.arena.Text(", "), names), l.arena.Text(" "), typeDocument}
+	if field.Tag != nil {
+		tag, found := l.source.RawToken(field.Tag.Pos())
+		if !found {
+			return doc.ID{}, errors.New("field tag has no physical token")
+		}
+		parts = append(parts, l.arena.Text(" "), l.arena.Verbatim(tag))
+	}
+	return l.arena.Concat(parts...), nil
 }
 
 func (l *lowerer) block(block *ast.BlockStmt) (doc.ID, error) {
@@ -370,6 +487,57 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		return l.arena.Concat(left, l.arena.Text("."), l.arena.Text(value.Sel.Name)), nil
 	case *ast.CallExpr:
 		return l.call(value)
+	case *ast.CompositeLit:
+		return l.compositeLiteral(value)
+	case *ast.KeyValueExpr:
+		key, err := l.expression(value.Key)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		item, err := l.expression(value.Value)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(key, l.arena.Text(": "), item), nil
+	case *ast.IndexExpr:
+		base, err := l.expression(value.X)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		index, err := l.expression(value.Index)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(base, l.arena.Text("["), index, l.arena.Text("]")), nil
+	case *ast.IndexListExpr:
+		base, err := l.expression(value.X)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		indices := make([]doc.ID, 0, len(value.Indices))
+		for _, rawIndex := range value.Indices {
+			index, err := l.expression(rawIndex)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			indices = append(indices, index)
+		}
+		return l.arena.Concat(base, l.commaList("[", "]", indices)), nil
+	case *ast.SliceExpr:
+		return l.slice(value)
+	case *ast.TypeAssertExpr:
+		base, err := l.expression(value.X)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		if value.Type == nil {
+			return doc.ID{}, errors.New("type-switch assertion is not an ordinary expression")
+		}
+		asserted, err := l.expression(value.Type)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(base, l.arena.Text(".("), asserted, l.arena.Text(")")), nil
 	case *ast.BinaryExpr:
 		return l.binary(value)
 	case *ast.UnaryExpr:
@@ -384,9 +552,193 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 			return doc.ID{}, err
 		}
 		return l.arena.Concat(l.arena.Text("("), inner, l.arena.Text(")")), nil
+	case *ast.StarExpr:
+		operand, err := l.expression(value.X)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(l.arena.Text("*"), operand), nil
+	case *ast.ArrayType:
+		element, err := l.expression(value.Elt)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		if value.Len == nil {
+			return l.arena.Concat(l.arena.Text("[]"), element), nil
+		}
+		length, err := l.expression(value.Len)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(l.arena.Text("["), length, l.arena.Text("]"), element), nil
+	case *ast.MapType:
+		key, err := l.expression(value.Key)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		element, err := l.expression(value.Value)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(l.arena.Text("map["), key, l.arena.Text("]"), element), nil
+	case *ast.ChanType:
+		element, err := l.expression(value.Value)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		prefix := "chan "
+		switch value.Dir {
+		case ast.SEND:
+			prefix = "chan<- "
+		case ast.RECV:
+			prefix = "<-chan "
+		}
+		return l.arena.Concat(l.arena.Text(prefix), element), nil
+	case *ast.Ellipsis:
+		if value.Elt == nil {
+			return l.arena.Text("..."), nil
+		}
+		element, err := l.expression(value.Elt)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(l.arena.Text("..."), element), nil
+	case *ast.FuncType:
+		return l.functionType(value, true)
+	case *ast.FuncLit:
+		signature, err := l.functionType(value.Type, true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		body, err := l.block(value.Body)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(signature, l.arena.Text(" "), body), nil
+	case *ast.StructType:
+		return l.aggregateType("struct", value.Fields, false)
+	case *ast.InterfaceType:
+		return l.aggregateType("interface", value.Methods, true)
 	default:
 		return doc.ID{}, fmt.Errorf("unsupported expression %T", expression)
 	}
+}
+
+func (l *lowerer) compositeLiteral(literal *ast.CompositeLit) (doc.ID, error) {
+	parts := make([]doc.ID, 0, 2)
+	if literal.Type != nil {
+		typeDocument, err := l.expression(literal.Type)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, typeDocument)
+	}
+	elements := make([]doc.ID, 0, len(literal.Elts))
+	for _, rawElement := range literal.Elts {
+		element, err := l.expression(rawElement)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		elements = append(elements, element)
+	}
+	if len(elements) == 0 {
+		parts = append(parts, l.arena.Text("{}"))
+	} else {
+		parts = append(parts, l.commaList("{", "}", elements))
+	}
+	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) slice(expression *ast.SliceExpr) (doc.ID, error) {
+	base, err := l.expression(expression.X)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	parts := []doc.ID{base, l.arena.Text("[")}
+	for index, bound := range []ast.Expr{expression.Low, expression.High, expression.Max} {
+		if index == 2 && !expression.Slice3 {
+			break
+		}
+		if index > 0 {
+			parts = append(parts, l.arena.Text(":"))
+		}
+		if bound != nil {
+			lowered, err := l.expression(bound)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			parts = append(parts, lowered)
+		}
+	}
+	parts = append(parts, l.arena.Text("]"))
+	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) functionType(function *ast.FuncType, includeKeyword bool) (doc.ID, error) {
+	parts := make([]doc.ID, 0, 5)
+	if includeKeyword {
+		parts = append(parts, l.arena.Text("func"))
+	}
+	if function.TypeParams != nil {
+		typeParameters, err := l.fieldListWithDelimiters(function.TypeParams, "[", "]")
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, typeParameters)
+	}
+	parameters, err := l.fieldList(function.Params)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	parts = append(parts, parameters)
+	if function.Results != nil {
+		results, err := l.results(function.Results)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, l.arena.Text(" "), results)
+	}
+	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) aggregateType(keyword string, fields *ast.FieldList, methods bool) (doc.ID, error) {
+	if fields == nil || len(fields.List) == 0 {
+		return l.arena.Text(keyword + "{}"), nil
+	}
+	items := make([]doc.ID, 0, len(fields.List))
+	for _, field := range fields.List {
+		var (
+			item doc.ID
+			err  error
+		)
+		if methods && len(field.Names) > 0 {
+			function, ok := field.Type.(*ast.FuncType)
+			if !ok {
+				return doc.ID{}, fmt.Errorf("named interface field has type %T", field.Type)
+			}
+			signature, signatureErr := l.functionType(function, false)
+			if signatureErr != nil {
+				return doc.ID{}, signatureErr
+			}
+			names := make([]doc.ID, 0, len(field.Names))
+			for _, name := range field.Names {
+				names = append(names, l.arena.Text(name.Name))
+			}
+			item = l.arena.Concat(l.join(l.arena.Text(", "), names), signature)
+		} else {
+			item, err = l.field(field)
+		}
+		if err != nil {
+			return doc.ID{}, err
+		}
+		items = append(items, item)
+	}
+	return l.arena.Concat(
+		l.arena.Text(keyword+" {"),
+		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.join(l.arena.HardLine(), items))),
+		l.arena.HardLine(),
+		l.arena.Text("}"),
+	), nil
 }
 
 func (l *lowerer) call(call *ast.CallExpr) (doc.ID, error) {

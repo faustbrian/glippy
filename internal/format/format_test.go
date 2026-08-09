@@ -167,3 +167,91 @@ func TestFormatPreservesImportGroupsOrderAliasesAndLiterals(t *testing.T) {
 		t.Fatalf("File() = %q, want import identity and order preserved", got)
 	}
 }
+
+func TestFormatLowersDeclarationsGenericSignaturesAndGoTypes(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package declarations\nconst answer=42\nvar cache map[string][]*Entry\nvar sink chan<- map[string][3]byte\ntype Pair[K comparable,V any] struct{Left K;Right V}\ntype Tagged struct{Value string `json:\"value\"`}\ntype Reader interface{Read([]byte)(int,error);Close()error}\nfunc Convert[K comparable,V any](input func(K)(V,error),values ...K)(map[K]V,error){return nil,nil}\nfunc(p *Pair[K,V])Reset(){}\n")
+	file, err := source.Load("declarations.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package declarations\n\nconst answer = 42\n\nvar cache map[string][]*Entry\n\nvar sink chan<- map[string][3]byte\n\ntype Pair[K comparable, V any] struct {\n\tLeft K\n\tRight V\n}\n\ntype Tagged struct {\n\tValue string `json:\"value\"`\n}\n\ntype Reader interface {\n\tRead([]byte) (int, error)\n\tClose() error\n}\n\nfunc Convert[K comparable, V any](input func(K) (V, error), values ...K) (map[K]V, error) {\n\treturn nil, nil\n}\n\nfunc (p *Pair[K, V]) Reset() {}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatLowersCompositeAndPostfixExpressions(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package expressions\nfunc use(){values:=[]Item{{Name:\"first\",Score:1},{Name:\"second\",Score:2}};selected:=values[1:len(values):cap(values)];current:=anyValue.(Widget);pair:=NewPair[string,int](\"x\",1);transform:=func(value int)int{return value+1};_,_,_,_=selected,current,pair,transform}\n")
+	file, err := source.Load("expressions.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 60, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package expressions\n\nfunc use() {\n\tvalues := []Item{\n\t\t{Name: \"first\", Score: 1},\n\t\t{Name: \"second\", Score: 2},\n\t}\n\tselected := values[1:len(values):cap(values)]\n\tcurrent := anyValue.(Widget)\n\tpair := NewPair[string, int](\"x\", 1)\n\ttransform := func(value int) int {\n\t\treturn value + 1\n\t}\n\t_, _, _, _ = selected, current, pair, transform\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatWrapsGenericFunctionSignatures(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package wrapping\nfunc Transform[InputType comparable,OutputType any](primary InputType,secondary InputType,convert func(InputType)(OutputType,error))(map[InputType]OutputType,error){return nil,nil}\n")
+	file, err := source.Load("wrapping.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 52, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package wrapping\n\nfunc Transform[\n\tInputType comparable,\n\tOutputType any,\n](\n\tprimary InputType,\n\tsecondary InputType,\n\tconvert func(InputType) (OutputType, error),\n) (map[InputType]OutputType, error) {\n\treturn nil, nil\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatPreservesInferredArrayLength(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("array.go", []byte("package array\nfunc values(){items:=[...]int{1,2,3};_=items}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package array\n\nfunc values() {\n\titems := [...]int{1, 2, 3}\n\t_ = items\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() = %q, want inferred array length preserved", got)
+	}
+}
+
+func TestFormatPreservesExplicitSingleResultList(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("result.go", []byte("package result\nfunc load()(error){return nil}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package result\n\nfunc load() (error) {\n\treturn nil\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() = %q, want explicit single result list preserved", got)
+	}
+}
