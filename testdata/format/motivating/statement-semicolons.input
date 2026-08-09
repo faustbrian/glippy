@@ -1,0 +1,2 @@
+package hostile
+func run(){ctx,cancel:=context.WithCancel(t.Context());cancel();result:=work(ctx);_ = result}

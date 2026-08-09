@@ -1,0 +1,7 @@
+package hostile
+
+func check() {
+	if _, err := client.Discover(nil); !errors.Is(err, ErrContextRequired) {
+		t.Fatal(err)
+	}
+}

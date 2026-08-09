@@ -1,0 +1,8 @@
+package hostile
+
+func condition() bool {
+	return foo &&
+		bar &&
+		baz &&
+		somethingReallyLong
+}

@@ -13,41 +13,44 @@ func TestFormatExpandsMotivatingHostileGo(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		width int
-		input string
-		want  string
+		name    string
+		width   int
+		fixture string
 	}{
 		{
-			name:  "compressed if block",
-			width: 100,
-			input: "package hostile\nfunc check(){if _,err:=client.Discover(nil);!errors.Is(err,ErrContextRequired){t.Fatal(err)}}\n",
-			want:  "package hostile\n\nfunc check() {\n\tif _, err := client.Discover(nil); !errors.Is(err, ErrContextRequired) {\n\t\tt.Fatal(err)\n\t}\n}\n",
+			name:    "compressed if block",
+			width:   100,
+			fixture: "compressed-if",
 		},
 		{
-			name:  "ordinary statement semicolons",
-			width: 100,
-			input: "package hostile\nfunc run(){ctx,cancel:=context.WithCancel(t.Context());cancel();result:=work(ctx);_ = result}\n",
-			want:  "package hostile\n\nfunc run() {\n\tctx, cancel := context.WithCancel(t.Context())\n\tcancel()\n\tresult := work(ctx)\n\t_ = result\n}\n",
+			name:    "ordinary statement semicolons",
+			width:   100,
+			fixture: "statement-semicolons",
 		},
 		{
-			name:  "boolean chain",
-			width: 24,
-			input: "package hostile\nfunc condition() bool{return foo&&bar&&baz&&somethingReallyLong}\n",
-			want:  "package hostile\n\nfunc condition() bool {\n\treturn foo &&\n\t\tbar &&\n\t\tbaz &&\n\t\tsomethingReallyLong\n}\n",
+			name:    "boolean chain",
+			width:   24,
+			fixture: "boolean-chain",
 		},
 		{
-			name:  "long call",
-			width: 30,
-			input: "package hostile\nfunc call(){result,err:=client.executeContent(ctx,OperationInfo,http.MethodGet,\"/\",nil,\"application/json\",200);_,_=result,err}\n",
-			want:  "package hostile\n\nfunc call() {\n\tresult, err := client.executeContent(\n\t\tctx,\n\t\tOperationInfo,\n\t\thttp.MethodGet,\n\t\t\"/\",\n\t\tnil,\n\t\t\"application/json\",\n\t\t200,\n\t)\n\t_, _ = result, err\n}\n",
+			name:    "long call",
+			width:   30,
+			fixture: "long-call",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			file, err := source.Load(test.name+".go", []byte(test.input))
+			input, err := os.ReadFile("../../testdata/format/motivating/" + test.fixture + ".input")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := os.ReadFile("../../testdata/format/motivating/" + test.fixture + ".golden")
+			if err != nil {
+				t.Fatal(err)
+			}
+			file, err := source.Load(test.fixture+".go", input)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -55,8 +58,8 @@ func TestFormatExpandsMotivatingHostileGo(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if string(got) != test.want {
-				t.Fatalf("File() =\n%s\nwant:\n%s", got, test.want)
+			if !bytes.Equal(got, want) {
+				t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
 			}
 			reparsed, err := source.Load("formatted.go", got)
 			if err != nil {

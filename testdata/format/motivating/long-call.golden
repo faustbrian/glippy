@@ -1,0 +1,14 @@
+package hostile
+
+func call() {
+	result, err := client.executeContent(
+		ctx,
+		OperationInfo,
+		http.MethodGet,
+		"/",
+		nil,
+		"application/json",
+		200,
+	)
+	_, _ = result, err
+}
