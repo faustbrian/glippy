@@ -47,6 +47,11 @@ operand. Unary expressions, increment/decrement statements, indexing, slicing,
 and other constructs without a grammar-safe broken form MUST remain atomic or
 use a separately proven layout.
 
+Multi-selector chains share one layout group. When that group breaks, every
+selector dot remains on the preceding line and every following selector uses
+one continuation indentation level. A single selector remains atomic so a
+broken call argument list does not force an unrelated selector break.
+
 Broken comma-delimited calls, composite literals, parameter lists, result
 lists, type-argument lists, and corresponding grammar constructs MUST emit a
 trailing comma whenever a newline before the closing delimiter requires one.

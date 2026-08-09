@@ -1221,6 +1221,9 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		}
 		return doc.ID{}, errors.New("basic literal has no physical token")
 	case *ast.SelectorExpr:
+		if chain, ok, err := l.selectorChain(value); ok || err != nil {
+			return chain, err
+		}
 		left, err := l.expression(value.X)
 		if err != nil {
 			return doc.ID{}, err
@@ -1245,47 +1248,21 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		index, err := l.expression(value.Index)
+		suffix, err := l.indexSuffix(value)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		start, startFound := l.source.PhysicalOffset(value.Index.Pos())
-		end, endFound := l.source.PhysicalOffset(value.Index.End())
-		if !startFound || !endFound {
-			return doc.ID{}, errors.New("index has no physical range")
-		}
-		list, err := l.delimitedSingle(value.Lbrack, value.Rbrack, "[", "]", delimitedItem{
-			document: index,
-			start:    start,
-			end:      end,
-		})
-		if err != nil {
-			return doc.ID{}, err
-		}
-		return l.arena.Concat(base, list), nil
+		return l.arena.Concat(base, suffix), nil
 	case *ast.IndexListExpr:
 		base, err := l.expression(value.X)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		indices := make([]delimitedItem, 0, len(value.Indices))
-		for _, rawIndex := range value.Indices {
-			index, err := l.expression(rawIndex)
-			if err != nil {
-				return doc.ID{}, err
-			}
-			start, startFound := l.source.PhysicalOffset(rawIndex.Pos())
-			end, endFound := l.source.PhysicalOffset(rawIndex.End())
-			if !startFound || !endFound {
-				return doc.ID{}, errors.New("index list item has no physical range")
-			}
-			indices = append(indices, delimitedItem{document: index, start: start, end: end})
-		}
-		list, err := l.delimitedCommaList(value.Lbrack, value.Rbrack, "[", "]", indices)
+		suffix, err := l.indexListSuffix(value)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(base, list), nil
+		return l.arena.Concat(base, suffix), nil
 	case *ast.SliceExpr:
 		return l.slice(value)
 	case *ast.TypeAssertExpr:
@@ -1417,6 +1394,40 @@ func (l *lowerer) compositeLiteral(literal *ast.CompositeLit) (doc.ID, error) {
 	return l.arena.Concat(parts...), nil
 }
 
+func (l *lowerer) indexSuffix(expression *ast.IndexExpr) (doc.ID, error) {
+	index, err := l.expression(expression.Index)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	start, startFound := l.source.PhysicalOffset(expression.Index.Pos())
+	end, endFound := l.source.PhysicalOffset(expression.Index.End())
+	if !startFound || !endFound {
+		return doc.ID{}, errors.New("index has no physical range")
+	}
+	return l.delimitedSingle(expression.Lbrack, expression.Rbrack, "[", "]", delimitedItem{
+		document: index,
+		start:    start,
+		end:      end,
+	})
+}
+
+func (l *lowerer) indexListSuffix(expression *ast.IndexListExpr) (doc.ID, error) {
+	indices := make([]delimitedItem, 0, len(expression.Indices))
+	for _, rawIndex := range expression.Indices {
+		index, err := l.expression(rawIndex)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		start, startFound := l.source.PhysicalOffset(rawIndex.Pos())
+		end, endFound := l.source.PhysicalOffset(rawIndex.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("index list item has no physical range")
+		}
+		indices = append(indices, delimitedItem{document: index, start: start, end: end})
+	}
+	return l.delimitedCommaList(expression.Lbrack, expression.Rbrack, "[", "]", indices)
+}
+
 func (l *lowerer) slice(expression *ast.SliceExpr) (doc.ID, error) {
 	base, err := l.expression(expression.X)
 	if err != nil {
@@ -1540,10 +1551,96 @@ func (l *lowerer) aggregateType(keyword string, fields *ast.FieldList, methods b
 }
 
 func (l *lowerer) call(call *ast.CallExpr) (doc.ID, error) {
+	if chain, ok, err := l.selectorChain(call); ok || err != nil {
+		return chain, err
+	}
 	function, err := l.expression(call.Fun)
 	if err != nil {
 		return doc.ID{}, err
 	}
+	arguments, err := l.callArguments(call)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(function, arguments), nil
+}
+
+type selectorChainPart struct {
+	selector  *ast.SelectorExpr
+	call      *ast.CallExpr
+	index     *ast.IndexExpr
+	indexList *ast.IndexListExpr
+}
+
+func (l *lowerer) selectorChain(expression ast.Expr) (doc.ID, bool, error) {
+	current := expression
+	parts := make([]selectorChainPart, 0, 4)
+	selectors := 0
+	for {
+		switch value := current.(type) {
+		case *ast.SelectorExpr:
+			parts = append(parts, selectorChainPart{selector: value})
+			selectors++
+			current = value.X
+		case *ast.CallExpr:
+			parts = append(parts, selectorChainPart{call: value})
+			current = value.Fun
+		case *ast.IndexExpr:
+			parts = append(parts, selectorChainPart{index: value})
+			current = value.X
+		case *ast.IndexListExpr:
+			parts = append(parts, selectorChainPart{indexList: value})
+			current = value.X
+		default:
+			if selectors < 2 {
+				return l.arena.Empty(), false, nil
+			}
+			base, err := l.expression(current)
+			if err != nil {
+				return doc.ID{}, false, err
+			}
+			continuation := make([]doc.ID, 0, len(parts)*3)
+			for index := len(parts) - 1; index >= 0; index-- {
+				part := parts[index]
+				if part.selector != nil {
+					continuation = append(
+						continuation,
+						l.arena.Text("."),
+						l.arena.SoftLine(),
+						l.arena.Text(part.selector.Sel.Name),
+					)
+					continue
+				}
+				switch {
+				case part.call != nil:
+					arguments, err := l.callArguments(part.call)
+					if err != nil {
+						return doc.ID{}, false, err
+					}
+					continuation = append(continuation, arguments)
+				case part.index != nil:
+					suffix, err := l.indexSuffix(part.index)
+					if err != nil {
+						return doc.ID{}, false, err
+					}
+					continuation = append(continuation, suffix)
+				case part.indexList != nil:
+					suffix, err := l.indexListSuffix(part.indexList)
+					if err != nil {
+						return doc.ID{}, false, err
+					}
+					continuation = append(continuation, suffix)
+				}
+			}
+			return l.arena.Group(l.arena.Concat(
+				base,
+				l.arena.Indent(l.arena.Concat(continuation...)),
+			)), true, nil
+		}
+	}
+}
+
+func (l *lowerer) callArguments(call *ast.CallExpr) (doc.ID, error) {
 	arguments := make([]delimitedItem, 0, len(call.Args))
 	for index, argument := range call.Args {
 		lowered, err := l.expression(argument)
@@ -1569,7 +1666,7 @@ func (l *lowerer) call(call *ast.CallExpr) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	return l.arena.Concat(function, list), nil
+	return list, nil
 }
 
 func (l *lowerer) binary(expression *ast.BinaryExpr) (doc.ID, error) {

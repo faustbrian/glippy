@@ -498,6 +498,70 @@ func TestFormatUsesDeterministicIfInitializerWidthBoundary(t *testing.T) {
 	}
 }
 
+func TestFormatUsesDeterministicSelectorChainWidthBoundary(t *testing.T) {
+	t.Parallel()
+
+	input, err := os.ReadFile("../../testdata/format/chains/selector-call.input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flat, err := os.ReadFile("../../testdata/format/chains/selector-call.flat.golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken, err := os.ReadFile("../../testdata/format/chains/selector-call.broken.golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name  string
+		width int
+		want  []byte
+	}{
+		{name: "exact fit", width: 49, want: flat},
+		{name: "one column under", width: 48, want: broken},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			file, err := source.Load("selector_call.go", input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := goxformat.File(file, goxformat.Options{Width: test.width, TabWidth: 8, FitBudget: 1_000})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, test.want) {
+				t.Fatalf("File() =\n%s\nwant:\n%s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestFormatBreaksGenericSelectorChains(t *testing.T) {
+	t.Parallel()
+
+	input, err := os.ReadFile("../../testdata/format/chains/selector-generic.input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile("../../testdata/format/chains/selector-generic.golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load("selector_generic.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 54, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatPreservesClauseBoundaryComments(t *testing.T) {
 	t.Parallel()
 

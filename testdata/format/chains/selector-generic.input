@@ -1,0 +1,2 @@
+package chains
+func run(){client.WithFirst[T]().WithSecond[U]().Execute()}
