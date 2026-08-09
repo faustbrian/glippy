@@ -76,13 +76,67 @@ func TestFormatExpandsMotivatingHostileGo(t *testing.T) {
 func TestFormatRefusesCommentsUntilOwnershipCanBePreserved(t *testing.T) {
 	t.Parallel()
 
-	file, err := source.Load("comment.go", []byte("package comments\nfunc run(/* keep me */ value int){_=value}\n"))
+	file, err := source.Load("comment.go", []byte("package comments\nfunc run(value /* keep me */ int){_=value}\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
 	if err == nil || len(got) != 0 {
 		t.Fatalf("File() = (%q, %v), want refusal without partial output", got, err)
+	}
+}
+
+func TestFormatPreservesFieldListBoundaryComments(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package comments\nfunc run(/* first parameter */ value int,other string /* trailing parameter */)(/* first result */ string,error /* trailing result */){return \"\",nil}\nfunc Generic[/* first type parameter */ T any,U comparable /* trailing type parameter */](value T){}\nfunc empty(/* empty parameter list */){}\n")
+	file, err := source.Load("field_lists.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nfunc run(\n\t/* first parameter */\n\tvalue int,\n\tother string, /* trailing parameter */\n) (\n\t/* first result */\n\tstring,\n\terror, /* trailing result */\n) {\n\treturn \"\", nil\n}\n\nfunc Generic[\n\t/* first type parameter */\n\tT any,\n\tU comparable, /* trailing type parameter */\n](value T) {}\n\nfunc empty(\n\t/* empty parameter list */\n) {}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatPreservesFieldListLineCommentsAfterCommas(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package comments\nfunc run(value int, // first parameter\nother string, // second parameter\n){}\n")
+	file, err := source.Load("field_line_comments.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nfunc run(\n\tvalue int, // first parameter\n\tother string, // second parameter\n) {}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatPreservesExpressionListBoundaryComments(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package comments\nfunc use(){Generic[/* first type argument */ string,int /* trailing type argument */](/* first argument */ first,second /* trailing argument */);Single[/* single type argument */ string](value);empty(/* empty argument list */);values:=[]int{/* empty composite literal */};_=values}\n")
+	file, err := source.Load("expression_lists.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nfunc use() {\n\tGeneric[\n\t\t/* first type argument */\n\t\tstring,\n\t\tint, /* trailing type argument */\n\t](\n\t\t/* first argument */\n\t\tfirst,\n\t\tsecond, /* trailing argument */\n\t)\n\tSingle[\n\t\t/* single type argument */\n\t\tstring](value)\n\tempty(\n\t\t/* empty argument list */\n\t)\n\tvalues := []int{\n\t\t/* empty composite literal */\n\t}\n\t_ = values\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
 	}
 }
 

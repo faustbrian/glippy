@@ -471,18 +471,114 @@ func (l *lowerer) fieldList(fields *ast.FieldList) (doc.ID, error) {
 }
 
 func (l *lowerer) fieldListWithDelimiters(fields *ast.FieldList, open, close string) (doc.ID, error) {
-	if fields == nil || len(fields.List) == 0 {
+	if fields == nil {
 		return l.arena.Text(open + close), nil
 	}
-	items := make([]doc.ID, 0, len(fields.List))
+	items := make([]delimitedItem, 0, len(fields.List))
 	for _, field := range fields.List {
 		item, err := l.field(field)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		items = append(items, item)
+		start, startFound := l.source.PhysicalOffset(field.Pos())
+		end, endFound := l.source.PhysicalOffset(field.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("field list item has no physical range")
+		}
+		items = append(items, delimitedItem{document: item, start: start, end: end})
 	}
-	return l.commaList(open, close, items), nil
+	return l.delimitedCommaList(fields.Opening, fields.Closing, open, close, items)
+}
+
+type delimitedItem struct {
+	document doc.ID
+	start    int
+	end      int
+}
+
+func (l *lowerer) delimitedCommaList(
+	openingPosition token.Pos,
+	closingPosition token.Pos,
+	open string,
+	close string,
+	items []delimitedItem,
+) (doc.ID, error) {
+	opening, openingFound := l.source.PhysicalOffset(openingPosition)
+	closing, closingFound := l.source.PhysicalOffset(closingPosition)
+	if !openingFound || !closingFound {
+		return doc.ID{}, errors.New("delimited list has no physical boundary")
+	}
+	boundary := opening + len(open)
+	rows := make([]doc.ID, 0, len(items)+1)
+	plain := make([]doc.ID, 0, len(items))
+	hasComments := false
+	for index, item := range items {
+		leading := l.commentsBetween(boundary, item.start)
+		limit := closing
+		if index+1 < len(items) {
+			limit = items[index+1].start
+		}
+		trailing := l.trailingComments(item.end, limit)
+		hasComments = hasComments || len(leading) > 0 || len(trailing) > 0
+		row := l.withTrailingComments(item.document, trailing)
+		row = l.arena.Concat(row, l.arena.Text(","))
+		if len(leading) > 0 {
+			row = l.arena.Concat(l.boundaryCommentsDocument(leading, item.start), row)
+		}
+		rows = append(rows, row)
+		plain = append(plain, item.document)
+		boundary = item.end
+	}
+	closingComments := l.commentsBetween(boundary, closing)
+	if len(closingComments) > 0 {
+		hasComments = true
+		rows = append(rows, l.commentsDocument(closingComments))
+	}
+	if !hasComments {
+		if len(plain) == 0 {
+			return l.arena.Text(open + close), nil
+		}
+		return l.commaList(open, close, plain), nil
+	}
+	return l.arena.Concat(
+		l.arena.Text(open),
+		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.join(l.arena.HardLine(), rows))),
+		l.arena.HardLine(),
+		l.arena.Text(close),
+	), nil
+}
+
+func (l *lowerer) delimitedSingle(
+	openingPosition token.Pos,
+	closingPosition token.Pos,
+	open string,
+	close string,
+	item delimitedItem,
+) (doc.ID, error) {
+	opening, openingFound := l.source.PhysicalOffset(openingPosition)
+	closing, closingFound := l.source.PhysicalOffset(closingPosition)
+	if !openingFound || !closingFound {
+		return doc.ID{}, errors.New("single-item delimited list has no physical boundary")
+	}
+	leading := l.commentsBetween(opening+len(open), item.start)
+	trailing := l.commentsBetween(item.end, closing)
+	if len(leading) == 0 && len(trailing) == 0 {
+		return l.arena.Concat(l.arena.Text(open), item.document, l.arena.Text(close)), nil
+	}
+	trailingDocument, err := l.inlineComments(trailing, true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	body := item.document
+	if len(leading) > 0 {
+		body = l.arena.Concat(l.boundaryCommentsDocument(leading, item.start), body)
+	}
+	return l.arena.Concat(
+		l.arena.Text(open),
+		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), body)),
+		trailingDocument,
+		l.arena.Text(close),
+	), nil
 }
 
 func (l *lowerer) fieldComments(item doc.ID, field *ast.Field) (doc.ID, error) {
@@ -1152,21 +1248,43 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(base, l.arena.Text("["), index, l.arena.Text("]")), nil
+		start, startFound := l.source.PhysicalOffset(value.Index.Pos())
+		end, endFound := l.source.PhysicalOffset(value.Index.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("index has no physical range")
+		}
+		list, err := l.delimitedSingle(value.Lbrack, value.Rbrack, "[", "]", delimitedItem{
+			document: index,
+			start:    start,
+			end:      end,
+		})
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(base, list), nil
 	case *ast.IndexListExpr:
 		base, err := l.expression(value.X)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		indices := make([]doc.ID, 0, len(value.Indices))
+		indices := make([]delimitedItem, 0, len(value.Indices))
 		for _, rawIndex := range value.Indices {
 			index, err := l.expression(rawIndex)
 			if err != nil {
 				return doc.ID{}, err
 			}
-			indices = append(indices, index)
+			start, startFound := l.source.PhysicalOffset(rawIndex.Pos())
+			end, endFound := l.source.PhysicalOffset(rawIndex.End())
+			if !startFound || !endFound {
+				return doc.ID{}, errors.New("index list item has no physical range")
+			}
+			indices = append(indices, delimitedItem{document: index, start: start, end: end})
 		}
-		return l.arena.Concat(base, l.commaList("[", "]", indices)), nil
+		list, err := l.delimitedCommaList(value.Lbrack, value.Rbrack, "[", "]", indices)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(base, list), nil
 	case *ast.SliceExpr:
 		return l.slice(value)
 	case *ast.TypeAssertExpr:
@@ -1277,37 +1395,24 @@ func (l *lowerer) compositeLiteral(literal *ast.CompositeLit) (doc.ID, error) {
 		}
 		parts = append(parts, typeDocument)
 	}
-	elements := make([]doc.ID, 0, len(literal.Elts))
-	closing, closingFound := l.source.PhysicalOffset(literal.Rbrace)
-	if !closingFound {
-		return doc.ID{}, errors.New("composite literal has no physical closing offset")
-	}
-	for index, rawElement := range literal.Elts {
+	elements := make([]delimitedItem, 0, len(literal.Elts))
+	for _, rawElement := range literal.Elts {
 		element, err := l.expression(rawElement)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		elementEnd, found := l.source.PhysicalOffset(rawElement.End())
-		if !found {
-			return doc.ID{}, errors.New("composite element has no physical end offset")
+		start, startFound := l.source.PhysicalOffset(rawElement.Pos())
+		end, endFound := l.source.PhysicalOffset(rawElement.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("composite element has no physical range")
 		}
-		limit := closing
-		if index+1 < len(literal.Elts) {
-			limit, found = l.source.PhysicalOffset(literal.Elts[index+1].Pos())
-			if !found {
-				return doc.ID{}, errors.New("following composite element has no physical offset")
-			}
-		}
-		if comments := l.commentsBetween(elementEnd, limit); len(comments) > 0 {
-			element = l.arena.Concat(l.withTrailingComments(element, comments), l.arena.BreakParent())
-		}
-		elements = append(elements, element)
+		elements = append(elements, delimitedItem{document: element, start: start, end: end})
 	}
-	if len(elements) == 0 {
-		parts = append(parts, l.arena.Text("{}"))
-	} else {
-		parts = append(parts, l.commaList("{", "}", elements))
+	list, err := l.delimitedCommaList(literal.Lbrace, literal.Rbrace, "{", "}", elements)
+	if err != nil {
+		return doc.ID{}, err
 	}
+	parts = append(parts, list)
 	return l.arena.Concat(parts...), nil
 }
 
@@ -1438,43 +1543,32 @@ func (l *lowerer) call(call *ast.CallExpr) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	closing, closingFound := l.source.PhysicalOffset(call.Rparen)
-	if !closingFound {
-		return doc.ID{}, errors.New("call has no physical closing offset")
-	}
-	arguments := make([]doc.ID, 0, len(call.Args))
+	arguments := make([]delimitedItem, 0, len(call.Args))
 	for index, argument := range call.Args {
 		lowered, err := l.expression(argument)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		argumentEnd, found := l.source.PhysicalOffset(argument.End())
-		if !found {
-			return doc.ID{}, errors.New("call argument has no physical end offset")
+		start, startFound := l.source.PhysicalOffset(argument.Pos())
+		end, endFound := l.source.PhysicalOffset(argument.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("call argument has no physical range")
 		}
-		limit := closing
-		if index+1 < len(call.Args) {
-			limit, found = l.source.PhysicalOffset(call.Args[index+1].Pos())
+		if index == len(call.Args)-1 && call.Ellipsis.IsValid() {
+			ellipsis, found := l.source.PhysicalOffset(call.Ellipsis)
 			if !found {
-				return doc.ID{}, errors.New("following call argument has no physical offset")
+				return doc.ID{}, errors.New("call ellipsis has no physical offset")
 			}
+			lowered = l.arena.Concat(lowered, l.arena.Text("..."))
+			end = ellipsis + len("...")
 		}
-		if comments := l.commentsBetween(argumentEnd, limit); len(comments) > 0 {
-			lowered = l.arena.Concat(l.withTrailingComments(lowered, comments), l.arena.BreakParent())
-		}
-		arguments = append(arguments, lowered)
+		arguments = append(arguments, delimitedItem{document: lowered, start: start, end: end})
 	}
-	if call.Ellipsis.IsValid() {
-		if len(arguments) == 0 {
-			return doc.ID{}, errors.New("call ellipsis has no argument")
-		}
-		last := len(arguments) - 1
-		arguments[last] = l.arena.Concat(arguments[last], l.arena.Text("..."))
+	list, err := l.delimitedCommaList(call.Lparen, call.Rparen, "(", ")", arguments)
+	if err != nil {
+		return doc.ID{}, err
 	}
-	if len(arguments) == 0 {
-		return l.arena.Concat(function, l.arena.Text("()")), nil
-	}
-	return l.arena.Concat(function, l.commaList("(", ")", arguments)), nil
+	return l.arena.Concat(function, list), nil
 }
 
 func (l *lowerer) binary(expression *ast.BinaryExpr) (doc.ID, error) {
