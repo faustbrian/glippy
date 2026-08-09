@@ -13,6 +13,7 @@ import (
 	"go/scanner"
 	"go/token"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -223,6 +224,101 @@ func (f *File) Metadata() Metadata { return f.metadata }
 // CanFormat reports whether parsing and physical reconstruction accepted the
 // complete file.
 func (f *File) CanFormat() bool { return f.parseErr == nil }
+
+// ReadSyntax provides the shared parsed syntax to a trusted run-owned
+// consumer. The callback must not mutate or retain the syntax tree.
+func (f *File) ReadSyntax(read func(*ast.File) error) error {
+	if f.parseErr != nil {
+		return f.parseErr
+	}
+	return read(f.syntax)
+}
+
+// RawToken returns the exact physical spelling of the token at position.
+func (f *File) RawToken(position token.Pos) (string, bool) {
+	offset := f.tokenFile.Offset(position)
+	index, found := slices.BinarySearchFunc(f.tokens, offset, func(item Token, target int) int {
+		return item.Range.Start - target
+	})
+	if !found {
+		return "", false
+	}
+	return f.tokens[index].Raw, true
+}
+
+// ValidateEquivalent verifies the normalized syntax and source-accounting
+// invariants required before formatted output can be accepted.
+func ValidateEquivalent(before, after *File) error {
+	if before == nil || after == nil || !before.CanFormat() || !after.CanFormat() {
+		return errors.New("equivalence requires two valid source units")
+	}
+	if before.metadata.HasBOM != after.metadata.HasBOM {
+		return errors.New("byte-order mark identity changed")
+	}
+	if !equivalentTokens(before.tokens, after.tokens) {
+		return errors.New("normalized lexical tokens changed")
+	}
+	if !slices.EqualFunc(before.comments, after.comments, func(left, right Comment) bool {
+		return left.Raw == right.Raw
+	}) {
+		return errors.New("comment identity or ordering changed")
+	}
+	if !slices.EqualFunc(before.directives, after.directives, func(left, right Directive) bool {
+		return left.Kind == right.Kind && left.Raw == right.Raw
+	}) {
+		return errors.New("directive identity or ordering changed")
+	}
+	beforeSyntax, err := syntaxFingerprint(before.syntax)
+	if err != nil {
+		return err
+	}
+	afterSyntax, err := syntaxFingerprint(after.syntax)
+	if err != nil {
+		return err
+	}
+	if beforeSyntax != afterSyntax {
+		return errors.New("normalized syntax tree changed")
+	}
+	return nil
+}
+
+func equivalentTokens(before, after []Token) bool {
+	filtered := func(tokens []Token) []Token {
+		result := make([]Token, 0, len(tokens))
+		for _, item := range tokens {
+			switch item.Kind {
+			case token.COMMENT, token.SEMICOLON, token.COMMA:
+				continue
+			default:
+				result = append(result, item)
+			}
+		}
+		return result
+	}
+	return slices.EqualFunc(filtered(before), filtered(after), func(left, right Token) bool {
+		return left.Kind == right.Kind && left.Raw == right.Raw
+	})
+}
+
+func syntaxFingerprint(file *ast.File) (string, error) {
+	var output bytes.Buffer
+	positionType := reflect.TypeFor[token.Pos]()
+	err := ast.Fprint(&output, nil, file, func(name string, value reflect.Value) bool {
+		if value.IsValid() && value.Type() == positionType {
+			return false
+		}
+		switch name {
+		case "Doc", "Comment", "Comments", "Obj", "Scope", "Unresolved":
+			return false
+		default:
+			return true
+		}
+	})
+	if err != nil {
+		return "", fmt.Errorf("fingerprint normalized syntax: %w", err)
+	}
+	return output.String(), nil
+}
 
 func parsedTokenFile(fileSet *token.FileSet, syntax *ast.File) *token.File {
 	if syntax != nil {
