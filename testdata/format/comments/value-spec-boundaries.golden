@@ -1,0 +1,15 @@
+package comments
+
+const first /* after first */, /* before second */ second /* before type */ int /* before equals */ = /* after equals */ 1 /* after first value */, /* before second value */ 2
+
+var left,
+	// before right line
+	right =
+	// after equals line
+	makeValue(), other
+
+var typed /* before standalone type */ string
+
+const (
+	groupedFirst /* after grouped first */, /* before grouped second */ groupedSecond /* before grouped type */ string /* before grouped equals */ = /* after grouped equals */ "a", "b"
+)

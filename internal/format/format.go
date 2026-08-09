@@ -363,26 +363,105 @@ func (l *lowerer) generalDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 }
 
 func (l *lowerer) valueSpec(spec *ast.ValueSpec) (doc.ID, error) {
-	names := make([]doc.ID, 0, len(spec.Names))
-	for _, name := range spec.Names {
-		names = append(names, l.arena.Text(name.Name))
+	if len(spec.Names) == 0 {
+		return doc.ID{}, errors.New("value specification requires a name")
 	}
-	parts := []doc.ID{l.join(l.arena.Text(", "), names)}
+	parts := []doc.ID{l.arena.Text(spec.Names[0].Name)}
+	boundary, boundaryFound := l.source.PhysicalOffset(spec.Names[0].End())
+	if !boundaryFound {
+		return doc.ID{}, errors.New("value specification name has no physical boundary")
+	}
+	for index := 1; index < len(spec.Names); index++ {
+		name := spec.Names[index]
+		nameStart, startFound := l.source.PhysicalOffset(name.Pos())
+		nameEnd, endFound := l.source.PhysicalOffset(name.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("value specification name has no physical boundary")
+		}
+		comma, err := l.uniqueTokenBetween(token.COMMA, boundary, nameStart)
+		if err != nil {
+			return doc.ID{}, fmt.Errorf("value specification name boundary: %w", err)
+		}
+		afterPrevious, err := l.inlineComments(l.commentsBetween(boundary, comma.Range.Start), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, afterPrevious, l.arena.Text(","))
+		beforeName := l.commentsBetween(comma.Range.End, nameStart)
+		hasLineComment := false
+		for _, comment := range beforeName {
+			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+		}
+		if hasLineComment {
+			parts = append(parts, l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(beforeName, nameStart),
+				l.arena.Text(name.Name),
+			)))
+		} else {
+			beforeNameDocument, err := l.inlineComments(beforeName, true)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			parts = append(parts, beforeNameDocument, l.arena.Text(" "), l.arena.Text(name.Name))
+		}
+		boundary = nameEnd
+	}
 	if spec.Type != nil {
 		typeDocument, err := l.expression(spec.Type)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, l.arena.Text(" "), typeDocument)
+		typeStart, startFound := l.source.PhysicalOffset(spec.Type.Pos())
+		typeEnd, endFound := l.source.PhysicalOffset(spec.Type.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("value specification type has no physical boundary")
+		}
+		beforeType, err := l.inlineComments(l.commentsBetween(boundary, typeStart), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, beforeType, l.arena.Text(" "), typeDocument)
+		boundary = typeEnd
 	}
 	if len(spec.Values) > 0 {
 		values, err := l.expressions(spec.Values)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, l.arena.Text(" = "), values)
+		valuesStart, found := l.source.PhysicalOffset(spec.Values[0].Pos())
+		if !found {
+			return doc.ID{}, errors.New("value specification values have no physical boundary")
+		}
+		assign, err := l.uniqueTokenBetween(token.ASSIGN, boundary, valuesStart)
+		if err != nil {
+			return doc.ID{}, fmt.Errorf("value specification assignment boundary: %w", err)
+		}
+		beforeAssign, err := l.inlineComments(l.commentsBetween(boundary, assign.Range.Start), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, beforeAssign, l.arena.Text(" ="))
+		afterAssign := l.commentsBetween(assign.Range.End, valuesStart)
+		hasLineComment := false
+		for _, comment := range afterAssign {
+			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+		}
+		if hasLineComment {
+			parts = append(parts, l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(afterAssign, valuesStart),
+				values,
+			)))
+		} else {
+			afterAssignDocument, err := l.inlineComments(afterAssign, true)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			parts = append(parts, afterAssignDocument, l.arena.Text(" "), values)
+		}
 	}
-	return l.arena.Concat(parts...), nil
+	return l.arena.Group(l.arena.Concat(parts...)), nil
 }
 
 func (l *lowerer) typeSpec(spec *ast.TypeSpec) (doc.ID, error) {
