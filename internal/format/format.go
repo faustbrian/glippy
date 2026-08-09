@@ -903,13 +903,13 @@ func (l *lowerer) statement(statement ast.Stmt) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(l.arena.Text("go "), call), nil
+		return l.keywordWithOperand(value.Go, "go", value.Call, call)
 	case *ast.DeferStmt:
 		call, err := l.call(value.Call)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(l.arena.Text("defer "), call), nil
+		return l.keywordWithOperand(value.Defer, "defer", value.Call, call)
 	case *ast.ReturnStmt:
 		if len(value.Results) == 0 {
 			return l.arena.Text("return"), nil
@@ -918,7 +918,7 @@ func (l *lowerer) statement(statement ast.Stmt) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(l.arena.Text("return "), results), nil
+		return l.keywordWithOperand(value.Return, "return", value.Results[0], results)
 	case *ast.DeclStmt:
 		return l.declaration(value.Decl)
 	case *ast.IfStmt:
@@ -931,7 +931,12 @@ func (l *lowerer) statement(statement ast.Stmt) (doc.ID, error) {
 		if value.Label == nil {
 			return l.arena.Text(value.Tok.String()), nil
 		}
-		return l.arena.Text(value.Tok.String() + " " + value.Label.Name), nil
+		return l.keywordWithOperand(
+			value.TokPos,
+			value.Tok.String(),
+			value.Label,
+			l.arena.Text(value.Label.Name),
+		)
 	case *ast.LabeledStmt:
 		return l.labeledStatement(value)
 	case *ast.BlockStmt:
@@ -953,6 +958,39 @@ func (l *lowerer) statement(statement ast.Stmt) (doc.ID, error) {
 	default:
 		return doc.ID{}, fmt.Errorf("unsupported statement %T", statement)
 	}
+}
+
+func (l *lowerer) keywordWithOperand(
+	keywordPosition token.Pos,
+	keyword string,
+	operand ast.Node,
+	operandDocument doc.ID,
+) (doc.ID, error) {
+	keywordOffset, keywordFound := l.source.PhysicalOffset(keywordPosition)
+	operandStart, operandFound := l.source.PhysicalOffset(operand.Pos())
+	if !keywordFound || !operandFound {
+		return doc.ID{}, fmt.Errorf("%s statement has no physical operand boundary", keyword)
+	}
+	comments := l.commentsBetween(keywordOffset+len(keyword), operandStart)
+	hasLineComment := false
+	for _, comment := range comments {
+		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+	}
+	if hasLineComment {
+		return l.arena.Concat(
+			l.arena.Text(keyword),
+			l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(comments, operandStart),
+				operandDocument,
+			)),
+		), nil
+	}
+	commentsDocument, err := l.inlineComments(comments, true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(l.arena.Text(keyword), commentsDocument, l.arena.Text(" "), operandDocument), nil
 }
 
 func (l *lowerer) incrementOrDecrement(statement *ast.IncDecStmt) (doc.ID, error) {

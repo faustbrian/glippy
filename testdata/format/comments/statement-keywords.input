@@ -1,0 +1,8 @@
+package comments
+func launch(){go /* before go call */ work();go // before go line
+work();defer /* before defer call */ cleanup();defer // before defer line
+cleanup()}
+func result()(int,error){return /* before first result */ value, /* before second result */ nil}
+func jump(){goto /* before goto label */ Done;Done:return}
+func jumpLine(){goto // before goto label line
+Done;Done:return}
