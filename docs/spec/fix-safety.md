@@ -1,0 +1,55 @@
+# Fix Safety Model
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+"SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+"OPTIONAL" in this document are to be interpreted as described in BCP 14
+[RFC2119] [RFC8174] when, and only when, they appear in all capitals, as shown
+here.
+
+[RFC2119]: https://www.rfc-editor.org/rfc/rfc2119
+[RFC8174]: https://www.rfc-editor.org/rfc/rfc8174
+
+## Classes
+
+- **Safe:** semantics-preserving under a documented and tested rule contract;
+  eligible for ordinary `--fix`.
+- **Suggestion:** useful but requiring review; available through explicit
+  selection or editor code action.
+- **Unsafe:** capable of changing behavior or public contracts; requires an
+  explicit unsafe-fix selection.
+
+Severity and safety are independent. Imported or incompletely audited fixes
+MUST NOT default to safe.
+
+## Edit Identity
+
+Every edit MUST identify one physical source file, exact source digest, and
+half-open byte range. Replacement bytes are opaque data until the full result
+passes validation. Ranges MUST be checked against UTF-8 byte boundaries and the
+exact source length when required by the edit contract.
+
+## Coordination Transaction
+
+For one source version, the coordinator MUST:
+
+1. validate source identity, digest, and every range;
+2. sort by start, end, stable rule ID, and stable fix name;
+3. reject overlapping replacements and incompatible same-offset insertions;
+4. report every rejected fix and MUST NOT select a winner silently;
+5. apply accepted edits from highest offset to lowest;
+6. parse the complete edited result;
+7. format through the canonical formatter;
+8. reparse and run normalized syntax, comment, directive, and fix-specific
+   validation;
+9. recheck the on-disk source identity and digest;
+10. replace atomically while preserving permissions where supported; and
+11. report diagnostics and fixes left unapplied with a stable reason.
+
+Any validation or replacement failure MUST preserve the original file. A
+single-file transaction MUST NOT claim multi-file atomicity. Multi-file fixes
+remain prohibited until recovery from partial filesystem failure has an
+accepted design and integration evidence.
+
+Formatter normalization after fixes MUST NOT make a semantic rewrite appear to
+be formatter behavior. Fix provenance remains attached to the resulting
+diagnostic outcome.
