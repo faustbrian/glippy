@@ -1,0 +1,4 @@
+package comments
+func loop(limit int,ready bool){for /* before init */ i:=0 /* after init */; /* before condition */ i<limit /* after condition */; /* before post */ i++ /* after post */ {work()};for /* before condition only */ ready /* after condition only */ {work()};for i:=0; // before condition line
+i<limit;i++ {work()};for /* infinite block */ {break};for // infinite line
+{break};for /* before first semicolon */ ; /* before second semicolon */ ; /* before brace */ {break}}

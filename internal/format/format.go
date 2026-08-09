@@ -190,6 +190,13 @@ func (l *lowerer) commentsDocument(owned []source.Comment) doc.ID {
 }
 
 func (l *lowerer) boundaryCommentsDocument(owned []source.Comment, following int) doc.ID {
+	return l.arena.Concat(
+		l.boundaryCommentsBody(owned),
+		l.commentGap(owned[len(owned)-1].Range.End, following),
+	)
+}
+
+func (l *lowerer) boundaryCommentsBody(owned []source.Comment) doc.ID {
 	parts := make([]doc.ID, 0, len(owned)*3)
 	for index, comment := range owned {
 		if index > 0 {
@@ -197,7 +204,6 @@ func (l *lowerer) boundaryCommentsDocument(owned []source.Comment, following int
 		}
 		parts = append(parts, l.arena.Verbatim(comment.Raw))
 	}
-	parts = append(parts, l.commentGap(owned[len(owned)-1].Range.End, following))
 	return l.arena.Concat(parts...)
 }
 
@@ -832,7 +838,7 @@ func (l *lowerer) statement(statement ast.Stmt) (doc.ID, error) {
 }
 
 func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
-	classicClause, err := l.hasClassicForClause(statement)
+	semicolons, classicClause, err := l.classicForSemicolons(statement)
 	if err != nil {
 		return doc.ID{}, err
 	}
@@ -841,30 +847,128 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 		return doc.ID{}, err
 	}
 	if classicClause {
+		forOffset, forFound := l.source.PhysicalOffset(statement.For)
+		braceOffset, braceFound := l.source.PhysicalOffset(statement.Body.Lbrace)
+		if !forFound || !braceFound {
+			return doc.ID{}, errors.New("classic for header has no physical boundary")
+		}
+
 		parts := []doc.ID{l.arena.Text("for ")}
+		var initializer doc.ID
+		initializerStart := semicolons[0].Range.Start
+		initializerEnd := initializerStart
 		if statement.Init != nil {
-			initializer, err := l.statement(statement.Init)
+			initializer, err = l.statement(statement.Init)
 			if err != nil {
 				return doc.ID{}, err
+			}
+			initializerStart, forFound = l.source.PhysicalOffset(statement.Init.Pos())
+			initializerEnd, braceFound = l.source.PhysicalOffset(statement.Init.End())
+			if !forFound || !braceFound {
+				return doc.ID{}, errors.New("classic for initializer has no physical boundary")
 			}
 			parts = append(parts, initializer)
 		}
 		parts = append(parts, l.arena.Text(";"))
+
 		continuation := []doc.ID{l.arena.Line()}
+		var condition doc.ID
+		conditionStart := semicolons[1].Range.Start
+		conditionEnd := conditionStart
 		if statement.Cond != nil {
-			condition, err := l.expression(statement.Cond)
+			condition, err = l.expression(statement.Cond)
 			if err != nil {
 				return doc.ID{}, err
+			}
+			conditionStart, forFound = l.source.PhysicalOffset(statement.Cond.Pos())
+			conditionEnd, braceFound = l.source.PhysicalOffset(statement.Cond.End())
+			if !forFound || !braceFound {
+				return doc.ID{}, errors.New("classic for condition has no physical boundary")
 			}
 			continuation = append(continuation, condition)
 		}
 		continuation = append(continuation, l.arena.Text(";"))
+
+		var post doc.ID
+		postStart := braceOffset
+		postEnd := postStart
 		if statement.Post != nil {
-			post, err := l.statement(statement.Post)
+			post, err = l.statement(statement.Post)
 			if err != nil {
 				return doc.ID{}, err
 			}
+			postStart, forFound = l.source.PhysicalOffset(statement.Post.Pos())
+			postEnd, braceFound = l.source.PhysicalOffset(statement.Post.End())
+			if !forFound || !braceFound {
+				return doc.ID{}, errors.New("classic for post statement has no physical boundary")
+			}
 			continuation = append(continuation, l.arena.Line(), post)
+		}
+
+		leadingInitializer := l.commentsBetween(forOffset+len("for"), initializerStart)
+		betweenInitializerAndCondition := l.commentsBetween(initializerEnd, conditionStart)
+		betweenConditionAndPost := l.commentsBetween(conditionEnd, postStart)
+		trailingPost := l.commentsBetween(postEnd, braceOffset)
+		hasComments := len(leadingInitializer)+len(betweenInitializerAndCondition)+
+			len(betweenConditionAndPost)+len(trailingPost) > 0
+		if hasComments {
+			trailingPostDocument, err := l.inlineComments(trailingPost, true)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			header := []doc.ID{l.arena.Text("for")}
+			rows := make([]doc.ID, 0, 16)
+			if len(leadingInitializer) > 0 {
+				rows = append(rows,
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(leadingInitializer, initializerStart),
+				)
+				if statement.Init != nil {
+					rows = append(rows, initializer)
+				}
+				rows = append(rows, l.arena.Text(";"))
+			} else {
+				header = append(header, l.arena.Text(" "))
+				if statement.Init != nil {
+					header = append(header, initializer)
+				}
+				header = append(header, l.arena.Text(";"))
+				rows = append(rows, l.arena.HardLine())
+			}
+			if len(leadingInitializer) > 0 {
+				rows = append(rows, l.arena.HardLine())
+			}
+			if len(betweenInitializerAndCondition) > 0 {
+				rows = append(rows, l.boundaryCommentsDocument(betweenInitializerAndCondition, conditionStart))
+			}
+			if statement.Cond != nil {
+				rows = append(rows, condition)
+			}
+			rows = append(rows, l.arena.Text(";"))
+			if statement.Post != nil || len(betweenConditionAndPost) > 0 {
+				rows = append(rows, l.arena.HardLine())
+			}
+			if len(betweenConditionAndPost) > 0 {
+				if statement.Post != nil {
+					rows = append(rows, l.boundaryCommentsDocument(betweenConditionAndPost, postStart))
+				} else {
+					rows = append(rows, l.boundaryCommentsBody(betweenConditionAndPost))
+				}
+			}
+			if statement.Post != nil {
+				rows = append(rows, post, trailingPostDocument, l.arena.Text(" {"))
+			} else if len(betweenConditionAndPost) > 0 {
+				header = append(header, l.arena.Indent(l.arena.Concat(rows...)))
+				header = append(header,
+					l.commentGap(betweenConditionAndPost[len(betweenConditionAndPost)-1].Range.End, braceOffset),
+					l.arena.Text("{"),
+				)
+				return l.arena.Concat(l.arena.Concat(header...), tail), nil
+			} else {
+				rows = append(rows, trailingPostDocument, l.arena.Text(" {"))
+			}
+			header = append(header, l.arena.Indent(l.arena.Concat(rows...)))
+			return l.arena.Concat(l.arena.Concat(header...), tail), nil
 		}
 		parts = append(parts, l.arena.Indent(l.arena.Concat(continuation...)), l.arena.Text(" {"))
 		return l.arena.Concat(l.arena.Group(l.arena.Concat(parts...)), tail), nil
@@ -874,26 +978,83 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		header := l.arena.Group(l.arena.Concat(
-			l.arena.Text("for"),
-			l.arena.Indent(l.arena.Concat(l.arena.Line(), condition)),
-			l.arena.Text(" {"),
-		))
+		forOffset, forFound := l.source.PhysicalOffset(statement.For)
+		conditionStart, startFound := l.source.PhysicalOffset(statement.Cond.Pos())
+		conditionEnd, endFound := l.source.PhysicalOffset(statement.Cond.End())
+		braceOffset, braceFound := l.source.PhysicalOffset(statement.Body.Lbrace)
+		if !forFound || !startFound || !endFound || !braceFound {
+			return doc.ID{}, errors.New("for condition has no physical boundary")
+		}
+		leading := l.commentsBetween(forOffset+len("for"), conditionStart)
+		trailingDocument, err := l.inlineComments(l.commentsBetween(conditionEnd, braceOffset), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		var header doc.ID
+		if len(leading) > 0 {
+			header = l.arena.Concat(
+				l.arena.Text("for"),
+				l.arena.Indent(l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(leading, conditionStart),
+					condition,
+				)),
+				trailingDocument,
+				l.arena.Text(" {"),
+			)
+		} else {
+			header = l.arena.Group(l.arena.Concat(
+				l.arena.Text("for"),
+				l.arena.Indent(l.arena.Concat(l.arena.Line(), condition)),
+				trailingDocument,
+				l.arena.Text(" {"),
+			))
+		}
 		return l.arena.Concat(header, tail), nil
+	}
+	forOffset, forFound := l.source.PhysicalOffset(statement.For)
+	braceOffset, braceFound := l.source.PhysicalOffset(statement.Body.Lbrace)
+	if !forFound || !braceFound {
+		return doc.ID{}, errors.New("infinite for header has no physical boundary")
+	}
+	headerComments := l.commentsBetween(forOffset+len("for"), braceOffset)
+	if len(headerComments) > 0 {
+		hasLineComment := false
+		for _, comment := range headerComments {
+			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+		}
+		if !hasLineComment {
+			commentsDocument, err := l.inlineComments(headerComments, true)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			return l.arena.Concat(l.arena.Text("for"), commentsDocument, l.arena.Text(" {"), tail), nil
+		}
+		return l.arena.Concat(
+			l.arena.Text("for"),
+			l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsBody(headerComments),
+			)),
+			l.commentGap(headerComments[len(headerComments)-1].Range.End, braceOffset),
+			l.arena.Text("{"),
+			tail,
+		), nil
 	}
 	return l.arena.Concat(l.arena.Text("for {"), tail), nil
 }
 
-func (l *lowerer) hasClassicForClause(statement *ast.ForStmt) (bool, error) {
+func (l *lowerer) classicForSemicolons(statement *ast.ForStmt) ([2]source.Token, bool, error) {
+	var result [2]source.Token
 	start, startFound := l.source.PhysicalOffset(statement.For)
 	end, endFound := l.source.PhysicalOffset(statement.Body.Lbrace)
 	if !startFound || !endFound {
-		return false, errors.New("for clause has no physical boundary")
+		return result, false, errors.New("for clause has no physical boundary")
 	}
 	parentheses := 0
 	brackets := 0
 	braces := 0
-	semicolons := 0
+	semicolons := make([]source.Token, 0, 2)
 	first := sort.Search(len(l.tokens), func(index int) bool {
 		return l.tokens[index].Range.Start > start
 	})
@@ -916,23 +1077,23 @@ func (l *lowerer) hasClassicForClause(statement *ast.ForStmt) (bool, error) {
 			braces--
 		case token.SEMICOLON:
 			if item.Semicolon == source.SemicolonExplicit && parentheses == 0 && brackets == 0 && braces == 0 {
-				semicolons++
+				semicolons = append(semicolons, item)
 			}
 		}
 		if parentheses < 0 || brackets < 0 || braces < 0 {
-			return false, errors.New("for clause token nesting is unbalanced")
+			return result, false, errors.New("for clause token nesting is unbalanced")
 		}
 	}
 	if parentheses != 0 || brackets != 0 || braces != 0 {
-		return false, errors.New("for clause token nesting is unbalanced")
+		return result, false, errors.New("for clause token nesting is unbalanced")
 	}
-	switch semicolons {
+	switch len(semicolons) {
 	case 0:
-		return false, nil
+		return result, false, nil
 	case 2:
-		return true, nil
+		return [2]source.Token{semicolons[0], semicolons[1]}, true, nil
 	default:
-		return false, fmt.Errorf("for clause contains %d top-level explicit semicolons", semicolons)
+		return result, false, fmt.Errorf("for clause contains %d top-level explicit semicolons", len(semicolons))
 	}
 }
 
