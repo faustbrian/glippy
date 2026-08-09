@@ -851,29 +851,84 @@ func (l *lowerer) field(field *ast.Field) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
+	return l.fieldWithType(field, typeDocument, " ")
+}
+
+func (l *lowerer) fieldWithType(field *ast.Field, typeDocument doc.ID, separator string) (doc.ID, error) {
+	typeStart, startFound := l.source.PhysicalOffset(field.Type.Pos())
+	typeEnd, endFound := l.source.PhysicalOffset(field.Type.End())
+	if !startFound || !endFound {
+		return doc.ID{}, errors.New("field type has no physical boundary")
+	}
+	parts := make([]doc.ID, 0, len(field.Names)*4+4)
+	boundary := typeEnd
 	if len(field.Names) == 0 {
-		if field.Tag == nil {
-			return typeDocument, nil
+		parts = append(parts, typeDocument)
+	} else {
+		parts = append(parts, l.arena.Text(field.Names[0].Name))
+		boundary, endFound = l.source.PhysicalOffset(field.Names[0].End())
+		if !endFound {
+			return doc.ID{}, errors.New("field name has no physical boundary")
 		}
-		tag, found := l.source.RawToken(field.Tag.Pos())
-		if !found {
-			return doc.ID{}, errors.New("field tag has no physical token")
+		for index := 1; index < len(field.Names); index++ {
+			name := field.Names[index]
+			nameStart, nameStartFound := l.source.PhysicalOffset(name.Pos())
+			nameEnd, nameEndFound := l.source.PhysicalOffset(name.End())
+			if !nameStartFound || !nameEndFound {
+				return doc.ID{}, errors.New("field name has no physical boundary")
+			}
+			comma, err := l.uniqueTokenBetween(token.COMMA, boundary, nameStart)
+			if err != nil {
+				return doc.ID{}, fmt.Errorf("field name boundary: %w", err)
+			}
+			beforeComma, err := l.inlineComments(l.commentsBetween(boundary, comma.Range.Start), true)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			parts = append(parts, beforeComma, l.arena.Text(","))
+			beforeName := l.commentsBetween(comma.Range.End, nameStart)
+			hasLineComment := false
+			for _, comment := range beforeName {
+				hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+			}
+			if hasLineComment {
+				parts = append(parts, l.arena.Indent(l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(beforeName, nameStart),
+					l.arena.Text(name.Name),
+				)))
+			} else {
+				beforeNameDocument, err := l.inlineComments(beforeName, true)
+				if err != nil {
+					return doc.ID{}, err
+				}
+				parts = append(parts, beforeNameDocument, l.arena.Text(" "), l.arena.Text(name.Name))
+			}
+			boundary = nameEnd
 		}
-		return l.arena.Concat(typeDocument, l.arena.Text(" "), l.arena.Verbatim(tag)), nil
+		beforeType, err := l.inlineComments(l.commentsBetween(boundary, typeStart), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, beforeType, l.arena.Text(separator), typeDocument)
+		boundary = typeEnd
 	}
-	names := make([]doc.ID, 0, len(field.Names))
-	for _, name := range field.Names {
-		names = append(names, l.arena.Text(name.Name))
-	}
-	parts := []doc.ID{l.join(l.arena.Text(", "), names), l.arena.Text(" "), typeDocument}
 	if field.Tag != nil {
 		tag, found := l.source.RawToken(field.Tag.Pos())
 		if !found {
 			return doc.ID{}, errors.New("field tag has no physical token")
 		}
-		parts = append(parts, l.arena.Text(" "), l.arena.Verbatim(tag))
+		tagStart, startFound := l.source.PhysicalOffset(field.Tag.Pos())
+		if !startFound {
+			return doc.ID{}, errors.New("field tag has no physical boundary")
+		}
+		beforeTag, err := l.inlineComments(l.commentsBetween(boundary, tagStart), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, beforeTag, l.arena.Text(" "), l.arena.Verbatim(tag))
 	}
-	return l.arena.Concat(parts...), nil
+	return l.arena.Group(l.arena.Concat(parts...)), nil
 }
 
 func (l *lowerer) block(block *ast.BlockStmt) (doc.ID, error) {
@@ -2772,11 +2827,7 @@ func (l *lowerer) aggregateType(keyword string, fields *ast.FieldList, methods b
 			if signatureErr != nil {
 				return doc.ID{}, signatureErr
 			}
-			names := make([]doc.ID, 0, len(field.Names))
-			for _, name := range field.Names {
-				names = append(names, l.arena.Text(name.Name))
-			}
-			item = l.arena.Concat(l.join(l.arena.Text(", "), names), signature)
+			item, err = l.fieldWithType(field, signature, "")
 		} else {
 			item, err = l.field(field)
 		}

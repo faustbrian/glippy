@@ -76,7 +76,7 @@ func TestFormatExpandsMotivatingHostileGo(t *testing.T) {
 	}
 }
 
-func TestFormatRefusesCommentsUntilOwnershipCanBePreserved(t *testing.T) {
+func TestFormatPreservesFieldTypeBoundaryComments(t *testing.T) {
 	t.Parallel()
 
 	file, err := source.Load("comment.go", []byte("package comments\nfunc run(value /* keep me */ int){_=value}\n"))
@@ -84,8 +84,12 @@ func TestFormatRefusesCommentsUntilOwnershipCanBePreserved(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
-	if err == nil || len(got) != 0 {
-		t.Fatalf("File() = (%q, %v), want refusal without partial output", got, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nfunc run(value /* keep me */ int) {\n\t_ = value\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() = %q, want field type-boundary comment preserved", got)
 	}
 }
 
@@ -515,6 +519,30 @@ func TestFormatPreservesTypeSpecBoundaryComments(t *testing.T) {
 		t.Fatal(err)
 	}
 	file, err := source.Load("type_spec_boundaries.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatPreservesFieldBoundaryComments(t *testing.T) {
+	t.Parallel()
+
+	input, err := os.ReadFile("../../testdata/format/comments/field-boundaries.input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile("../../testdata/format/comments/field-boundaries.golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load("field_boundaries.go", input)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,5 @@
+package comments
+type Record struct{First /* before name comma */, /* before second name */ Second /* before field type */ string /* before field tag */ `json:"value"`;Third, // before fourth name
+Fourth int;*Embedded /* before embedded tag */ `json:"embedded"`}
+type Reader interface{Read /* before method signature */ (buffer /* before parameter type */ []byte)(count /* before result type */ int,err error)}
+func transform[Value /* before constraint */ comparable](first /* before parameter comma */, /* before second parameter */ second /* before parameter type */ Value)(result /* before result type */ Value){return result}
