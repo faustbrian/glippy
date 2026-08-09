@@ -1,0 +1,4 @@
+package comments
+func communicate(ready <-chan int,output chan<- int){select{case /* before receive */ <-ready /* before receive colon */:work();case // before assignment line
+item:=<-ready /* before assignment colon */:_=item;case /* before send */ output<-1 /* before send colon */:work();default // before default colon
+:wait()}}

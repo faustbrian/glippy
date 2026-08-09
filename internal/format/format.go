@@ -1583,31 +1583,7 @@ func (l *lowerer) caseClauseHeader(clause *ast.CaseClause, colon int) (doc.ID, e
 		return doc.ID{}, errors.New("case clause has no physical keyword offset")
 	}
 	if len(clause.List) == 0 {
-		comments := l.commentsBetween(caseOffset+len("default"), colon)
-		hasLineComment := false
-		for _, comment := range comments {
-			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
-		}
-		if !hasLineComment {
-			commentsDocument, err := l.inlineComments(comments, true)
-			if err != nil {
-				return doc.ID{}, err
-			}
-			return l.arena.Concat(l.arena.Text("default"), commentsDocument, l.arena.Text(":")), nil
-		}
-		body := l.arena.Text("default")
-		boundary := caseOffset + len("default")
-		previousWasLineComment := false
-		for _, comment := range comments {
-			if !previousWasLineComment && l.samePhysicalLine(boundary, comment.Range.Start) {
-				body = l.arena.Concat(body, l.arena.Text(" "), l.arena.Verbatim(comment.Raw))
-			} else {
-				body = l.arena.Concat(body, l.commentGap(boundary, comment.Range.Start), l.arena.Verbatim(comment.Raw))
-			}
-			boundary = comment.Range.End
-			previousWasLineComment = strings.HasPrefix(comment.Raw, "//")
-		}
-		return l.arena.Concat(body, l.commentGap(boundary, colon), l.arena.Text(":")), nil
+		return l.defaultClauseHeader(caseOffset, colon)
 	}
 
 	items := make([]delimitedItem, 0, len(clause.List))
@@ -1686,25 +1662,44 @@ func (l *lowerer) caseClauseHeader(clause *ast.CaseClause, colon int) (doc.ID, e
 	return l.arena.Group(l.arena.Concat(parts...)), nil
 }
 
-func (l *lowerer) communicationClause(clause *ast.CommClause, _ int) (doc.ID, error) {
-	parts := make([]doc.ID, 0, 2)
-	if clause.Comm == nil {
-		parts = append(parts, l.arena.Text("default:"))
-	} else {
-		communication, err := l.communicationStatement(clause.Comm)
+func (l *lowerer) defaultClauseHeader(keywordOffset, colon int) (doc.ID, error) {
+	comments := l.commentsBetween(keywordOffset+len("default"), colon)
+	hasLineComment := false
+	for _, comment := range comments {
+		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+	}
+	if !hasLineComment {
+		commentsDocument, err := l.inlineComments(comments, true)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, l.arena.Group(l.arena.Concat(
-			l.arena.Text("case"),
-			l.arena.Indent(l.arena.Concat(l.arena.Line(), communication)),
-			l.arena.Text(":"),
-		)))
+		return l.arena.Concat(l.arena.Text("default"), commentsDocument, l.arena.Text(":")), nil
 	}
+	body := l.arena.Text("default")
+	boundary := keywordOffset + len("default")
+	previousWasLineComment := false
+	for _, comment := range comments {
+		if !previousWasLineComment && l.samePhysicalLine(boundary, comment.Range.Start) {
+			body = l.arena.Concat(body, l.arena.Text(" "), l.arena.Verbatim(comment.Raw))
+		} else {
+			body = l.arena.Concat(body, l.commentGap(boundary, comment.Range.Start), l.arena.Verbatim(comment.Raw))
+		}
+		boundary = comment.Range.End
+		previousWasLineComment = strings.HasPrefix(comment.Raw, "//")
+	}
+	return l.arena.Concat(body, l.commentGap(boundary, colon), l.arena.Text(":")), nil
+}
+
+func (l *lowerer) communicationClause(clause *ast.CommClause, _ int) (doc.ID, error) {
 	colon, found := l.source.PhysicalOffset(clause.Colon)
 	if !found {
 		return doc.ID{}, errors.New("communication clause has no physical colon offset")
 	}
+	header, err := l.communicationClauseHeader(clause, colon)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	parts := []doc.ID{header}
 	end, found := l.source.PhysicalOffset(clause.End())
 	if !found {
 		return doc.ID{}, errors.New("communication clause has no physical end offset")
@@ -1717,6 +1712,54 @@ func (l *lowerer) communicationClause(clause *ast.CommClause, _ int) (doc.ID, er
 		parts = append(parts, l.statementSequence(body))
 	}
 	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) communicationClauseHeader(clause *ast.CommClause, colon int) (doc.ID, error) {
+	caseOffset, found := l.source.PhysicalOffset(clause.Case)
+	if !found {
+		return doc.ID{}, errors.New("communication clause has no physical keyword offset")
+	}
+	if clause.Comm == nil {
+		return l.defaultClauseHeader(caseOffset, colon)
+	}
+	communicationStart, startFound := l.source.PhysicalOffset(clause.Comm.Pos())
+	communicationEnd, endFound := l.source.PhysicalOffset(clause.Comm.End())
+	if !startFound || !endFound {
+		return doc.ID{}, errors.New("communication clause has no physical statement boundary")
+	}
+	communication, err := l.communicationStatement(clause.Comm)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	parts := []doc.ID{l.arena.Text("case")}
+	leading := l.commentsBetween(caseOffset+len("case"), communicationStart)
+	hasLineComment := false
+	for _, comment := range leading {
+		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+	}
+	if hasLineComment {
+		parts = append(parts, l.arena.Indent(l.arena.Concat(
+			l.arena.HardLine(),
+			l.boundaryCommentsDocument(leading, communicationStart),
+			communication,
+		)))
+	} else {
+		leadingDocument, err := l.inlineComments(leading, false)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, l.arena.Indent(l.arena.Concat(
+			l.arena.Line(),
+			leadingDocument,
+			communication,
+		)))
+	}
+	trailingDocument, err := l.inlineComments(l.commentsBetween(communicationEnd, colon), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	parts = append(parts, trailingDocument, l.arena.Text(":"))
+	return l.arena.Group(l.arena.Concat(parts...)), nil
 }
 
 func (l *lowerer) communicationStatement(statement ast.Stmt) (doc.ID, error) {
