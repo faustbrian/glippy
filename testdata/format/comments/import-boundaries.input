@@ -1,0 +1,11 @@
+package comments
+import /* after keyword */ alias /* before path */ "one.example/pkg" // trailing ungrouped
+import // after keyword line
+"two.example/pkg"
+import /* before group */ (/* before first spec */ named /* before grouped path */ `three.example/pkg` // trailing first spec
+
+// before second spec
+_ "four.example/pkg"
+/* before group close */)
+import // before line-commented group
+(. "five.example/pkg")

@@ -589,58 +589,164 @@ func (l *lowerer) typeSpec(spec *ast.TypeSpec) (doc.ID, error) {
 }
 
 func (l *lowerer) importDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
-	imports := make([]doc.ID, 0, len(declaration.Specs))
-	for _, rawSpec := range declaration.Specs {
+	if !declaration.Lparen.IsValid() {
+		if len(declaration.Specs) != 1 {
+			return doc.ID{}, errors.New("ungrouped import declaration must contain one spec")
+		}
+		spec, ok := declaration.Specs[0].(*ast.ImportSpec)
+		if !ok {
+			return doc.ID{}, fmt.Errorf("import declaration contains %T", declaration.Specs[0])
+		}
+		item, err := l.importSpec(spec)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		start, found := l.source.PhysicalOffset(spec.Pos())
+		if !found {
+			return doc.ID{}, errors.New("import specification has no physical start offset")
+		}
+		return l.importHeader(declaration, start, item)
+	}
+	opening, openingFound := l.source.PhysicalOffset(declaration.Lparen)
+	closing, closingFound := l.source.PhysicalOffset(declaration.Rparen)
+	if !openingFound || !closingFound {
+		return doc.ID{}, errors.New("import group has no physical boundary")
+	}
+	rows := make([]doc.ID, 0, len(declaration.Specs)+1)
+	blankBefore := make([]bool, 0, len(declaration.Specs)+1)
+	boundary := opening + len("(")
+	for index, rawSpec := range declaration.Specs {
 		spec, ok := rawSpec.(*ast.ImportSpec)
 		if !ok {
 			return doc.ID{}, fmt.Errorf("import declaration contains %T", rawSpec)
 		}
-		path, found := l.source.RawToken(spec.Path.Pos())
-		if !found {
-			return doc.ID{}, errors.New("import path has no physical token")
+		item, err := l.importSpec(spec)
+		if err != nil {
+			return doc.ID{}, err
 		}
-		parts := make([]doc.ID, 0, 2)
-		if spec.Name != nil {
-			parts = append(parts, l.arena.Text(spec.Name.Name), l.arena.Text(" "))
+		specStart, startFound := l.source.PhysicalOffset(spec.Pos())
+		specEnd, endFound := l.source.PhysicalOffset(spec.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("import specification has no physical boundary")
 		}
-		parts = append(parts, l.arena.Verbatim(path))
-		imports = append(imports, l.arena.Concat(parts...))
-	}
-	if !declaration.Lparen.IsValid() {
-		if len(imports) != 1 {
-			return doc.ID{}, errors.New("ungrouped import declaration must contain one spec")
+		leading := l.commentsBetween(boundary, specStart)
+		gapEnd := specStart
+		if len(leading) > 0 {
+			gapEnd = leading[0].Range.Start
 		}
-		return l.arena.Concat(l.arena.Text("import "), imports[0]), nil
+		blank, err := l.hasBlankPhysicalGap(boundary, gapEnd)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		limit := closing
+		if index+1 < len(declaration.Specs) {
+			limit, endFound = l.source.PhysicalOffset(declaration.Specs[index+1].Pos())
+			if !endFound {
+				return doc.ID{}, errors.New("following import specification has no physical boundary")
+			}
+		}
+		item = l.withTrailingComments(item, l.trailingComments(specEnd, limit))
+		if len(leading) > 0 {
+			item = l.arena.Concat(l.boundaryCommentsDocument(leading, specStart), item)
+		}
+		rows = append(rows, item)
+		blankBefore = append(blankBefore, blank)
+		boundary = specEnd
 	}
-	if len(imports) == 0 {
-		return l.arena.Text("import ()"), nil
+	if closingComments := l.commentsBetween(boundary, closing); len(closingComments) > 0 {
+		blank, err := l.hasBlankPhysicalGap(boundary, closingComments[0].Range.Start)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		rows = append(rows, l.boundaryCommentsBody(closingComments))
+		blankBefore = append(blankBefore, blank)
 	}
-	body := make([]doc.ID, 0, len(imports)*3-1)
-	for index, item := range imports {
+	body := make([]doc.ID, 0, len(rows)*3)
+	for index, row := range rows {
 		if index > 0 {
-			separator := l.arena.HardLine()
-			previousEnd, previousFound := l.source.PhysicalOffset(declaration.Specs[index-1].End())
-			currentStart, currentFound := l.source.PhysicalOffset(declaration.Specs[index].Pos())
-			if !previousFound || !currentFound {
-				return doc.ID{}, errors.New("import group has no physical gap")
-			}
-			gap, valid := l.source.Slice(source.Range{Start: previousEnd, End: currentStart})
-			if !valid {
-				return doc.ID{}, errors.New("import group has an invalid physical gap")
-			}
-			body = append(body, separator)
-			if strings.Count(gap, "\n") >= 2 {
-				body = append(body, l.arena.HardLine())
-			}
+			body = append(body, l.arena.HardLine())
 		}
-		body = append(body, item)
+		if blankBefore[index] {
+			body = append(body, l.arena.HardLine())
+		}
+		body = append(body, row)
+	}
+	group := l.arena.Text("(")
+	if len(rows) > 0 {
+		group = l.arena.Concat(
+			group,
+			l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.arena.Concat(body...))),
+			l.arena.HardLine(),
+			l.arena.Text(")"),
+		)
+	} else {
+		group = l.arena.Text("()")
+	}
+	return l.importHeader(declaration, opening, group)
+}
+
+func (l *lowerer) importSpec(spec *ast.ImportSpec) (doc.ID, error) {
+	path, found := l.source.RawToken(spec.Path.Pos())
+	if !found {
+		return doc.ID{}, errors.New("import path has no physical token")
+	}
+	if spec.Name == nil {
+		return l.arena.Verbatim(path), nil
+	}
+	nameEnd, nameFound := l.source.PhysicalOffset(spec.Name.End())
+	pathStart, pathFound := l.source.PhysicalOffset(spec.Path.Pos())
+	if !nameFound || !pathFound {
+		return doc.ID{}, errors.New("import alias has no physical path boundary")
+	}
+	beforePath, err := l.inlineComments(l.commentsBetween(nameEnd, pathStart), true)
+	if err != nil {
+		return doc.ID{}, err
 	}
 	return l.arena.Concat(
-		l.arena.Text("import ("),
-		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.arena.Concat(body...))),
-		l.arena.HardLine(),
-		l.arena.Text(")"),
+		l.arena.Text(spec.Name.Name),
+		beforePath,
+		l.arena.Text(" "),
+		l.arena.Verbatim(path),
 	), nil
+}
+
+func (l *lowerer) importHeader(declaration *ast.GenDecl, following int, operand doc.ID) (doc.ID, error) {
+	keyword, found := l.source.PhysicalOffset(declaration.TokPos)
+	if !found {
+		return doc.ID{}, errors.New("import declaration has no physical keyword boundary")
+	}
+	boundary := keyword + len("import")
+	comments := l.commentsBetween(boundary, following)
+	if len(comments) == 0 {
+		return l.arena.Concat(l.arena.Text("import "), operand), nil
+	}
+	parts := []doc.ID{l.arena.Text("import")}
+	previousWasLineComment := false
+	for _, comment := range comments {
+		if !previousWasLineComment && l.samePhysicalLine(boundary, comment.Range.Start) {
+			parts = append(parts, l.arena.Text(" "))
+		} else {
+			parts = append(parts, l.commentGap(boundary, comment.Range.Start))
+		}
+		parts = append(parts, l.arena.Verbatim(comment.Raw))
+		boundary = comment.Range.End
+		previousWasLineComment = strings.HasPrefix(comment.Raw, "//")
+	}
+	if !previousWasLineComment && l.samePhysicalLine(boundary, following) {
+		parts = append(parts, l.arena.Text(" "))
+	} else {
+		parts = append(parts, l.commentGap(boundary, following))
+	}
+	parts = append(parts, operand)
+	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) hasBlankPhysicalGap(start, end int) (bool, error) {
+	gap, valid := l.source.Slice(source.Range{Start: start, End: end})
+	if !valid {
+		return false, errors.New("import group has an invalid physical gap")
+	}
+	return strings.Count(gap, "\n") >= 2, nil
 }
 
 func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
