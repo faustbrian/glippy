@@ -1,0 +1,12 @@
+package comments
+
+func keyed() {
+	values := map[string]int{
+		"first" /* before colon */: /* after colon */ 1,
+		"second":
+			// after colon line
+			compute(),
+	}
+	positions := []int{0 /* before index colon */: /* after index colon */ 1}
+	_, _ = values, positions
+}

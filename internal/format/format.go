@@ -2228,15 +2228,7 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 	case *ast.CompositeLit:
 		return l.compositeLiteral(value)
 	case *ast.KeyValueExpr:
-		key, err := l.expression(value.Key)
-		if err != nil {
-			return doc.ID{}, err
-		}
-		item, err := l.expression(value.Value)
-		if err != nil {
-			return doc.ID{}, err
-		}
-		return l.arena.Concat(key, l.arena.Text(": "), item), nil
+		return l.keyValue(value)
 	case *ast.IndexExpr:
 		base, err := l.expression(value.X)
 		if err != nil {
@@ -2378,6 +2370,47 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 	default:
 		return doc.ID{}, fmt.Errorf("unsupported expression %T", expression)
 	}
+}
+
+func (l *lowerer) keyValue(expression *ast.KeyValueExpr) (doc.ID, error) {
+	key, err := l.expression(expression.Key)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	value, err := l.expression(expression.Value)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	keyEnd, keyEndFound := l.source.PhysicalOffset(expression.Key.End())
+	colonOffset, colonFound := l.source.PhysicalOffset(expression.Colon)
+	valueStart, valueStartFound := l.source.PhysicalOffset(expression.Value.Pos())
+	if !keyEndFound || !colonFound || !valueStartFound {
+		return doc.ID{}, errors.New("key/value expression has no physical colon boundary")
+	}
+	beforeColon, err := l.inlineComments(l.commentsBetween(keyEnd, colonOffset), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	afterColon := l.commentsBetween(colonOffset+len(":"), valueStart)
+	parts := []doc.ID{key, beforeColon, l.arena.Text(":")}
+	hasLineComment := false
+	for _, comment := range afterColon {
+		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+	}
+	if hasLineComment {
+		parts = append(parts, l.arena.Indent(l.arena.Concat(
+			l.arena.HardLine(),
+			l.boundaryCommentsDocument(afterColon, valueStart),
+			value,
+		)))
+	} else {
+		afterColonDocument, err := l.inlineComments(afterColon, true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, afterColonDocument, l.arena.Text(" "), value)
+	}
+	return l.arena.Group(l.arena.Concat(parts...)), nil
 }
 
 func (l *lowerer) unary(expression *ast.UnaryExpr) (doc.ID, error) {
