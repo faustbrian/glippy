@@ -711,16 +711,20 @@ func (l *lowerer) importSpec(spec *ast.ImportSpec) (doc.ID, error) {
 }
 
 func (l *lowerer) importHeader(declaration *ast.GenDecl, following int, operand doc.ID) (doc.ID, error) {
-	keyword, found := l.source.PhysicalOffset(declaration.TokPos)
+	return l.keywordHeader(declaration.TokPos, "import", following, operand)
+}
+
+func (l *lowerer) keywordHeader(position token.Pos, keyword string, following int, operand doc.ID) (doc.ID, error) {
+	keywordOffset, found := l.source.PhysicalOffset(position)
 	if !found {
-		return doc.ID{}, errors.New("import declaration has no physical keyword boundary")
+		return doc.ID{}, fmt.Errorf("%s has no physical keyword boundary", keyword)
 	}
-	boundary := keyword + len("import")
+	boundary := keywordOffset + len(keyword)
 	comments := l.commentsBetween(boundary, following)
 	if len(comments) == 0 {
-		return l.arena.Concat(l.arena.Text("import "), operand), nil
+		return l.arena.Concat(l.arena.Text(keyword+" "), operand), nil
 	}
-	parts := []doc.ID{l.arena.Text("import")}
+	parts := []doc.ID{l.arena.Text(keyword)}
 	previousWasLineComment := false
 	for _, comment := range comments {
 		if !previousWasLineComment && l.samePhysicalLine(boundary, comment.Range.Start) {
@@ -754,13 +758,28 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	parts := []doc.ID{l.arena.Text("func ")}
+	parts := make([]doc.ID, 0, 12)
+	var first ast.Node = function.Name
+	boundary, boundaryFound := l.source.PhysicalOffset(function.Name.End())
+	if !boundaryFound {
+		return doc.ID{}, errors.New("function name has no physical boundary")
+	}
 	if function.Recv != nil {
 		receiver, err := l.fieldList(function.Recv)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, receiver, l.arena.Text(" "))
+		first = function.Recv
+		receiverEnd, receiverFound := l.source.PhysicalOffset(function.Recv.End())
+		nameStart, nameFound := l.source.PhysicalOffset(function.Name.Pos())
+		if !receiverFound || !nameFound {
+			return doc.ID{}, errors.New("function receiver has no physical name boundary")
+		}
+		beforeName, err := l.inlineComments(l.commentsBetween(receiverEnd, nameStart), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, receiver, beforeName, l.arena.Text(" "))
 	}
 	parts = append(parts, l.arena.Text(function.Name.Name))
 	if function.Type.TypeParams != nil {
@@ -768,24 +787,66 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, typeParameters)
+		start, startFound := l.source.PhysicalOffset(function.Type.TypeParams.Pos())
+		end, endFound := l.source.PhysicalOffset(function.Type.TypeParams.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("function type parameters have no physical boundary")
+		}
+		beforeTypeParameters, err := l.inlineComments(l.commentsBetween(boundary, start), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, beforeTypeParameters, typeParameters)
+		boundary = end
 	}
-	parts = append(parts, parameters)
+	parametersStart, startFound := l.source.PhysicalOffset(function.Type.Params.Pos())
+	parametersEnd, endFound := l.source.PhysicalOffset(function.Type.Params.End())
+	if !startFound || !endFound {
+		return doc.ID{}, errors.New("function parameters have no physical boundary")
+	}
+	beforeParameters, err := l.inlineComments(l.commentsBetween(boundary, parametersStart), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	parts = append(parts, beforeParameters, parameters)
+	boundary = parametersEnd
 	if function.Type.Results != nil {
 		results, err := l.results(function.Type.Results)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, l.arena.Text(" "), results)
+		resultsStart, startFound := l.source.PhysicalOffset(function.Type.Results.Pos())
+		resultsEnd, endFound := l.source.PhysicalOffset(function.Type.Results.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("function results have no physical boundary")
+		}
+		beforeResults, err := l.inlineComments(l.commentsBetween(boundary, resultsStart), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, beforeResults, l.arena.Text(" "), results)
+		boundary = resultsEnd
 	}
 	if function.Body != nil {
 		body, err := l.block(function.Body)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, l.arena.Text(" "), body)
+		bodyStart, found := l.source.PhysicalOffset(function.Body.Lbrace)
+		if !found {
+			return doc.ID{}, errors.New("function body has no physical boundary")
+		}
+		beforeBody, err := l.inlineComments(l.commentsBetween(boundary, bodyStart), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, beforeBody, l.arena.Text(" "), body)
 	}
-	return l.arena.Concat(parts...), nil
+	firstStart, found := l.source.PhysicalOffset(first.Pos())
+	if !found {
+		return doc.ID{}, errors.New("function declaration has no physical first operand")
+	}
+	return l.keywordHeader(function.Type.Func, "func", firstStart, l.arena.Concat(parts...))
 }
 
 func (l *lowerer) fieldList(fields *ast.FieldList) (doc.ID, error) {

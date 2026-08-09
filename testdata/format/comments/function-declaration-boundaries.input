@@ -1,0 +1,7 @@
+package comments
+func /* after func keyword */ Plain /* before parameters */ () /* before result */ int /* before body */ {return 0}
+func // after func keyword line
+Line(){}
+func /* before receiver */ (receiver Receiver) /* before method name */ Method /* before method parameters */ () /* before method body */ {}
+func Generic /* before type parameters */ [Value any] /* before generic parameters */ () /* before generic body */ {}
+func External /* before external parameters */ ()
