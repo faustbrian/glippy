@@ -1,0 +1,2 @@
+package comments
+func adjust(limit int){count /* before increment */ ++;count /* before decrement */ --;for index:=0;index<limit;index /* before post increment */ ++{work()}}

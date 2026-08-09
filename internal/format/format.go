@@ -895,11 +895,7 @@ func (l *lowerer) statement(statement ast.Stmt) (doc.ID, error) {
 	case *ast.ExprStmt:
 		return l.expression(value.X)
 	case *ast.IncDecStmt:
-		expression, err := l.expression(value.X)
-		if err != nil {
-			return doc.ID{}, err
-		}
-		return l.arena.Concat(expression, l.arena.Text(value.Tok.String())), nil
+		return l.incrementOrDecrement(value)
 	case *ast.SendStmt:
 		return l.sendStatement(value)
 	case *ast.GoStmt:
@@ -957,6 +953,23 @@ func (l *lowerer) statement(statement ast.Stmt) (doc.ID, error) {
 	default:
 		return doc.ID{}, fmt.Errorf("unsupported statement %T", statement)
 	}
+}
+
+func (l *lowerer) incrementOrDecrement(statement *ast.IncDecStmt) (doc.ID, error) {
+	expression, err := l.expression(statement.X)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	expressionEnd, expressionEndFound := l.source.PhysicalOffset(statement.X.End())
+	operatorOffset, operatorFound := l.source.PhysicalOffset(statement.TokPos)
+	if !expressionEndFound || !operatorFound {
+		return doc.ID{}, errors.New("increment or decrement has no physical operator boundary")
+	}
+	beforeOperator, err := l.inlineComments(l.commentsBetween(expressionEnd, operatorOffset), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(expression, beforeOperator, l.arena.Text(statement.Tok.String())), nil
 }
 
 func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
