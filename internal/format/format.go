@@ -1171,31 +1171,32 @@ func (l *lowerer) assignment(assignment *ast.AssignStmt) (doc.ID, error) {
 }
 
 func (l *lowerer) ifStatement(statement *ast.IfStmt) (doc.ID, error) {
-	parts := []doc.ID{l.arena.Text("if ")}
+	parts := []doc.ID{l.arena.Text("if")}
 	if statement.Init != nil {
 		initializer, err := l.statement(statement.Init)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, initializer, l.arena.Text("; "))
+		parts = append(parts, l.arena.Text(" "), initializer, l.arena.Text(";"))
 	}
 	condition, err := l.expression(statement.Cond)
 	if err != nil {
 		return doc.ID{}, err
 	}
-	body, err := l.block(statement.Body)
+	tail, err := l.blockTail(statement.Body)
 	if err != nil {
 		return doc.ID{}, err
 	}
-	parts = append(parts, condition, l.arena.Text(" "), body)
+	parts = append(parts, l.arena.Indent(l.arena.Concat(l.arena.Line(), condition)), l.arena.Text(" {"))
+	result := []doc.ID{l.arena.Group(l.arena.Concat(parts...)), tail}
 	if statement.Else != nil {
 		alternative, err := l.statement(statement.Else)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, l.arena.Text(" else "), alternative)
+		result = append(result, l.arena.Text(" else "), alternative)
 	}
-	return l.arena.Concat(parts...), nil
+	return l.arena.Concat(result...), nil
 }
 
 func (l *lowerer) expressions(expressions []ast.Expr) (doc.ID, error) {

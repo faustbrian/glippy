@@ -464,6 +464,37 @@ func TestFormatUsesDeterministicCaseListWidthBoundary(t *testing.T) {
 	}
 }
 
+func TestFormatUsesDeterministicIfInitializerWidthBoundary(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package control\nfunc choose(){if current:=initialValue;current!=expectedVal{work()}}\n")
+	flat := "package control\n\nfunc choose() {\n\tif current := initialValue; current != expectedVal {\n\t\twork()\n\t}\n}\n"
+	broken := "package control\n\nfunc choose() {\n\tif current := initialValue;\n\t\tcurrent != expectedVal {\n\t\twork()\n\t}\n}\n"
+	for _, test := range []struct {
+		name  string
+		width int
+		want  string
+	}{
+		{name: "exact fit", width: 60, want: flat},
+		{name: "one column under", width: 59, want: broken},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			file, err := source.Load("if_boundary.go", input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := goxformat.File(file, goxformat.Options{Width: test.width, TabWidth: 8, FitBudget: 1_000})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != test.want {
+				t.Fatalf("File() =\n%s\nwant:\n%s", got, test.want)
+			}
+		})
+	}
+}
+
 func TestFormatPreservesClauseBoundaryComments(t *testing.T) {
 	t.Parallel()
 
