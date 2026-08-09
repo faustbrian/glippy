@@ -711,10 +711,16 @@ func (l *lowerer) importSpec(spec *ast.ImportSpec) (doc.ID, error) {
 }
 
 func (l *lowerer) importHeader(declaration *ast.GenDecl, following int, operand doc.ID) (doc.ID, error) {
-	return l.keywordHeader(declaration.TokPos, "import", following, operand)
+	return l.keywordHeader(declaration.TokPos, "import", " ", following, operand)
 }
 
-func (l *lowerer) keywordHeader(position token.Pos, keyword string, following int, operand doc.ID) (doc.ID, error) {
+func (l *lowerer) keywordHeader(
+	position token.Pos,
+	keyword string,
+	separator string,
+	following int,
+	operand doc.ID,
+) (doc.ID, error) {
 	keywordOffset, found := l.source.PhysicalOffset(position)
 	if !found {
 		return doc.ID{}, fmt.Errorf("%s has no physical keyword boundary", keyword)
@@ -722,7 +728,7 @@ func (l *lowerer) keywordHeader(position token.Pos, keyword string, following in
 	boundary := keywordOffset + len(keyword)
 	comments := l.commentsBetween(boundary, following)
 	if len(comments) == 0 {
-		return l.arena.Concat(l.arena.Text(keyword+" "), operand), nil
+		return l.arena.Concat(l.arena.Text(keyword+separator), operand), nil
 	}
 	parts := []doc.ID{l.arena.Text(keyword)}
 	previousWasLineComment := false
@@ -846,7 +852,7 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 	if !found {
 		return doc.ID{}, errors.New("function declaration has no physical first operand")
 	}
-	return l.keywordHeader(function.Type.Func, "func", firstStart, l.arena.Concat(parts...))
+	return l.keywordHeader(function.Type.Func, "func", " ", firstStart, l.arena.Concat(parts...))
 }
 
 func (l *lowerer) fieldList(fields *ast.FieldList) (doc.ID, error) {
@@ -2632,7 +2638,16 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(signature, l.arena.Text(" "), body), nil
+		signatureEnd, signatureFound := l.source.PhysicalOffset(value.Type.End())
+		bodyStart, bodyFound := l.source.PhysicalOffset(value.Body.Lbrace)
+		if !signatureFound || !bodyFound {
+			return doc.ID{}, errors.New("function literal has no physical body boundary")
+		}
+		beforeBody, err := l.inlineComments(l.commentsBetween(signatureEnd, bodyStart), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(signature, beforeBody, l.arena.Text(" "), body), nil
 	case *ast.StructType:
 		return l.aggregateType("struct", value.Fields, false)
 	case *ast.InterfaceType:
@@ -2940,30 +2955,58 @@ func (l *lowerer) sliceColons(expression *ast.SliceExpr, opening, closing int) (
 }
 
 func (l *lowerer) functionType(function *ast.FuncType, includeKeyword bool) (doc.ID, error) {
-	parts := make([]doc.ID, 0, 5)
-	if includeKeyword {
-		parts = append(parts, l.arena.Text("func"))
-	}
+	parts := make([]doc.ID, 0, 8)
+	var first ast.Node = function.Params
 	if function.TypeParams != nil {
 		typeParameters, err := l.fieldListWithDelimiters(function.TypeParams, "[", "]")
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, typeParameters)
+		first = function.TypeParams
+		parametersStart, startFound := l.source.PhysicalOffset(function.Params.Pos())
+		typeParametersEnd, endFound := l.source.PhysicalOffset(function.TypeParams.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("function type parameters have no physical parameter boundary")
+		}
+		beforeParameters, err := l.inlineComments(l.commentsBetween(typeParametersEnd, parametersStart), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, typeParameters, beforeParameters)
 	}
 	parameters, err := l.fieldList(function.Params)
 	if err != nil {
 		return doc.ID{}, err
 	}
 	parts = append(parts, parameters)
+	boundary, boundaryFound := l.source.PhysicalOffset(function.Params.End())
+	if !boundaryFound {
+		return doc.ID{}, errors.New("function parameters have no physical end boundary")
+	}
 	if function.Results != nil {
 		results, err := l.results(function.Results)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, l.arena.Text(" "), results)
+		resultsStart, found := l.source.PhysicalOffset(function.Results.Pos())
+		if !found {
+			return doc.ID{}, errors.New("function type results have no physical start boundary")
+		}
+		beforeResults, err := l.inlineComments(l.commentsBetween(boundary, resultsStart), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, beforeResults, l.arena.Text(" "), results)
 	}
-	return l.arena.Concat(parts...), nil
+	document := l.arena.Concat(parts...)
+	if !includeKeyword {
+		return document, nil
+	}
+	firstStart, found := l.source.PhysicalOffset(first.Pos())
+	if !found {
+		return doc.ID{}, errors.New("function type has no physical first operand")
+	}
+	return l.keywordHeader(function.Func, "func", "", firstStart, document)
 }
 
 func (l *lowerer) aggregateType(keyword string, fields *ast.FieldList, methods bool) (doc.ID, error) {

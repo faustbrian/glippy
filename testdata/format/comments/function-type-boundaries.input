@@ -1,0 +1,7 @@
+package comments
+type Transform func /* after type func */ (value int) /* before type result */ int
+type Callback func // after type func line
+(value int) /* before callback result */ error
+type Reader interface{Read(value int) /* before method results */ (int,error)}
+func use(){transform:=func /* after literal func */ (value int) /* before literal result */ int /* before literal body */ {return value};line:=func // after literal func line
+() /* before line literal body */ {};_,_=transform,line}
