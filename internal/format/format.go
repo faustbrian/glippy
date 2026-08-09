@@ -2899,13 +2899,13 @@ func (l *lowerer) unary(expression *ast.UnaryExpr) (doc.ID, error) {
 }
 
 func (l *lowerer) compositeLiteral(literal *ast.CompositeLit) (doc.ID, error) {
-	parts := make([]doc.ID, 0, 2)
+	var typeDocument doc.ID
 	if literal.Type != nil {
-		typeDocument, err := l.expression(literal.Type)
+		var err error
+		typeDocument, err = l.expression(literal.Type)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, typeDocument)
 	}
 	elements := make([]delimitedItem, 0, len(literal.Elts))
 	for _, rawElement := range literal.Elts {
@@ -2924,8 +2924,14 @@ func (l *lowerer) compositeLiteral(literal *ast.CompositeLit) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	parts = append(parts, list)
-	return l.arena.Concat(parts...), nil
+	if literal.Type == nil {
+		return list, nil
+	}
+	suffix, err := l.postfixBoundary(literal.Type, literal.Lbrace, list)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(typeDocument, suffix), nil
 }
 
 func (l *lowerer) indexSuffix(expression *ast.IndexExpr) (doc.ID, error) {
@@ -2938,11 +2944,15 @@ func (l *lowerer) indexSuffix(expression *ast.IndexExpr) (doc.ID, error) {
 	if !startFound || !endFound {
 		return doc.ID{}, errors.New("index has no physical range")
 	}
-	return l.delimitedSingle(expression.Lbrack, expression.Rbrack, "[", "]", delimitedItem{
+	list, err := l.delimitedSingle(expression.Lbrack, expression.Rbrack, "[", "]", delimitedItem{
 		document: index,
 		start:    start,
 		end:      end,
 	})
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.postfixBoundary(expression.X, expression.Lbrack, list)
 }
 
 func (l *lowerer) indexListSuffix(expression *ast.IndexListExpr) (doc.ID, error) {
@@ -2959,7 +2969,11 @@ func (l *lowerer) indexListSuffix(expression *ast.IndexListExpr) (doc.ID, error)
 		}
 		indices = append(indices, delimitedItem{document: index, start: start, end: end})
 	}
-	return l.delimitedCommaList(expression.Lbrack, expression.Rbrack, "[", "]", indices)
+	list, err := l.delimitedCommaList(expression.Lbrack, expression.Rbrack, "[", "]", indices)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.postfixBoundary(expression.X, expression.Lbrack, list)
 }
 
 func (l *lowerer) slice(expression *ast.SliceExpr) (doc.ID, error) {
@@ -3403,7 +3417,11 @@ func (l *lowerer) callArguments(call *ast.CallExpr) (doc.ID, error) {
 			if !found {
 				return doc.ID{}, errors.New("call ellipsis has no physical offset")
 			}
-			lowered = l.arena.Concat(lowered, l.arena.Text("..."))
+			beforeEllipsis, err := l.inlineComments(l.commentsBetween(end, ellipsis), true)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			lowered = l.arena.Concat(lowered, beforeEllipsis, l.arena.Text("..."))
 			end = ellipsis + len("...")
 		}
 		arguments = append(arguments, delimitedItem{document: lowered, start: start, end: end})
@@ -3412,7 +3430,20 @@ func (l *lowerer) callArguments(call *ast.CallExpr) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	return list, nil
+	return l.postfixBoundary(call.Fun, call.Lparen, list)
+}
+
+func (l *lowerer) postfixBoundary(left ast.Expr, openingPosition token.Pos, suffix doc.ID) (doc.ID, error) {
+	leftEnd, leftEndFound := l.source.PhysicalOffset(left.End())
+	opening, openingFound := l.source.PhysicalOffset(openingPosition)
+	if !leftEndFound || !openingFound {
+		return doc.ID{}, errors.New("postfix expression has no physical boundary")
+	}
+	comments, err := l.inlineComments(l.commentsBetween(leftEnd, opening), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(comments, suffix), nil
 }
 
 func (l *lowerer) binary(expression *ast.BinaryExpr) (doc.ID, error) {

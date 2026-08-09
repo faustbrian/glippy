@@ -638,6 +638,41 @@ func TestFormatPreservesTypeConstructorBoundaryComments(t *testing.T) {
 	}
 }
 
+func TestFormatPreservesPostfixBoundaryComments(t *testing.T) {
+	t.Parallel()
+
+	input, err := os.ReadFile("../../testdata/format/comments/postfix-boundaries.input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile("../../testdata/format/comments/postfix-boundaries.golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load("postfix_boundaries.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+	reparsed, err := source.Load("formatted_postfix_boundaries.go", got)
+	if err != nil {
+		t.Fatalf("formatted output does not parse: %v", err)
+	}
+	again, err := goxformat.File(reparsed, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(again, got) {
+		t.Fatalf("formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, again)
+	}
+}
+
 func TestFormatPreservesFilePrefixCommentsAndDirectives(t *testing.T) {
 	t.Parallel()
 

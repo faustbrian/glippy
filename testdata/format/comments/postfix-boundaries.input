@@ -1,0 +1,2 @@
+package comments
+func use(value any,values []int){_=invoke /* before call */ (value);_=values /* before index */ [0];_=Generic /* before index list */ [string,int];_=Item /* before literal */ {Value:value};invoke(values /* before ellipsis */ ...);_=client /* before chain call */ ().First().Second;_=registry /* before chain index */ [0].First().Second}
