@@ -279,6 +279,34 @@ func (l *lowerer) samePhysicalLine(left, right int) bool {
 	return !bytes.ContainsRune(l.physical[left:right], '\n')
 }
 
+func (l *lowerer) uniqueTokenBetween(kind token.Token, start, end int) (source.Token, error) {
+	if start < 0 || end < start || end > len(l.physical) {
+		return source.Token{}, errors.New("token lookup has an invalid physical range")
+	}
+	first := sort.Search(len(l.tokens), func(index int) bool {
+		return l.tokens[index].Range.Start >= start
+	})
+	var result source.Token
+	found := false
+	for _, item := range l.tokens[first:] {
+		if item.Range.Start >= end {
+			break
+		}
+		if item.Kind != kind {
+			continue
+		}
+		if found {
+			return source.Token{}, fmt.Errorf("physical range contains multiple %s tokens", kind)
+		}
+		result = item
+		found = true
+	}
+	if !found {
+		return source.Token{}, fmt.Errorf("physical range contains no %s token", kind)
+	}
+	return result, nil
+}
+
 func (l *lowerer) declaration(declaration ast.Decl) (doc.ID, error) {
 	switch value := declaration.(type) {
 	case *ast.FuncDecl:
@@ -1248,26 +1276,9 @@ func (l *lowerer) rangeAssignment(statement *ast.RangeStmt) (doc.ID, int, int, e
 		if !valueStartFound || !valueEndFound {
 			return doc.ID{}, 0, 0, errors.New("range value has no physical boundary")
 		}
-		commaFound := false
-		var comma source.Token
-		first := sort.Search(len(l.tokens), func(index int) bool {
-			return l.tokens[index].Range.Start >= keyEnd
-		})
-		for _, item := range l.tokens[first:] {
-			if item.Range.Start >= valueStart {
-				break
-			}
-			if item.Kind != token.COMMA {
-				continue
-			}
-			if commaFound {
-				return doc.ID{}, 0, 0, errors.New("range assignment contains multiple boundary commas")
-			}
-			comma = item
-			commaFound = true
-		}
-		if !commaFound {
-			return doc.ID{}, 0, 0, errors.New("range assignment has no physical boundary comma")
+		comma, err := l.uniqueTokenBetween(token.COMMA, keyEnd, valueStart)
+		if err != nil {
+			return doc.ID{}, 0, 0, fmt.Errorf("range assignment boundary: %w", err)
 		}
 		afterKey, err := l.inlineComments(l.commentsBetween(keyEnd, comma.Range.Start), true)
 		if err != nil {
@@ -1527,26 +1538,9 @@ func (l *lowerer) typeSwitchAssertion(expression ast.Expr) (doc.ID, error) {
 	if !openingFound || !closingFound {
 		return doc.ID{}, errors.New("type-switch assertion has no physical boundary")
 	}
-	first := sort.Search(len(l.tokens), func(index int) bool {
-		return l.tokens[index].Range.Start > opening
-	})
-	var keyword source.Token
-	keywordFound := false
-	for _, item := range l.tokens[first:] {
-		if item.Range.Start >= closing {
-			break
-		}
-		if item.Kind != token.TYPE {
-			continue
-		}
-		if keywordFound {
-			return doc.ID{}, errors.New("type-switch assertion contains multiple type tokens")
-		}
-		keyword = item
-		keywordFound = true
-	}
-	if !keywordFound {
-		return doc.ID{}, errors.New("type-switch assertion has no physical type token")
+	keyword, err := l.uniqueTokenBetween(token.TYPE, opening+len("("), closing)
+	if err != nil {
+		return doc.ID{}, fmt.Errorf("type-switch assertion keyword: %w", err)
 	}
 	suffix, err := l.delimitedSingle(assertion.Lparen, assertion.Rparen, "(", ")", delimitedItem{
 		document: l.arena.Text(keyword.Raw),
@@ -1560,29 +1554,15 @@ func (l *lowerer) typeSwitchAssertion(expression ast.Expr) (doc.ID, error) {
 }
 
 func (l *lowerer) caseClause(clause *ast.CaseClause, _ int) (doc.ID, error) {
-	parts := make([]doc.ID, 0, 2)
-	if len(clause.List) == 0 {
-		parts = append(parts, l.arena.Text("default:"))
-	} else {
-		items := make([]doc.ID, 0, len(clause.List))
-		for _, expression := range clause.List {
-			item, err := l.expression(expression)
-			if err != nil {
-				return doc.ID{}, err
-			}
-			items = append(items, item)
-		}
-		header := []doc.ID{l.arena.Text("case "), items[0]}
-		for _, item := range items[1:] {
-			header = append(header, l.arena.Text(","), l.arena.Indent(l.arena.Concat(l.arena.Line(), item)))
-		}
-		header = append(header, l.arena.Text(":"))
-		parts = append(parts, l.arena.Group(l.arena.Concat(header...)))
-	}
 	colon, found := l.source.PhysicalOffset(clause.Colon)
 	if !found {
 		return doc.ID{}, errors.New("case clause has no physical colon offset")
 	}
+	header, err := l.caseClauseHeader(clause, colon)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	parts := []doc.ID{header}
 	end, found := l.source.PhysicalOffset(clause.End())
 	if !found {
 		return doc.ID{}, errors.New("case clause has no physical end offset")
@@ -1595,6 +1575,115 @@ func (l *lowerer) caseClause(clause *ast.CaseClause, _ int) (doc.ID, error) {
 		parts = append(parts, l.statementSequence(body))
 	}
 	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) caseClauseHeader(clause *ast.CaseClause, colon int) (doc.ID, error) {
+	caseOffset, found := l.source.PhysicalOffset(clause.Case)
+	if !found {
+		return doc.ID{}, errors.New("case clause has no physical keyword offset")
+	}
+	if len(clause.List) == 0 {
+		comments := l.commentsBetween(caseOffset+len("default"), colon)
+		hasLineComment := false
+		for _, comment := range comments {
+			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+		}
+		if !hasLineComment {
+			commentsDocument, err := l.inlineComments(comments, true)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			return l.arena.Concat(l.arena.Text("default"), commentsDocument, l.arena.Text(":")), nil
+		}
+		body := l.arena.Text("default")
+		boundary := caseOffset + len("default")
+		previousWasLineComment := false
+		for _, comment := range comments {
+			if !previousWasLineComment && l.samePhysicalLine(boundary, comment.Range.Start) {
+				body = l.arena.Concat(body, l.arena.Text(" "), l.arena.Verbatim(comment.Raw))
+			} else {
+				body = l.arena.Concat(body, l.commentGap(boundary, comment.Range.Start), l.arena.Verbatim(comment.Raw))
+			}
+			boundary = comment.Range.End
+			previousWasLineComment = strings.HasPrefix(comment.Raw, "//")
+		}
+		return l.arena.Concat(body, l.commentGap(boundary, colon), l.arena.Text(":")), nil
+	}
+
+	items := make([]delimitedItem, 0, len(clause.List))
+	for _, expression := range clause.List {
+		document, err := l.expression(expression)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		start, startFound := l.source.PhysicalOffset(expression.Pos())
+		end, endFound := l.source.PhysicalOffset(expression.End())
+		if !startFound || !endFound {
+			return doc.ID{}, errors.New("case expression has no physical boundary")
+		}
+		items = append(items, delimitedItem{document: document, start: start, end: end})
+	}
+
+	parts := []doc.ID{l.arena.Text("case")}
+	leading := l.commentsBetween(caseOffset+len("case"), items[0].start)
+	hasLeadingLineComment := false
+	for _, comment := range leading {
+		hasLeadingLineComment = hasLeadingLineComment || strings.HasPrefix(comment.Raw, "//")
+	}
+	if hasLeadingLineComment {
+		parts = append(parts, l.arena.Indent(l.arena.Concat(
+			l.arena.HardLine(),
+			l.boundaryCommentsDocument(leading, items[0].start),
+			items[0].document,
+		)))
+	} else {
+		leadingDocument, err := l.inlineComments(leading, true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, leadingDocument, l.arena.Text(" "), items[0].document)
+	}
+
+	for index := 1; index < len(items); index++ {
+		previous := items[index-1]
+		current := items[index]
+		comma, err := l.uniqueTokenBetween(token.COMMA, previous.end, current.start)
+		if err != nil {
+			return doc.ID{}, fmt.Errorf("case expression boundary: %w", err)
+		}
+		afterPrevious, err := l.inlineComments(l.commentsBetween(previous.end, comma.Range.Start), true)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, afterPrevious, l.arena.Text(","))
+		beforeCurrent := l.commentsBetween(comma.Range.End, current.start)
+		hasLineComment := false
+		for _, comment := range beforeCurrent {
+			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+		}
+		if hasLineComment {
+			parts = append(parts, l.arena.Indent(l.arena.Concat(
+				l.arena.HardLine(),
+				l.boundaryCommentsDocument(beforeCurrent, current.start),
+				current.document,
+			)))
+		} else if len(beforeCurrent) > 0 {
+			beforeCurrentDocument, err := l.inlineComments(beforeCurrent, true)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			parts = append(parts, beforeCurrentDocument, l.arena.Text(" "), current.document)
+		} else {
+			parts = append(parts, l.arena.Indent(l.arena.Concat(l.arena.Line(), current.document)))
+		}
+	}
+
+	trailingDocument, err := l.inlineComments(l.commentsBetween(items[len(items)-1].end, colon), true)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	parts = append(parts, trailingDocument, l.arena.Text(":"))
+	return l.arena.Group(l.arena.Concat(parts...)), nil
 }
 
 func (l *lowerer) communicationClause(clause *ast.CommClause, _ int) (doc.ID, error) {

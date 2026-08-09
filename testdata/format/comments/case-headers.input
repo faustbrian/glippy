@@ -1,0 +1,6 @@
+package comments
+func classify(value any){switch value{case /* before first */ 1 /* before comma */, /* before second */ 2 /* before colon */:work();case 3, // before second line
+4:work();case // before first line
+5:work();default // before default colon
+:work()};switch current:=value.(type){case /* before type */ string /* before type comma */, /* before second type */ int /* before type colon */:_=current;case nil, // before second type line
+bool:_=current;default:_=current}}
