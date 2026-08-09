@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"sort"
 	"strings"
 
 	"github.com/faustbrian/gox/internal/format/doc"
@@ -79,6 +80,7 @@ type lowerer struct {
 	arena          *doc.Arena
 	source         *source.File
 	physical       []byte
+	tokens         []source.Token
 	comments       []source.Comment
 	commentByStart map[int]int
 	emittedComment []bool
@@ -94,6 +96,7 @@ func newLowerer(arena *doc.Arena, file *source.File) lowerer {
 		arena:          arena,
 		source:         file,
 		physical:       file.Bytes(),
+		tokens:         file.Tokens(),
 		comments:       comments,
 		commentByStart: commentByStart,
 		emittedComment: make([]bool, len(comments)),
@@ -535,54 +538,118 @@ func (l *lowerer) field(field *ast.Field) (doc.ID, error) {
 }
 
 func (l *lowerer) block(block *ast.BlockStmt) (doc.ID, error) {
+	tail, err := l.blockTail(block)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(l.arena.Text("{"), tail), nil
+}
+
+func (l *lowerer) blockTail(block *ast.BlockStmt) (doc.ID, error) {
 	opening, openingFound := l.source.PhysicalOffset(block.Lbrace)
 	closing, closingFound := l.source.PhysicalOffset(block.Rbrace)
 	if !openingFound || !closingFound {
 		return doc.ID{}, errors.New("block delimiter has no physical offset")
 	}
-	boundary := opening + 1
-	statements := make([]doc.ID, 0, len(block.List))
-	for index, statement := range block.List {
+	statements, err := l.statementRange(block.List, opening+1, closing)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	if len(statements) == 0 {
+		return l.arena.Text("}"), nil
+	}
+	return l.arena.Concat(
+		l.statementSequence(statements),
+		l.arena.HardLine(),
+		l.arena.Text("}"),
+	), nil
+}
+
+type loweredStatement struct {
+	document  doc.ID
+	outdented bool
+}
+
+func (l *lowerer) statementRange(statements []ast.Stmt, boundary, closing int) ([]loweredStatement, error) {
+	loweredStatements := make([]loweredStatement, 0, len(statements)+1)
+	for index, statement := range statements {
 		statementStart, found := l.source.PhysicalOffset(statement.Pos())
 		if !found {
-			return doc.ID{}, errors.New("statement has no physical start offset")
+			return nil, errors.New("statement has no physical start offset")
 		}
 		leading := l.commentsBetween(boundary, statementStart)
-		lowered, err := l.statement(statement)
+		limit := closing
+		if index+1 < len(statements) {
+			limit, found = l.source.PhysicalOffset(statements[index+1].Pos())
+			if !found {
+				return nil, errors.New("following statement has no physical offset")
+			}
+		}
+		lowered, err := l.statementWithLimit(statement, limit)
 		if err != nil {
-			return doc.ID{}, err
+			return nil, err
 		}
 		if len(leading) > 0 {
 			lowered = l.arena.Concat(l.boundaryCommentsDocument(leading, statementStart), lowered)
 		}
 		statementEnd, found := l.source.PhysicalOffset(statement.End())
 		if !found {
-			return doc.ID{}, errors.New("statement has no physical end offset")
-		}
-		limit := closing
-		if index+1 < len(block.List) {
-			limit, found = l.source.PhysicalOffset(block.List[index+1].Pos())
-			if !found {
-				return doc.ID{}, errors.New("following statement has no physical offset")
-			}
+			return nil, errors.New("statement has no physical end offset")
 		}
 		lowered = l.withTrailingComments(lowered, l.trailingComments(statementEnd, limit))
-		statements = append(statements, lowered)
+		outdented := statementIsOutdented(statement)
+		loweredStatements = append(loweredStatements, loweredStatement{document: lowered, outdented: outdented})
 		boundary = statementEnd
 	}
 	if trailingBoundary := l.commentsBetween(boundary, closing); len(trailingBoundary) > 0 {
-		statements = append(statements, l.commentsDocument(trailingBoundary))
+		outdented := len(statements) > 0 && statementIsClause(statements[len(statements)-1])
+		loweredStatements = append(loweredStatements, loweredStatement{
+			document:  l.commentsDocument(trailingBoundary),
+			outdented: outdented,
+		})
 	}
-	if len(statements) == 0 {
-		return l.arena.Text("{}"), nil
+	return loweredStatements, nil
+}
+
+func statementIsOutdented(statement ast.Stmt) bool {
+	switch statement.(type) {
+	case *ast.LabeledStmt, *ast.CaseClause, *ast.CommClause:
+		return true
+	default:
+		return false
 	}
-	body := l.join(l.arena.HardLine(), statements)
-	return l.arena.Concat(
-		l.arena.Text("{"),
-		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), body)),
-		l.arena.HardLine(),
-		l.arena.Text("}"),
-	), nil
+}
+
+func statementIsClause(statement ast.Stmt) bool {
+	switch statement.(type) {
+	case *ast.CaseClause, *ast.CommClause:
+		return true
+	default:
+		return false
+	}
+}
+
+func (l *lowerer) statementSequence(statements []loweredStatement) doc.ID {
+	parts := make([]doc.ID, 0, len(statements)*2)
+	for _, statement := range statements {
+		line := l.arena.Concat(l.arena.HardLine(), statement.document)
+		if !statement.outdented {
+			line = l.arena.Indent(line)
+		}
+		parts = append(parts, line)
+	}
+	return l.arena.Concat(parts...)
+}
+
+func (l *lowerer) statementWithLimit(statement ast.Stmt, limit int) (doc.ID, error) {
+	switch value := statement.(type) {
+	case *ast.CaseClause:
+		return l.caseClause(value, limit)
+	case *ast.CommClause:
+		return l.communicationClause(value, limit)
+	default:
+		return l.statement(statement)
+	}
 }
 
 func (l *lowerer) statement(statement ast.Stmt) (doc.ID, error) {
@@ -597,6 +664,32 @@ func (l *lowerer) statement(statement ast.Stmt) (doc.ID, error) {
 			return doc.ID{}, err
 		}
 		return l.arena.Concat(expression, l.arena.Text(value.Tok.String())), nil
+	case *ast.SendStmt:
+		channel, err := l.expression(value.Chan)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		sent, err := l.expression(value.Value)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Group(l.arena.Concat(
+			channel,
+			l.arena.Text(" <-"),
+			l.arena.Indent(l.arena.Concat(l.arena.Line(), sent)),
+		)), nil
+	case *ast.GoStmt:
+		call, err := l.call(value.Call)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(l.arena.Text("go "), call), nil
+	case *ast.DeferStmt:
+		call, err := l.call(value.Call)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(l.arena.Text("defer "), call), nil
 	case *ast.ReturnStmt:
 		if len(value.Results) == 0 {
 			return l.arena.Text("return"), nil
@@ -606,13 +699,363 @@ func (l *lowerer) statement(statement ast.Stmt) (doc.ID, error) {
 			return doc.ID{}, err
 		}
 		return l.arena.Concat(l.arena.Text("return "), results), nil
+	case *ast.DeclStmt:
+		return l.declaration(value.Decl)
 	case *ast.IfStmt:
 		return l.ifStatement(value)
+	case *ast.ForStmt:
+		return l.forStatement(value)
+	case *ast.RangeStmt:
+		return l.rangeStatement(value)
+	case *ast.BranchStmt:
+		if value.Label == nil {
+			return l.arena.Text(value.Tok.String()), nil
+		}
+		return l.arena.Text(value.Tok.String() + " " + value.Label.Name), nil
+	case *ast.LabeledStmt:
+		return l.labeledStatement(value)
+	case *ast.BlockStmt:
+		return l.block(value)
+	case *ast.SwitchStmt:
+		return l.switchStatement(value)
+	case *ast.TypeSwitchStmt:
+		return l.typeSwitchStatement(value)
+	case *ast.SelectStmt:
+		body, err := l.block(value.Body)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(l.arena.Text("select "), body), nil
+	case *ast.CaseClause, *ast.CommClause:
+		return doc.ID{}, fmt.Errorf("clause %T requires an enclosing boundary", statement)
 	case *ast.EmptyStmt:
 		return l.arena.Empty(), nil
 	default:
 		return doc.ID{}, fmt.Errorf("unsupported statement %T", statement)
 	}
+}
+
+func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
+	classicClause, err := l.hasClassicForClause(statement)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	tail, err := l.blockTail(statement.Body)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	if classicClause {
+		parts := []doc.ID{l.arena.Text("for ")}
+		if statement.Init != nil {
+			initializer, err := l.statement(statement.Init)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			parts = append(parts, initializer)
+		}
+		parts = append(parts, l.arena.Text(";"))
+		continuation := []doc.ID{l.arena.Line()}
+		if statement.Cond != nil {
+			condition, err := l.expression(statement.Cond)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			continuation = append(continuation, condition)
+		}
+		continuation = append(continuation, l.arena.Text(";"))
+		if statement.Post != nil {
+			post, err := l.statement(statement.Post)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			continuation = append(continuation, l.arena.Line(), post)
+		}
+		parts = append(parts, l.arena.Indent(l.arena.Concat(continuation...)), l.arena.Text(" {"))
+		return l.arena.Concat(l.arena.Group(l.arena.Concat(parts...)), tail), nil
+	}
+	if statement.Cond != nil {
+		condition, err := l.expression(statement.Cond)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		header := l.arena.Group(l.arena.Concat(
+			l.arena.Text("for"),
+			l.arena.Indent(l.arena.Concat(l.arena.Line(), condition)),
+			l.arena.Text(" {"),
+		))
+		return l.arena.Concat(header, tail), nil
+	}
+	return l.arena.Concat(l.arena.Text("for {"), tail), nil
+}
+
+func (l *lowerer) hasClassicForClause(statement *ast.ForStmt) (bool, error) {
+	start, startFound := l.source.PhysicalOffset(statement.For)
+	end, endFound := l.source.PhysicalOffset(statement.Body.Lbrace)
+	if !startFound || !endFound {
+		return false, errors.New("for clause has no physical boundary")
+	}
+	parentheses := 0
+	brackets := 0
+	braces := 0
+	semicolons := 0
+	first := sort.Search(len(l.tokens), func(index int) bool {
+		return l.tokens[index].Range.Start > start
+	})
+	for _, item := range l.tokens[first:] {
+		if item.Range.Start >= end {
+			break
+		}
+		switch item.Kind {
+		case token.LPAREN:
+			parentheses++
+		case token.RPAREN:
+			parentheses--
+		case token.LBRACK:
+			brackets++
+		case token.RBRACK:
+			brackets--
+		case token.LBRACE:
+			braces++
+		case token.RBRACE:
+			braces--
+		case token.SEMICOLON:
+			if item.Semicolon == source.SemicolonExplicit && parentheses == 0 && brackets == 0 && braces == 0 {
+				semicolons++
+			}
+		}
+		if parentheses < 0 || brackets < 0 || braces < 0 {
+			return false, errors.New("for clause token nesting is unbalanced")
+		}
+	}
+	if parentheses != 0 || brackets != 0 || braces != 0 {
+		return false, errors.New("for clause token nesting is unbalanced")
+	}
+	switch semicolons {
+	case 0:
+		return false, nil
+	case 2:
+		return true, nil
+	default:
+		return false, fmt.Errorf("for clause contains %d top-level explicit semicolons", semicolons)
+	}
+}
+
+func (l *lowerer) rangeStatement(statement *ast.RangeStmt) (doc.ID, error) {
+	clause := make([]doc.ID, 0, 7)
+	if statement.Key != nil {
+		key, err := l.expression(statement.Key)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		clause = append(clause, key)
+		if statement.Value != nil {
+			value, err := l.expression(statement.Value)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			clause = append(clause, l.arena.Text(", "), value)
+		}
+		clause = append(clause, l.arena.Text(" "+statement.Tok.String()+" "))
+	}
+	iterable, err := l.expression(statement.X)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	tail, err := l.blockTail(statement.Body)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	clause = append(clause, l.arena.Text("range"), l.arena.Line(), iterable)
+	header := l.arena.Group(l.arena.Concat(
+		l.arena.Text("for"),
+		l.arena.Indent(l.arena.Concat(l.arena.Line(), l.arena.Concat(clause...))),
+		l.arena.Text(" {"),
+	))
+	return l.arena.Concat(header, tail), nil
+}
+
+func (l *lowerer) labeledStatement(statement *ast.LabeledStmt) (doc.ID, error) {
+	if _, empty := statement.Stmt.(*ast.EmptyStmt); empty {
+		return l.arena.Text(statement.Label.Name + ":"), nil
+	}
+	labeled, err := l.statement(statement.Stmt)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(
+		l.arena.Text(statement.Label.Name+":"),
+		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), labeled)),
+	), nil
+}
+
+func (l *lowerer) switchStatement(statement *ast.SwitchStmt) (doc.ID, error) {
+	parts := []doc.ID{l.arena.Text("switch")}
+	if statement.Init != nil {
+		initializer, err := l.statement(statement.Init)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, l.arena.Text(" "), initializer, l.arena.Text(";"))
+	}
+	if statement.Tag != nil {
+		tag, err := l.expression(statement.Tag)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, l.arena.Indent(l.arena.Concat(l.arena.Line(), tag)))
+	}
+	tail, err := l.blockTail(statement.Body)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	parts = append(parts, l.arena.Text(" {"))
+	return l.arena.Concat(l.arena.Group(l.arena.Concat(parts...)), tail), nil
+}
+
+func (l *lowerer) typeSwitchStatement(statement *ast.TypeSwitchStmt) (doc.ID, error) {
+	parts := []doc.ID{l.arena.Text("switch")}
+	if statement.Init != nil {
+		initializer, err := l.statement(statement.Init)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, l.arena.Text(" "), initializer, l.arena.Text(";"))
+	}
+	guard, err := l.typeSwitchGuard(statement.Assign)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	tail, err := l.blockTail(statement.Body)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	parts = append(parts, l.arena.Indent(l.arena.Concat(l.arena.Line(), guard)), l.arena.Text(" {"))
+	return l.arena.Concat(l.arena.Group(l.arena.Concat(parts...)), tail), nil
+}
+
+func (l *lowerer) typeSwitchGuard(statement ast.Stmt) (doc.ID, error) {
+	switch value := statement.(type) {
+	case *ast.ExprStmt:
+		return l.typeSwitchAssertion(value.X)
+	case *ast.AssignStmt:
+		if len(value.Rhs) != 1 {
+			return doc.ID{}, errors.New("type-switch assignment must contain one assertion")
+		}
+		left, err := l.expressions(value.Lhs)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		assertion, err := l.typeSwitchAssertion(value.Rhs[0])
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(left, l.arena.Text(" "+value.Tok.String()+" "), assertion), nil
+	default:
+		return doc.ID{}, fmt.Errorf("unsupported type-switch guard %T", statement)
+	}
+}
+
+func (l *lowerer) typeSwitchAssertion(expression ast.Expr) (doc.ID, error) {
+	assertion, ok := expression.(*ast.TypeAssertExpr)
+	if !ok || assertion.Type != nil {
+		return doc.ID{}, fmt.Errorf("type-switch guard contains %T", expression)
+	}
+	base, err := l.expression(assertion.X)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(base, l.arena.Text(".(type)")), nil
+}
+
+func (l *lowerer) caseClause(clause *ast.CaseClause, _ int) (doc.ID, error) {
+	parts := make([]doc.ID, 0, 2)
+	if len(clause.List) == 0 {
+		parts = append(parts, l.arena.Text("default:"))
+	} else {
+		items := make([]doc.ID, 0, len(clause.List))
+		for _, expression := range clause.List {
+			item, err := l.expression(expression)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			items = append(items, item)
+		}
+		header := []doc.ID{l.arena.Text("case "), items[0]}
+		for _, item := range items[1:] {
+			header = append(header, l.arena.Text(","), l.arena.Indent(l.arena.Concat(l.arena.Line(), item)))
+		}
+		header = append(header, l.arena.Text(":"))
+		parts = append(parts, l.arena.Group(l.arena.Concat(header...)))
+	}
+	colon, found := l.source.PhysicalOffset(clause.Colon)
+	if !found {
+		return doc.ID{}, errors.New("case clause has no physical colon offset")
+	}
+	end, found := l.source.PhysicalOffset(clause.End())
+	if !found {
+		return doc.ID{}, errors.New("case clause has no physical end offset")
+	}
+	body, err := l.statementRange(clause.Body, colon+1, end)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	if len(body) > 0 {
+		parts = append(parts, l.statementSequence(body))
+	}
+	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) communicationClause(clause *ast.CommClause, _ int) (doc.ID, error) {
+	parts := make([]doc.ID, 0, 2)
+	if clause.Comm == nil {
+		parts = append(parts, l.arena.Text("default:"))
+	} else {
+		communication, err := l.communicationStatement(clause.Comm)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		parts = append(parts, l.arena.Group(l.arena.Concat(
+			l.arena.Text("case"),
+			l.arena.Indent(l.arena.Concat(l.arena.Line(), communication)),
+			l.arena.Text(":"),
+		)))
+	}
+	colon, found := l.source.PhysicalOffset(clause.Colon)
+	if !found {
+		return doc.ID{}, errors.New("communication clause has no physical colon offset")
+	}
+	end, found := l.source.PhysicalOffset(clause.End())
+	if !found {
+		return doc.ID{}, errors.New("communication clause has no physical end offset")
+	}
+	body, err := l.statementRange(clause.Body, colon+1, end)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	if len(body) > 0 {
+		parts = append(parts, l.statementSequence(body))
+	}
+	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) communicationStatement(statement ast.Stmt) (doc.ID, error) {
+	assignment, ok := statement.(*ast.AssignStmt)
+	if !ok {
+		return l.statement(statement)
+	}
+	left, err := l.expressions(assignment.Lhs)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	right, err := l.expressions(assignment.Rhs)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Group(l.arena.Concat(
+		left,
+		l.arena.Text(" "+assignment.Tok.String()),
+		l.arena.Indent(l.arena.Concat(l.arena.Line(), right)),
+	)), nil
 }
 
 func (l *lowerer) assignment(assignment *ast.AssignStmt) (doc.ID, error) {

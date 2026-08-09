@@ -14,9 +14,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
+	goxformat "github.com/faustbrian/gox/internal/format"
+	"github.com/faustbrian/gox/internal/source"
 	"golang.org/x/tools/go/ast/inspector"
 	"golang.org/x/tools/go/packages"
 )
@@ -60,6 +63,28 @@ func BenchmarkGoFormat(b *testing.B) {
 		if _, err := format.Source(workload); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func BenchmarkGoxFormatManyClassicLoops(b *testing.B) {
+	for _, loops := range []int{100, 1_000} {
+		b.Run(strconv.Itoa(loops), func(b *testing.B) {
+			input := []byte("package benchmark\nfunc run(ready bool){" + strings.Repeat("for ;ready;{work()};", loops) + "}\n")
+			file, err := source.Load("many_loops.go", input)
+			if err != nil {
+				b.Fatal(err)
+			}
+			options := goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 10_000}
+			b.ReportAllocs()
+			b.SetBytes(int64(len(input)))
+			b.ResetTimer()
+
+			for b.Loop() {
+				if _, err := goxformat.File(file, options); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 

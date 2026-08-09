@@ -268,6 +268,166 @@ func TestFormatHostileCommentCorpus(t *testing.T) {
 	}
 }
 
+func TestFormatHostileGenericRangeCorpus(t *testing.T) {
+	t.Parallel()
+
+	input, err := os.ReadFile("../../testdata/corpus/hostile/generics.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load("generics.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package hostile\n\ntype Number interface {\n\t~int | ~int64 | ~float64\n}\n\nfunc sum[T Number](values []T) T {\n\tvar result T\n\tfor _, value := range values {\n\t\tresult += value\n\t}\n\treturn result\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatLowersControlFlowAndStatementSurface(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package control\nfunc run(values []int,ch chan int){var total int;for i:=0;i<len(values);i++{total+=values[i];if total>10{break}else{continue}};for total<20{total++};for{break};for index,value:=range values{_=index;total+=value};go work();defer close(ch);ch<-total;Block:{goto Block}}\n")
+	file, err := source.Load("control.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package control\n\nfunc run(values []int, ch chan int) {\n\tvar total int\n\tfor i := 0; i < len(values); i++ {\n\t\ttotal += values[i]\n\t\tif total > 10 {\n\t\t\tbreak\n\t\t} else {\n\t\t\tcontinue\n\t\t}\n\t}\n\tfor total < 20 {\n\t\ttotal++\n\t}\n\tfor {\n\t\tbreak\n\t}\n\tfor index, value := range values {\n\t\t_ = index\n\t\ttotal += value\n\t}\n\tgo work()\n\tdefer close(ch)\n\tch <- total\nBlock:\n\t{\n\t\tgoto Block\n\t}\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatPreservesExplicitClassicForClauses(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package control\nfunc run(ready bool){for ;ready;{work()};for ;;{break}}\n")
+	file, err := source.Load("classic_for.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package control\n\nfunc run(ready bool) {\n\tfor ; ready; {\n\t\twork()\n\t}\n\tfor ; ; {\n\t\tbreak\n\t}\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatDoesNotMistakeNestedSemicolonsForClassicForClause(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package control\nfunc run(ready bool){for func()bool{work();return ready}(){break}}\n")
+	file, err := source.Load("nested_for.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package control\n\nfunc run(ready bool) {\n\tfor\n\t\tfunc() bool {\n\t\t\twork()\n\t\t\treturn ready\n\t\t}() {\n\t\tbreak\n\t}\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatLowersSwitchTypeSwitchAndSelectClauses(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package control\nfunc classify(value any,ready <-chan int,done <-chan struct{})string{switch size:=len([]int{1});size{case 0:return \"empty\";case 1,2:// small\nreturn \"small\";default:return \"many\"};switch current:=value.(type){case string:return current;case nil:return \"nil\";default:return \"other\"};select{case item:=<-ready:_=item;case <-done:return \"done\";case ready<-1:return \"sent\";default:return \"waiting\"}}\n")
+	file, err := source.Load("clauses.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package control\n\nfunc classify(value any, ready <-chan int, done <-chan struct{}) string {\n\tswitch size := len([]int{1}); size {\n\tcase 0:\n\t\treturn \"empty\"\n\tcase 1, 2:\n\t\t// small\n\t\treturn \"small\"\n\tdefault:\n\t\treturn \"many\"\n\t}\n\tswitch current := value.(type) {\n\tcase string:\n\t\treturn current\n\tcase nil:\n\t\treturn \"nil\"\n\tdefault:\n\t\treturn \"other\"\n\t}\n\tselect {\n\tcase item := <-ready:\n\t\t_ = item\n\tcase <-done:\n\t\treturn \"done\"\n\tcase ready <- 1:\n\t\treturn \"sent\"\n\tdefault:\n\t\treturn \"waiting\"\n\t}\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatBreaksControlFlowHeaders(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package control\nfunc loop(){for index:=startingIndex;index<collectionLength;index++{work()}}\nfunc iterate(){for index,value:=range valuesWithAnExtremelyLongName{_,_=index,value}}\nfunc choose(inputValue int){switch currentValue:=inputValue;currentValue{case FirstVeryLongValue,SecondVeryLongValue,ThirdVeryLongValue:work()}}\nfunc classify(inputValue any){switch prepared:=inputValue;current:=prepared.(type){case string:_=current}}\nfunc communicate(){select{case receivedValue:=<-incomingValuesChannel:_=receivedValue;case outgoingValuesChannelWithLongName<-value:return}}\n")
+	file, err := source.Load("broken_control.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 44, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package control\n\nfunc loop() {\n\tfor index := startingIndex;\n\t\tindex < collectionLength;\n\t\tindex++ {\n\t\twork()\n\t}\n}\n\nfunc iterate() {\n\tfor\n\t\tindex, value := range\n\t\tvaluesWithAnExtremelyLongName {\n\t\t_, _ = index, value\n\t}\n}\n\nfunc choose(inputValue int) {\n\tswitch currentValue := inputValue;\n\t\tcurrentValue {\n\tcase FirstVeryLongValue,\n\t\tSecondVeryLongValue,\n\t\tThirdVeryLongValue:\n\t\twork()\n\t}\n}\n\nfunc classify(inputValue any) {\n\tswitch prepared := inputValue;\n\t\tcurrent := prepared.(type) {\n\tcase string:\n\t\t_ = current\n\t}\n}\n\nfunc communicate() {\n\tselect {\n\tcase\n\t\treceivedValue :=\n\t\t\t<-incomingValuesChannel:\n\t\t_ = receivedValue\n\tcase\n\t\toutgoingValuesChannelWithLongName <-\n\t\t\tvalue:\n\t\treturn\n\t}\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatUsesDeterministicCaseListWidthBoundary(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package control\nfunc choose(value int){switch value{case FirstVeryLongValue,SecondVeryLongValue,ThirdVeryLongValue:return}}\n")
+	flat := "package control\n\nfunc choose(value int) {\n\tswitch value {\n\tcase FirstVeryLongValue, SecondVeryLongValue, ThirdVeryLongValue:\n\t\treturn\n\t}\n}\n"
+	broken := "package control\n\nfunc choose(value int) {\n\tswitch value {\n\tcase FirstVeryLongValue,\n\t\tSecondVeryLongValue,\n\t\tThirdVeryLongValue:\n\t\treturn\n\t}\n}\n"
+	for _, test := range []struct {
+		name  string
+		width int
+		want  string
+	}{
+		{name: "exact fit", width: 73, want: flat},
+		{name: "one column under", width: 72, want: broken},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			file, err := source.Load("case_boundary.go", input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := goxformat.File(file, goxformat.Options{Width: test.width, TabWidth: 8, FitBudget: 1_000})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != test.want {
+				t.Fatalf("File() =\n%s\nwant:\n%s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestFormatPreservesClauseBoundaryComments(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package control\nfunc run(value int,ready <-chan int){switch value{case 1:first() // trailing\n// between cases\ncase 2:second()\n// before switch close\n};select{case <-ready:use() // trailing\n// between communications\ndefault:wait()\n// before select close\n}}\n")
+	file, err := source.Load("clause_comments.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package control\n\nfunc run(value int, ready <-chan int) {\n\tswitch value {\n\tcase 1:\n\t\tfirst() // trailing\n\t// between cases\n\tcase 2:\n\t\tsecond()\n\t// before switch close\n\t}\n\tselect {\n\tcase <-ready:\n\t\tuse() // trailing\n\t// between communications\n\tdefault:\n\t\twait()\n\t// before select close\n\t}\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatPreservesAcceptedByteOrderMark(t *testing.T) {
 	t.Parallel()
 
