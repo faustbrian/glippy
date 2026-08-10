@@ -1315,6 +1315,27 @@ func TestFormatUsesDeterministicControlFlowHeaderWidthBoundaries(t *testing.T) {
 			broken: "package boundary\n\nfunc loop() {\n\tfor index := startingIndex;\n\t\tindex < collectionLength;\n\t\tindex++ {\n\t\twork()\n\t}\n}\n",
 		},
 		{
+			name:   "classic for without initializer",
+			input:  "package boundary\nfunc loop(){for ;conditionWithLongName;indexWithLongName++{work()}}\n",
+			width:  58,
+			flat:   "package boundary\n\nfunc loop() {\n\tfor ; conditionWithLongName; indexWithLongName++ {\n\t\twork()\n\t}\n}\n",
+			broken: "package boundary\n\nfunc loop() {\n\tfor ;\n\t\tconditionWithLongName;\n\t\tindexWithLongName++ {\n\t\twork()\n\t}\n}\n",
+		},
+		{
+			name:   "classic for without condition",
+			input:  "package boundary\nfunc loop(){for indexWithLongName:=startingValue;;indexWithLongName++{work()}}\n",
+			width:  71,
+			flat:   "package boundary\n\nfunc loop() {\n\tfor indexWithLongName := startingValue; ; indexWithLongName++ {\n\t\twork()\n\t}\n}\n",
+			broken: "package boundary\n\nfunc loop() {\n\tfor indexWithLongName := startingValue;\n\t\t;\n\t\tindexWithLongName++ {\n\t\twork()\n\t}\n}\n",
+		},
+		{
+			name:   "classic for without post",
+			input:  "package boundary\nfunc loop(){for indexWithLongName:=startingValue;conditionWithLongName;{work()}}\n",
+			width:  72,
+			flat:   "package boundary\n\nfunc loop() {\n\tfor indexWithLongName := startingValue; conditionWithLongName; {\n\t\twork()\n\t}\n}\n",
+			broken: "package boundary\n\nfunc loop() {\n\tfor indexWithLongName := startingValue;\n\t\tconditionWithLongName; {\n\t\twork()\n\t}\n}\n",
+		},
+		{
 			name:   "range for",
 			input:  "package boundary\nfunc iterate(){for index,value:=range valuesWithLongName{_,_=index,value}}\n",
 			width:  54,
