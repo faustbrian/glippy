@@ -1280,6 +1280,34 @@ func TestFormatUsesDeterministicControlFlowHeaderWidthBoundaries(t *testing.T) {
 		broken string
 	}{
 		{
+			name:   "if condition",
+			input:  "package boundary\nfunc choose(){if conditionWithLongName{work()}}\n",
+			width:  34,
+			flat:   "package boundary\n\nfunc choose() {\n\tif conditionWithLongName {\n\t\twork()\n\t}\n}\n",
+			broken: "package boundary\n\nfunc choose() {\n\tif\n\t\tconditionWithLongName {\n\t\twork()\n\t}\n}\n",
+		},
+		{
+			name:   "for condition",
+			input:  "package boundary\nfunc loop(){for conditionWithLongName{work()}}\n",
+			width:  35,
+			flat:   "package boundary\n\nfunc loop() {\n\tfor conditionWithLongName {\n\t\twork()\n\t}\n}\n",
+			broken: "package boundary\n\nfunc loop() {\n\tfor\n\t\tconditionWithLongName {\n\t\twork()\n\t}\n}\n",
+		},
+		{
+			name:   "switch tag",
+			input:  "package boundary\nfunc choose(){switch subjectWithLongName{default:work()}}\n",
+			width:  36,
+			flat:   "package boundary\n\nfunc choose() {\n\tswitch subjectWithLongName {\n\tdefault:\n\t\twork()\n\t}\n}\n",
+			broken: "package boundary\n\nfunc choose() {\n\tswitch\n\t\tsubjectWithLongName {\n\tdefault:\n\t\twork()\n\t}\n}\n",
+		},
+		{
+			name:   "type switch guard",
+			input:  "package boundary\nfunc classify(inputValue any){switch current:=inputValue.(type){case string:_=current}}\n",
+			width:  45,
+			flat:   "package boundary\n\nfunc classify(inputValue any) {\n\tswitch current := inputValue.(type) {\n\tcase string:\n\t\t_ = current\n\t}\n}\n",
+			broken: "package boundary\n\nfunc classify(inputValue any) {\n\tswitch\n\t\tcurrent := inputValue.(type) {\n\tcase string:\n\t\t_ = current\n\t}\n}\n",
+		},
+		{
 			name:   "classic for",
 			input:  "package boundary\nfunc loop(){for index:=startingIndex;index<collectionLength;index++{work()}}\n",
 			width:  71,
