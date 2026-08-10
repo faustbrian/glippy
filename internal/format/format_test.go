@@ -1344,6 +1344,81 @@ func TestFormatUsesDeterministicControlFlowHeaderWidthBoundaries(t *testing.T) {
 	}
 }
 
+func TestFormatUsesDeterministicCommunicationWidthBoundaries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		input  string
+		width  int
+		flat   string
+		broken string
+	}{
+		{
+			name:   "send statement",
+			input:  "package boundary\nfunc send(){outgoingValuesChannel<-valueWithLongName}\n",
+			width:  50,
+			flat:   "package boundary\n\nfunc send() {\n\toutgoingValuesChannel <- valueWithLongName\n}\n",
+			broken: "package boundary\n\nfunc send() {\n\toutgoingValuesChannel <-\n\t\tvalueWithLongName\n}\n",
+		},
+		{
+			name:   "select receive assignment",
+			input:  "package boundary\nfunc receive(){select{case receivedValue:=<-incomingValuesChannel:_=receivedValue}}\n",
+			width:  54,
+			flat:   "package boundary\n\nfunc receive() {\n\tselect {\n\tcase receivedValue := <-incomingValuesChannel:\n\t\t_ = receivedValue\n\t}\n}\n",
+			broken: "package boundary\n\nfunc receive() {\n\tselect {\n\tcase\n\t\treceivedValue :=\n\t\t\t<-incomingValuesChannel:\n\t\t_ = receivedValue\n\t}\n}\n",
+		},
+		{
+			name:   "select send",
+			input:  "package boundary\nfunc sendCase(){select{case outgoingValuesChannel<-valueWithLongName:return}}\n",
+			width:  56,
+			flat:   "package boundary\n\nfunc sendCase() {\n\tselect {\n\tcase outgoingValuesChannel <- valueWithLongName:\n\t\treturn\n\t}\n}\n",
+			broken: "package boundary\n\nfunc sendCase() {\n\tselect {\n\tcase\n\t\toutgoingValuesChannel <-\n\t\t\tvalueWithLongName:\n\t\treturn\n\t}\n}\n",
+		},
+		{
+			name:   "select receive expression",
+			input:  "package boundary\nfunc wait(){select{case <-incomingValuesChannel:return}}\n",
+			width:  37,
+			flat:   "package boundary\n\nfunc wait() {\n\tselect {\n\tcase <-incomingValuesChannel:\n\t\treturn\n\t}\n}\n",
+			broken: "package boundary\n\nfunc wait() {\n\tselect {\n\tcase\n\t\t<-incomingValuesChannel:\n\t\treturn\n\t}\n}\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, mode := range []struct {
+				name  string
+				width int
+				want  string
+			}{
+				{name: "exact fit", width: test.width, want: test.flat},
+				{name: "one column under", width: test.width - 1, want: test.broken},
+			} {
+				t.Run(mode.name, func(t *testing.T) {
+					t.Parallel()
+
+					file, err := source.Load("communication_boundary.go", []byte(test.input))
+					if err != nil {
+						t.Fatal(err)
+					}
+					got, err := goxformat.File(file, goxformat.Options{
+						Width:     mode.width,
+						TabWidth:  8,
+						FitBudget: 1_000,
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if string(got) != mode.want {
+						t.Fatalf("File() =\n%s\nwant:\n%s", got, mode.want)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestFormatUsesDeterministicSelectorChainWidthBoundary(t *testing.T) {
 	t.Parallel()
 
