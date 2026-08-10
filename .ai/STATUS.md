@@ -24,8 +24,11 @@ Current full, race, static-analysis, build, corpus, differential, and fuzz gates
 pass with no known semantic, source-fidelity, directive-loss, idempotency, or
 unbounded-layout defect.
 
-Phase 2 must prove file and directory discovery, configuration, check and write
-modes, atomic replacement, unchanged-file behavior, bounded parallelism,
-reporting, editor workflows, release artifacts, and real-repository adoption.
-No Phase 2 filesystem safety, configuration stability, or daily-use readiness
-is implied by the Phase 1 exit.
+Phase 2 now proves deterministic file and directory discovery, strict
+configuration discovery, configuration-aware stdin and check modes, and a
+prevalidated write-mode prototype with stale-source refusal, unchanged-file
+preservation, permission-preserving same-directory replacement, and generated
+file and symlink refusal. Bounded parallelism, complete platform-specific
+filesystem semantics, reporting, editor workflows, release artifacts, and
+real-repository adoption remain open. Progress therefore remains at the Phase
+1 exit gate of 35%.

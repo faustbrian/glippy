@@ -30,6 +30,11 @@ explicit file or stdin. Multiple filesystem inputs require `--write` or
 use `--stdin-filepath` for language version and configuration context but MUST
 NOT make that path writable.
 
+Successful `fmt --write` is silent. It validates every selected configuration,
+source file, and formatted result before beginning replacement. Generated files,
+explicit symlinks, and explicit paths traversing an in-project symlink remain
+readable in non-writing modes but are refused by write mode.
+
 Standard-input fragments use an explicit fragment kind and the wrapper/mapping
 contract in [`fragments.md`](fragments.md). Fragment kind inference after a
 parse error is prohibited.
@@ -79,3 +84,26 @@ identity/version, and use atomic rename where the platform supports it.
 The stable single-file phase MUST leave original content intact on any failed
 validation. Multi-file fixes remain unsupported until a recovery transaction
 has a separate accepted decision.
+
+Unchanged formatted bytes do not replace the source inode or update its
+modification time. Changed files use a same-directory temporary file, preserve
+ordinary permission bits, sync and close the temporary file, revalidate the
+source inode and bytes, rename the temporary file over the source, and sync the
+containing directory. Snapshot reads, temporary files, validation, and rename
+operations are scoped through the selected project root. On platforms where
+`os.Root` provides descriptor-relative containment, a concurrent symlink change
+cannot redirect those operations outside the authorized tree.
+
+Common rename APIs cannot condition replacement on the destination still
+having a particular inode. Gox revalidates immediately before rename and
+refuses observed source or symlink changes, but it does not claim protection
+against a path change in the final validation-to-rename interval. A directory
+sync failure is reported as a filesystem error after rename; in that case the
+new content may already be visible even though durable replacement was not
+confirmed.
+
+Multi-file formatter invocations prevalidate the complete selection but replace
+one file at a time. If a later replacement fails after earlier files changed,
+the diagnostic lists every earlier replacement. A non-stale filesystem failure
+may occur after rename, so the failing changed path is reported as possibly
+replaced rather than silently implying rollback.

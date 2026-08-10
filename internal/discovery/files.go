@@ -13,9 +13,9 @@ import (
 
 // File is one normalized Go source selected from an immutable discovery pass.
 type File struct {
-	Path     string
-	Explicit bool
-	Symlink  bool
+	Path             string
+	Explicit         bool
+	TraversesSymlink bool
 }
 
 // Options defines the authorized recursive discovery boundary.
@@ -61,7 +61,8 @@ func GoFiles(ctx context.Context, inputs []string, options Options) ([]File, err
 			}
 			continue
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
+		symlink := info.Mode()&os.ModeSymlink != 0
+		if symlink {
 			target, err := os.Stat(path)
 			if err != nil {
 				return nil, fmt.Errorf("inspect symlink input %q: %w", path, err)
@@ -75,10 +76,17 @@ func GoFiles(ctx context.Context, inputs []string, options Options) ([]File, err
 		if filepath.Ext(path) != ".go" {
 			return nil, fmt.Errorf("input path %q is not a Go source file", path)
 		}
+		if root != "" && withinRoot(root, path) {
+			traversesSymlink, err := hasSymlinkComponent(root, path)
+			if err != nil {
+				return nil, fmt.Errorf("inspect input path %q: %w", path, err)
+			}
+			symlink = symlink || traversesSymlink
+		}
 		selected[path] = File{
-			Path:     path,
-			Explicit: true,
-			Symlink:  info.Mode()&os.ModeSymlink != 0,
+			Path:             path,
+			Explicit:         true,
+			TraversesSymlink: symlink,
 		}
 	}
 	files := make([]File, 0, len(selected))

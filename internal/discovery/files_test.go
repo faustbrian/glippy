@@ -98,21 +98,28 @@ func TestGoFilesPreservesExplicitFileAndSymlinkIdentity(t *testing.T) {
 	root := t.TempDir()
 	projectFile := filepath.Join(root, "project.go")
 	writeDiscoveryFile(t, projectFile)
-	externalFile := filepath.Join(t.TempDir(), "external.go")
+	externalRoot := t.TempDir()
+	externalFile := filepath.Join(externalRoot, "external.go")
 	writeDiscoveryFile(t, externalFile)
 	linkedFile := filepath.Join(root, "linked.go")
 	if err := os.Symlink(externalFile, linkedFile); err != nil {
 		t.Fatal(err)
 	}
+	linkedDirectory := filepath.Join(root, "linked")
+	if err := os.Symlink(externalRoot, linkedDirectory); err != nil {
+		t.Fatal(err)
+	}
+	linkedDirectoryFile := filepath.Join(linkedDirectory, "external.go")
 
 	want := map[string]discovery.File{
-		externalFile: {Path: externalFile, Explicit: true},
-		linkedFile:   {Path: linkedFile, Explicit: true, Symlink: true},
-		projectFile:  {Path: projectFile, Explicit: true},
+		externalFile:        {Path: externalFile, Explicit: true},
+		linkedDirectoryFile: {Path: linkedDirectoryFile, Explicit: true, TraversesSymlink: true},
+		linkedFile:          {Path: linkedFile, Explicit: true, TraversesSymlink: true},
+		projectFile:         {Path: projectFile, Explicit: true},
 	}
 	for _, inputs := range [][]string{
-		{root, projectFile, externalFile, linkedFile},
-		{projectFile, externalFile, linkedFile, root},
+		{root, projectFile, externalFile, linkedFile, linkedDirectoryFile},
+		{projectFile, externalFile, linkedFile, linkedDirectoryFile, root},
 	} {
 		files, err := discovery.GoFiles(context.Background(), inputs, discovery.Options{Root: root})
 		if err != nil {
