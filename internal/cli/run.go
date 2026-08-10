@@ -2,19 +2,24 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/faustbrian/gox/internal/config"
+	"github.com/faustbrian/gox/internal/discovery"
 	goxformat "github.com/faustbrian/gox/internal/format"
 	"github.com/faustbrian/gox/internal/source"
 )
 
 const (
 	ExitSuccess           = 0
+	ExitFindings          = 1
 	ExitSourceError       = 2
 	ExitInvalidInvocation = 3
 	ExitFilesystemError   = 5
@@ -27,12 +32,14 @@ var defaultFormatOptions = goxformat.Options{
 	FitBudget: 1_000,
 }
 
-const formatUsage = "gox: expected 'fmt' with standard input and optional --fragment=declaration|statement|expression, --stdin-filepath=<path>, or --config=<path>\n"
+const formatUsage = "gox: expected 'fmt [--check] [--config=<path>] [--stdin-filepath=<path>] [--fragment=declaration|statement|expression] [path]'\n"
 
 type formatInvocation struct {
 	fragmentKind  source.FragmentKind
 	stdinFilepath string
 	configPath    string
+	paths         []string
+	check         bool
 }
 
 // Run executes one Gox invocation against explicit process streams.
@@ -45,6 +52,21 @@ func Run(arguments []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	invocation, valid := parseFormatInvocation(arguments)
 	if !valid {
+		return report(stderr, ExitInvalidInvocation, formatUsage)
+	}
+	if len(invocation.paths) > 0 {
+		if invocation.fragmentKind != 0 || invocation.stdinFilepath != "" {
+			return report(stderr, ExitInvalidInvocation, formatUsage)
+		}
+		if invocation.check {
+			return runFormatCheck(context.Background(), invocation, stdout, stderr)
+		}
+		if len(invocation.paths) != 1 {
+			return report(stderr, ExitInvalidInvocation, formatUsage)
+		}
+		return runFormatFile(invocation, stdout, stderr)
+	}
+	if invocation.check {
 		return report(stderr, ExitInvalidInvocation, formatUsage)
 	}
 	formatOptions, exitCode, err := resolveFormatOptions(invocation)
@@ -69,6 +91,126 @@ func Run(arguments []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return ExitSuccess
 }
 
+type formatTask struct {
+	file    discovery.File
+	options goxformat.Options
+}
+
+func runFormatCheck(
+	ctx context.Context,
+	invocation formatInvocation,
+	stdout, stderr io.Writer,
+) int {
+	selected := make(map[string]discovery.File)
+	optionsByConfiguration := make(map[string]goxformat.Options)
+	for _, input := range invocation.paths {
+		selection, err := config.Discover(input, invocation.configPath)
+		if err != nil {
+			return report(stderr, ExitFilesystemError, "gox fmt: %v\n", err)
+		}
+		options, exitCode, err := formatOptionsForSelection(selection)
+		if err != nil {
+			return report(stderr, exitCode, "gox fmt: %v\n", err)
+		}
+		optionsByConfiguration[selection.Path] = options
+		files, err := discovery.GoFiles(ctx, []string{input}, discovery.Options{Root: selection.Root})
+		if err != nil {
+			return report(stderr, ExitFilesystemError, "gox fmt: %v\n", err)
+		}
+		for _, file := range files {
+			current, exists := selected[file.Path]
+			if !exists || file.Explicit || !current.Explicit {
+				selected[file.Path] = file
+			}
+		}
+	}
+	paths := make([]string, 0, len(selected))
+	for path := range selected {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	tasks := make([]formatTask, 0, len(paths))
+	for _, path := range paths {
+		selection, err := config.Discover(path, invocation.configPath)
+		if err != nil {
+			return report(stderr, ExitFilesystemError, "gox fmt: %v\n", err)
+		}
+		options, exists := optionsByConfiguration[selection.Path]
+		if !exists {
+			var exitCode int
+			options, exitCode, err = formatOptionsForSelection(selection)
+			if err != nil {
+				return report(stderr, exitCode, "gox fmt: %v\n", err)
+			}
+			optionsByConfiguration[selection.Path] = options
+		}
+		tasks = append(tasks, formatTask{file: selected[path], options: options})
+	}
+	findings := make([]string, 0)
+	for _, task := range tasks {
+		input, err := os.ReadFile(task.file.Path)
+		if err != nil {
+			return report(stderr, ExitFilesystemError, "gox fmt: read %q: %v\n", task.file.Path, err)
+		}
+		formatted, exitCode, err := formatStandardInput(input, task.file.Path, 0, task.options)
+		if err != nil {
+			return report(stderr, exitCode, "gox fmt: %v\n", err)
+		}
+		if !bytes.Equal(input, formatted) {
+			findings = append(findings, task.file.Path)
+		}
+	}
+	if len(findings) == 0 {
+		return ExitSuccess
+	}
+	if err := write(stdout, []byte(strings.Join(findings, "\n")+"\n")); err != nil {
+		return report(stderr, ExitFilesystemError, "gox fmt: write standard output: %v\n", err)
+	}
+	return ExitFindings
+}
+
+func runFormatFile(invocation formatInvocation, stdout, stderr io.Writer) int {
+	info, err := os.Lstat(invocation.paths[0])
+	if err != nil {
+		return report(stderr, ExitFilesystemError, "gox fmt: inspect %q: %v\n", invocation.paths[0], err)
+	}
+	if info.IsDir() {
+		return report(stderr, ExitInvalidInvocation, formatUsage)
+	}
+	selection, err := config.Discover(invocation.paths[0], invocation.configPath)
+	if err != nil {
+		return report(stderr, ExitFilesystemError, "gox fmt: %v\n", err)
+	}
+	files, err := discovery.GoFiles(
+		context.Background(),
+		invocation.paths,
+		discovery.Options{Root: selection.Root},
+	)
+	if err != nil {
+		return report(stderr, ExitFilesystemError, "gox fmt: %v\n", err)
+	}
+	if len(files) != 1 {
+		return report(stderr, ExitInternalError, "gox fmt: expected one discovered file\n")
+	}
+	path := files[0].Path
+	options, exitCode, err := formatOptionsForSelection(selection)
+	if err != nil {
+		return report(stderr, exitCode, "gox fmt: %v\n", err)
+	}
+	input, err := os.ReadFile(path)
+	if err != nil {
+		return report(stderr, ExitFilesystemError, "gox fmt: read %q: %v\n", path, err)
+	}
+	formatted, exitCode, err := formatStandardInput(input, path, 0, options)
+	if err != nil {
+		return report(stderr, exitCode, "gox fmt: %v\n", err)
+	}
+	if err := write(stdout, formatted); err != nil {
+		return report(stderr, ExitFilesystemError, "gox fmt: write standard output: %v\n", err)
+	}
+	return ExitSuccess
+}
+
 func resolveFormatOptions(invocation formatInvocation) (goxformat.Options, int, error) {
 	selection := config.Selection{}
 	var err error
@@ -80,6 +222,10 @@ func resolveFormatOptions(invocation formatInvocation) (goxformat.Options, int, 
 	if err != nil {
 		return goxformat.Options{}, configurationErrorExitCode(err), err
 	}
+	return formatOptionsForSelection(selection)
+}
+
+func formatOptionsForSelection(selection config.Selection) (goxformat.Options, int, error) {
 	loaded, err := config.Load(selection, config.ParseOptions{})
 	if err != nil {
 		return goxformat.Options{}, configurationErrorExitCode(err), err
@@ -163,6 +309,8 @@ func parseFormatInvocation(arguments []string) (formatInvocation, bool) {
 			if result.configPath == "" {
 				return formatInvocation{}, false
 			}
+		case argument == "--check" && !result.check:
+			result.check = true
 		case argument == "--config" && result.configPath == "" &&
 			index+1 < len(arguments) && !strings.HasPrefix(arguments[index+1], "--"):
 			index++
@@ -170,6 +318,8 @@ func parseFormatInvocation(arguments []string) (formatInvocation, bool) {
 			if result.configPath == "" {
 				return formatInvocation{}, false
 			}
+		case !strings.HasPrefix(argument, "-"):
+			result.paths = append(result.paths, argument)
 		default:
 			return formatInvocation{}, false
 		}

@@ -51,6 +51,238 @@ func TestRunFormatsCompleteFileFromStdinToStdout(t *testing.T) {
 	}
 }
 
+func TestRunFormatsOneExplicitFileToStdoutWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".gox.toml"),
+		[]byte("version = 1\n[format]\nline-width = 30\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(){if firstCondition && secondCondition && thirdCondition {work()}}\n")
+	if err := os.WriteFile(path, input, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", path}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSuccess {
+		t.Fatalf("Run() exit code = %d, want %d; stderr = %q", exitCode, ExitSuccess, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "firstCondition &&\n") {
+		t.Fatalf("Run() stdout =\n%s\nwant configured width break", stdout.String())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("Run() mutated stdout-mode file: %q", got)
+	}
+}
+
+func TestRunRefusesExcludedFileInStdoutMode(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	vendor := filepath.Join(root, "vendor")
+	if err := os.Mkdir(vendor, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(vendor, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", path}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitFilesystemError {
+		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitFilesystemError)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run() stdout = %q, want empty", stdout.String())
+	}
+}
+
+func TestRunRejectsDirectoryInStdoutMode(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "source.go"), []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitInvalidInvocation {
+		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitInvalidInvocation)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run() stdout = %q, want empty", stdout.String())
+	}
+}
+
+func TestRunCheckReportsDifferencesWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	formattedPath := filepath.Join(root, "a.go")
+	if err := os.WriteFile(formattedPath, []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unformattedPath := filepath.Join(root, "z.go")
+	unformatted := []byte("package sample\nfunc run(){}\n")
+	if err := os.WriteFile(unformattedPath, unformatted, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "vendor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "vendor", "ignored.go"), unformatted, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--check", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitFindings {
+		t.Fatalf("Run() exit code = %d, want %d; stderr = %q", exitCode, ExitFindings, stderr.String())
+	}
+	if stdout.String() != unformattedPath+"\n" {
+		t.Fatalf("Run() stdout = %q, want changed path", stdout.String())
+	}
+	got, err := os.ReadFile(unformattedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, unformatted) {
+		t.Fatalf("Run() mutated check-mode file: %q", got)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunCheckResolvesConfigurationPerDiscoveredFile(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/root\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".gox.toml"), []byte("version = 1\n[format]\nline-width = 30\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	flat := []byte("package sample\n\nfunc run() {\n\tif firstCondition && secondCondition && thirdCondition {\n\t\twork()\n\t}\n}\n")
+	outerPath := filepath.Join(root, "outer.go")
+	if err := os.WriteFile(outerPath, flat, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(root, "nested")
+	if err := os.Mkdir(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "go.mod"), []byte("module example.com/nested\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, ".gox.toml"), []byte("version = 1\n[format]\nline-width = 100\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "nested.go"), flat, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--check", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitFindings || stdout.String() != outerPath+"\n" {
+		t.Fatalf("Run() exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunCheckValidatesAllConfigurationBeforeReporting(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/root\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte("package sample\nfunc run(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(root, "nested")
+	if err := os.Mkdir(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "go.mod"), []byte("module example.com/nested\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, ".gox.toml"), []byte("version = 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "z.go"), []byte("package nested\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--check", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitInvalidInvocation {
+		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitInvalidInvocation)
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "unsupported configuration version 2") {
+		t.Fatalf("Run() stdout = %q, stderr = %q", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunCheckValidatesConfigurationForEmptySelection(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/root\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".gox.toml"), []byte("version = 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--check", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitInvalidInvocation {
+		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitInvalidInvocation)
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "unsupported configuration version 2") {
+		t.Fatalf("Run() stdout = %q, stderr = %q", stdout.String(), stderr.String())
+	}
+}
+
 func TestRunUsesDiscoveredConfigurationForStandardInputPath(t *testing.T) {
 	t.Parallel()
 
@@ -351,7 +583,7 @@ func TestRunRejectsInvalidCompleteFileWithoutPartialOutput(t *testing.T) {
 func TestRunRejectsUnsupportedInvocation(t *testing.T) {
 	t.Parallel()
 
-	for _, arguments := range [][]string{nil, {"lint"}, {"fmt", "file.go"}} {
+	for _, arguments := range [][]string{nil, {"lint"}} {
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
 
