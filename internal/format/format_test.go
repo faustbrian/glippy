@@ -1627,27 +1627,48 @@ func TestFormatKeepsDocumentedAtomicConstructsIntactWhenOverWidth(t *testing.T) 
 	}
 }
 
-func TestFormatBreaksGenericSelectorChains(t *testing.T) {
+func TestFormatUsesDeterministicGenericSelectorChainWidthBoundary(t *testing.T) {
 	t.Parallel()
 
 	input, err := os.ReadFile("../../testdata/format/chains/selector-generic.input")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := os.ReadFile("../../testdata/format/chains/selector-generic.golden")
+	flat, err := os.ReadFile("../../testdata/format/chains/selector-generic.flat.golden")
 	if err != nil {
 		t.Fatal(err)
 	}
-	file, err := source.Load("selector_generic.go", input)
+	broken, err := os.ReadFile("../../testdata/format/chains/selector-generic.golden")
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(file, goxformat.Options{Width: 54, TabWidth: 8, FitBudget: 1_000})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	for _, test := range []struct {
+		name  string
+		width int
+		want  []byte
+	}{
+		{name: "exact fit", width: 55, want: flat},
+		{name: "one column under", width: 54, want: broken},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			file, err := source.Load("selector_generic.go", input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := goxformat.File(file, goxformat.Options{
+				Width:     test.width,
+				TabWidth:  8,
+				FitBudget: 1_000,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, test.want) {
+				t.Fatalf("File() =\n%s\nwant:\n%s", got, test.want)
+			}
+		})
 	}
 }
 
