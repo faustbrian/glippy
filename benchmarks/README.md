@@ -11,6 +11,7 @@ blocks, generics, calls, and boolean expressions.
 go test ./...
 go test ./benchmarks -run '^$' -bench 'Benchmark(Scan|Parse|GoFormat|ASTInspect|InspectorBuildAndFilter|TypeCheck)$' -benchmem -count=5
 go test ./benchmarks -run '^$' -bench '^BenchmarkPackagesLoadSyntax(Cold|Warm)BuildCache$' -benchmem -benchtime=1x -count=3
+GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkGoxFormatManyClassicLoops$' -benchmem -benchtime=10x -count=3
 go test ./internal/format/doc -run '^$' -bench '^BenchmarkRenderAdversarial(Nesting|Siblings)$' -benchmem -benchtime=3x -count=5
 go test ./internal/format/doc -run '^TestRenderBoundsAdversarialDepthAndBreadthAllocations$' -count=1
 go test ./internal/format/doc -run '^$' -fuzz '^FuzzRenderDeterministic$' -fuzztime=30s -timeout=45s
@@ -48,6 +49,26 @@ No timing budget is set from this run. A stable benchmark runner and larger
 representative workloads are prerequisites for regression thresholds. Future
 records must continue to keep cold and warm package-loading results separate
 and include peak resident memory outside the Go benchmark allocation metric.
+
+## Formatter Prototype Scaling Probe
+
+The 2026-08-10 Phase 1 probe formats functions containing 100 and 1,000
+identical classic `for` statements. Source loading occurs before the timer;
+each measured operation includes lowering, rendering, parse and equivalence
+validation, the idempotency render, and isolated syntax-view reparsing. Three
+ten-iteration samples ran with `GOMAXPROCS=1` to reduce scheduler noise:
+
+| Statements | Median time | Observed range | Bytes/op | Allocs/op |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 14.7 ms | 11.7-47.4 ms | 3,688,842-3,688,934 | 16,496-16,498 |
+| 1,000 | 200 ms | 129-348 ms | 42,795,524-42,795,536 | 166,685 |
+
+A tenfold syntax increase produced 10.1 times the allocations, 11.6 times the
+allocated bytes, and 13.6 times the median elapsed time. Timing variance remains
+too high for a latency threshold, but the allocation scaling and bounded
+renderer evidence do not show explosive growth. This probe is not an editor
+latency claim because initial source loading is outside the measured operation;
+end-to-end budgets remain Phase 2 work.
 
 ## Renderer Complexity Probe
 
