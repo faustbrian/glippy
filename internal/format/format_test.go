@@ -1099,6 +1099,58 @@ func TestFormatInitialCorpus(t *testing.T) {
 	}
 }
 
+func TestFormatCorpusAcrossRepresentativeWidths(t *testing.T) {
+	t.Parallel()
+
+	paths, err := filepath.Glob("../../testdata/corpus/hostile/*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("initial corpus is empty")
+	}
+	responsiveFiles := 0
+	for _, path := range paths {
+		name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		t.Run(name, func(t *testing.T) {
+			input, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			file, err := source.Load(name+".go", input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			outputs := make(map[string]struct{}, 4)
+			for _, width := range []int{20, 60, 100, 120} {
+				options := goxformat.Options{Width: width, TabWidth: 8, FitBudget: 1_000}
+				formatted, err := goxformat.File(file, options)
+				if err != nil {
+					t.Fatalf("width %d: %v", width, err)
+				}
+				reparsed, err := source.Load("formatted_"+name+".go", formatted)
+				if err != nil {
+					t.Fatalf("width %d output does not parse: %v", width, err)
+				}
+				again, err := goxformat.File(reparsed, options)
+				if err != nil {
+					t.Fatalf("width %d repeat formatting failed: %v", width, err)
+				}
+				if !bytes.Equal(formatted, again) {
+					t.Fatalf("width %d formatting is not idempotent", width)
+				}
+				outputs[string(formatted)] = struct{}{}
+			}
+			if len(outputs) > 1 {
+				responsiveFiles++
+			}
+		})
+	}
+	if responsiveFiles == 0 {
+		t.Fatal("corpus output did not respond to configured width")
+	}
+}
+
 func TestFormatLowersControlFlowAndStatementSurface(t *testing.T) {
 	t.Parallel()
 
