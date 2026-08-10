@@ -39,7 +39,9 @@ The initial divergence classes are:
 2. retained import spec order that gofmt sorts;
 3. preserved numeric literal spelling that gofmt normalizes;
 4. preserved redundant parentheses that gofmt removes; and
-5. structural indentation without gofmt-style tabular alignment.
+5. structural indentation without gofmt-style tabular alignment; and
+6. preserved explicit versus implicit empty-statement spelling that gofmt
+   normalizes.
 
 Every difference discovered by the corpus must be classified as intentional
 Gox layout, accepted toolchain difference, unsupported syntax/version,

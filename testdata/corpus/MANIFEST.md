@@ -13,6 +13,7 @@ input now has a reviewed Phase 1 `.golden` output at width 60.
 | `hostile/generics.go` | Project-authored, 2026-08-09 | Type sets, type parameters, range loop, and compressed statements | Fixed point |
 | `hostile/directives.go` | Project-authored, 2026-08-10 | Build constraints, generated marker, cgo preamble, embed, generate, compiler directives including linkname, line directive, suppression anchor | Fixed point |
 | `hostile/compatibility.go` | Project-authored, 2026-08-10 | Preserved import order, numeric literal spelling, redundant parentheses, and unaligned declarations and fields | Intentional Gox source-fidelity and layout policy; pinned output in `compatibility.gofmt.golden` |
+| `hostile/empty-statements.go` | Project-authored, 2026-08-10 | Standalone and labeled explicit empty statements plus an implicit closing-label empty | Intentional source-fidelity policy; pinned output in `empty-statements.gofmt.golden` |
 
 The corpus test reparses each golden output, proves byte idempotency, and checks
 the recorded gofmt relation under the executing Go toolchain. Any divergence
@@ -34,3 +35,6 @@ The compatibility fixture records the classes that prevent a product-wide
 gofmt fixed-point guarantee. Gofmt sorts the retained import group, normalizes
 hexadecimal prefixes, removes redundant parentheses, and inserts tabular
 alignment that Gox deliberately does not own in the prototype dialect.
+Gofmt also removes a standalone explicit empty statement and materializes an
+implicit closing-label empty statement as `;`; Gox retains whether those
+statements were explicit in the source.

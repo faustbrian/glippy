@@ -1021,8 +1021,9 @@ func TestFormatInitialCorpus(t *testing.T) {
 		t.Fatal("initial corpus is empty")
 	}
 	gofmtDivergences := map[string]string{
-		"blocks":        "intentional width-aware if-header break",
-		"compatibility": "preserved import order, literal spelling, parentheses, and unaligned layout",
+		"blocks":           "intentional width-aware if-header break",
+		"compatibility":    "preserved import order, literal spelling, parentheses, and unaligned layout",
+		"empty-statements": "preserved explicit and implicit empty-statement spelling",
 	}
 	for name := range gofmtDivergences {
 		path := "../../testdata/corpus/hostile/" + name + ".go"
@@ -1131,6 +1132,24 @@ func TestFormatPreservesExplicitClassicForClauses(t *testing.T) {
 	want := "package control\n\nfunc run(ready bool) {\n\tfor ; ready; {\n\t\twork()\n\t}\n\tfor ; ; {\n\t\tbreak\n\t}\n}\n"
 	if string(got) != want {
 		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatPreservesExplicitAndImplicitEmptyStatements(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package empty\nfunc run(){;;work();label:;goto label;done:}\n")
+	file, err := source.Load("empty.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package empty\n\nfunc run() {\n\t;\n\t;\n\twork()\nlabel:\n\t;\n\tgoto label\ndone:\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() = %q, want explicit empty statements and implicit closing label", got)
 	}
 }
 
@@ -1363,19 +1382,6 @@ func TestFormatPreservesVariadicCallEllipsis(t *testing.T) {
 	want := "package variadic\n\nfunc run() {\n\tuse(values...)\n}\n"
 	if string(got) != want {
 		t.Fatalf("File() = %q, want call ellipsis preserved", got)
-	}
-}
-
-func TestFormatRejectsUnmodeledSyntaxDifferences(t *testing.T) {
-	t.Parallel()
-
-	file, err := source.Load("empty.go", []byte("package empty\nfunc run(){value:=1;;value++;_=value}\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
-	if err == nil || len(got) != 0 {
-		t.Fatalf("File() = (%q, %v), want syntax-equivalence refusal", got, err)
 	}
 }
 

@@ -40,6 +40,10 @@ slicing, assertions, and Go types before Phase 1 exits.
 Blocks and ordinary statement lists MUST use hard line boundaries. Explicit
 semicolons between ordinary statements MUST lower to hard lines. Semicolons in
 `if`, classic `for`, and switch grammar MUST remain in their clause.
+An explicit empty statement MUST retain a visible `;`, including after a label,
+because removing a labeled empty statement can attach the label to a different
+following statement. An implicit empty statement before a closing brace MUST
+remain semicolon-free.
 
 Binary operators and type-union operators MUST remain on the preceding line
 when a chain breaks. Selector dots MUST remain after the preceding selector

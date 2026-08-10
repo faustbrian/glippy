@@ -1489,6 +1489,9 @@ func (l *lowerer) statement(statement ast.Stmt) (doc.ID, error) {
 	case *ast.CaseClause, *ast.CommClause:
 		return doc.ID{}, fmt.Errorf("clause %T requires an enclosing boundary", statement)
 	case *ast.EmptyStmt:
+		if !value.Implicit {
+			return l.arena.Text(";"), nil
+		}
 		return l.arena.Empty(), nil
 	default:
 		return doc.ID{}, fmt.Errorf("unsupported statement %T", statement)
@@ -1971,7 +1974,7 @@ func (l *lowerer) rangeAssignment(statement *ast.RangeStmt) (doc.ID, int, int, e
 }
 
 func (l *lowerer) labeledStatement(statement *ast.LabeledStmt) (doc.ID, error) {
-	if _, empty := statement.Stmt.(*ast.EmptyStmt); empty {
+	if empty, ok := statement.Stmt.(*ast.EmptyStmt); ok && empty.Implicit {
 		return l.arena.Text(statement.Label.Name + ":"), nil
 	}
 	labeled, err := l.statement(statement.Stmt)
