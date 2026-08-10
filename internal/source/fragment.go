@@ -567,13 +567,44 @@ func (f *Fragment) Metadata() Metadata { return f.metadata }
 // selected fragment boundary.
 func (f *Fragment) CanFormat() bool { return f.parseErr == nil }
 
-// ReadSyntax provides the selected user AST boundary to a trusted run-owned
-// consumer. The callback must not mutate or retain the syntax tree.
+// ReadSyntax provides an isolated selected AST boundary to a run-owned
+// consumer.
 func (f *Fragment) ReadSyntax(read func(FragmentSyntax) error) error {
 	if f.parseErr != nil {
 		return f.parseErr
 	}
-	return read(f.syntax)
+	wrapper, err := wrapperForFragment(f.kind)
+	if err != nil {
+		return err
+	}
+	parsedInput := f.bytes
+	if wrapper.trimTrailingWhitespace {
+		parsedInput = bytes.TrimRight(f.bytes, " \t\r\n")
+	}
+	synthetic := make([]byte, 0, len(wrapper.prefix)+len(parsedInput)+len(wrapper.suffix))
+	synthetic = append(synthetic, wrapper.prefix...)
+	synthetic = append(synthetic, parsedInput...)
+	synthetic = append(synthetic, wrapper.suffix...)
+	fileSet := token.NewFileSet()
+	parsed, err := parser.ParseFile(fileSet, f.path, synthetic, parser.ParseComments)
+	if err != nil {
+		return fmt.Errorf("construct immutable fragment syntax view: %w", err)
+	}
+	tokenFile := parsedTokenFile(fileSet, parsed)
+	if tokenFile == nil {
+		return errors.New("immutable fragment syntax view has no token file")
+	}
+	syntax, err := selectFragmentSyntax(
+		f.kind,
+		parsed,
+		tokenFile,
+		len(wrapper.prefix),
+		len(parsedInput),
+	)
+	if err != nil {
+		return fmt.Errorf("construct immutable fragment syntax view: %w", err)
+	}
+	return read(syntax)
 }
 
 // RawToken returns the exact physical token spelling at a synthetic AST

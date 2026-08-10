@@ -3,6 +3,7 @@ package source_test
 import (
 	"bytes"
 	"errors"
+	"go/ast"
 	"os"
 	"slices"
 	"strings"
@@ -10,6 +11,77 @@ import (
 
 	"github.com/faustbrian/gox/internal/source"
 )
+
+func TestSourceSyntaxViewsCannotMutateStoredState(t *testing.T) {
+	t.Parallel()
+
+	t.Run("complete file", func(t *testing.T) {
+		file, err := source.Load("immutable.go", []byte("package original\nvar value = 1\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := file.ReadSyntax(func(syntax *ast.File) error {
+			syntax.Name.Name = "mutated"
+			syntax.Decls = nil
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		reference, err := source.Load("immutable.go", []byte("package original\nvar value = 1\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := source.ValidateEquivalent(file, reference); err != nil {
+			t.Fatalf("stored file state changed through syntax view: %v", err)
+		}
+		if err := file.ReadSyntax(func(syntax *ast.File) error {
+			if syntax.Name.Name != "original" || len(syntax.Decls) != 1 {
+				t.Fatalf("stored file syntax was mutated: package %q, declarations %d", syntax.Name.Name, len(syntax.Decls))
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("fragment", func(t *testing.T) {
+		fragment, err := source.LoadFragment(
+			"immutable.go",
+			source.FragmentExpression,
+			[]byte("left + right"),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fragment.ReadSyntax(func(syntax source.FragmentSyntax) error {
+			binary := syntax.Expression.(*ast.BinaryExpr)
+			binary.X.(*ast.Ident).Name = "mutated"
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		reference, err := source.LoadFragment(
+			"immutable.go",
+			source.FragmentExpression,
+			[]byte("left + right"),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := source.ValidateFragmentEquivalent(fragment, reference); err != nil {
+			t.Fatalf("stored fragment state changed through syntax view: %v", err)
+		}
+		if err := fragment.ReadSyntax(func(syntax source.FragmentSyntax) error {
+			binary := syntax.Expression.(*ast.BinaryExpr)
+			if got := binary.X.(*ast.Ident).Name; got != "left" {
+				t.Fatalf("stored fragment syntax was mutated: left operand %q", got)
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
 
 func TestLoadBuildsALosslessPhysicalSourceLedger(t *testing.T) {
 	t.Parallel()

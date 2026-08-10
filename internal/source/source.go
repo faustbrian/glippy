@@ -231,13 +231,22 @@ func (f *File) Metadata() Metadata { return f.metadata }
 // complete file.
 func (f *File) CanFormat() bool { return f.parseErr == nil }
 
-// ReadSyntax provides the shared parsed syntax to a trusted run-owned
-// consumer. The callback must not mutate or retain the syntax tree.
+// ReadSyntax provides an isolated parsed syntax view to a run-owned consumer.
 func (f *File) ReadSyntax(read func(*ast.File) error) error {
 	if f.parseErr != nil {
 		return f.parseErr
 	}
-	return read(f.syntax)
+	fileSet := token.NewFileSet()
+	syntax, err := parser.ParseFile(
+		fileSet,
+		f.path,
+		f.bytes,
+		parser.ParseComments|parser.SkipObjectResolution,
+	)
+	if err != nil {
+		return fmt.Errorf("construct immutable syntax view: %w", err)
+	}
+	return read(syntax)
 }
 
 // RawToken returns the exact physical spelling of the token at position.
