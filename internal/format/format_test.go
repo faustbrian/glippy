@@ -824,6 +824,49 @@ func TestFormatPreservesFilePrefixCommentsAndDirectives(t *testing.T) {
 	}
 }
 
+func TestFormatCanonicalizesStructuralLineEndings(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "crlf",
+			input: "package crlf\r\nfunc run(){}\r\n",
+			want:  "package crlf\n\nfunc run() {}\n",
+		},
+		{
+			name:  "mixed without final newline",
+			input: "package mixed\r\nfunc run(){}",
+			want:  "package mixed\n\nfunc run() {}\n",
+		},
+		{
+			name:  "bom and prefix line directive",
+			input: "\xef\xbb\xbf//line generated.go:100\r\npackage physical\r\nfunc run(){}",
+			want:  "\xef\xbb\xbf//line generated.go:100\npackage physical\n\nfunc run() {}\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			file, err := source.Load("line_endings.go", []byte(test.input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != test.want {
+				t.Fatalf("File() = %q, want canonical structural line endings", got)
+			}
+		})
+	}
+}
+
 func TestFormatPreservesDeclarationDocumentationAndTrailingComments(t *testing.T) {
 	t.Parallel()
 

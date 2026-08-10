@@ -13,7 +13,7 @@
 | Configuration sprawl | Typed TOML, few formatter options, no nested inheritance initially | Dogfood evidence before adding every new option or inheritance feature |
 | Premature plugin API | Native rules and constrained `go/analysis` adapter only | Stable internal rule and scheduling contract plus external use case |
 | Name collision | Working-name-only decision | Replacement ecosystem and trademark audit before public release |
-| Physical/logical position confusion | Physical offsets for edits; logical positions only for reporting | `//line`, CRLF, BOM, and concurrent package-load fixtures |
+| Physical/logical position confusion | Physical offsets for edits plus `//line`, CRLF, BOM, and canonical-LF formatter fixtures | Concurrent package-load position fixtures |
 | Cgo synthesized source writes | Editable source identity excludes generated compiled files | Cgo package loading and fix refusal integration tests |
 | Cache returns stale semantics | No persistent cache until complete key decision | Corruption, invalidation, toolchain/config/build-environment matrix |
 | Test-package duplicate diagnostics | Canonical physical identity and future variant deduplication | Internal/external test package fixtures with deterministic results |

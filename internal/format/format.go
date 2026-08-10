@@ -180,23 +180,15 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 	if !found {
 		return doc.ID{}, errors.New("package clause has no physical offset")
 	}
-	hasPrefixComments := false
+	prefixComments := make([]source.Comment, 0)
 	for index, comment := range l.comments {
 		if comment.Range.End <= packageOffset {
 			l.emittedComment[index] = true
-			hasPrefixComments = true
+			prefixComments = append(prefixComments, comment)
 		}
 	}
-	if hasPrefixComments {
-		prefixStart := 0
-		if l.source.Metadata().HasBOM {
-			prefixStart = 3
-		}
-		prefix, ok := l.source.Slice(source.Range{Start: prefixStart, End: packageOffset})
-		if !ok {
-			return doc.ID{}, errors.New("file prefix has an invalid physical range")
-		}
-		parts = append(parts, l.arena.Verbatim(prefix))
+	if len(prefixComments) > 0 {
+		parts = append(parts, l.boundaryCommentsDocument(prefixComments, packageOffset))
 	}
 	parts = append(parts, l.arena.Text("package "), l.arena.Text(file.Name.Name))
 	boundary, found := l.source.PhysicalOffset(file.Name.End())

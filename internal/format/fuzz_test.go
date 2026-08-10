@@ -13,6 +13,7 @@ func FuzzFormatValidSource(f *testing.F) {
 		"package hostile\nfunc check(){if _,err:=client.Discover(nil);!errors.Is(err,ErrContextRequired){t.Fatal(err)}}\n",
 		"package comments\nfunc use(){Generic[/* type */ string](/* value */ input)}\n",
 		"//go:build linux\n\npackage directives\n\n//go:generate go run example.invalid/generator\nfunc run(){}\n",
+		"\xef\xbb\xbf//line generated.go:100\r\npackage physical\r\nfunc run(){}",
 	} {
 		f.Add([]byte(seed), uint8(100))
 	}

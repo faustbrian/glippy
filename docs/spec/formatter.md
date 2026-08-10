@@ -72,6 +72,15 @@ generated markers, and suppression directives MUST retain exact text, order,
 and required adjacency. Comment or directive accounting failure MUST reject the
 formatted result.
 
+## Physical Output
+
+Formatter-owned structural line endings MUST use LF regardless of whether the
+input uses LF, CRLF, or mixed endings. Complete files and fragments MUST end in
+exactly one formatter-owned LF. An accepted input byte-order mark MUST remain at
+byte zero. Embedded line endings inside preserved raw literals and multiline
+comments remain part of those verbatim source tokens and MUST NOT be rewritten
+as structural whitespace.
+
 ## Width And Rendering
 
 Width is measured in Unicode code points. Tabs advance to configured tab stops;

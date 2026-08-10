@@ -49,6 +49,10 @@ layer MUST derive token gaps from the original bytes and classify whitespace,
 comments, BOM, newline sequences, and end-of-file state without discarding raw
 bytes.
 
+Input newline metadata supports diagnostics and source accounting; it does not
+select the formatter output dialect. Formatter-owned structural gaps normalize
+to LF and one final LF, while embedded newlines in verbatim tokens remain exact.
+
 ## Trivia And Directives
 
 Comments MUST have stable identity independent of AST comment-group
