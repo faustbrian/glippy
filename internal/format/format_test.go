@@ -1552,6 +1552,42 @@ func TestFormatPreservesImportBoundaryComments(t *testing.T) {
 	}
 }
 
+func TestFormatPreservesOmittedConstExpressionsAndGroupedDeclarationOrder(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package declarations\nconst(Zero=iota;One;PairA,PairB=1,2;PairC,PairD)\nvar(first,second int;third=3)\ntype(Alias=Existing;Defined Existing;Existing int;Generic[T any] struct{Value T})\n")
+	file, err := source.Load("grouped_declarations.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package declarations\n\nconst (\n\tZero = iota\n\tOne\n\tPairA, PairB = 1, 2\n\tPairC, PairD\n)\n\nvar (\n\tfirst, second int\n\tthird = 3\n)\n\ntype (\n\tAlias = Existing\n\tDefined Existing\n\tExisting int\n\tGeneric[T any] struct {\n\t\tValue T\n\t}\n)\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatPreservesAcceptedEmptyDeclarationGroups(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package empty\nimport()\nconst()\nvar()\ntype()\n")
+	file, err := source.Load("empty_declarations.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package empty\n\nimport ()\n\nconst ()\n\nvar ()\n\ntype ()\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatLowersDeclarationsGenericSignaturesAndGoTypes(t *testing.T) {
 	t.Parallel()
 
