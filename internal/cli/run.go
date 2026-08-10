@@ -23,6 +23,8 @@ var defaultFormatOptions = goxformat.Options{
 	FitBudget: 1_000,
 }
 
+const formatUsage = "gox: expected 'fmt' or 'fmt --fragment=declaration|statement|expression' with standard input\n"
+
 // Run executes one Gox invocation against explicit process streams.
 func Run(arguments []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if stdin == nil || stdout == nil || stderr == nil {
@@ -31,25 +33,64 @@ func Run(arguments []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		return report(stderr, ExitFilesystemError, "gox: process streams are required\n")
 	}
-	if len(arguments) != 1 || arguments[0] != "fmt" {
-		return report(stderr, ExitInvalidInvocation, "gox: expected 'fmt' with standard input\n")
+	fragmentKind, valid := parseFormatInvocation(arguments)
+	if !valid {
+		return report(stderr, ExitInvalidInvocation, formatUsage)
 	}
 	input, err := io.ReadAll(stdin)
 	if err != nil {
 		return report(stderr, ExitFilesystemError, "gox fmt: read standard input: %v\n", err)
 	}
-	file, err := source.Load("stdin.go", input)
+	formatted, exitCode, err := formatStandardInput(input, fragmentKind)
 	if err != nil {
-		return report(stderr, ExitSourceError, "gox fmt: %v\n", err)
-	}
-	formatted, err := goxformat.File(file, defaultFormatOptions)
-	if err != nil {
-		return report(stderr, ExitInternalError, "gox fmt: %v\n", err)
+		return report(stderr, exitCode, "gox fmt: %v\n", err)
 	}
 	if err := write(stdout, formatted); err != nil {
 		return report(stderr, ExitFilesystemError, "gox fmt: write standard output: %v\n", err)
 	}
 	return ExitSuccess
+}
+
+func formatStandardInput(input []byte, fragmentKind source.FragmentKind) ([]byte, int, error) {
+	if fragmentKind != 0 {
+		fragment, err := source.LoadFragment("stdin.go", fragmentKind, input)
+		if err != nil {
+			return nil, ExitSourceError, err
+		}
+		formatted, err := goxformat.Fragment(fragment, defaultFormatOptions)
+		if err != nil {
+			return nil, ExitInternalError, err
+		}
+		return formatted, ExitSuccess, nil
+	}
+	file, err := source.Load("stdin.go", input)
+	if err != nil {
+		return nil, ExitSourceError, err
+	}
+	formatted, err := goxformat.File(file, defaultFormatOptions)
+	if err != nil {
+		return nil, ExitInternalError, err
+	}
+	return formatted, ExitSuccess, nil
+}
+
+func parseFormatInvocation(arguments []string) (source.FragmentKind, bool) {
+	if len(arguments) == 1 && arguments[0] == "fmt" {
+		return 0, true
+	}
+	if len(arguments) != 2 || arguments[0] != "fmt" {
+		return 0, false
+	}
+	switch arguments[1] {
+	case "--fragment=declaration":
+		return source.FragmentDeclaration, true
+	case "--fragment=statement":
+		return source.FragmentStatement, true
+	case "--fragment=expression":
+		return source.FragmentExpression, true
+	default:
+		return 0, false
+	}
 }
 
 func report(stderr io.Writer, exitCode int, format string, arguments ...any) int {

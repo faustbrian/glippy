@@ -337,9 +337,13 @@ func equivalentTokens(before, after []Token) bool {
 }
 
 func syntaxFingerprint(file *ast.File) (string, error) {
+	return syntaxNodeFingerprint(file)
+}
+
+func syntaxNodeFingerprint(node ast.Node) (string, error) {
 	var output bytes.Buffer
 	positionType := reflect.TypeFor[token.Pos]()
-	err := ast.Fprint(&output, nil, file, func(name string, value reflect.Value) bool {
+	err := ast.Fprint(&output, nil, node, func(name string, value reflect.Value) bool {
 		if value.IsValid() && value.Type() == positionType {
 			return false
 		}
@@ -565,7 +569,13 @@ func classifyDirectives(tokens []Token, syntax *ast.File, tokenFile *token.File)
 			result = append(result, Directive{Kind: kind, Range: item.Range, Raw: item.Raw})
 		}
 	}
-	result = append(result, cgoDirectives(tokens, syntax, tokenFile)...)
+	result = append(result, cgoDirectives(tokens, syntax, func(position token.Pos) (int, bool) {
+		if !position.IsValid() || tokenFile == nil {
+			return 0, false
+		}
+		offset := tokenFile.Offset(position)
+		return offset, offset >= 0
+	})...)
 	sort.SliceStable(result, func(left, right int) bool {
 		if result[left].Range.Start != result[right].Range.Start {
 			return result[left].Range.Start < result[right].Range.Start
@@ -575,7 +585,11 @@ func classifyDirectives(tokens []Token, syntax *ast.File, tokenFile *token.File)
 	return result
 }
 
-func cgoDirectives(tokens []Token, syntax *ast.File, tokenFile *token.File) []Directive {
+func cgoDirectives(
+	tokens []Token,
+	syntax *ast.File,
+	physicalOffset func(token.Pos) (int, bool),
+) []Directive {
 	if syntax == nil {
 		return nil
 	}
@@ -608,7 +622,10 @@ func cgoDirectives(tokens []Token, syntax *ast.File, tokenFile *token.File) []Di
 				continue
 			}
 			for _, item := range group.List {
-				physicalStart := tokenFile.Offset(item.Slash)
+				physicalStart, mapped := physicalOffset(item.Slash)
+				if !mapped {
+					continue
+				}
 				comment, found := commentsByStart[physicalStart]
 				if found {
 					result = append(result, Directive{Kind: DirectiveCgoPreamble, Range: comment.Range, Raw: comment.Raw})

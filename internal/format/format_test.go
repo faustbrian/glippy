@@ -80,6 +80,135 @@ func TestFormatExpandsMotivatingHostileGo(t *testing.T) {
 	}
 }
 
+func TestFormatFragmentsAtTheirSelectedUserBoundary(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		kind  source.FragmentKind
+		width int
+		input string
+		want  string
+	}{
+		{
+			name:  "declarations",
+			kind:  source.FragmentDeclaration,
+			width: 100,
+			input: "var answer=42\nfunc run(){}",
+			want:  "var answer = 42\n\nfunc run() {}\n",
+		},
+		{
+			name:  "statements",
+			kind:  source.FragmentStatement,
+			width: 100,
+			input: "ctx,cancel:=context.WithCancel(t.Context());cancel();result:=work(ctx)",
+			want:  "ctx, cancel := context.WithCancel(t.Context())\ncancel()\nresult := work(ctx)\n",
+		},
+		{
+			name:  "expression",
+			kind:  source.FragmentExpression,
+			width: 20,
+			input: "foo && bar && baz && somethingReallyLong\n",
+			want:  "foo &&\n\tbar &&\n\tbaz &&\n\tsomethingReallyLong\n",
+		},
+		{
+			name:  "empty declarations",
+			kind:  source.FragmentDeclaration,
+			width: 100,
+			input: " \n",
+			want:  "\n",
+		},
+		{
+			name:  "empty statements",
+			kind:  source.FragmentStatement,
+			width: 100,
+			input: " \n",
+			want:  "\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fragment, err := source.LoadFragment("stdin.go", test.kind, []byte(test.input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			options := goxformat.Options{Width: test.width, TabWidth: 8, FitBudget: 1_000}
+			got, err := goxformat.Fragment(fragment, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != test.want {
+				t.Fatalf("formatted fragment =\n%s\nwant:\n%s", got, test.want)
+			}
+			reparsed, err := source.LoadFragment("stdin.go", test.kind, got)
+			if err != nil {
+				t.Fatalf("formatted fragment did not reparse: %v", err)
+			}
+			again, err := goxformat.Fragment(reparsed, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, again) {
+				t.Fatalf("fragment is not byte-idempotent:\nfirst:\n%s\nsecond:\n%s", got, again)
+			}
+		})
+	}
+}
+
+func TestFormatFragmentsPreserveCommentsOwnedInsideTheSelectedBoundary(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		kind  source.FragmentKind
+		input string
+		want  string
+	}{
+		{
+			name:  "declaration comments",
+			kind:  source.FragmentDeclaration,
+			input: "// Value documents the declaration.\nvar Value=1 // keep trailing\n",
+			want:  "// Value documents the declaration.\nvar Value = 1 // keep trailing\n",
+		},
+		{
+			name:  "statement comments",
+			kind:  source.FragmentStatement,
+			input: "//gox:ignore example because this is a fixture\nvalue:=call(/* keep argument */ first,second) // keep trailing\n",
+			want:  "//gox:ignore example because this is a fixture\nvalue := call(\n\t/* keep argument */\n\tfirst,\n\tsecond,\n) // keep trailing\n",
+		},
+		{
+			name:  "expression comments",
+			kind:  source.FragmentExpression,
+			input: "/* leading */ foo+/* middle */bar /* trailing */\n",
+			want:  "/* leading */\nfoo +\n\t/* middle */ bar /* trailing */\n",
+		},
+		{
+			name:  "expression leading line comment",
+			kind:  source.FragmentExpression,
+			input: "// keep leading\nfoo+bar\n",
+			want:  "// keep leading\nfoo + bar\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fragment, err := source.LoadFragment("stdin.go", test.kind, []byte(test.input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := goxformat.Fragment(
+				fragment,
+				goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != test.want {
+				t.Fatalf("formatted fragment =\n%s\nwant:\n%s", got, test.want)
+			}
+		})
+	}
+}
+
 func TestFormatPreservesFieldTypeBoundaryComments(t *testing.T) {
 	t.Parallel()
 

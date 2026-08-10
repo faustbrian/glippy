@@ -45,3 +45,40 @@ func FuzzSourceLedgerReconstruction(f *testing.F) {
 		}
 	})
 }
+
+func FuzzSourceFragmentLedgerReconstruction(f *testing.F) {
+	for _, seed := range []struct {
+		kind  uint8
+		input []byte
+	}{
+		{kind: 0, input: []byte("var answer=42\nfunc run(){}")},
+		{kind: 1, input: []byte("value:=1;value++")},
+		{kind: 2, input: []byte("foo && bar && somethingLong\n")},
+		{kind: 1, input: []byte("}\nvar escaped=1\nfunc reopened(){")},
+	} {
+		f.Add(seed.kind, seed.input)
+	}
+
+	f.Fuzz(func(t *testing.T, rawKind uint8, input []byte) {
+		if len(input) > 256<<10 {
+			t.Skip()
+		}
+		kind := source.FragmentKind(1 + rawKind%3)
+		fragment, _ := source.LoadFragment("fuzz.go", kind, input)
+		if fragment == nil {
+			t.Fatal("LoadFragment() returned no diagnostic source unit")
+		}
+		if got := reconstruct(fragment.Pieces()); !bytes.Equal(got, input) {
+			t.Fatal("fragment physical ledger did not reconstruct the input")
+		}
+		for index, comment := range fragment.Comments() {
+			if int(comment.ID) != index {
+				t.Fatalf("comment ID = %d, want %d", comment.ID, index)
+			}
+			raw, ok := fragment.Slice(comment.Range)
+			if !ok || raw != comment.Raw {
+				t.Fatalf("comment %d does not match its physical range", comment.ID)
+			}
+		}
+	})
+}

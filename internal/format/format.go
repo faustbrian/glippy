@@ -21,6 +21,16 @@ type Options struct {
 	FitBudget int
 }
 
+type sourceUnit interface {
+	Bytes() []byte
+	Tokens() []source.Token
+	Comments() []source.Comment
+	Metadata() source.Metadata
+	RawToken(token.Pos) (string, bool)
+	PhysicalOffset(token.Pos) (int, bool)
+	Slice(source.Range) (string, bool)
+}
+
 // File formats one valid immutable source unit.
 func File(file *source.File, options Options) ([]byte, error) {
 	if file == nil {
@@ -46,6 +56,36 @@ func File(file *source.File, options Options) ([]byte, error) {
 	}
 	if !bytes.Equal(result, again) {
 		return nil, errors.New("formatted output is not byte-idempotent")
+	}
+	return result, nil
+}
+
+// Fragment formats one valid source fragment at its explicitly selected AST
+// boundary.
+func Fragment(fragment *source.Fragment, options Options) ([]byte, error) {
+	if fragment == nil {
+		return nil, errors.New("source fragment is required")
+	}
+	if options.Width <= 0 || options.TabWidth <= 0 || options.FitBudget <= 0 {
+		return nil, errors.New("width, tab width, and fit budget must be positive")
+	}
+	result, err := renderFragment(fragment, options)
+	if err != nil {
+		return nil, err
+	}
+	formattedFragment, err := source.LoadFragment(fragment.Path(), fragment.Kind(), result)
+	if err != nil {
+		return nil, fmt.Errorf("formatted fragment failed validation: %w", err)
+	}
+	if err := source.ValidateFragmentEquivalent(fragment, formattedFragment); err != nil {
+		return nil, fmt.Errorf("formatted fragment failed equivalence: %w", err)
+	}
+	again, err := renderFragment(formattedFragment, options)
+	if err != nil {
+		return nil, fmt.Errorf("repeat fragment formatting failed: %w", err)
+	}
+	if !bytes.Equal(result, again) {
+		return nil, errors.New("formatted fragment is not byte-idempotent")
 	}
 	return result, nil
 }
@@ -76,9 +116,40 @@ func render(file *source.File, options Options) ([]byte, error) {
 	return result, nil
 }
 
+func renderFragment(fragment *source.Fragment, options Options) ([]byte, error) {
+	arena := doc.NewArena()
+	lower := newLowerer(arena, fragment)
+	var document doc.ID
+	if err := fragment.ReadSyntax(func(syntax source.FragmentSyntax) error {
+		var err error
+		switch fragment.Kind() {
+		case source.FragmentDeclaration:
+			document, err = lower.fragmentDeclarations(syntax.Declarations)
+		case source.FragmentStatement:
+			document, err = lower.fragmentStatements(syntax.Statements)
+		case source.FragmentExpression:
+			document, err = lower.fragmentExpression(syntax.Expression)
+		default:
+			err = fmt.Errorf("unknown fragment kind %d", fragment.Kind())
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	formatted, err := arena.Render(document, doc.Options{
+		Width:     options.Width,
+		TabWidth:  options.TabWidth,
+		FitBudget: options.FitBudget,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return []byte(formatted + "\n"), nil
+}
+
 type lowerer struct {
 	arena          *doc.Arena
-	source         *source.File
+	source         sourceUnit
 	physical       []byte
 	tokens         []source.Token
 	comments       []source.Comment
@@ -86,7 +157,7 @@ type lowerer struct {
 	emittedComment []bool
 }
 
-func newLowerer(arena *doc.Arena, file *source.File) lowerer {
+func newLowerer(arena *doc.Arena, file sourceUnit) lowerer {
 	comments := file.Comments()
 	commentByStart := make(map[int]int, len(comments))
 	for index, comment := range comments {
@@ -173,12 +244,110 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 	if suffix := l.commentsBetween(boundary, len(l.physical)); len(suffix) > 0 {
 		parts = append(parts, l.arena.HardLine(), l.arena.HardLine(), l.commentsDocument(suffix))
 	}
-	for index, emitted := range l.emittedComment {
-		if !emitted {
-			return doc.ID{}, fmt.Errorf("comment %d has no proven output owner", l.comments[index].ID)
-		}
+	if err := l.validateCommentAccounting(); err != nil {
+		return doc.ID{}, err
 	}
 	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) fragmentDeclarations(declarations []ast.Decl) (doc.ID, error) {
+	parts := make([]doc.ID, 0, len(declarations)*3)
+	boundary := 0
+	for index, declaration := range declarations {
+		declarationStart, found := l.source.PhysicalOffset(declaration.Pos())
+		if !found {
+			return doc.ID{}, errors.New("fragment declaration has no physical start offset")
+		}
+		leading := l.commentsBetween(boundary, declarationStart)
+		lowered, err := l.declaration(declaration)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		if len(leading) > 0 {
+			lowered = l.arena.Concat(l.boundaryCommentsDocument(leading, declarationStart), lowered)
+		}
+		limit := len(l.physical)
+		if index+1 < len(declarations) {
+			limit, found = l.source.PhysicalOffset(declarations[index+1].Pos())
+			if !found {
+				return doc.ID{}, errors.New("following fragment declaration has no physical offset")
+			}
+		}
+		declarationEnd, found := l.source.PhysicalOffset(declaration.End())
+		if !found {
+			return doc.ID{}, errors.New("fragment declaration has no physical end offset")
+		}
+		lowered = l.withTrailingComments(lowered, l.trailingComments(declarationEnd, limit))
+		if index > 0 {
+			parts = append(parts, l.arena.HardLine(), l.arena.HardLine())
+		}
+		parts = append(parts, lowered)
+		boundary = declarationEnd
+	}
+	if suffix := l.commentsBetween(boundary, len(l.physical)); len(suffix) > 0 {
+		if len(parts) > 0 {
+			parts = append(parts, l.arena.HardLine(), l.arena.HardLine())
+		}
+		parts = append(parts, l.commentsDocument(suffix))
+	}
+	if err := l.validateCommentAccounting(); err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) fragmentStatements(statements []ast.Stmt) (doc.ID, error) {
+	lowered, err := l.statementRange(statements, 0, len(l.physical))
+	if err != nil {
+		return doc.ID{}, err
+	}
+	parts := make([]doc.ID, 0, len(lowered)*2)
+	for index, statement := range lowered {
+		if index > 0 {
+			parts = append(parts, l.arena.HardLine())
+		}
+		parts = append(parts, statement.document)
+	}
+	if err := l.validateCommentAccounting(); err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) fragmentExpression(expression ast.Expr) (doc.ID, error) {
+	if expression == nil {
+		return doc.ID{}, errors.New("expression fragment has no selected expression")
+	}
+	start, startFound := l.source.PhysicalOffset(expression.Pos())
+	end, endFound := l.source.PhysicalOffset(expression.End())
+	if !startFound || !endFound {
+		return doc.ID{}, errors.New("expression fragment has no physical boundary")
+	}
+	leading := l.commentsBetween(0, start)
+	lowered, err := l.expression(expression)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	if len(leading) > 0 {
+		lowered = l.arena.Concat(l.boundaryCommentsDocument(leading, start), lowered)
+	}
+	lowered = l.withTrailingComments(lowered, l.trailingComments(end, len(l.physical)))
+	if trailing := l.commentsBetween(end, len(l.physical)); len(trailing) > 0 {
+		lowered = l.arena.Concat(lowered, l.arena.HardLine(), l.commentsDocument(trailing))
+	}
+	if err := l.validateCommentAccounting(); err != nil {
+		return doc.ID{}, err
+	}
+	return lowered, nil
+}
+
+func (l *lowerer) validateCommentAccounting() error {
+	for index, emitted := range l.emittedComment {
+		if !emitted {
+			return fmt.Errorf("comment %d has no proven output owner", l.comments[index].ID)
+		}
+	}
+	return nil
 }
 
 func (l *lowerer) commentsDocument(owned []source.Comment) doc.ID {

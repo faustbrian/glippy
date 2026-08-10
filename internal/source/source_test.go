@@ -2,6 +2,7 @@ package source_test
 
 import (
 	"bytes"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -90,6 +91,230 @@ func TestLoadReturnsDiagnosticOnlyStateForInvalidSource(t *testing.T) {
 	}
 	if got := reconstruct(file.Pieces()); !bytes.Equal(got, input) {
 		t.Fatalf("invalid-source ledger reconstructed %q, want %q", got, input)
+	}
+}
+
+func TestLoadFragmentKeepsSyntheticWrappersOutsideThePhysicalLedger(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		kind             source.FragmentKind
+		input            string
+		wantDeclarations int
+		wantStatements   int
+		wantExpression   bool
+	}{
+		{
+			name:             "declarations",
+			kind:             source.FragmentDeclaration,
+			input:            "var answer=42\nfunc run(){}",
+			wantDeclarations: 2,
+		},
+		{
+			name:           "statements",
+			kind:           source.FragmentStatement,
+			input:          "value:=1;value++",
+			wantStatements: 2,
+		},
+		{
+			name:           "expression",
+			kind:           source.FragmentExpression,
+			input:          "client.call(first, second)",
+			wantExpression: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fragment, err := source.LoadFragment("stdin.go", test.kind, []byte(test.input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := reconstruct(fragment.Pieces()); !bytes.Equal(got, []byte(test.input)) {
+				t.Fatalf("physical ledger reconstructed %q, want exact input %q", got, test.input)
+			}
+			for _, item := range fragment.Tokens() {
+				if item.Range.Start < 0 || item.Range.End > len(test.input) {
+					t.Fatalf("token range %#v escapes physical input", item.Range)
+				}
+				if item.Raw == "package" || item.Raw == "goxfragment" {
+					t.Fatalf("physical token ledger contains synthetic token %q", item.Raw)
+				}
+			}
+			err = fragment.ReadSyntax(func(syntax source.FragmentSyntax) error {
+				if len(syntax.Declarations) != test.wantDeclarations {
+					t.Fatalf("declaration count = %d, want %d", len(syntax.Declarations), test.wantDeclarations)
+				}
+				if len(syntax.Statements) != test.wantStatements {
+					t.Fatalf("statement count = %d, want %d", len(syntax.Statements), test.wantStatements)
+				}
+				if (syntax.Expression != nil) != test.wantExpression {
+					t.Fatalf("expression present = %t, want %t", syntax.Expression != nil, test.wantExpression)
+				}
+				var position int
+				var found bool
+				switch {
+				case len(syntax.Declarations) > 0:
+					position, found = fragment.PhysicalOffset(syntax.Declarations[0].Pos())
+				case len(syntax.Statements) > 0:
+					position, found = fragment.PhysicalOffset(syntax.Statements[0].Pos())
+				case syntax.Expression != nil:
+					position, found = fragment.PhysicalOffset(syntax.Expression.Pos())
+				}
+				if !found || position != 0 {
+					t.Fatalf("first user node physical offset = %d, %t; want 0, true", position, found)
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestLoadFragmentRejectsBoundaryEscapeAndWrapperReliance(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		kind       source.FragmentKind
+		input      string
+		wantOffset int
+	}{
+		{
+			name:       "statement boundary escape",
+			kind:       source.FragmentStatement,
+			input:      "}\nvar escaped = 1\nfunc reopened(){",
+			wantOffset: 0,
+		},
+		{
+			name:       "expression boundary escape",
+			kind:       source.FragmentExpression,
+			input:      "1)\nvar escaped = (2",
+			wantOffset: 1,
+		},
+		{
+			name:       "statement wrapper declaration",
+			kind:       source.FragmentStatement,
+			input:      "goxfragment()",
+			wantOffset: 0,
+		},
+		{
+			name:       "statement wrapper used as map key",
+			kind:       source.FragmentStatement,
+			input:      "_ = map[func()]int{goxfragment: 1}",
+			wantOffset: len("_ = map[func()]int{"),
+		},
+		{
+			name:       "ambiguous statement wrapper key",
+			kind:       source.FragmentStatement,
+			input:      "_ = T{goxfragment: 1}",
+			wantOffset: len("_ = T{"),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fragment, err := source.LoadFragment("stdin.go", test.kind, []byte(test.input))
+			if err == nil {
+				t.Fatal("LoadFragment() must reject content outside the selected user boundary")
+			}
+			var positionError *source.FragmentError
+			if !errors.As(err, &positionError) {
+				t.Fatalf("LoadFragment() error = %T %v, want physical FragmentError", err, err)
+			}
+			if positionError.Offset != test.wantOffset {
+				t.Fatalf("fragment error offset = %d, want %d", positionError.Offset, test.wantOffset)
+			}
+			if strings.Contains(err.Error(), "goxfragment") {
+				t.Fatalf("LoadFragment() error exposed synthetic identifier: %q", err)
+			}
+			if fragment == nil || fragment.CanFormat() {
+				t.Fatalf("LoadFragment() fragment = %#v, want diagnostic-only state", fragment)
+			}
+		})
+	}
+
+	for _, input := range []string{
+		"goxfragment := func(){}; goxfragment()",
+		"_ = struct{ goxfragment int }{goxfragment: 1}",
+	} {
+		fragment, err := source.LoadFragment("stdin.go", source.FragmentStatement, []byte(input))
+		if err != nil {
+			t.Fatalf("LoadFragment(%q) rejected user-owned syntax: %v", input, err)
+		}
+		if !fragment.CanFormat() {
+			t.Fatalf("user-owned wrapper-name syntax %q must remain formatable", input)
+		}
+	}
+}
+
+func TestLoadFragmentMapsParseErrorsToPhysicalInput(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("value :=\n")
+	fragment, err := source.LoadFragment("stdin.go", source.FragmentStatement, input)
+	if err == nil {
+		t.Fatal("LoadFragment() must report invalid statement syntax")
+	}
+	if fragment == nil || fragment.CanFormat() {
+		t.Fatalf("LoadFragment() fragment = %#v, want diagnostic-only state", fragment)
+	}
+	var positionError *source.FragmentError
+	if !errors.As(err, &positionError) {
+		t.Fatalf("LoadFragment() error = %T %v, want FragmentError", err, err)
+	}
+	if positionError.Offset != len(input) {
+		t.Fatalf("fragment error offset = %d, want %d", positionError.Offset, len(input))
+	}
+	if !strings.Contains(err.Error(), "stdin.go:2:1") {
+		t.Fatalf("LoadFragment() error = %q, want physical line and column", err)
+	}
+	if strings.Contains(err.Error(), "goxfragment") {
+		t.Fatalf("LoadFragment() error exposed synthetic identifier: %q", err)
+	}
+}
+
+func TestLoadFragmentKeepsStatementParsingSyntaxOnly(t *testing.T) {
+	t.Parallel()
+
+	fragment, err := source.LoadFragment(
+		"stdin.go",
+		source.FragmentStatement,
+		[]byte("goto missing\nvalue = unresolved"),
+	)
+	if err != nil {
+		t.Fatalf("LoadFragment() required semantic resolution: %v", err)
+	}
+	if !fragment.CanFormat() {
+		t.Fatal("syntactically valid unresolved statements must remain formatable")
+	}
+}
+
+func TestLoadFragmentRejectsFilePlacementDirectives(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		kind  source.FragmentKind
+		input string
+	}{
+		{name: "build constraint", kind: source.FragmentDeclaration, input: "//go:build linux\nvar value int"},
+		{name: "generated marker", kind: source.FragmentDeclaration, input: "// Code generated by fixture. DO NOT EDIT.\nvar value int"},
+		{name: "cgo preamble", kind: source.FragmentDeclaration, input: "/*\n#cgo CFLAGS: -DVALUE=1\n*/\nimport \"C\""},
+		{name: "line directive", kind: source.FragmentStatement, input: "//line generated.go:100\nvalue++"},
+		{name: "compiler directive", kind: source.FragmentDeclaration, input: "//go:linkname local remote\nfunc local()"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fragment, err := source.LoadFragment("stdin.go", test.kind, []byte(test.input))
+			if err == nil {
+				t.Fatal("LoadFragment() must reject file-placement directives")
+			}
+			if fragment == nil || fragment.CanFormat() {
+				t.Fatalf("LoadFragment() fragment = %#v, want diagnostic-only state", fragment)
+			}
+		})
 	}
 }
 
@@ -182,6 +407,42 @@ func TestValidateEquivalentAllowsCommentMovementAcrossFormatterPunctuation(t *te
 	}
 	if err := source.ValidateEquivalent(before, after); err != nil {
 		t.Fatalf("ValidateEquivalent() rejected formatter punctuation movement: %v", err)
+	}
+}
+
+func TestValidateFragmentEquivalentRejectsSyntaxAndCommentOwnershipChanges(t *testing.T) {
+	t.Parallel()
+
+	before, err := source.LoadFragment(
+		"fragment.go",
+		source.FragmentExpression,
+		[]byte("combine(first /* keep */, second)"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commentMoved, err := source.LoadFragment(
+		"fragment.go",
+		source.FragmentExpression,
+		[]byte("combine(first, second /* keep */)"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.ValidateFragmentEquivalent(before, commentMoved); err == nil {
+		t.Fatal("ValidateFragmentEquivalent() must reject comment ownership movement")
+	}
+
+	syntaxChanged, err := source.LoadFragment(
+		"fragment.go",
+		source.FragmentExpression,
+		[]byte("combine(first /* keep */, third)"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.ValidateFragmentEquivalent(before, syntaxChanged); err == nil {
+		t.Fatal("ValidateFragmentEquivalent() must reject syntax changes")
 	}
 }
 
