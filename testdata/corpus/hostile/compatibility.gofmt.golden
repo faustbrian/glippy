@@ -1,0 +1,29 @@
+package hostile
+
+import (
+	_ "bytes"
+	z "strings"
+)
+
+const (
+	Short          = 0xAB
+	MuchLongerName = (1 + 2)
+)
+
+var (
+	x        int    = 1
+	longName string = "x"
+)
+
+type CompatibilityRecord struct {
+	A         int
+	LongField string
+}
+
+func compatibilityValue() int {
+	return (0xCAFE)
+}
+
+func compatibilityUse() string {
+	return z.TrimSpace("")
+}

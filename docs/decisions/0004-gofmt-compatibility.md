@@ -1,6 +1,6 @@
 # ADR 0004: Gofmt Fixed-Point Compatibility
 
-- Status: provisional target
+- Status: accepted for prototype; product-wide fixed point rejected
 - Date: 2026-08-09
 
 ## Context And Evidence
@@ -11,29 +11,41 @@ expanded function literal, selector chain, and type union can all be exact
 gofmt fixed points. Gofmt itself leaves ordinary same-line semicolon-separated
 statements compressed, so Gox still adds the intended value.
 
-Strict compatibility remains unproven. Gofmt aligns declarations and comments,
-sorts imports, normalizes some numeric literal prefixes, removes tested
-redundant parentheses, and can move comments across comma boundaries. Those
-behaviors interact with Gox source-fidelity and ownership contracts.
+The project-owned Phase 1 corpus now records the incompatible classes directly.
+For the same valid formatted file, Go 1.26.5 gofmt sorts a retained import
+group, normalizes hexadecimal prefixes, removes redundant parentheses, and
+adds tabular alignment to declarations and struct fields. Gox preserves import
+order, literal spelling, and parentheses and emits structural indentation
+without alignment. The corpus also records the deliberate width-aware
+`if`-header layout that gofmt flattens.
 
 ## Decision
 
-Phase 1 targets:
+Gox does not promise a product-wide fixed point under gofmt. For each construct
+class recorded as compatible, Phase 1 still requires:
 
 ```text
 gofmt(goxfmt(input)) == goxfmt(input)
 ```
 
-for the recorded compatible construct classes and pinned Go toolchain. This is
-not yet a product-wide invariant or public claim. Gox's own parse, normalized
+under the pinned Go toolchain. Each incompatible corpus fixture MUST name its
+divergence and pin the exact gofmt output. Gox's own parse, normalized
 equivalence, comment/directive accounting, and idempotency checks remain
 mandatory regardless of gofmt compatibility.
+
+The initial divergence classes are:
+
+1. intentional width-aware layout that gofmt flattens;
+2. retained import spec order that gofmt sorts;
+3. preserved numeric literal spelling that gofmt normalizes;
+4. preserved redundant parentheses that gofmt removes; and
+5. structural indentation without gofmt-style tabular alignment.
 
 Every difference discovered by the corpus must be classified as intentional
 Gox layout, accepted toolchain difference, unsupported syntax/version,
 source-fidelity defect, semantic-risk defect, or unresolved investigation.
-The final decision must state exact supported Go versions and divergence
-classes.
+Supported-version expansion MUST revalidate every compatible and divergent
+fixture before release.
 
 ## Alternatives Rejected
 
@@ -45,12 +57,13 @@ classes.
 
 ## Consequences
 
-Golden and corpus tests record the Go toolchain version. Gox must model any
-required alignment rather than delegating semantics to gofmt. Repositories
-that enforce gofmt will not receive a migration promise until this ADR becomes
-accepted or documents precise divergences.
+Golden and corpus tests record the Go toolchain version. Repositories that
+enforce gofmt cannot run it after Gox over the documented divergent classes
+without churn. They must keep their existing formatter until migration or make
+Gox the sole formatting authority and remove the conflicting gofmt check. Gox
+does not yet provide a gofmt-compatibility mode.
 
 ## Revisit Trigger
 
-After Phase 1 corpus, comment/directive, import, literal, parentheses, and
-alignment evidence is complete, and whenever supported Go toolchains change.
+Whenever supported Go toolchains change, a requested compatibility mode gains
+a concrete adoption case, or corpus evidence reveals a new divergence class.

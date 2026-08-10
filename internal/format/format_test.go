@@ -978,7 +978,8 @@ func TestFormatInitialCorpus(t *testing.T) {
 		t.Fatal("initial corpus is empty")
 	}
 	gofmtDivergences := map[string]string{
-		"blocks": "intentional width-aware if-header break",
+		"blocks":        "intentional width-aware if-header break",
+		"compatibility": "preserved import order, literal spelling, parentheses, and unaligned layout",
 	}
 	for name := range gofmtDivergences {
 		path := "../../testdata/corpus/hostile/" + name + ".go"

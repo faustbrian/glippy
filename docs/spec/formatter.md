@@ -92,6 +92,7 @@ Before returning success, the formatter MUST:
 6. verify documented width opportunities and exceptions; and
 7. report a deterministic outcome without writing in stdout or check modes.
 
-Strict gofmt fixed-point compatibility is a provisional corpus-backed target,
-not yet a public invariant; see
+Gofmt fixed-point compatibility is required only for corpus classes recorded as
+compatible. Import order, literal spelling, redundant parentheses, alignment,
+and intentional width-aware layout have documented divergences; see
 [`../decisions/0004-gofmt-compatibility.md`](../decisions/0004-gofmt-compatibility.md).

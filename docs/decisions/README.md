@@ -13,7 +13,7 @@ deferred status is an explicit gate, not silent approval.
 | Comment attachment | ADR 0009; initial project-owned corpus proof complete |
 | Directive preservation | ADR 0009; initial project-owned corpus proof complete |
 | Import organization ownership | Formatter specification; layout only, no organization |
-| Gofmt fixed point | ADR 0004, provisional corpus target |
+| Gofmt fixed point | ADR 0004; product-wide fixed point rejected with recorded divergences |
 | Semantic equivalence | Equivalence specification |
 | Invalid-source formatting | Source model specification; diagnostic-only |
 | Rule API and `go/analysis` | ADR 0006 and lint specification |

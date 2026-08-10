@@ -30,8 +30,8 @@ documented exception until the implementation can premeasure it safely.
 - Terminal cells or grapheme clusters in the initial dialect: greater visual
   accuracy but a larger versioned compatibility surface without adoption
   evidence.
-- Spaces for indentation: conflicts with idiomatic Go and the provisional
-  gofmt fixed-point target.
+- Spaces for indentation: conflicts with idiomatic Go and the recorded
+  gofmt-compatible construct classes.
 
 ## Consequences
 
