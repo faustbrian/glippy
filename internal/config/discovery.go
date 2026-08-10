@@ -15,16 +15,25 @@ type Selection struct {
 
 // Discover selects one project configuration for an input path.
 func Discover(inputPath, explicitPath string) (Selection, error) {
+	return discover(inputPath, explicitPath, true)
+}
+
+// DiscoverFileContext selects configuration for an editor file path that may not exist yet.
+func DiscoverFileContext(inputPath, explicitPath string) (Selection, error) {
+	return discover(inputPath, explicitPath, false)
+}
+
+func discover(inputPath, explicitPath string, requireInput bool) (Selection, error) {
 	absoluteInput, err := filepath.Abs(inputPath)
 	if err != nil {
 		return Selection{}, fmt.Errorf("resolve input path %q: %w", inputPath, err)
 	}
 	info, err := os.Stat(absoluteInput)
-	if err != nil {
+	if err != nil && (requireInput || !os.IsNotExist(err)) {
 		return Selection{}, fmt.Errorf("inspect input path %q: %w", absoluteInput, err)
 	}
 	start := absoluteInput
-	if !info.IsDir() {
+	if err != nil || !info.IsDir() {
 		start = filepath.Dir(start)
 	}
 	root, err := findProjectRoot(start)

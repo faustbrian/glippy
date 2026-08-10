@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -117,6 +118,22 @@ func Defaults() Config {
 			Rules:  make(map[string]Severity),
 		},
 	}
+}
+
+// Load returns defaults or reads and parses one selected configuration.
+func Load(selection Selection, options ParseOptions) (Config, error) {
+	if selection.Path == "" {
+		return Defaults(), nil
+	}
+	input, err := os.ReadFile(selection.Path)
+	if err != nil {
+		return Config{}, &Error{
+			Path:    selection.Path,
+			Message: fmt.Sprintf("read configuration: %v", err),
+			cause:   err,
+		}
+	}
+	return Parse(selection.Path, input, options)
 }
 
 // Parse strictly decodes, defaults, and validates one configuration source.

@@ -2,6 +2,8 @@ package config_test
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -175,5 +177,29 @@ disabled-rule = "off"
 	}
 	if got.Lint.Rules["disabled-rule"] != config.SeverityOff {
 		t.Fatalf("Parse() disabled-rule = %q, want %q", got.Lint.Rules["disabled-rule"], config.SeverityOff)
+	}
+}
+
+func TestLoadUsesDefaultsOrSelectedConfiguration(t *testing.T) {
+	t.Parallel()
+
+	defaults, err := config.Load(config.Selection{}, config.ParseOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults.Format.LineWidth != config.DefaultLineWidth {
+		t.Fatalf("Load() default width = %d, want %d", defaults.Format.LineWidth, config.DefaultLineWidth)
+	}
+
+	path := filepath.Join(t.TempDir(), config.Filename)
+	if err := os.WriteFile(path, []byte("version = 1\n[format]\nline-width = 88\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := config.Load(config.Selection{Path: path}, config.ParseOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Format.LineWidth != 88 {
+		t.Fatalf("Load() width = %d, want 88", loaded.Format.LineWidth)
 	}
 }

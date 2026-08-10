@@ -184,6 +184,24 @@ func TestDiscoverRejectsUnusableInputAndConfigurationPaths(t *testing.T) {
 	})
 }
 
+func TestDiscoverFileContextUsesNonexistentEditorPath(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "go.mod"))
+	configurationPath := filepath.Join(root, config.Filename)
+	writeTestFile(t, configurationPath)
+	inputPath := filepath.Join(root, "new", "source.go")
+
+	selection, err := config.DiscoverFileContext(inputPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selection.Root != root || selection.Path != configurationPath {
+		t.Fatalf("DiscoverFileContext() = %#v, want editor path context", selection)
+	}
+}
+
 func writeTestFile(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
