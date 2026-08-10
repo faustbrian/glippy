@@ -1309,6 +1309,95 @@ func TestFormatUsesDeterministicSelectorChainWidthBoundary(t *testing.T) {
 	}
 }
 
+func TestFormatUsesDeterministicDelimitedListWidthBoundaries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		input  string
+		width  int
+		flat   string
+		broken string
+	}{
+		{
+			name:   "call arguments",
+			input:  "package boundary\nfunc run(){use(firstArgument,secondArgument)}\n",
+			width:  42,
+			flat:   "package boundary\n\nfunc run() {\n\tuse(firstArgument, secondArgument)\n}\n",
+			broken: "package boundary\n\nfunc run() {\n\tuse(\n\t\tfirstArgument,\n\t\tsecondArgument,\n\t)\n}\n",
+		},
+		{
+			name:   "composite literal elements",
+			input:  "package boundary\nfunc run(){items:=[]Item{firstValue,secondValue};_=items}\n",
+			width:  48,
+			flat:   "package boundary\n\nfunc run() {\n\titems := []Item{firstValue, secondValue}\n\t_ = items\n}\n",
+			broken: "package boundary\n\nfunc run() {\n\titems := []Item{\n\t\tfirstValue,\n\t\tsecondValue,\n\t}\n\t_ = items\n}\n",
+		},
+		{
+			name:   "type arguments",
+			input:  "package boundary\nfunc run(){value:=NewPair[string,int];_=value}\n",
+			width:  37,
+			flat:   "package boundary\n\nfunc run() {\n\tvalue := NewPair[string, int]\n\t_ = value\n}\n",
+			broken: "package boundary\n\nfunc run() {\n\tvalue := NewPair[\n\t\tstring,\n\t\tint,\n\t]\n\t_ = value\n}\n",
+		},
+		{
+			name:   "function type parameters",
+			input:  "package boundary\ntype Pair[Key comparable,Value any] struct{}\n",
+			width:  45,
+			flat:   "package boundary\n\ntype Pair[Key comparable, Value any] struct{}\n",
+			broken: "package boundary\n\ntype Pair[\n\tKey comparable,\n\tValue any,\n] struct{}\n",
+		},
+		{
+			name:   "function parameters",
+			input:  "package boundary\nfunc transform(firstArgument int,secondArgument string){}\n",
+			width:  59,
+			flat:   "package boundary\n\nfunc transform(firstArgument int, secondArgument string) {}\n",
+			broken: "package boundary\n\nfunc transform(\n\tfirstArgument int,\n\tsecondArgument string,\n) {}\n",
+		},
+		{
+			name:   "function results",
+			input:  "package boundary\nfunc transform()(firstResult int,secondResult error){}\n",
+			width:  57,
+			flat:   "package boundary\n\nfunc transform() (firstResult int, secondResult error) {}\n",
+			broken: "package boundary\n\nfunc transform() (\n\tfirstResult int,\n\tsecondResult error,\n) {}\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, mode := range []struct {
+				name  string
+				width int
+				want  string
+			}{
+				{name: "exact fit", width: test.width, want: test.flat},
+				{name: "one column under", width: test.width - 1, want: test.broken},
+			} {
+				t.Run(mode.name, func(t *testing.T) {
+					t.Parallel()
+
+					file, err := source.Load("delimited_boundary.go", []byte(test.input))
+					if err != nil {
+						t.Fatal(err)
+					}
+					got, err := goxformat.File(file, goxformat.Options{
+						Width:     mode.width,
+						TabWidth:  8,
+						FitBudget: 1_000,
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if string(got) != mode.want {
+						t.Fatalf("File() =\n%s\nwant:\n%s", got, mode.want)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestFormatBreaksGenericSelectorChains(t *testing.T) {
 	t.Parallel()
 
