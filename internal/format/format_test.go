@@ -1343,6 +1343,27 @@ func TestFormatUsesDeterministicControlFlowHeaderWidthBoundaries(t *testing.T) {
 			broken: "package boundary\n\nfunc iterate() {\n\tfor\n\t\tindex, value := range\n\t\tvaluesWithLongName {\n\t\t_, _ = index, value\n\t}\n}\n",
 		},
 		{
+			name:   "bare range for",
+			input:  "package boundary\nfunc iterate(){for range valuesWithLongName{work()}}\n",
+			width:  38,
+			flat:   "package boundary\n\nfunc iterate() {\n\tfor range valuesWithLongName {\n\t\twork()\n\t}\n}\n",
+			broken: "package boundary\n\nfunc iterate() {\n\tfor\n\t\trange\n\t\tvaluesWithLongName {\n\t\twork()\n\t}\n}\n",
+		},
+		{
+			name:   "single declaration range for",
+			input:  "package boundary\nfunc iterate(){for indexWithLongName:=range valuesWithLongName{_=indexWithLongName}}\n",
+			width:  59,
+			flat:   "package boundary\n\nfunc iterate() {\n\tfor indexWithLongName := range valuesWithLongName {\n\t\t_ = indexWithLongName\n\t}\n}\n",
+			broken: "package boundary\n\nfunc iterate() {\n\tfor\n\t\tindexWithLongName := range\n\t\tvaluesWithLongName {\n\t\t_ = indexWithLongName\n\t}\n}\n",
+		},
+		{
+			name:   "single assignment range for",
+			input:  "package boundary\nfunc iterate(){for indexWithLongName=range valuesWithLongName{_=indexWithLongName}}\n",
+			width:  58,
+			flat:   "package boundary\n\nfunc iterate() {\n\tfor indexWithLongName = range valuesWithLongName {\n\t\t_ = indexWithLongName\n\t}\n}\n",
+			broken: "package boundary\n\nfunc iterate() {\n\tfor\n\t\tindexWithLongName = range\n\t\tvaluesWithLongName {\n\t\t_ = indexWithLongName\n\t}\n}\n",
+		},
+		{
 			name:   "switch initializer",
 			input:  "package boundary\nfunc choose(inputValue int){switch currentValue:=inputValue;currentValue{default:work()}}\n",
 			width:  57,
