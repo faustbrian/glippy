@@ -1749,6 +1749,24 @@ func TestFormatKeepsDocumentedAtomicConstructsIntactWhenOverWidth(t *testing.T) 
 	}
 }
 
+func TestFormatKeepsOrdinaryAssignmentOperatorWithRightHandSide(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package assignment\nfunc run(){result,err:=client.executeContent(ctx,OperationInfo,http.MethodGet,\"/\",nil,\"application/json\",200);value:=identifierWithAnExtremelyLongName;_,_,_=result,err,value}\nfunc comment(){value:= // keep\notherValue;_=value}\n")
+	file, err := source.Load("assignment.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 48, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package assignment\n\nfunc run() {\n\tresult, err := client.executeContent(\n\t\tctx,\n\t\tOperationInfo,\n\t\thttp.MethodGet,\n\t\t\"/\",\n\t\tnil,\n\t\t\"application/json\",\n\t\t200,\n\t)\n\tvalue := identifierWithAnExtremelyLongName\n\t_, _, _ = result, err, value\n}\n\nfunc comment() {\n\tvalue :=\n\t\t// keep\n\t\totherValue\n\t_ = value\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatUsesDeterministicGenericSelectorChainWidthBoundary(t *testing.T) {
 	t.Parallel()
 

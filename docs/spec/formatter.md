@@ -51,6 +51,15 @@ operand. Unary expressions, increment/decrement statements, indexing, slicing,
 and other constructs without a grammar-safe broken form MUST remain atomic or
 use a separately proven layout.
 
+Ordinary assignments MUST keep the assignment operator and the first
+right-hand expression on the same line. Width pressure inside the right-hand
+expression belongs to that expression's canonical groups, so a broken call
+keeps its callee beside `:=` or `=` and breaks only its argument list. Gox does
+not introduce a generic assignment-operator break; an otherwise atomic
+assignment MAY remain over width. Grammar contexts with a separately specified
+layout MAY force the right-hand side onto the following line. A line comment
+after the operator MUST force the right-hand side onto the following line.
+
 Multi-selector chains share one layout group. When that group breaks, every
 selector dot remains on the preceding line and every following selector uses
 one continuation indentation level. A single selector remains atomic so a
