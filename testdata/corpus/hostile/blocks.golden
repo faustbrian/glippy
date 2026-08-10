@@ -1,0 +1,19 @@
+package hostile
+
+import "errors"
+
+var ErrContextRequired = errors.New("context required")
+
+type Client struct{}
+
+func (Client) Discover(any) (any, error) {
+	return nil, ErrContextRequired
+}
+
+func check(client Client) error {
+	if _, err := client.Discover(nil);
+		!errors.Is(err, ErrContextRequired) {
+		return err
+	}
+	return nil
+}

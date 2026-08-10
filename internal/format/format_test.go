@@ -2,7 +2,11 @@ package format_test
 
 import (
 	"bytes"
+	"go/format"
 	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	goxformat "github.com/faustbrian/gox/internal/format"
@@ -834,45 +838,90 @@ func TestFormatPreservesCallArgumentComments(t *testing.T) {
 	}
 }
 
-func TestFormatHostileCommentCorpus(t *testing.T) {
+func TestFormatInitialCorpus(t *testing.T) {
 	t.Parallel()
 
-	input, err := os.ReadFile("../../testdata/corpus/hostile/comments.go")
+	paths, err := filepath.Glob("../../testdata/corpus/hostile/*.go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	file, err := source.Load("comments.go", input)
-	if err != nil {
-		t.Fatal(err)
+	if len(paths) == 0 {
+		t.Fatal("initial corpus is empty")
 	}
-	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
-	if err != nil {
-		t.Fatal(err)
+	gofmtDivergences := map[string]string{
+		"blocks": "intentional width-aware if-header break",
 	}
-	want := "// Package hostile contains owned hostile-valid-Go fixtures.\npackage hostile\n\n//go:generate go run example.invalid/generator\n\nfunc comments(a, b int) int {\n\treturn a /* left operand */ + /* right operand */ b\n}\n\nfunc literal() []int {\n\treturn []int{\n\t\t1, /* first */\n\t\t2, /* second */\n\t\t3,\n\t}\n}\n"
-	if string(got) != want {
-		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	for name := range gofmtDivergences {
+		path := "../../testdata/corpus/hostile/" + name + ".go"
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("gofmt divergence names missing corpus input %s: %v", path, err)
+		}
 	}
-}
+	for _, path := range paths {
+		name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-func TestFormatHostileGenericRangeCorpus(t *testing.T) {
-	t.Parallel()
-
-	input, err := os.ReadFile("../../testdata/corpus/hostile/generics.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	file, err := source.Load("generics.go", input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "package hostile\n\ntype Number interface {\n\t~int | ~int64 | ~float64\n}\n\nfunc sum[T Number](values []T) T {\n\tvar result T\n\tfor _, value := range values {\n\t\tresult += value\n\t}\n\treturn result\n}\n"
-	if string(got) != want {
-		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+			input, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := os.ReadFile("../../testdata/corpus/hostile/" + name + ".golden")
+			if err != nil {
+				t.Fatal(err)
+			}
+			file, err := source.Load(name+".go", input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			options := goxformat.Options{Width: 60, TabWidth: 8, FitBudget: 1_000}
+			got, err := goxformat.File(file, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+			}
+			reparsed, err := source.Load("formatted_"+name+".go", got)
+			if err != nil {
+				t.Fatalf("formatted output does not parse: %v", err)
+			}
+			again, err := goxformat.File(reparsed, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(again, got) {
+				t.Fatalf("formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, again)
+			}
+			gofmtOutput, err := format.Source(got)
+			if err != nil {
+				t.Fatalf("gofmt rejected output under %s: %v", runtime.Version(), err)
+			}
+			gofmtFixedPoint := bytes.Equal(gofmtOutput, got)
+			gofmtDivergence := gofmtDivergences[name]
+			gofmtGoldenPath := "../../testdata/corpus/hostile/" + name + ".gofmt.golden"
+			if gofmtDivergence == "" {
+				if _, err := os.Stat(gofmtGoldenPath); !os.IsNotExist(err) {
+					t.Fatalf("fixed-point corpus input has unexpected gofmt golden %s", gofmtGoldenPath)
+				}
+			}
+			if gofmtDivergence == "" && !gofmtFixedPoint {
+				t.Fatalf("output is not a gofmt fixed point under %s:\ngofmt:\n%s\ngox:\n%s", runtime.Version(), gofmtOutput, got)
+			}
+			if gofmtDivergence != "" {
+				if gofmtFixedPoint {
+					t.Fatalf("recorded gofmt divergence %q no longer occurs under %s", gofmtDivergence, runtime.Version())
+				}
+				wantGofmt, err := os.ReadFile(gofmtGoldenPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(gofmtOutput, wantGofmt) {
+					t.Fatalf("recorded gofmt divergence %q changed under %s:\ngofmt:\n%s\nwant:\n%s", gofmtDivergence, runtime.Version(), gofmtOutput, wantGofmt)
+				}
+				t.Logf("gofmt divergence: %s", gofmtDivergence)
+			}
+		})
 	}
 }
 
