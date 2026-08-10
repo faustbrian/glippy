@@ -32,6 +32,9 @@ func discover(inputPath, explicitPath string, requireInput bool) (Selection, err
 	if err != nil && (requireInput || !os.IsNotExist(err)) {
 		return Selection{}, fmt.Errorf("inspect input path %q: %w", absoluteInput, err)
 	}
+	if !requireInput && err == nil && info.IsDir() {
+		return Selection{}, fmt.Errorf("editor file path %q is a directory", absoluteInput)
+	}
 	start := absoluteInput
 	if err != nil || !info.IsDir() {
 		start = filepath.Dir(start)

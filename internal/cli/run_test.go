@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -46,6 +48,136 @@ func TestRunFormatsCompleteFileFromStdinToStdout(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunUsesDiscoveredConfigurationForStandardInputPath(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".gox.toml"),
+		[]byte("version = 1\n[format]\nline-width = 30\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	stdinPath := filepath.Join(root, "new", "source.go")
+	input := "package sample\nfunc run(){if firstCondition && secondCondition && thirdCondition {work()}}\n"
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run(
+		[]string{"fmt", "--stdin-filepath", stdinPath},
+		strings.NewReader(input),
+		&stdout,
+		&stderr,
+	)
+
+	if exitCode != ExitSuccess {
+		t.Fatalf("Run() exit code = %d, want %d; stderr = %q", exitCode, ExitSuccess, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "firstCondition &&\n") {
+		t.Fatalf("Run() stdout =\n%s\nwant configured width break", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunUsesExplicitConfigurationBeforeReadingStandardInput(t *testing.T) {
+	t.Parallel()
+
+	configurationPath := filepath.Join(t.TempDir(), "explicit.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n[format]\nline-width = 30\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	input := "package sample\nfunc run(){if firstCondition && secondCondition && thirdCondition {work()}}\n"
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run(
+		[]string{"fmt", "--config=" + configurationPath},
+		strings.NewReader(input),
+		&stdout,
+		&stderr,
+	)
+
+	if exitCode != ExitSuccess || !strings.Contains(stdout.String(), "firstCondition &&\n") {
+		t.Fatalf("Run() exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunAcceptsSeparatedConfigurationFlag(t *testing.T) {
+	t.Parallel()
+
+	configurationPath := filepath.Join(t.TempDir(), "explicit.toml")
+	if err := os.WriteFile(configurationPath, []byte("version = 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run(
+		[]string{"fmt", "--config", configurationPath},
+		strings.NewReader("package sample\n"),
+		&stdout,
+		&stderr,
+	)
+
+	if exitCode != ExitSuccess {
+		t.Fatalf("Run() exit code = %d, want %d; stderr = %q", exitCode, ExitSuccess, stderr.String())
+	}
+}
+
+func TestRunRejectsInvalidConfigurationBeforeReadingStandardInput(t *testing.T) {
+	t.Parallel()
+
+	configurationPath := filepath.Join(t.TempDir(), "invalid.toml")
+	if err := os.WriteFile(configurationPath, []byte("version = 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run(
+		[]string{"fmt", "--config=" + configurationPath},
+		failingReader{},
+		&stdout,
+		&stderr,
+	)
+
+	if exitCode != ExitInvalidInvocation {
+		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitInvalidInvocation)
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "unsupported configuration version 2") {
+		t.Fatalf("Run() stdout = %q, stderr = %q", stdout.String(), stderr.String())
+	}
+	if strings.Contains(stderr.String(), "stream failure") {
+		t.Fatalf("Run() read stdin before configuration validation: %q", stderr.String())
+	}
+}
+
+func TestRunClassifiesDirectoryStdinFilepathAsInvalidInvocation(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"fmt", "--stdin-filepath=" + t.TempDir()},
+		strings.NewReader("package sample\n"),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitInvalidInvocation {
+		t.Fatalf("Run() exit code = %d, want %d; stderr = %q", exitCode, ExitInvalidInvocation, stderr.String())
 	}
 }
 
@@ -125,6 +257,8 @@ func TestRunRejectsInvalidFragmentSelections(t *testing.T) {
 		{"fmt", "--fragment"},
 		{"fmt", "--fragment=unknown"},
 		{"fmt", "--fragment=statement", "extra"},
+		{"fmt", "--config", "--fragment=statement"},
+		{"fmt", "--stdin-filepath", "--config=project.toml"},
 	} {
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
@@ -229,7 +363,7 @@ func TestRunRejectsUnsupportedInvocation(t *testing.T) {
 		if stdout.Len() != 0 {
 			t.Fatalf("Run(%q) stdout = %q, want empty", arguments, stdout.String())
 		}
-		if stderr.String() != "gox: expected 'fmt' or 'fmt --fragment=declaration|statement|expression' with standard input\n" {
+		if stderr.String() != formatUsage {
 			t.Fatalf("Run(%q) stderr = %q", arguments, stderr.String())
 		}
 	}

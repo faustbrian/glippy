@@ -202,6 +202,14 @@ func TestDiscoverFileContextUsesNonexistentEditorPath(t *testing.T) {
 	}
 }
 
+func TestDiscoverFileContextRejectsDirectory(t *testing.T) {
+	t.Parallel()
+
+	if _, err := config.DiscoverFileContext(t.TempDir(), ""); err == nil {
+		t.Fatal("DiscoverFileContext() error = nil, want directory rejection")
+	}
+}
+
 func writeTestFile(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
