@@ -1609,6 +1609,24 @@ func TestFormatUsesDeterministicBinaryChainWidthBoundaries(t *testing.T) {
 	}
 }
 
+func TestFormatKeepsDocumentedAtomicConstructsIntactWhenOverWidth(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package atomic\nfunc unary(){_=!conditionWithAnExtremelyLongName}\nfunc index(){_=values[indexWithAnExtremelyLongName]}\nfunc slice(){_=values[lowerBoundWithLongName:upperBoundWithLongName]}\nfunc assertion(){_=value.(TypeWithAnExtremelyLongName)}\nfunc increment(){counterWithAnExtremelyLongName++}\n")
+	file, err := source.Load("atomic.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 30, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package atomic\n\nfunc unary() {\n\t_ = !conditionWithAnExtremelyLongName\n}\n\nfunc index() {\n\t_ = values[indexWithAnExtremelyLongName]\n}\n\nfunc slice() {\n\t_ = values[lowerBoundWithLongName:upperBoundWithLongName]\n}\n\nfunc assertion() {\n\t_ = value.(TypeWithAnExtremelyLongName)\n}\n\nfunc increment() {\n\tcounterWithAnExtremelyLongName++\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatBreaksGenericSelectorChains(t *testing.T) {
 	t.Parallel()
 
