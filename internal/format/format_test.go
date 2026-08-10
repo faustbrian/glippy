@@ -1269,6 +1269,81 @@ func TestFormatUsesDeterministicIfInitializerWidthBoundary(t *testing.T) {
 	}
 }
 
+func TestFormatUsesDeterministicControlFlowHeaderWidthBoundaries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		input  string
+		width  int
+		flat   string
+		broken string
+	}{
+		{
+			name:   "classic for",
+			input:  "package boundary\nfunc loop(){for index:=startingIndex;index<collectionLength;index++{work()}}\n",
+			width:  71,
+			flat:   "package boundary\n\nfunc loop() {\n\tfor index := startingIndex; index < collectionLength; index++ {\n\t\twork()\n\t}\n}\n",
+			broken: "package boundary\n\nfunc loop() {\n\tfor index := startingIndex;\n\t\tindex < collectionLength;\n\t\tindex++ {\n\t\twork()\n\t}\n}\n",
+		},
+		{
+			name:   "range for",
+			input:  "package boundary\nfunc iterate(){for index,value:=range valuesWithLongName{_,_=index,value}}\n",
+			width:  54,
+			flat:   "package boundary\n\nfunc iterate() {\n\tfor index, value := range valuesWithLongName {\n\t\t_, _ = index, value\n\t}\n}\n",
+			broken: "package boundary\n\nfunc iterate() {\n\tfor\n\t\tindex, value := range\n\t\tvaluesWithLongName {\n\t\t_, _ = index, value\n\t}\n}\n",
+		},
+		{
+			name:   "switch initializer",
+			input:  "package boundary\nfunc choose(inputValue int){switch currentValue:=inputValue;currentValue{default:work()}}\n",
+			width:  57,
+			flat:   "package boundary\n\nfunc choose(inputValue int) {\n\tswitch currentValue := inputValue; currentValue {\n\tdefault:\n\t\twork()\n\t}\n}\n",
+			broken: "package boundary\n\nfunc choose(inputValue int) {\n\tswitch currentValue := inputValue;\n\t\tcurrentValue {\n\tdefault:\n\t\twork()\n\t}\n}\n",
+		},
+		{
+			name:   "type switch initializer",
+			input:  "package boundary\nfunc classify(inputValue any){switch prepared:=inputValue;current:=prepared.(type){case string:_=current}}\n",
+			width:  67,
+			flat:   "package boundary\n\nfunc classify(inputValue any) {\n\tswitch prepared := inputValue; current := prepared.(type) {\n\tcase string:\n\t\t_ = current\n\t}\n}\n",
+			broken: "package boundary\n\nfunc classify(inputValue any) {\n\tswitch prepared := inputValue;\n\t\tcurrent := prepared.(type) {\n\tcase string:\n\t\t_ = current\n\t}\n}\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, mode := range []struct {
+				name  string
+				width int
+				want  string
+			}{
+				{name: "exact fit", width: test.width, want: test.flat},
+				{name: "one column under", width: test.width - 1, want: test.broken},
+			} {
+				t.Run(mode.name, func(t *testing.T) {
+					t.Parallel()
+
+					file, err := source.Load("control_flow_boundary.go", []byte(test.input))
+					if err != nil {
+						t.Fatal(err)
+					}
+					got, err := goxformat.File(file, goxformat.Options{
+						Width:     mode.width,
+						TabWidth:  8,
+						FitBudget: 1_000,
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if string(got) != mode.want {
+						t.Fatalf("File() =\n%s\nwant:\n%s", got, mode.want)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestFormatUsesDeterministicSelectorChainWidthBoundary(t *testing.T) {
 	t.Parallel()
 
