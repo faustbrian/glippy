@@ -8,8 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/faustbrian/gox/internal/discovery"
 	"github.com/faustbrian/gox/internal/filesystem"
 )
 
@@ -52,6 +54,149 @@ func TestRunFormatsCompleteFileFromStdinToStdout(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
 	}
+}
+
+func TestRunContextRefusesCanceledInvocationBeforeReadingInput(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := RunContext(ctx, []string{"fmt"}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitCanceled {
+		t.Fatalf("RunContext() exit code = %d, want %d", exitCode, ExitCanceled)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("RunContext() stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), context.Canceled.Error()) || strings.Contains(stderr.String(), errStream.Error()) {
+		t.Fatalf("RunContext() stderr = %q, want cancellation without input read", stderr.String())
+	}
+}
+
+func TestMapFormatTasksBoundsConcurrencyAndPreservesTaskOrder(t *testing.T) {
+	t.Parallel()
+
+	tasks := []formatTask{
+		{file: discoveryFile("a.go")},
+		{file: discoveryFile("b.go")},
+		{file: discoveryFile("c.go")},
+		{file: discoveryFile("d.go")},
+	}
+	started := make(chan string, len(tasks))
+	release := make(chan struct{}, len(tasks))
+	var active atomic.Int64
+	var maximum atomic.Int64
+	type outcome struct{ path string }
+	result := make(chan struct {
+		values []outcome
+		err    error
+	}, 1)
+	go func() {
+		values, err := mapFormatTasks(context.Background(), tasks, 2, func(_ context.Context, task formatTask) (outcome, error) {
+			current := active.Add(1)
+			for observed := maximum.Load(); current > observed && !maximum.CompareAndSwap(observed, current); observed = maximum.Load() {
+			}
+			started <- task.file.Path
+			<-release
+			active.Add(-1)
+			return outcome{path: task.file.Path}, nil
+		})
+		result <- struct {
+			values []outcome
+			err    error
+		}{values: values, err: err}
+	}()
+
+	<-started
+	<-started
+	if got := maximum.Load(); got != 2 {
+		t.Fatalf("mapFormatTasks() maximum concurrency = %d, want 2", got)
+	}
+	for range tasks {
+		release <- struct{}{}
+	}
+	got := <-result
+	if got.err != nil {
+		t.Fatalf("mapFormatTasks() error = %v", got.err)
+	}
+	for index, task := range tasks {
+		if got.values[index].path != task.file.Path {
+			t.Fatalf("mapFormatTasks() result[%d] = %q, want %q", index, got.values[index].path, task.file.Path)
+		}
+	}
+}
+
+func TestBoundedFormatWorkerLimitUsesEveryResourceBoundary(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		resourceLimit int
+		taskCount     int
+		want          int
+	}{
+		{name: "resource", resourceLimit: 4, taskCount: 20, want: 4},
+		{name: "selection", resourceLimit: 8, taskCount: 3, want: 3},
+		{name: "hard ceiling", resourceLimit: 64, taskCount: 100, want: maximumFormatWorkers},
+		{name: "empty selection", resourceLimit: 8, taskCount: 0, want: 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := boundedFormatWorkerLimit(test.resourceLimit, test.taskCount); got != test.want {
+				t.Fatalf("boundedFormatWorkerLimit(%d, %d) = %d, want %d", test.resourceLimit, test.taskCount, got, test.want)
+			}
+		})
+	}
+}
+
+func TestMapFormatTasksChoosesFirstTaskErrorDeterministically(t *testing.T) {
+	t.Parallel()
+
+	firstErr := errors.New("first task failed")
+	secondErr := errors.New("second task failed")
+	secondFinished := make(chan struct{})
+	tasks := []formatTask{{file: discoveryFile("a.go")}, {file: discoveryFile("z.go")}}
+
+	_, err := mapFormatTasks(context.Background(), tasks, 2, func(_ context.Context, task formatTask) (string, error) {
+		if task.file.Path == "a.go" {
+			<-secondFinished
+			return "", firstErr
+		}
+		close(secondFinished)
+		return "", secondErr
+	})
+
+	if !errors.Is(err, firstErr) {
+		t.Fatalf("mapFormatTasks() error = %v, want first task error", err)
+	}
+}
+
+func TestMapFormatTasksChoosesSeverityBeforeTaskOrder(t *testing.T) {
+	t.Parallel()
+
+	sourceErr := errors.New("source failed")
+	filesystemErr := errors.New("filesystem failed")
+	tasks := []formatTask{{file: discoveryFile("a.go")}, {file: discoveryFile("z.go")}}
+
+	_, err := mapFormatTasks(context.Background(), tasks, 2, func(_ context.Context, task formatTask) (string, error) {
+		if task.file.Path == "a.go" {
+			return "", &formatTaskError{exitCode: ExitSourceError, err: sourceErr}
+		}
+		return "", &formatTaskError{exitCode: ExitFilesystemError, err: filesystemErr}
+	})
+
+	if !errors.Is(err, filesystemErr) {
+		t.Fatalf("mapFormatTasks() error = %v, want higher-severity filesystem error", err)
+	}
+}
+
+func discoveryFile(path string) discovery.File {
+	return discovery.File{Path: path}
 }
 
 func TestRunFormatsOneExplicitFileToStdoutWithoutMutation(t *testing.T) {
@@ -477,6 +622,60 @@ func TestRunFormatWriteReportsFilesReplacedBeforeLaterConflict(t *testing.T) {
 	}
 	if !bytes.Equal(second, newer) {
 		t.Fatalf("runFormatWrite() second file = %q, want newer bytes preserved", second)
+	}
+}
+
+func TestRunFormatWriteStopsBeforeNextReplacementWhenCanceled(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(root, "a.go")
+	if err := os.WriteFile(firstPath, []byte("package sample\nfunc first(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secondPath := filepath.Join(root, "z.go")
+	secondInput := []byte("package sample\nfunc second(){}\n")
+	if err := os.WriteFile(secondPath, secondInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	var replacements atomic.Int64
+	var stderr bytes.Buffer
+
+	exitCode := runFormatWrite(
+		ctx,
+		formatInvocation{paths: []string{root}, write: true},
+		&stderr,
+		func(snapshot *filesystem.Snapshot, output []byte) error {
+			replacements.Add(1)
+			if err := snapshot.Replace(output); err != nil {
+				return err
+			}
+			cancel()
+			return nil
+		},
+	)
+
+	if exitCode != ExitCanceled {
+		t.Fatalf("runFormatWrite() exit = %d, want %d", exitCode, ExitCanceled)
+	}
+	if replacements.Load() != 1 {
+		t.Fatalf("runFormatWrite() replacements = %d, want 1", replacements.Load())
+	}
+	if !strings.Contains(stderr.String(), context.Canceled.Error()) ||
+		!strings.Contains(stderr.String(), "files replaced before failure") ||
+		!strings.Contains(stderr.String(), firstPath) {
+		t.Fatalf("runFormatWrite() stderr = %q, want cancellation and prior replacement", stderr.String())
+	}
+	second, err := os.ReadFile(secondPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(second, secondInput) {
+		t.Fatalf("runFormatWrite() second file = %q, want unchanged", second)
 	}
 }
 

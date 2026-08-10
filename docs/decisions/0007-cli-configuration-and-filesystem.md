@@ -19,6 +19,12 @@ configuration, and formatting/fix validation completes before a file's atomic
 replacement. Recursive discovery excludes vendor, module caches, VCS metadata,
 and symlink traversal by default.
 
+File-formatting preparation is bounded by the selection size, `GOMAXPROCS`, and
+a hard ceiling of 32 workers. Sorted task indexes own result and error ordering.
+Signal or caller cancellation stops scheduling and is observed before every
+filesystem replacement; exit code 130 distinguishes cancellation from an
+internal tool defect.
+
 ## Alternatives Rejected
 
 - Default in-place `fmt`: unsafe and surprising for stdin/editor workflows.
@@ -32,7 +38,9 @@ and symlink traversal by default.
 
 Some monorepositories may require explicit invocations or future typed path
 overrides. Exit categories are more detailed than common formatter tools but
-support reliable CI and machine consumers.
+support reliable CI and machine consumers. Parallel preparation increases open
+file and memory pressure up to the documented ceiling, while serialized
+replacement preserves deterministic disclosure of partial multi-file writes.
 
 ## Revisit Trigger
 

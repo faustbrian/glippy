@@ -56,6 +56,20 @@ physical byte range, rule ID, severity, and stable message key before any
 reporter renders them. Text and versioned JSON reporters MUST derive their exit
 category from the same aggregate result.
 
+Formatter read, parse, and layout preparation uses at most the smaller of the
+selection size, `GOMAXPROCS`, and 32 workers. Task identity is assigned only
+after normalized-path sorting. Completion timing cannot reorder findings.
+Failure selection follows exit severity first and normalized task order within
+one severity.
+
+The binary cancels an invocation on interrupt or termination signals. Library
+callers MAY supply the same contract through `RunContext`. Cancellation is
+checked between discovery, configuration, reads, formatting, output, and each
+replacement; it exits with code 130 and MUST NOT begin another replacement once
+observed. If cancellation follows an earlier replacement, the diagnostic lists
+the files already replaced. Reading an arbitrary standard-input stream cannot
+be interrupted until that stream's `Read` operation returns.
+
 ## Exit Categories
 
 | Code | Category |
@@ -67,11 +81,13 @@ category from the same aggregate result.
 | 4 | Stale or conflicting fixes |
 | 5 | Discovery, read, write, or replacement filesystem failure |
 | 6 | Internal invariant or unexpected tool failure |
+| 130 | Invocation canceled or deadline exceeded |
 
 An invocation MUST choose the most severe applicable nonzero category using
 the order 6, 5, 4, 3, 2, 1. Machine output MUST include the symbolic category
 and schema version rather than requiring consumers to infer meaning from the
-integer alone.
+integer alone. Cancellation terminates the incomplete invocation instead of
+participating in aggregate finding severity.
 
 ## Filesystem Boundary
 
