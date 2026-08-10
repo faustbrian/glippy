@@ -3,6 +3,7 @@ package source_test
 import (
 	"bytes"
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -378,6 +379,38 @@ func TestLoadIndexesTriviaCommentsAndAnchoredDirectives(t *testing.T) {
 	}
 }
 
+func TestDirectiveCorpusCoversEveryPrototypeDirectiveClass(t *testing.T) {
+	t.Parallel()
+
+	input, err := os.ReadFile("../../testdata/corpus/hostile/directives.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load("directives.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []source.DirectiveKind{
+		source.DirectiveBuildConstraint,
+		source.DirectiveBuildConstraint,
+		source.DirectiveGenerated,
+		source.DirectiveCgoPreamble,
+		source.DirectiveGoEmbed,
+		source.DirectiveCompiler,
+		source.DirectiveGoGenerate,
+		source.DirectiveCompiler,
+		source.DirectiveLine,
+		source.DirectiveGoxSuppression,
+	}
+	got := make([]source.DirectiveKind, 0, len(file.Directives()))
+	for _, directive := range file.Directives() {
+		got = append(got, directive.Kind)
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("directive corpus kinds = %v, want %v", got, want)
+	}
+}
+
 func TestValidateEquivalentRejectsCommentMovementAcrossSignificantTokens(t *testing.T) {
 	t.Parallel()
 
@@ -443,6 +476,113 @@ func TestValidateFragmentEquivalentRejectsSyntaxAndCommentOwnershipChanges(t *te
 	}
 	if err := source.ValidateFragmentEquivalent(before, syntaxChanged); err == nil {
 		t.Fatal("ValidateFragmentEquivalent() must reject syntax changes")
+	}
+}
+
+func TestEquivalenceRejectsDirectiveLineAnchorMovement(t *testing.T) {
+	t.Parallel()
+
+	beforeFile, err := source.Load(
+		"directive.go",
+		[]byte("package directive\nfunc run(){ //gox:ignore example because ownership matters\nwork()}\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterFile, err := source.Load(
+		"directive.go",
+		[]byte("package directive\nfunc run(){\n//gox:ignore example because ownership matters\nwork()}\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.ValidateEquivalent(beforeFile, afterFile); err == nil {
+		t.Fatal("ValidateEquivalent() must reject directive line-anchor movement")
+	}
+
+	beforeFragment, err := source.LoadFragment(
+		"directive.go",
+		source.FragmentStatement,
+		[]byte("if ready { //gox:ignore example because ownership matters\nwork()}"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterFragment, err := source.LoadFragment(
+		"directive.go",
+		source.FragmentStatement,
+		[]byte("if ready {\n//gox:ignore example because ownership matters\nwork()}"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.ValidateFragmentEquivalent(beforeFragment, afterFragment); err == nil {
+		t.Fatal("ValidateFragmentEquivalent() must reject directive line-anchor movement")
+	}
+
+	adjacentFile, err := source.Load(
+		"directive.go",
+		[]byte("package directive\nfunc run(){\n//gox:ignore example because ownership matters\nwork()}\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blankLineFile, err := source.Load(
+		"directive.go",
+		[]byte("package directive\nfunc run(){\n//gox:ignore example because ownership matters\n\nwork()}\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.ValidateEquivalent(adjacentFile, blankLineFile); err == nil {
+		t.Fatal("ValidateEquivalent() must reject a new blank line at a directive anchor")
+	}
+
+	indentedFile, err := source.Load(
+		"directive.go",
+		[]byte("package directive\nfunc run(){\n\t//gox:ignore example because ownership matters\nwork()}\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.ValidateEquivalent(adjacentFile, indentedFile); err != nil {
+		t.Fatalf("ValidateEquivalent() rejected indentation-only directive placement: %v", err)
+	}
+
+	generateAdjacent, err := source.Load(
+		"directive.go",
+		[]byte("package directive\n//go:generate go run example.invalid/generator\nfunc run(){}\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	generateSeparated, err := source.Load(
+		"directive.go",
+		[]byte("package directive\n\n//go:generate go run example.invalid/generator\nfunc run(){}\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.ValidateEquivalent(generateAdjacent, generateSeparated); err != nil {
+		t.Fatalf("ValidateEquivalent() rejected canonical spacing before a declaration directive: %v", err)
+	}
+
+	generateTrailing, err := source.Load(
+		"directive.go",
+		[]byte("package directive\nvar value = 1 //go:generate go run example.invalid/generator\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	generateActivated, err := source.Load(
+		"directive.go",
+		[]byte("package directive\nvar value = 1\n//go:generate go run example.invalid/generator\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.ValidateEquivalent(generateTrailing, generateActivated); err == nil {
+		t.Fatal("ValidateEquivalent() must reject a directive moved to line start")
 	}
 }
 

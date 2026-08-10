@@ -60,8 +60,13 @@ authority.
 Directive classification MUST cover build constraints, `//go:generate`,
 `//go:embed`, compiler directives including linkname, `//line`, cgo preambles,
 generated-file markers, and Gox suppression directives. Exact directive bytes
-and relative order MUST survive formatting. Build constraints SHOULD be parsed
-with `go/build/constraint` while retaining the original text independently.
+and relative order MUST survive formatting. Their same-line relationship to
+both neighboring physical tokens MUST remain stable, as MUST their
+adjacent-line or blank-line relationship to the following token. Suppressions
+MUST preserve the adjacent-versus-blank distinction on both sides.
+Class-specific rules MAY permit canonical adjacent-versus-blank spacing before
+other directives. Build constraints SHOULD be parsed with
+`go/build/constraint` while retaining the original text independently.
 
 ## Parse Policy
 

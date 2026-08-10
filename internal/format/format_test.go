@@ -1335,6 +1335,42 @@ func TestFormatRejectsUnmodeledSyntaxDifferences(t *testing.T) {
 	}
 }
 
+func TestFormatRejectsDirectiveAnchorMovementWithoutPartialOutput(t *testing.T) {
+	t.Parallel()
+
+	options := goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000}
+	file, err := source.Load(
+		"directive.go",
+		[]byte("package directive\nfunc run(){ //gox:ignore example because ownership matters\nwork()}\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	formatted, err := goxformat.File(file, options)
+	if err == nil || !strings.Contains(err.Error(), "directive source anchor changed") {
+		t.Fatalf("File() error = %v, want directive anchor rejection", err)
+	}
+	if len(formatted) != 0 {
+		t.Fatalf("File() returned partial output %q", formatted)
+	}
+
+	fragment, err := source.LoadFragment(
+		"directive.go",
+		source.FragmentStatement,
+		[]byte("if ready { //gox:ignore example because ownership matters\nwork()}"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	formatted, err = goxformat.Fragment(fragment, options)
+	if err == nil || !strings.Contains(err.Error(), "directive source anchor changed") {
+		t.Fatalf("Fragment() error = %v, want directive anchor rejection", err)
+	}
+	if len(formatted) != 0 {
+		t.Fatalf("Fragment() returned partial output %q", formatted)
+	}
+}
+
 func TestFormatPreservesImportGroupsOrderAliasesAndLiterals(t *testing.T) {
 	t.Parallel()
 

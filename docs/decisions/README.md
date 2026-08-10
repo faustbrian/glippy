@@ -10,8 +10,8 @@ deferred status is an explicit gate, not silent approval.
 | Source/trivia representation | ADR 0005 and source model specification |
 | Document IR and line breaking | ADR 0002 |
 | Width and tabs | ADR 0003 |
-| Comment attachment | ADR 0009; corpus proof remains open |
-| Directive preservation | ADR 0009; corpus proof remains open |
+| Comment attachment | ADR 0009; initial project-owned corpus proof complete |
+| Directive preservation | ADR 0009; initial project-owned corpus proof complete |
 | Import organization ownership | Formatter specification; layout only, no organization |
 | Gofmt fixed point | ADR 0004, provisional corpus target |
 | Semantic equivalence | Equivalence specification |

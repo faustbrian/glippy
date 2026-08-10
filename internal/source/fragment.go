@@ -488,6 +488,17 @@ func ValidateFragmentEquivalent(before, after *Fragment) error {
 	}) {
 		return errors.New("directive identity or ordering changed")
 	}
+	beforeAnchors, err := directiveLineAnchors(before.bytes, before.tokens, before.directives)
+	if err != nil {
+		return err
+	}
+	afterAnchors, err := directiveLineAnchors(after.bytes, after.tokens, after.directives)
+	if err != nil {
+		return err
+	}
+	if !slices.Equal(beforeAnchors, afterAnchors) {
+		return errors.New("directive source anchor changed")
+	}
 	beforeSyntax, err := fragmentSyntaxFingerprint(before.kind, before.syntax)
 	if err != nil {
 		return err

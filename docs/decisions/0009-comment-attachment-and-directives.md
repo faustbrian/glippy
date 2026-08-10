@@ -1,6 +1,6 @@
 # ADR 0009: Comment Attachment And Directive Preservation
 
-- Status: accepted for prototype; corpus proof required
+- Status: accepted for prototype; initial corpus proof complete
 - Date: 2026-08-09
 
 ## Context And Evidence
@@ -10,6 +10,15 @@ Comment values can omit raw carriage returns, and normalized comment-group text
 can remove directives. Gofmt experiments also moved a comment across a comma
 boundary. A nearest-node policy therefore cannot protect source ownership or
 directive semantics.
+
+The project-owned Phase 1 corpus now binds exact width-60 output for build
+constraints, generated markers, cgo preambles, `//go:embed`, `//go:generate`,
+compiler directives including `//go:linkname`, `//line`, and `//gox:`
+suppressions. The corpus reparses, is byte-idempotent, preserves normalized
+syntax and directive identity, and is a gofmt fixed point under the recorded
+prototype toolchain. Focused equivalence tests additionally reject a suppression
+whose same-line or adjacent-line anchor changes even when its surrounding token
+ownership is otherwise unchanged.
 
 ## Decision
 

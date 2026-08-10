@@ -2,6 +2,7 @@ package benchmarks_test
 
 import (
 	"go/ast"
+	"go/constant"
 	"go/importer"
 	"go/parser"
 	"go/token"
@@ -10,6 +11,26 @@ import (
 	"sort"
 	"testing"
 )
+
+type corpusImporter struct {
+	base types.Importer
+}
+
+func (i corpusImporter) Import(path string) (*types.Package, error) {
+	if path == "C" {
+		pkg := types.NewPackage("C", "C")
+		pkg.Scope().Insert(types.NewConst(
+			token.NoPos,
+			pkg,
+			"GOX_DIRECTIVE_CORPUS",
+			types.Typ[types.UntypedInt],
+			constant.MakeInt64(1),
+		))
+		pkg.MarkComplete()
+		return pkg, nil
+	}
+	return i.base.Import(path)
+}
 
 func TestInitialCorpusIsValidGo(t *testing.T) {
 	t.Parallel()
@@ -56,7 +77,10 @@ func TestInitialCorpusTypeChecks(t *testing.T) {
 		parsed = append(parsed, pkg.Files[name])
 	}
 
-	config := &types.Config{Importer: importer.Default()}
+	// import "C" is resolved by cgo rather than the ordinary source importer.
+	// The corpus uses one inert marker symbol, so a package shell keeps the Go
+	// declarations type-checked without invoking cgo or executing repository code.
+	config := &types.Config{Importer: corpusImporter{base: importer.Default()}}
 	if _, err := config.Check("example.com/gox-corpus/hostile", files, parsed, nil); err != nil {
 		t.Fatal(err)
 	}

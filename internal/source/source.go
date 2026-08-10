@@ -107,6 +107,11 @@ type Directive struct {
 	Raw   string
 }
 
+type directiveLineAnchor struct {
+	Before uint8
+	After  uint8
+}
+
 // NewlineStyle is the physical line-ending policy observed in a source file.
 type NewlineStyle uint8
 
@@ -289,6 +294,17 @@ func ValidateEquivalent(before, after *File) error {
 	}) {
 		return errors.New("directive identity or ordering changed")
 	}
+	beforeAnchors, err := directiveLineAnchors(before.bytes, before.tokens, before.directives)
+	if err != nil {
+		return err
+	}
+	afterAnchors, err := directiveLineAnchors(after.bytes, after.tokens, after.directives)
+	if err != nil {
+		return err
+	}
+	if !slices.Equal(beforeAnchors, afterAnchors) {
+		return errors.New("directive source anchor changed")
+	}
 	beforeSyntax, err := syntaxFingerprint(before.syntax)
 	if err != nil {
 		return err
@@ -301,6 +317,68 @@ func ValidateEquivalent(before, after *File) error {
 		return errors.New("normalized syntax tree changed")
 	}
 	return nil
+}
+
+func directiveLineAnchors(
+	physical []byte,
+	tokens []Token,
+	directives []Directive,
+) ([]directiveLineAnchor, error) {
+	tokenByRange := make(map[Range]int, len(tokens))
+	for index, item := range tokens {
+		if item.Kind == token.COMMENT {
+			tokenByRange[item.Range] = index
+		}
+	}
+	anchors := make([]directiveLineAnchor, 0, len(directives))
+	for _, directive := range directives {
+		index, found := tokenByRange[directive.Range]
+		if !found || tokens[index].Raw != directive.Raw {
+			return nil, fmt.Errorf("directive at byte %d has no physical comment token", directive.Range.Start)
+		}
+		previousEnd := -1
+		for previous := index - 1; previous >= 0; previous-- {
+			if tokens[previous].Range.Start != tokens[previous].Range.End {
+				previousEnd = tokens[previous].Range.End
+				break
+			}
+		}
+		nextStart := -1
+		for next := index + 1; next < len(tokens); next++ {
+			if tokens[next].Range.Start != tokens[next].Range.End {
+				nextStart = tokens[next].Range.Start
+				break
+			}
+		}
+		beforeBreaks, err := boundedLineBreaks(physical, previousEnd, directive.Range.Start)
+		if err != nil {
+			return nil, err
+		}
+		if directive.Kind != DirectiveGoxSuppression && beforeBreaks == 2 {
+			beforeBreaks = 1
+		}
+		afterBreaks, err := boundedLineBreaks(physical, directive.Range.End, nextStart)
+		if err != nil {
+			return nil, err
+		}
+		anchors = append(anchors, directiveLineAnchor{Before: beforeBreaks, After: afterBreaks})
+	}
+	return anchors, nil
+}
+
+func boundedLineBreaks(physical []byte, start, end int) (uint8, error) {
+	const missingBoundary = uint8(3)
+	if start < 0 || end < 0 {
+		return missingBoundary, nil
+	}
+	if end < start || end > len(physical) {
+		return 0, errors.New("directive anchor has an invalid physical range")
+	}
+	count := bytes.Count(physical[start:end], []byte{'\n'})
+	if count > 2 {
+		count = 2
+	}
+	return uint8(count), nil
 }
 
 func commentOwnershipFingerprint(tokens []Token) []int {

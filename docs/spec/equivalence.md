@@ -49,6 +49,13 @@ with identical raw text. Relative ordering and the documented ownership
 boundary—package, declaration, field, statement, operand, list element, case,
 build constraint, or file—MUST remain unchanged. No output item may appear
 without input provenance unless a separately documented fixer created it.
+For every directive, validation MUST also preserve whether each neighboring
+physical token boundary is on the same line. The following boundary MUST
+additionally remain on the immediately adjacent line or beyond one or more
+blank lines. Suppressions MUST preserve that adjacent-versus-blank distinction
+on both sides because their ownership can be line-relative. Class-specific
+rules MAY allow canonical adjacent-versus-blank spacing before other directives
+while retaining their semantic target.
 
 ## Additional Evidence
 

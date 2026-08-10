@@ -11,6 +11,7 @@ input now has a reviewed Phase 1 `.golden` output at width 60.
 | `hostile/expressions.go` | Project-authored, 2026-08-09 | Boolean chain and long variadic call | Fixed point |
 | `hostile/comments.go` | Project-authored, 2026-08-09 | Package documentation, tool directive, comments between operands and elements | Fixed point |
 | `hostile/generics.go` | Project-authored, 2026-08-09 | Type sets, type parameters, range loop, and compressed statements | Fixed point |
+| `hostile/directives.go` | Project-authored, 2026-08-10 | Build constraints, generated marker, cgo preamble, embed, generate, compiler directives including linkname, line directive, suppression anchor | Fixed point |
 
 The corpus test reparses each golden output, proves byte idempotency, and checks
 the provisional gofmt relation under the executing Go toolchain. Any divergence
@@ -22,3 +23,8 @@ commented, directive, and invalid variants. External corpus additions require a
 recorded source revision, license review, acquisition procedure, and expected
 classification; external source must not be copied into this repository merely
 for convenience.
+
+The directive corpus imports `C` and refers to one inert marker symbol. Its Go
+declarations are type-checked with a matching `C` package shell because
+ordinary `go/types` importers do not invoke cgo; parser, formatter,
+equivalence, and gofmt checks still consume the exact cgo source.
