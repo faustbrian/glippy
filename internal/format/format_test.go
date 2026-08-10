@@ -1510,6 +1510,45 @@ func TestFormatRejectsDirectiveAnchorMovementWithoutPartialOutput(t *testing.T) 
 	}
 }
 
+func TestFormatRejectsDiagnosticOnlyFileWithoutPartialOutput(t *testing.T) {
+	t.Parallel()
+
+	file, loadErr := source.Load("invalid.go", []byte("package invalid\nfunc broken( {\n"))
+	if loadErr == nil || file == nil || file.CanFormat() {
+		t.Fatalf("Load() = %#v, %v; want diagnostic-only file", file, loadErr)
+	}
+	formatted, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err == nil {
+		t.Fatal("File() must reject diagnostic-only source")
+	}
+	if len(formatted) != 0 {
+		t.Fatalf("File() returned partial output %q", formatted)
+	}
+}
+
+func TestFormatRejectsDiagnosticOnlyFragmentWithoutPartialOutput(t *testing.T) {
+	t.Parallel()
+
+	fragment, loadErr := source.LoadFragment(
+		"invalid_fragment.go",
+		source.FragmentStatement,
+		[]byte("if ready {"),
+	)
+	if loadErr == nil || fragment == nil || fragment.CanFormat() {
+		t.Fatalf("LoadFragment() = %#v, %v; want diagnostic-only fragment", fragment, loadErr)
+	}
+	formatted, err := goxformat.Fragment(
+		fragment,
+		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err == nil {
+		t.Fatal("Fragment() must reject diagnostic-only source")
+	}
+	if len(formatted) != 0 {
+		t.Fatalf("Fragment() returned partial output %q", formatted)
+	}
+}
+
 func TestFormatPreservesImportGroupsOrderAliasesAndLiterals(t *testing.T) {
 	t.Parallel()
 
