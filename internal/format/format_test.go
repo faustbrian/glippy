@@ -1398,6 +1398,67 @@ func TestFormatUsesDeterministicDelimitedListWidthBoundaries(t *testing.T) {
 	}
 }
 
+func TestFormatUsesDeterministicBinaryChainWidthBoundaries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		input  string
+		width  int
+		flat   string
+		broken string
+	}{
+		{
+			name:   "boolean expression",
+			input:  "package boundary\nfunc condition()bool{return firstCondition&&secondCondition&&thirdCondition}\n",
+			width:  66,
+			flat:   "package boundary\n\nfunc condition() bool {\n\treturn firstCondition && secondCondition && thirdCondition\n}\n",
+			broken: "package boundary\n\nfunc condition() bool {\n\treturn firstCondition &&\n\t\tsecondCondition &&\n\t\tthirdCondition\n}\n",
+		},
+		{
+			name:   "type union",
+			input:  "package boundary\ntype Number interface{~int|~int64|~float64}\n",
+			width:  32,
+			flat:   "package boundary\n\ntype Number interface {\n\t~int | ~int64 | ~float64\n}\n",
+			broken: "package boundary\n\ntype Number interface {\n\t~int |\n\t\t~int64 |\n\t\t~float64\n}\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, mode := range []struct {
+				name  string
+				width int
+				want  string
+			}{
+				{name: "exact fit", width: test.width, want: test.flat},
+				{name: "one column under", width: test.width - 1, want: test.broken},
+			} {
+				t.Run(mode.name, func(t *testing.T) {
+					t.Parallel()
+
+					file, err := source.Load("binary_boundary.go", []byte(test.input))
+					if err != nil {
+						t.Fatal(err)
+					}
+					got, err := goxformat.File(file, goxformat.Options{
+						Width:     mode.width,
+						TabWidth:  8,
+						FitBudget: 1_000,
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if string(got) != mode.want {
+						t.Fatalf("File() =\n%s\nwant:\n%s", got, mode.want)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestFormatBreaksGenericSelectorChains(t *testing.T) {
 	t.Parallel()
 
