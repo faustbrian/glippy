@@ -11,7 +11,9 @@ blocks, generics, calls, and boolean expressions.
 go test ./...
 go test ./benchmarks -run '^$' -bench 'Benchmark(Scan|Parse|GoFormat|ASTInspect|InspectorBuildAndFilter|TypeCheck)$' -benchmem -count=5
 go test ./benchmarks -run '^$' -bench '^BenchmarkPackagesLoadSyntax(Cold|Warm)BuildCache$' -benchmem -benchtime=1x -count=3
-go test ./internal/format/doc -run '^$' -bench '^BenchmarkRenderAdversarial(Nesting|Siblings)$' -benchmem -benchtime=3x -count=3
+go test ./internal/format/doc -run '^$' -bench '^BenchmarkRenderAdversarial(Nesting|Siblings)$' -benchmem -benchtime=3x -count=5
+go test ./internal/format/doc -run '^TestRenderBoundsAdversarialDepthAndBreadthAllocations$' -count=1
+go test ./internal/format/doc -run '^$' -fuzz '^FuzzRenderDeterministic$' -fuzztime=30s -timeout=45s
 ```
 
 The first command is a functional check. Benchmark setup that is not part of
@@ -49,12 +51,25 @@ and include peak resident memory outside the Go benchmark allocation metric.
 
 ## Renderer Complexity Probe
 
-The same host rendered 20,000 nested groups with a fit budget of 32 in a median
-166 us and one allocation after cached flat summaries were added. Wide
-sibling-group medians were 134 us for 1,000, 272 us for 2,000, and 760 us for
-4,000; allocations were 73,530, 198,458, and 435,002-435,040 bytes
-respectively. Individual samples had substantial scheduling outliers, including
-a 22.1 ms nested-group sample, so these values are not latency budgets. The
-scaling and source inspection support bounded per-group lookahead without
-continuation stack copies; Phase 1 still requires larger adversarial benchmarks
-and fuzz timeouts before the complexity risk can close.
+The 2026-08-10 Phase 1 rerun on the same host increased nesting from 20,000 to
+100,000 groups and breadth from 4,000 to 16,000 sibling groups, all with a fit
+budget of 32. Five three-iteration samples produced these medians:
+
+| Shape | Median time | Bytes/op | Allocs/op |
+| --- | ---: | ---: | ---: |
+| 20,000 nested groups | 176 us | 10 | 1 |
+| 100,000 nested groups | 1.38 ms | 10-85 | 1 |
+| 1,000 sibling groups | 142 us | 73,530 | 19 |
+| 2,000 sibling groups | 277 us | 198,458 | 22 |
+| 4,000 sibling groups | 3.43 ms | 435,002-435,152 | 26-27 |
+| 8,000 sibling groups | 2.24 ms | 1,136,698-1,136,773 | 32 |
+| 16,000 sibling groups | 3.03 ms | 2,590,778-2,592,562 | 37-39 |
+
+The machine was not isolated and individual samples still had scheduler
+outliers, so elapsed values are evidence against explosive growth rather than
+latency budgets. A durable allocation guard renders 100,000 nested groups in at
+most two allocations and 20,000 sibling groups in at most 64 allocations. A
+30-second deterministic-render fuzz run completed 385,961 executions within a
+45-second process timeout. Together with the iterative renderer and fixed
+per-group fit budget, this closes the Phase 1 bounded-execution proof; release
+scale still needs peak-memory and stable-runner budgets.

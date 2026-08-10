@@ -27,13 +27,15 @@ simulation is bounded by a fixed command budget; budget exhaustion
 conservatively selects the broken form. The renderer never backtracks after
 emitting output. Nodes MAY cache saturated flat summaries where the summary is
 independent of the starting column; tabs and other column-sensitive content
-require an explicit transition summary or bounded simulation. The Phase 0
-prototype remains bounded without relying on a summary cache.
+require an explicit transition summary or bounded simulation.
 
 With `D` document commands, output size `B`, and fixed lookahead cap `K`, the
 intended upper bound is `O(D*K + B)` time and `O(D + nesting + suffixes)`
-memory. The prototype must verify that bound under adversarial nesting before
-the decision stabilizes.
+memory. Phase 1 allocation guards cover 100,000 nested groups and 20,000
+sibling groups at a fit budget of 32. Expanded benchmarks and a timeout-bounded
+deterministic fuzz run show no unbounded search or recursive stack growth. The
+recorded evidence and remaining peak-memory boundary are in
+`benchmarks/README.md`.
 
 Binary operators, type-union operators, and selector dots break after the
 operator. Ordinary statement boundaries and block contents use hard lines.

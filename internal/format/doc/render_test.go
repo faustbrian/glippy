@@ -400,25 +400,78 @@ func TestRenderRejectsInvalidOptions(t *testing.T) {
 	}
 }
 
-func BenchmarkRenderAdversarialNesting(b *testing.B) {
-	arena := NewArena()
-	document := arena.Text("x")
-	for range 20_000 {
-		document = arena.Group(document)
-	}
-	options := Options{Width: 80, TabWidth: 8, FitBudget: 32}
-	b.ReportAllocs()
-	b.ResetTimer()
+func TestRenderBoundsAdversarialDepthAndBreadthAllocations(t *testing.T) {
+	const (
+		depth   = 100_000
+		breadth = 20_000
+	)
+	options := Options{Width: breadth + 1, TabWidth: 8, FitBudget: 32}
 
-	for b.Loop() {
-		if _, err := arena.Render(document, options); err != nil {
-			b.Fatal(err)
-		}
+	deepArena := NewArena()
+	deepDocument := deepArena.Text("x")
+	for range depth {
+		deepDocument = deepArena.Group(deepDocument)
+	}
+	var deepOutput string
+	var deepErr error
+	deepAllocations := testing.AllocsPerRun(5, func() {
+		deepOutput, deepErr = deepArena.Render(deepDocument, options)
+	})
+	if deepErr != nil {
+		t.Fatal(deepErr)
+	}
+	if deepOutput != "x" {
+		t.Fatalf("deep Render() = %q, want x", deepOutput)
+	}
+	if deepAllocations > 2 {
+		t.Fatalf("deep Render() allocations = %.0f, want at most 2", deepAllocations)
+	}
+
+	wideArena := NewArena()
+	parts := make([]ID, 0, breadth)
+	for range breadth {
+		parts = append(parts, wideArena.Group(wideArena.Text("x")))
+	}
+	wideDocument := wideArena.Concat(parts...)
+	var wideOutput string
+	var wideErr error
+	wideAllocations := testing.AllocsPerRun(5, func() {
+		wideOutput, wideErr = wideArena.Render(wideDocument, options)
+	})
+	if wideErr != nil {
+		t.Fatal(wideErr)
+	}
+	if len(wideOutput) != breadth || strings.Trim(wideOutput, "x") != "" {
+		t.Fatalf("wide Render() produced %d unexpected bytes", len(wideOutput))
+	}
+	if wideAllocations > 64 {
+		t.Fatalf("wide Render() allocations = %.0f, want at most 64", wideAllocations)
+	}
+}
+
+func BenchmarkRenderAdversarialNesting(b *testing.B) {
+	for _, depth := range []int{20_000, 100_000} {
+		b.Run(strconv.Itoa(depth), func(b *testing.B) {
+			arena := NewArena()
+			document := arena.Text("x")
+			for range depth {
+				document = arena.Group(document)
+			}
+			options := Options{Width: 80, TabWidth: 8, FitBudget: 32}
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for b.Loop() {
+				if _, err := arena.Render(document, options); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 
 func BenchmarkRenderAdversarialSiblings(b *testing.B) {
-	for _, count := range []int{1_000, 2_000, 4_000} {
+	for _, count := range []int{1_000, 2_000, 4_000, 8_000, 16_000} {
 		b.Run(strconv.Itoa(count), func(b *testing.B) {
 			arena := NewArena()
 			parts := make([]ID, 0, count)
