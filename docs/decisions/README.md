@@ -22,7 +22,7 @@ deferred status is an explicit gate, not silent approval.
 | Fix safety and conflicts | ADR 0006 and fix specification |
 | Configuration discovery | ADR 0007 and configuration draft |
 | Generated, vendor, and testdata behavior | ADR 0007 and configuration draft |
-| Cache inputs and invalidation | ADR 0008 and cache specification; key/store foundation implemented, consumer wiring deferred |
+| Cache inputs and invalidation | ADR 0008 and cache specification; opt-in fact-bearing analyzer consumer implemented, CLI and native-tier caching deferred |
 | Machine diagnostics | ADR 0011; formatter, lint-check, and lint-fix prototype schema accepted |
 | Formatter diff output | ADR 0012; bounded text-only unified differences |
 | Editor architecture | Open: stdin/stdout is the prototype boundary; ADR required before Phase 5 integration |

@@ -16,6 +16,7 @@ type RunOptions struct {
 	Overrides                map[string]rules.Severity
 	RequireSuppressionReason bool
 	SuppressionExpiryCutoff  string
+	Cache                    *PackageCacheOptions
 }
 
 // Result is one reporter-ready syntax analysis result over one source version.

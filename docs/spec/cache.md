@@ -57,18 +57,32 @@ entry MUST therefore degrade to normal computation.
 
 ## Current Boundary
 
-The key and rooted store are implemented, but no formatter or analyzer result
-uses them yet. Gox MUST NOT claim warm persistent-cache performance or completed
-invalidation until an integrated consumer supplies the complete identity above
-and passes hit, miss, corruption, and invalidation tests.
+Fact-bearing typed `go/analysis` execution is the first integrated consumer.
+It is opt-in through a caller-owned store and explicit tool, build-toolchain,
+source-language, configuration, rule-option, cgo, and formatter identities.
+Cache-enabled package loading MUST also receive explicit GOOS and GOARCH,
+`GOENV=off`, and an exact `CGO_ENABLED` value. This prevents an unrecorded Go
+environment file or platform default from changing a reused result.
+
+The consumer builds one canonical run manifest over the reachable loaded graph,
+then derives one key per native rule and analyzer package. Package keys include
+the run manifest and each direct dependency package key, so imported package and
+object facts invalidate dependency-first. Location-only build-cache paths,
+unrelated process environment, and dependency export-file locations are not
+semantic identity; export bytes remain digested under package identity.
+
+This proves cold population, independent-load hits, source invalidation,
+corruption-as-recomputation, and transactional restore for the implemented
+fact-bearing adapter boundary. It does not enable caching in the CLI, cache
+native types/CFG/SSA rules, establish eviction, or support a warm-performance
+claim.
 
 Persistent object identity is the owning package path plus the canonical
 x/tools `objectpath`. It is proven across independent type checks for package
 objects, named types, methods, fields, type parameters, parameters, and results.
 Objects without a stable API path fail closed. A persisted identity MUST resolve
 against a newly loaded package with the same package path; process-local
-`types.Object` pointers MUST NOT be serialized as cache identity. Fact snapshot
-serialization is implemented, while cache integration remains deferred.
+`types.Object` pointers MUST NOT be serialized as cache identity.
 
 ## Analysis Fact Snapshots
 
@@ -84,3 +98,13 @@ values, sorted unique records, and resolvable package-owned object paths before
 merging any value. A different existing value MUST be a conflict. An object
 without a stable path MUST make the snapshot uncacheable; it MUST NOT disappear
 from a partial snapshot that could change warm-run analyzer behavior.
+
+One analyzer-package cache entry MUST bind its schema version, native rule ID,
+opaque package ID, package path, canonical diagnostics, and one fact snapshot
+for every prerequisite step. Diagnostic restore MUST revalidate source digest,
+ownership, severity, ranges, related locations, fixes, and canonical order.
+Fact snapshots and diagnostics MUST validate into an isolated candidate before
+any live fact state changes. A malformed or stale entry is a miss and normal
+analysis remains authoritative. If any package-owned object lacks stable
+identity, that package and every dependent package MUST run uncached rather
+than publish a partial fact graph.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"go/token"
 	"go/types"
@@ -13,6 +14,7 @@ import (
 	goanalysis "golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 
+	"github.com/faustbrian/gox/internal/cache"
 	"github.com/faustbrian/gox/internal/rules"
 )
 
@@ -61,15 +63,20 @@ func (r *packageAnalyzerRule) usesFacts() bool {
 
 func (r *packageAnalyzerRule) runPackageFactGraph(
 	ctx context.Context,
-	roots []*packages.Package,
-	sources PackageSourceSet,
+	loaded PackageLoadResult,
+	loadOptions PackageLoadOptions,
+	cachePlan *packageCachePlan,
 	owners map[string]string,
 	metadata rules.Metadata,
 	severity rules.Severity,
 ) ([]rules.Diagnostic, error) {
+	roots := loaded.Packages
+	sources := loaded.Sources
 	facts := newAnalyzerFactSet()
 	state := make(map[*packages.Package]uint8)
 	results := make(map[*packages.Package][]rules.Diagnostic)
+	cacheKeys := make(map[*packages.Package]cache.Key)
+	baseCacheKey, cacheable := r.packageCacheBaseKey(loaded, loadOptions, cachePlan)
 	var execute func(*packages.Package) error
 	execute = func(pkg *packages.Package) error {
 		if err := ctx.Err(); err != nil {
@@ -107,11 +114,55 @@ func (r *packageAnalyzerRule) runPackageFactGraph(
 		if err != nil {
 			return err
 		}
+		key, packageCacheable := r.packageCacheKey(
+			pkg,
+			cachePlan,
+			loadOptions,
+			baseCacheKey,
+			cacheable,
+			cacheKeys,
+		)
+		invalidHit := false
+		if packageCacheable {
+			encoded, found, err := cachePlan.options.Store.Get(ctx, key)
+			if err != nil {
+				return fmt.Errorf("read package analyzer cache: %w", err)
+			}
+			if found {
+				cached, restoreErr := r.restorePackageCacheEntry(
+					pkg,
+					sources,
+					owners,
+					severity,
+					facts,
+					encoded,
+				)
+				if restoreErr == nil {
+					results[pkg] = cached
+					cacheKeys[pkg] = key
+					state[pkg] = 2
+					return nil
+				}
+				invalidHit = true
+			}
+		}
 		produced, err := r.runPackage(ctx, pkg, files, owners, severity, facts)
 		if err != nil {
 			return err
 		}
 		results[pkg] = produced
+		if packageCacheable {
+			encoded, encodeErr := r.encodePackageCacheEntry(pkg, produced, facts)
+			if encodeErr == nil {
+				if err := cachePlan.options.Store.Put(ctx, key, encoded); err != nil {
+					if !invalidHit || !errors.Is(err, cache.ErrConflict) {
+						return fmt.Errorf("write package analyzer cache: %w", err)
+					}
+				} else {
+					cacheKeys[pkg] = key
+				}
+			}
+		}
 		state[pkg] = 2
 		return nil
 	}
@@ -133,6 +184,85 @@ func (r *packageAnalyzerRule) runPackageFactGraph(
 		diagnostics = append(diagnostics, results[root]...)
 	}
 	return diagnostics, nil
+}
+
+func (r *packageAnalyzerRule) packageCacheKey(
+	pkg *packages.Package,
+	plan *packageCachePlan,
+	loadOptions PackageLoadOptions,
+	base cache.Key,
+	baseCacheable bool,
+	dependencyKeys map[*packages.Package]cache.Key,
+) (cache.Key, bool) {
+	if plan == nil || !baseCacheable {
+		return cache.Key{}, false
+	}
+	components := make([]cache.Component, 0, len(pkg.Imports)+1)
+	components = append(components, cache.Component{
+		Kind: cache.ComponentBuildSelection, Identity: "analysis-input-manifest",
+		Digest: cache.Digest(base),
+	})
+	imports := make([]string, 0, len(pkg.Imports))
+	for path := range pkg.Imports {
+		imports = append(imports, path)
+	}
+	sort.Strings(imports)
+	for _, path := range imports {
+		dependency := pkg.Imports[path]
+		key, found := dependencyKeys[dependency]
+		if !found {
+			return cache.Key{}, false
+		}
+		components = append(components, cache.Component{
+			Kind: cache.ComponentFact, Identity: path + "=" + dependency.ID,
+			Digest: cache.Digest(key),
+		})
+	}
+	key, err := cache.BuildKey(cache.KeyInput{
+		Namespace:       "typed-analyzer-v1:" + r.metadata.ID + ":" + pkg.ID,
+		ToolVersion:     plan.options.ToolVersion,
+		BuildGoVersion:  plan.options.BuildGoVersion,
+		SourceGoVersion: plan.options.SourceGoVersion,
+		Configuration:   plan.options.Configuration,
+		Rules:           plan.rules,
+		BuildTags:       loadOptions.BuildTags,
+		GOOS:            loadOptions.GOOS,
+		GOARCH:          loadOptions.GOARCH,
+		CGOEnabled:      plan.options.CGOEnabled,
+		FormatterMode:   plan.options.FormatterMode,
+		Components:      components,
+	})
+	if err != nil {
+		return cache.Key{}, false
+	}
+	return key, true
+}
+
+func (r *packageAnalyzerRule) packageCacheBaseKey(
+	loaded PackageLoadResult,
+	loadOptions PackageLoadOptions,
+	plan *packageCachePlan,
+) (cache.Key, bool) {
+	if plan == nil {
+		return cache.Key{}, false
+	}
+	key, err := buildPackageCacheKey(packageCacheKeyInput{
+		Namespace:       "typed-analyzer-input-v1:" + r.metadata.ID,
+		ToolVersion:     plan.options.ToolVersion,
+		BuildGoVersion:  plan.options.BuildGoVersion,
+		SourceGoVersion: plan.options.SourceGoVersion,
+		Configuration:   plan.options.Configuration,
+		Rules:           plan.rules,
+		CGOEnabled:      plan.options.CGOEnabled,
+		FormatterMode:   plan.options.FormatterMode,
+		LoadOptions:     loadOptions,
+		Loaded:          loaded,
+		Facts:           map[string]cache.Digest{},
+	})
+	if err != nil {
+		return cache.Key{}, false
+	}
+	return key, true
 }
 
 func (s *analyzerFactSet) importPackageFact(

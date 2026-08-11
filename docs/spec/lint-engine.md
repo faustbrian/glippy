@@ -389,9 +389,13 @@ noncanonical, unordered, duplicate, unknown-type, wrong-analyzer, wrong-package,
 stale-object, and noncanonical-Gob data before mutating live facts. Restore MUST
 reject a different existing value and MUST NOT partially replace facts.
 Unsupported local object facts make that package snapshot uncacheable rather
-than producing a partial warm result. Object fact persistence across runs
-remains deferred until a cache consumer binds complete invalidation inputs;
-snapshot support alone MUST NOT be presented as persistent fact caching.
+than producing a partial warm result. The opt-in typed analyzer cache persists
+one canonical entry per native-rule and analyzer-package pair. It restores
+imports dependency-first across independent type graphs and commits diagnostics
+and every analyzer-step snapshot only after complete validation. Direct
+dependency keys are imported-fact inputs, so a stale dependency prevents a
+parent hit. Unsupported local facts disable persistence for that package and
+its dependents without changing the authoritative cold result.
 
 An ill-typed selected root MUST retain native metadata eligibility. If native
 metadata admits type errors, every analyzer step MUST declare

@@ -66,6 +66,8 @@ func partitionPackageAnalyzers(
 func runPackageAnalyzers(
 	ctx context.Context,
 	loaded PackageLoadResult,
+	loadOptions PackageLoadOptions,
+	cachePlan *packageCachePlan,
 	registry *rules.Registry,
 	selection []rules.Selection,
 ) ([]rules.Diagnostic, error) {
@@ -106,8 +108,9 @@ func runPackageAnalyzers(
 		if analyzer.rule.usesFacts() {
 			produced, err := analyzer.rule.runPackageFactGraph(
 				ctx,
-				packages_,
-				loaded.Sources,
+				loaded,
+				loadOptions,
+				cachePlan,
 				owners,
 				analyzer.metadata,
 				analyzer.severity,

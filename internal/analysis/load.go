@@ -77,6 +77,15 @@ type PackageSourceProblem struct {
 	Message string
 }
 
+func clonePackageLoadOptions(options PackageLoadOptions) PackageLoadOptions {
+	result := options
+	result.Patterns = slices.Clone(options.Patterns)
+	result.BuildTags = slices.Clone(options.BuildTags)
+	result.Env = slices.Clone(options.Env)
+	result.Overlay = cloneOverlay(options.Overlay)
+	return result
+}
+
 // Paths returns normalized physical source identities in canonical order.
 func (s PackageSourceSet) Paths() []string { return slices.Clone(s.paths) }
 

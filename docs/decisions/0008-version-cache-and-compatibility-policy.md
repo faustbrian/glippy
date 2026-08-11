@@ -8,9 +8,9 @@
 The prototype is built with Go 1.26.5 and x/tools v0.48.0. Standard parser and
 printer behavior can drift with the build toolchain. Typed analysis also
 depends on module/workspace state, build selection, environment, dependency
-export data, and overlays. The implemented cache foundation now proves
-canonical identity, bounded verified storage, corruption misses, and
-conflict-safe publication, but no result consumer is wired yet.
+export data, and overlays. The implemented cache foundation proves canonical
+identity, bounded verified storage, corruption misses, conflict-safe
+publication, and an opt-in fact-bearing analyzer consumer.
 
 At Oxc commit `fed2b90`, Oxfmt 0.63.0 and Oxlint 1.78.0 both derive their
 version option from the build-owned Cargo package version. Go versioned installs
@@ -49,12 +49,16 @@ valid values for one key fail as nondeterministic instead of overwriting one
 another. Rooted filesystem operations refuse symlink traversal outside the
 cache. Cache data remains disposable and is never the only source of results.
 
-This foundation does not yet cache formatter or analysis results. Object facts
-now have package-bound canonical `objectpath` identity across independent type
-graphs. Versioned analyzer-package snapshots preserve package-owned facts with
-stable declared-type identity and validated deterministic values. Consumer
-wiring, complete invalidation evidence, eviction, platform evidence for
-hard-link publication, and warm-run performance claims remain deferred.
+Fact-bearing typed analyzer runs may use a caller-owned store. The consumer
+requires `GOENV=off`, explicit platform and cgo inputs, and canonical rule and
+configuration digests. It hashes one complete loaded-graph manifest once, then
+derives dependency-first analyzer-package keys from that manifest and direct
+dependency keys. Entries bind canonical diagnostics and every analyzer-step
+fact snapshot; restore validates them transactionally against the new type
+graph and exact captured source. Unsupported local object facts keep the
+package and its dependents uncached. CLI ownership, eviction, platform evidence
+for hard-link publication, native-rule caching, and warm-run performance claims
+remain deferred.
 
 Formatter output changes are user-visible compatibility changes. They require
 construct-specific before/after documentation and updated corpus evidence.
@@ -78,14 +82,15 @@ before external integrations are advertised.
 ## Consequences
 
 Early binaries are development artifacts rather than supported releases.
-Performance work cannot claim warm persistent-cache behavior until a consumer
-uses this store. Unsupported filesystems may disable cache writes without
+Warm persistent-cache performance cannot be claimed until representative
+benchmarks exist, even though the fact-bearing adapter now proves functional
+hits and invalidation. Unsupported filesystems may disable cache writes without
 changing computed results. Release evidence must bind exact toolchain, key
-schema, store schema, and machine-output schema versions.
+schema, store schema, entry schema, and machine-output schema versions.
 
 ## Revisit Trigger
 
-Before Phase 1 claims cross-version syntax support; when the first formatter or
-analysis result is persisted; when eviction, cross-machine sharing, or a
+Before Phase 1 claims cross-version syntax support; when the CLI, formatter, or
+native analysis tiers adopt caching; when eviction, cross-machine sharing, or a
 filesystem without reliable hard links is admitted; and before the first public
 release.

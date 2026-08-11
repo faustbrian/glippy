@@ -76,6 +76,11 @@ func RunPackages(
 	if needsFacts {
 		loadOptions.LoadDependencySyntax = true
 	}
+	loadOptions = clonePackageLoadOptions(loadOptions)
+	cachePlan, err := preparePackageCachePlan(options.Cache, selection, loadOptions)
+	if err != nil {
+		return result, err
+	}
 	loaded, err := LoadPackages(ctx, loadOptions)
 	if err != nil {
 		return result, err
@@ -133,6 +138,8 @@ func RunPackages(
 	packageAnalyzerDiagnostics, err := runPackageAnalyzers(
 		ctx,
 		loaded,
+		loadOptions,
+		cachePlan,
 		registry,
 		packageAnalyzerSelection,
 	)

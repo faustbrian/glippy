@@ -192,10 +192,11 @@ share immutable state.
 Syntax dispatch visits uninterested nodes once to avoid indexing or repeated
 walks; a secondary index requires new representative benchmark evidence.
 
-Analyzer fact scheduling, cache reuse, native package-wide typed rules,
-heterogeneous per-path package configuration, and typed fix application remain
-separate tier-runner work. Types-only requests do not construct CFG or SSA, and
-CFG-only requests do not construct SSA.
+Fact-bearing adapted analyzers now have opt-in dependency-first cache reuse.
+Native package-wide typed rules, native tier caching, heterogeneous per-path
+package configuration, and typed fix application remain separate tier-runner
+work. Types-only requests do not construct CFG or SSA, and CFG-only requests do
+not construct SSA.
 
 The typed package AST and physical source model use separate parser file sets.
 The package parser preserves `go/packages`' existing AST object-resolution

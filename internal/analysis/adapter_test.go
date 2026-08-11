@@ -7,8 +7,10 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -19,6 +21,7 @@ import (
 	testsanalyzer "golang.org/x/tools/go/analysis/passes/tests"
 
 	"github.com/faustbrian/gox/internal/analysis"
+	"github.com/faustbrian/gox/internal/cache"
 	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
 )
@@ -432,6 +435,203 @@ const _audience_ = "world"
 		diagnostic.Range != (source.Range{Start: start, End: start + len(importSpec)}) ||
 		diagnostic.Message != "greeting=\"hello\"" {
 		t.Fatalf("package fact diagnostic = %#v", diagnostic)
+	}
+}
+
+func TestAdaptAnalyzerCachesPackageFactsAcrossIndependentLoads(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	dependencyPath := filepath.Join(root, "dep", "dep.go")
+	writeTypesFixture(
+		t,
+		dependencyPath,
+		"package dep\nconst _greeting_ = \"hello\"\n",
+	)
+	path := filepath.Join(root, "adapter.go")
+	writeTypesFixture(t, path, "package adapter\nimport _ \"example.com/adapter/dep\"\nconst _audience_ = \"world\"\n")
+
+	upstream := *pkgfactanalyzer.Analyzer
+	runs := 0
+	run := upstream.Run
+	upstream.Run = func(pass *goanalysis.Pass) (any, error) {
+		runs++
+		return run(pass)
+	}
+	options := adapterOptions("cached-package-facts")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(&upstream, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := filepath.Join(t.TempDir(), "cache")
+	store, err := cache.Open(cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	runOptions := analysis.RunOptions{
+		Preset: rules.PresetCorrectness,
+		Cache:  packageAnalyzerCacheOptions(store, "cached-package-facts"),
+	}
+	loadOptions := analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		Env:  append(os.Environ(), "CGO_ENABLED=0", "GOENV=off"),
+		GOOS: runtime.GOOS, GOARCH: runtime.GOARCH,
+	}
+	first, err := analysis.RunPackages(context.Background(), registry, runOptions, loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coldRuns := runs
+	if coldRuns < 2 || len(first.Files) != 1 || len(first.Files[0].Diagnostics) != 1 ||
+		first.Files[0].Diagnostics[0].Message != `greeting="hello"` {
+		t.Fatalf("cold RunPackages() runs = %d, result = %#v", coldRuns, first)
+	}
+	second, err := analysis.RunPackages(context.Background(), registry, runOptions, loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runs != coldRuns || !reflect.DeepEqual(second.Files, first.Files) {
+		t.Fatalf("warm RunPackages() runs = %d, want %d; result = %#v", runs, coldRuns, second)
+	}
+	corruptPackageAnalyzerCache(t, cacheRoot)
+	recovered, err := analysis.RunPackages(context.Background(), registry, runOptions, loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recoveredRuns := runs
+	if recoveredRuns <= coldRuns || !reflect.DeepEqual(recovered.Files, first.Files) {
+		t.Fatalf("recovered RunPackages() runs = %d, result = %#v", recoveredRuns, recovered)
+	}
+	if _, err := analysis.RunPackages(context.Background(), registry, runOptions, loadOptions); err != nil {
+		t.Fatal(err)
+	}
+	if runs != recoveredRuns {
+		t.Fatalf("repaired warm RunPackages() runs = %d, want %d", runs, recoveredRuns)
+	}
+
+	writeTypesFixture(
+		t,
+		dependencyPath,
+		"package dep\nconst _greeting_ = \"changed\"\n",
+	)
+	third, err := analysis.RunPackages(context.Background(), registry, runOptions, loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runs <= recoveredRuns || len(third.Files) != 1 || len(third.Files[0].Diagnostics) != 1 ||
+		third.Files[0].Diagnostics[0].Message != `greeting="changed"` {
+		t.Fatalf("invalidated RunPackages() runs = %d, result = %#v", runs, third)
+	}
+}
+
+func TestAdaptAnalyzerDoesNotCacheUnsupportedLocalObjectFacts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "adapter.go"), "package adapter\nfunc run() { local := 1; _ = local }\n")
+	runs := 0
+	analyzer := &goanalysis.Analyzer{
+		Name: "localfacts",
+		Doc:  "exports an intentionally unpersistable local object fact",
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			runs++
+			for identifier, object := range pass.TypesInfo.Defs {
+				if identifier.Name == "local" {
+					pass.ExportObjectFact(object, &packageScopeFact{Value: "local"})
+				}
+			}
+			return nil, nil
+		},
+		FactTypes: []goanalysis.Fact{new(packageScopeFact)},
+	}
+	options := adapterOptions("uncacheable-local-facts")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(analyzer, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := cache.Open(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	runOptions := analysis.RunOptions{
+		Preset: rules.PresetCorrectness,
+		Cache:  packageAnalyzerCacheOptions(store, "uncacheable-local-facts"),
+	}
+	loadOptions := packageAnalyzerCacheLoadOptions(root)
+	for range 2 {
+		result, err := analysis.RunPackages(
+			context.Background(), registry, runOptions, loadOptions,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 0 {
+			t.Fatalf("RunPackages() = %#v", result)
+		}
+	}
+	if runs != 2 {
+		t.Fatalf("uncacheable analyzer runs = %d, want 2", runs)
+	}
+}
+
+func packageAnalyzerCacheOptions(store *cache.Store, ruleID string) *analysis.PackageCacheOptions {
+	return &analysis.PackageCacheOptions{
+		Store: store, ToolVersion: "v0.1.0", BuildGoVersion: runtime.Version(),
+		SourceGoVersion: "1.26", Configuration: cache.DigestOf([]byte("configuration")),
+		RuleOptions:   map[string]cache.Digest{ruleID: cache.DigestOf(nil)},
+		FormatterMode: "gox-v1",
+	}
+}
+
+func packageAnalyzerCacheLoadOptions(root string) analysis.PackageLoadOptions {
+	return analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		Env:  append(os.Environ(), "CGO_ENABLED=0", "GOENV=off"),
+		GOOS: runtime.GOOS, GOARCH: runtime.GOARCH,
+	}
+}
+
+func corruptPackageAnalyzerCache(t *testing.T, root string) {
+	t.Helper()
+	corrupted := 0
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.Type().IsRegular() {
+			corrupted++
+			return os.WriteFile(path, []byte("corrupt"), 0o600)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if corrupted == 0 {
+		t.Fatal("package analyzer cache did not contain an entry to corrupt")
 	}
 }
 
