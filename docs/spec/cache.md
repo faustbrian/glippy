@@ -73,9 +73,11 @@ semantic identity; export bytes remain digested under package identity.
 
 This proves cold population, independent-load hits, source invalidation,
 corruption-as-recomputation, and transactional restore for the implemented
-fact-bearing adapter boundary. It does not enable caching in the CLI, cache
-native types/CFG/SSA rules, establish eviction, or support a warm-performance
-claim.
+fact-bearing adapter boundary. The owned workload benchmark also proves zero
+analyzer executions on warm independent loads; its timing remains directional
+because package loading dominates and the reference host is not isolated. This
+does not enable caching in the CLI, cache native types/CFG/SSA rules, establish
+eviction, or support a product-wide warm-performance claim.
 
 Persistent object identity is the owning package path plus the canonical
 x/tools `objectpath`. It is proven across independent type checks for package

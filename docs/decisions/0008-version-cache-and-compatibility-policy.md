@@ -56,9 +56,11 @@ derives dependency-first analyzer-package keys from that manifest and direct
 dependency keys. Entries bind canonical diagnostics and every analyzer-step
 fact snapshot; restore validates them transactionally against the new type
 graph and exact captured source. Unsupported local object facts keep the
-package and its dependents uncached. CLI ownership, eviction, platform evidence
-for hard-link publication, native-rule caching, and warm-run performance claims
-remain deferred.
+package and its dependents uncached. An owned 42-package workload proves zero
+analyzer executions on warm independent loads, but package loading still
+dominates and host variance prevents a latency threshold. CLI ownership,
+eviction, platform evidence for hard-link publication, native-rule caching, and
+product-wide warm-run performance claims remain deferred.
 
 Formatter output changes are user-visible compatibility changes. They require
 construct-specific before/after documentation and updated corpus evidence.
@@ -82,11 +84,12 @@ before external integrations are advertised.
 ## Consequences
 
 Early binaries are development artifacts rather than supported releases.
-Warm persistent-cache performance cannot be claimed until representative
-benchmarks exist, even though the fact-bearing adapter now proves functional
-hits and invalidation. Unsupported filesystems may disable cache writes without
-changing computed results. Release evidence must bind exact toolchain, key
-schema, store schema, entry schema, and machine-output schema versions.
+The owned workload benchmark supports a bounded functional and directional
+performance claim for fact-bearing analyzer entries. A stable latency or
+allocation budget still requires an isolated runner and larger representative
+module/workspace workloads. Unsupported filesystems may disable cache writes
+without changing computed results. Release evidence must bind exact toolchain,
+key schema, store schema, entry schema, and machine-output schema versions.
 
 ## Revisit Trigger
 

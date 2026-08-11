@@ -12,6 +12,7 @@ go test ./...
 go test ./benchmarks -run '^$' -bench 'Benchmark(Scan|Parse|GoFormat|ASTInspect|InspectorBuildAndFilter|TypeCheck)$' -benchmem -count=5
 GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkSyntaxRuleTraversalStrategies$' -benchmem -benchtime=500ms -count=7
 go test ./benchmarks -run '^$' -bench '^BenchmarkPackagesLoadSyntax(Cold|Warm)BuildCache$' -benchmem -benchtime=1x -count=3
+GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkPackageAnalyzerFactCache$' -benchmem -benchtime=1x -count=5
 GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkGoxFormatManyClassicLoops$' -benchmem -benchtime=10x -count=3
 go test ./internal/format/doc -run '^$' -bench '^BenchmarkRenderAdversarial(Nesting|Siblings)$' -benchmem -benchtime=3x -count=5
 go test ./internal/format/doc -run '^TestRenderBoundsAdversarialDepthAndBreadthAllocations$' -count=1
@@ -57,6 +58,43 @@ No timing budget is set from this run. A stable benchmark runner and larger
 representative workloads are prerequisites for regression thresholds. Future
 records must continue to keep cold and warm package-loading results separate
 and include peak resident memory outside the Go benchmark allocation metric.
+
+## Package Fact Result-Cache Probe
+
+The 2026-08-11 result-cache probe runs one deterministic fact-bearing adapted
+analyzer over the owned workload module and its 42-package reachable graph.
+Each cold operation starts with an empty persistent result store and includes
+entry publication. Warm setup populates one store outside the timer; each
+measured operation performs an independent `go/packages` load and restores the
+analyzer-package entries into its new type graph. Both variants therefore
+include package loading, source capture, cache identity construction, and
+reporting. The analyzer execution counter is an additional functional metric:
+a warm operation is invalid if any analyzer package reruns.
+
+Five one-operation samples ran with Go 1.26.5, `GOMAXPROCS=1`, and
+`darwin/arm64` on an Apple M4 Max. The build cache remained task-owned and warm
+within the bounded campaign; result-cache roots were task-owned and removed by
+the benchmark harness.
+
+| Result cache | Median time | Observed range | Analyzer runs/op | Bytes/op | Allocs/op |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Cold population | 1.32 s | 883 ms-3.53 s | 42 | 350,266,520-350,612,800 | 3,849,678-3,851,420 |
+| Warm restore | 478 ms | 442 ms-1.18 s | 0 | 350,922,856-351,304,184 | 3,857,489-3,857,603 |
+
+Raw elapsed samples, in nanoseconds per operation:
+
+```text
+cold 3525387125 1363047709 1318246793 883456001 1146057875
+warm  498534333 1179880958 441888208 478344875 458701208
+```
+
+The zero warm analyzer executions prove functional reuse across independent
+type graphs. The lower warm median is directional evidence only: the host was
+not isolated, subbenchmarks were ordered, and package loading still dominates
+both allocation profiles. No CI latency or allocation threshold is set. A
+larger module/workspace corpus, isolated runner, CLI-owned cache policy, and
+peak-resident-memory measurement remain prerequisites for a product-wide warm
+cache performance claim.
 
 ## Syntax Traversal Strategy Probe
 

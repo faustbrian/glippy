@@ -417,8 +417,8 @@ payload digest, treats corruption as a miss, repairs through recomputation, and
 uses create-if-absent hard-link publication so concurrent different values fail
 instead of silently replacing one another. The first analysis consumer is
 described below; formatter and native-tier wiring, eviction, platform evidence,
-and warm-cache benchmarks remain open. Progress stays 45% behind the Phase 2
-gates.
+and broader warm-cache benchmarks remain open. Progress stays 45% behind the
+Phase 2 gates.
 
 Persistent object facts now have process-independent identity through an owning
 package path and canonical x/tools `objectpath`. Package objects, named types,
@@ -443,7 +443,11 @@ formatter state; dependency package keys carry imported-fact invalidation into
 each parent. Canonical entries restore diagnostics plus every analyzer-step
 fact snapshot transactionally across independent type graphs. Cold population,
 warm hits, source invalidation, stale/corrupt refusal, dependency-first restore,
-and uncacheable-local-fact fallback are proven. The CLI does not enable this
-cache, native types/CFG/SSA results remain uncached, and no warm performance or
-eviction claim is made. Phase 2 naming, release, platform-runtime, and approved
-external-adoption gates keep overall progress at 45%.
+and uncacheable-local-fact fallback are proven. A five-sample owned workload
+probe executes 42 analyzer packages per cold population and zero per warm
+independent load. Its 1.32-second cold and 478-millisecond warm medians are
+directional only because the host was not isolated and package loading still
+dominates allocations. The CLI does not enable this cache, native types/CFG/SSA
+results remain uncached, and no product-wide latency threshold or eviction claim
+is made. Phase 2 naming, release, platform-runtime, and approved external-
+adoption gates keep overall progress at 45%.
