@@ -47,7 +47,11 @@ Writers create and sync a same-shard temporary file, then publish it with an
 atomic create-if-absent hard link. Equal concurrent values converge; different
 valid values for one key fail as nondeterministic instead of overwriting one
 another. Rooted filesystem operations refuse symlink traversal outside the
-cache. Cache data remains disposable and is never the only source of results.
+cache. Explicit pruning removes canonical corruption and then the oldest
+canonical entries until caller-supplied count and encoded-byte limits hold;
+unknown and temporary files remain untouched. Concurrent eviction can cause a
+miss but cannot supply invalid bytes. Cache data remains disposable and is never
+the only source of results.
 
 Fact-bearing typed analyzer runs may use a caller-owned store. The consumer
 requires `GOENV=off`, explicit platform and cgo inputs, and canonical rule and
@@ -59,8 +63,9 @@ graph and exact captured source. Unsupported local object facts keep the
 package and its dependents uncached. An owned 42-package workload proves zero
 analyzer executions on warm independent loads, but package loading still
 dominates and host variance prevents a latency threshold. CLI ownership,
-eviction, platform evidence for hard-link publication, native-rule caching, and
-product-wide warm-run performance claims remain deferred.
+automatic pruning policy, stale-temporary recovery, platform evidence for hard-
+link publication, native-rule caching, and product-wide warm-run performance
+claims remain deferred.
 
 Formatter output changes are user-visible compatibility changes. They require
 construct-specific before/after documentation and updated corpus evidence.

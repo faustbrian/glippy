@@ -416,9 +416,9 @@ inputs. Its rooted store bounds entries, verifies embedded key, length, and
 payload digest, treats corruption as a miss, repairs through recomputation, and
 uses create-if-absent hard-link publication so concurrent different values fail
 instead of silently replacing one another. The first analysis consumer is
-described below; formatter and native-tier wiring, eviction, platform evidence,
-and broader warm-cache benchmarks remain open. Progress stays 45% behind the
-Phase 2 gates.
+described below; formatter and native-tier wiring, automatic eviction policy,
+platform evidence, and broader warm-cache benchmarks remain open. Progress
+stays 45% behind the Phase 2 gates.
 
 Persistent object facts now have process-independent identity through an owning
 package path and canonical x/tools `objectpath`. Package objects, named types,
@@ -448,6 +448,14 @@ probe executes 42 analyzer packages per cold population and zero per warm
 independent load. Its 1.32-second cold and 478-millisecond warm medians are
 directional only because the host was not isolated and package loading still
 dominates allocations. The CLI does not enable this cache, native types/CFG/SSA
-results remain uncached, and no product-wide latency threshold or eviction claim
-is made. Phase 2 naming, release, platform-runtime, and approved external-
-adoption gates keep overall progress at 45%.
+results remain uncached, and no product-wide latency threshold or automatic
+eviction-policy claim is made. Phase 2 naming, release, platform-runtime, and
+approved external-adoption gates keep overall progress at 45%.
+
+The cache store now supports explicit bounded pruning over canonical entries.
+It removes verified corruption before evicting the oldest publication times to
+caller-supplied entry and encoded-byte limits, with key-order ties. Unknown and
+temporary files remain untouched; cancellation, deleted roots, count and byte
+limits, deterministic ties, and concurrent equal publication across independent
+store handles are covered. No CLI policy invokes pruning, stale crash temporary
+files remain deferred, and progress stays 45% behind the Phase 2 gates.

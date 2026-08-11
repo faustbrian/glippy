@@ -55,6 +55,17 @@ Cache content MUST remain safe to delete and MUST NOT be the only source of
 diagnostics, facts, formatted output, or configuration. A cache miss or corrupt
 entry MUST therefore degrade to normal computation.
 
+Callers MAY explicitly prune canonical entries by a positive maximum entry
+count, encoded-byte count, or both. Pruning MUST remove canonical corrupt
+entries first, then evict valid entries by oldest publication modification time
+with canonical key order as the tie-breaker until every supplied limit holds.
+Zero leaves one dimension unlimited; negative limits and a request with no
+positive limit MUST fail. Counts and byte totals cover only canonical entry
+files, including their storage headers. Unknown files, directories, and
+temporary publication files MUST remain untouched because another store or
+caller may own them. Concurrent pruning MAY turn a hit into a miss but MUST NOT
+produce invalid bytes or make cached state authoritative.
+
 ## Current Boundary
 
 Fact-bearing typed `go/analysis` execution is the first integrated consumer.
@@ -77,7 +88,8 @@ fact-bearing adapter boundary. The owned workload benchmark also proves zero
 analyzer executions on warm independent loads; its timing remains directional
 because package loading dominates and the reference host is not isolated. This
 does not enable caching in the CLI, cache native types/CFG/SSA rules, establish
-eviction, or support a product-wide warm-performance claim.
+automatic pruning or stale-temporary cleanup, or support a product-wide
+warm-performance claim.
 
 Persistent object identity is the owning package path plus the canonical
 x/tools `objectpath`. It is proven across independent type checks for package
