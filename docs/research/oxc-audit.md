@@ -11,6 +11,14 @@ and release
 (Oxlint 1.77.0, Oxfmt 0.62.0). Current source and product documentation
 outweigh the repository's partly stale `ARCHITECTURE.md`.
 
+Reporting was refreshed on 2026-08-10 against Oxc commit
+[`8e9b95f`](https://github.com/oxc-project/oxc/commit/8e9b95f3b61534b220bc6577a2fa3552c91433a4).
+Oxfmt still separates check and list-different output and has no machine result
+schema. Oxlint's JSON reporter remains the useful diagnostic reference, but its
+runtime timing and thread fields are not deterministic result data and its
+example envelope carries no explicit schema version. ADR 0011 records Gox's
+deliberate versioned formatter-report boundary.
+
 ## Formatter Findings
 
 Oxfmt separates language parsing and lowering, a language-neutral document IR,

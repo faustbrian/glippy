@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -33,6 +34,37 @@ type shortWriter struct{}
 
 func (shortWriter) Write(value []byte) (int, error) {
 	return len(value) - 1, nil
+}
+
+type formatJSONReport struct {
+	SchemaVersion int    `json:"schema_version"`
+	Command       string `json:"command"`
+	Mode          string `json:"mode"`
+	Outcome       struct {
+		Category string `json:"category"`
+		ExitCode int    `json:"exit_code"`
+	} `json:"outcome"`
+	Summary struct {
+		Files    int  `json:"files"`
+		Changed  int  `json:"changed"`
+		Complete bool `json:"complete"`
+	} `json:"summary"`
+	Files []struct {
+		Path   string `json:"path"`
+		Status string `json:"status"`
+	} `json:"files"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+func decodeFormatJSONReport(t *testing.T, output []byte) formatJSONReport {
+	t.Helper()
+	var report formatJSONReport
+	if err := json.Unmarshal(output, &report); err != nil {
+		t.Fatalf("decode JSON report: %v; output = %q", err, output)
+	}
+	return report
 }
 
 func TestRunFormatsCompleteFileFromStdinToStdout(t *testing.T) {
@@ -74,6 +106,35 @@ func TestRunContextRefusesCanceledInvocationBeforeReadingInput(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), context.Canceled.Error()) || strings.Contains(stderr.String(), errStream.Error()) {
 		t.Fatalf("RunContext() stderr = %q, want cancellation without input read", stderr.String())
+	}
+}
+
+func TestRunContextReportsPreCanceledJSONInvocationAsJSON(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := RunContext(
+		ctx,
+		[]string{"fmt", "--check", "--reporter=json", "source.go"},
+		failingReader{},
+		&stdout,
+		&stderr,
+	)
+
+	if exitCode != ExitCanceled {
+		t.Fatalf("RunContext() exit = %d, want %d", exitCode, ExitCanceled)
+	}
+	report := decodeFormatJSONReport(t, stdout.Bytes())
+	if report.Mode != "check" || report.Outcome.Category != "canceled" ||
+		report.Outcome.ExitCode != ExitCanceled || report.Summary.Complete || len(report.Errors) != 1 {
+		t.Fatalf("RunContext() report = %#v", report)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("RunContext() stderr = %q, want empty", stderr.String())
 	}
 }
 
@@ -307,6 +368,46 @@ func TestRunWriteDoesNotTouchFormattedFile(t *testing.T) {
 	}
 	if !os.SameFile(before, after) || !after.ModTime().Equal(before.ModTime()) {
 		t.Fatalf("Run() touched formatted file: before = %#v, after = %#v", before, after)
+	}
+}
+
+func TestRunWriteReportsVersionedJSONOutcomesInPathOrder(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	changedPath := filepath.Join(root, "a.go")
+	if err := os.WriteFile(changedPath, []byte("package sample\nfunc run(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unchangedPath := filepath.Join(root, "z.go")
+	if err := os.WriteFile(unchangedPath, []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--write", "--reporter=json", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSuccess {
+		t.Fatalf("Run() exit = %d, want %d; stderr = %q", exitCode, ExitSuccess, stderr.String())
+	}
+	report := decodeFormatJSONReport(t, stdout.Bytes())
+	if report.SchemaVersion != 1 || report.Command != "fmt" || report.Mode != "write" ||
+		report.Outcome.Category != "success" || report.Outcome.ExitCode != ExitSuccess {
+		t.Fatalf("Run() report header = %#v", report)
+	}
+	if report.Summary.Files != 2 || report.Summary.Changed != 1 || !report.Summary.Complete || len(report.Files) != 2 || len(report.Errors) != 0 {
+		t.Fatalf("Run() report totals = %#v", report)
+	}
+	if report.Files[0].Path != changedPath || report.Files[0].Status != "formatted" ||
+		report.Files[1].Path != unchangedPath || report.Files[1].Status != "unchanged" {
+		t.Fatalf("Run() file outcomes = %#v", report.Files)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
 	}
 }
 
@@ -625,6 +726,57 @@ func TestRunFormatWriteReportsFilesReplacedBeforeLaterConflict(t *testing.T) {
 	}
 }
 
+func TestRunFormatWriteReportsPartialConflictAsJSON(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(root, "a.go")
+	if err := os.WriteFile(firstPath, []byte("package sample\nfunc first(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secondPath := filepath.Join(root, "z.go")
+	if err := os.WriteFile(secondPath, []byte("package sample\nfunc second(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	newer := []byte("package sample\n\nfunc newer() {}\n")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runFormatWriteReported(
+		context.Background(),
+		formatInvocation{paths: []string{root}, reporter: "json", write: true},
+		&stdout,
+		&stderr,
+		func(snapshot *filesystem.Snapshot, output []byte) error {
+			if snapshot.Path() == secondPath {
+				if err := os.WriteFile(secondPath, newer, 0o600); err != nil {
+					return err
+				}
+			}
+			return snapshot.Replace(output)
+		},
+	)
+
+	if exitCode != ExitConflict {
+		t.Fatalf("runFormatWriteReported() exit = %d, want %d", exitCode, ExitConflict)
+	}
+	report := decodeFormatJSONReport(t, stdout.Bytes())
+	if report.Outcome.Category != "conflict" || report.Summary.Complete ||
+		report.Summary.Changed != 2 || len(report.Errors) != 1 {
+		t.Fatalf("runFormatWriteReported() report = %#v", report)
+	}
+	if report.Files[0].Path != firstPath || report.Files[0].Status != "formatted" ||
+		report.Files[1].Path != secondPath || report.Files[1].Status != "conflict" {
+		t.Fatalf("runFormatWriteReported() file outcomes = %#v", report.Files)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("runFormatWriteReported() stderr = %q, want empty", stderr.String())
+	}
+}
+
 func TestRunFormatWriteStopsBeforeNextReplacementWhenCanceled(t *testing.T) {
 	t.Parallel()
 
@@ -679,6 +831,64 @@ func TestRunFormatWriteStopsBeforeNextReplacementWhenCanceled(t *testing.T) {
 	}
 }
 
+func TestRunFormatWriteReportsPartialCancellationAsJSON(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(root, "a.go")
+	if err := os.WriteFile(firstPath, []byte("package sample\nfunc first(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secondPath := filepath.Join(root, "z.go")
+	secondInput := []byte("package sample\nfunc second(){}\n")
+	if err := os.WriteFile(secondPath, secondInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runFormatWriteReported(
+		ctx,
+		formatInvocation{paths: []string{root}, reporter: "json", write: true},
+		&stdout,
+		&stderr,
+		func(snapshot *filesystem.Snapshot, output []byte) error {
+			if err := snapshot.Replace(output); err != nil {
+				return err
+			}
+			cancel()
+			return nil
+		},
+	)
+
+	if exitCode != ExitCanceled {
+		t.Fatalf("runFormatWriteReported() exit = %d, want %d", exitCode, ExitCanceled)
+	}
+	report := decodeFormatJSONReport(t, stdout.Bytes())
+	if report.Outcome.Category != "canceled" || report.Summary.Complete ||
+		report.Summary.Changed != 2 || len(report.Errors) != 1 {
+		t.Fatalf("runFormatWriteReported() report = %#v", report)
+	}
+	if report.Files[0].Path != firstPath || report.Files[0].Status != "formatted" ||
+		report.Files[1].Path != secondPath || report.Files[1].Status != "pending" {
+		t.Fatalf("runFormatWriteReported() file outcomes = %#v", report.Files)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("runFormatWriteReported() stderr = %q, want empty", stderr.String())
+	}
+	second, err := os.ReadFile(secondPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(second, secondInput) {
+		t.Fatalf("runFormatWriteReported() second file = %q, want unchanged", second)
+	}
+}
+
 func TestRunFormatWriteReportsUncertainStateAfterReplacementError(t *testing.T) {
 	t.Parallel()
 
@@ -710,6 +920,42 @@ func TestRunFormatWriteReportsUncertainStateAfterReplacementError(t *testing.T) 
 	if !strings.Contains(stderr.String(), "files replaced or possibly replaced before failure") ||
 		!strings.Contains(stderr.String(), path) {
 		t.Fatalf("runFormatWrite() stderr = %q, want uncertain replacement report", stderr.String())
+	}
+}
+
+func TestRunFormatWriteDisclosesPossiblyFormattedFileWhenJSONOutputFails(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+
+	exitCode := runFormatWriteReported(
+		context.Background(),
+		formatInvocation{paths: []string{path}, reporter: "json", write: true},
+		failingWriter{},
+		&stderr,
+		func(snapshot *filesystem.Snapshot, output []byte) error {
+			if err := snapshot.Replace(output); err != nil {
+				return err
+			}
+			return errStream
+		},
+	)
+
+	if exitCode != ExitFilesystemError {
+		t.Fatalf("runFormatWriteReported() exit = %d, want %d", exitCode, ExitFilesystemError)
+	}
+	if !strings.Contains(stderr.String(), "write JSON report") ||
+		!strings.Contains(stderr.String(), "files replaced or possibly replaced before reporting failure") ||
+		!strings.Contains(stderr.String(), path) {
+		t.Fatalf("runFormatWriteReported() stderr = %q, want reporting failure and uncertain replacement", stderr.String())
 	}
 }
 
@@ -820,7 +1066,7 @@ func TestRunCheckReportsDifferencesWithoutMutation(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := Run([]string{"fmt", "--check", root}, failingReader{}, &stdout, &stderr)
+	exitCode := Run([]string{"fmt", "--check", "--reporter=text", root}, failingReader{}, &stdout, &stderr)
 
 	if exitCode != ExitFindings {
 		t.Fatalf("Run() exit code = %d, want %d; stderr = %q", exitCode, ExitFindings, stderr.String())
@@ -834,6 +1080,77 @@ func TestRunCheckReportsDifferencesWithoutMutation(t *testing.T) {
 	}
 	if !bytes.Equal(got, unformatted) {
 		t.Fatalf("Run() mutated check-mode file: %q", got)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunCheckReportsVersionedJSONOutcomesInPathOrder(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unchangedPath := filepath.Join(root, "a.go")
+	if err := os.WriteFile(unchangedPath, []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	changedPath := filepath.Join(root, "z.go")
+	if err := os.WriteFile(changedPath, []byte("package sample\nfunc run(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--check", "--reporter", "json", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitFindings {
+		t.Fatalf("Run() exit = %d, want %d; stderr = %q", exitCode, ExitFindings, stderr.String())
+	}
+	report := decodeFormatJSONReport(t, stdout.Bytes())
+	if report.SchemaVersion != 1 || report.Command != "fmt" || report.Mode != "check" ||
+		report.Outcome.Category != "findings" || report.Outcome.ExitCode != ExitFindings {
+		t.Fatalf("Run() report header = %#v", report)
+	}
+	if report.Summary.Files != 2 || report.Summary.Changed != 1 || !report.Summary.Complete || len(report.Files) != 2 || len(report.Errors) != 0 {
+		t.Fatalf("Run() report totals = %#v", report)
+	}
+	if report.Files[0].Path != unchangedPath || report.Files[0].Status != "unchanged" ||
+		report.Files[1].Path != changedPath || report.Files[1].Status != "different" {
+		t.Fatalf("Run() file outcomes = %#v", report.Files)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunCheckReportsSourceFailureAsJSON(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "broken.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc broken(\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--check", "--reporter=json", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSourceError {
+		t.Fatalf("Run() exit = %d, want %d; stderr = %q", exitCode, ExitSourceError, stderr.String())
+	}
+	report := decodeFormatJSONReport(t, stdout.Bytes())
+	if report.Outcome.Category != "source_error" || report.Outcome.ExitCode != ExitSourceError || report.Summary.Complete || len(report.Errors) != 1 {
+		t.Fatalf("Run() report = %#v", report)
+	}
+	if !strings.Contains(report.Errors[0].Message, path) || len(report.Files) != 0 {
+		t.Fatalf("Run() report error = %#v", report)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
@@ -1237,7 +1554,7 @@ func TestRunRejectsInvalidCompleteFileWithoutPartialOutput(t *testing.T) {
 func TestRunRejectsUnsupportedInvocation(t *testing.T) {
 	t.Parallel()
 
-	for _, arguments := range [][]string{nil, {"lint"}} {
+	for _, arguments := range [][]string{nil, {"lint"}, {"lint", "--reporter=json"}} {
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
 
@@ -1252,6 +1569,94 @@ func TestRunRejectsUnsupportedInvocation(t *testing.T) {
 		if stderr.String() != formatUsage {
 			t.Fatalf("Run(%q) stderr = %q", arguments, stderr.String())
 		}
+	}
+}
+
+func TestRunReportsInvalidJSONInvocationAsJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		arguments []string
+		mode      string
+	}{
+		{arguments: []string{"fmt", "--reporter=json"}, mode: "stdout"},
+		{arguments: []string{"fmt", "--reporter=json", "source.go"}, mode: "stdout"},
+		{arguments: []string{"fmt", "--reporter", "json", "--unsupported"}, mode: "invalid"},
+		{arguments: []string{"fmt", "--check", "--reporter=json", "--unsupported"}, mode: "check"},
+		{arguments: []string{"fmt", "--write", "--reporter=json", "--unsupported"}, mode: "write"},
+		{arguments: []string{"fmt", "--check", "--write", "--reporter=json"}, mode: "invalid"},
+	}
+	for _, test := range tests {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+
+		exitCode := Run(test.arguments, bytes.NewReader(nil), &stdout, &stderr)
+
+		if exitCode != ExitInvalidInvocation {
+			t.Fatalf("Run(%q) exit = %d, want %d", test.arguments, exitCode, ExitInvalidInvocation)
+		}
+		report := decodeFormatJSONReport(t, stdout.Bytes())
+		if report.Mode != test.mode || report.Outcome.Category != "invalid_invocation" || report.Outcome.ExitCode != ExitInvalidInvocation ||
+			report.Summary.Complete || len(report.Errors) != 1 {
+			t.Fatalf("Run(%q) report = %#v, want mode %q", test.arguments, report, test.mode)
+		}
+		if stderr.Len() != 0 {
+			t.Fatalf("Run(%q) stderr = %q, want empty", test.arguments, stderr.String())
+		}
+	}
+}
+
+func TestRunReportsJSONOutputFailure(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "source.go"), []byte("package sample\nfunc run(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--check", "--reporter=json", root}, failingReader{}, failingWriter{}, &stderr)
+
+	if exitCode != ExitFilesystemError {
+		t.Fatalf("Run() exit = %d, want %d", exitCode, ExitFilesystemError)
+	}
+	if !strings.Contains(stderr.String(), "write JSON report") {
+		t.Fatalf("Run() stderr = %q, want JSON write failure", stderr.String())
+	}
+}
+
+func TestRunWriteDisclosesReplacementWhenJSONOutputFails(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--write", "--reporter=json", root}, failingReader{}, failingWriter{}, &stderr)
+
+	if exitCode != ExitFilesystemError {
+		t.Fatalf("Run() exit = %d, want %d", exitCode, ExitFilesystemError)
+	}
+	if !strings.Contains(stderr.String(), "write JSON report") ||
+		!strings.Contains(stderr.String(), "files replaced before reporting failure") ||
+		!strings.Contains(stderr.String(), path) {
+		t.Fatalf("Run() stderr = %q, want JSON failure and replacement disclosure", stderr.String())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "package sample\n\nfunc run() {}\n" {
+		t.Fatalf("Run() file = %q, want formatted replacement", got)
 	}
 }
 

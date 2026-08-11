@@ -30,10 +30,16 @@ explicit file or stdin. Multiple filesystem inputs require `--write` or
 use `--stdin-filepath` for language version and configuration context but MUST
 NOT make that path writable.
 
-Successful `fmt --write` is silent. It validates every selected configuration,
-source file, and formatted result before beginning replacement. Generated files,
-explicit symlinks, and explicit paths traversing an in-project symlink remain
-readable in non-writing modes but are refused by write mode.
+Path-based check and write modes MUST accept `--reporter=text|json`; text MUST
+remain the default. JSON MUST NOT be accepted when stdout contains formatted
+source. A valid JSON request MUST receive JSON even when the remaining
+invocation is invalid.
+
+Successful text-mode `fmt --write` is silent; JSON mode emits its result
+envelope. Write mode validates every selected configuration, source file, and
+formatted result before beginning replacement. Generated files, explicit
+symlinks, and explicit paths traversing an in-project symlink remain readable
+in non-writing modes but are refused by write mode.
 
 Standard-input fragments use an explicit fragment kind and the wrapper/mapping
 contract in [`fragments.md`](fragments.md). Fragment kind inference after a
@@ -55,6 +61,36 @@ work MUST feed canonical outcome records that are sorted by normalized path,
 physical byte range, rule ID, severity, and stable message key before any
 reporter renders them. Text and versioned JSON reporters MUST derive their exit
 category from the same aggregate result.
+
+Schema version 1 JSON has this deterministic envelope:
+
+```json
+{
+  "schema_version": 1,
+  "command": "fmt",
+  "mode": "check",
+  "outcome": { "category": "findings", "exit_code": 1 },
+  "summary": { "files": 1, "changed": 1, "complete": true },
+  "files": [
+    { "path": "/project/source.go", "status": "different" }
+  ],
+  "errors": []
+}
+```
+
+Paths MUST be normalized absolute paths, and arrays MUST retain deterministic
+task order.
+Check statuses are `unchanged` and `different`. Write statuses are `pending`,
+`unchanged`, `formatted`, `conflict`, `failed`, and `possibly_formatted`.
+`pending` means replacement or unchanged-file revalidation was not reached.
+`summary.complete` MUST be false when the reported file records or counts do
+not cover a complete invocation. Machine errors MUST NOT include source
+snippets by default. Timing and worker counts MUST NOT form part of result
+identity.
+
+Successful reports use mode `check` or `write`. Invalid invocations retain the
+requested path mode when it can be resolved; mode is `invalid` when parsing
+cannot establish one.
 
 Formatter read, parse, and layout preparation uses at most the smaller of the
 selection size, `GOMAXPROCS`, and 32 workers. Task identity is assigned only
@@ -123,3 +159,8 @@ one file at a time. If a later replacement fails after earlier files changed,
 the diagnostic lists every earlier replacement. A non-stale filesystem failure
 may occur after rename, so the failing changed path is reported as possibly
 replaced rather than silently implying rollback.
+
+JSON reporting MUST preserve the same disclosure through ordered file statuses.
+If the JSON stream itself cannot be written after replacements, stderr MUST
+name every completed or possibly completed replacement, and the invocation
+MUST return the applicable failure category.

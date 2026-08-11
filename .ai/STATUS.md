@@ -31,7 +31,9 @@ preservation, permission-preserving same-directory replacement, and generated
 file and symlink refusal. Formatting preparation is now bounded by selection
 size, `GOMAXPROCS`, and 32 workers while retaining normalized task order;
 interrupt, termination, and caller cancellation stop scheduling and are checked
-before every replacement with prior writes disclosed. Complete
-platform-specific filesystem semantics, reporting, editor workflows, release
-artifacts, and real-repository adoption remain open. Progress therefore remains
-at the Phase 1 exit gate of 35%.
+before every replacement with prior writes disclosed. Path-based check and
+write modes now share deterministic text outcomes and a versioned JSON envelope
+covering success, findings, invalid input, source failures, partial writes,
+conflicts, and reporting failures. Complete platform-specific filesystem
+semantics, editor workflows, release artifacts, and real-repository adoption
+remain open. Progress therefore remains at the Phase 1 exit gate of 35%.

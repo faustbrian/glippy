@@ -17,6 +17,7 @@ import (
 	"github.com/faustbrian/gox/internal/discovery"
 	"github.com/faustbrian/gox/internal/filesystem"
 	goxformat "github.com/faustbrian/gox/internal/format"
+	goxreport "github.com/faustbrian/gox/internal/report"
 	"github.com/faustbrian/gox/internal/source"
 )
 
@@ -37,7 +38,7 @@ var defaultFormatOptions = goxformat.Options{
 	FitBudget: 1_000,
 }
 
-const formatUsage = "gox: expected 'fmt [--write|--check] [--config=<path>] [--stdin-filepath=<path>] [--fragment=declaration|statement|expression] [path...]'\n"
+const formatUsage = "gox: expected 'fmt [--write|--check] [--reporter=text|json] [--config=<path>] [--stdin-filepath=<path>] [--fragment=declaration|statement|expression] [path...]'\n"
 
 const maximumFormatWorkers = 32
 
@@ -46,6 +47,7 @@ type formatInvocation struct {
 	stdinFilepath string
 	configPath    string
 	paths         []string
+	reporter      goxreport.Format
 	check         bool
 	write         bool
 }
@@ -63,33 +65,75 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 		}
 		return report(stderr, ExitFilesystemError, "gox: process streams are required\n")
 	}
+	invocation, valid := parseFormatInvocation(arguments)
+	if !valid {
+		if requestsJSONReporter(arguments) {
+			return reportFormatJSON(
+				stdout,
+				stderr,
+				invalidFormatInvocationMode(arguments),
+				ExitInvalidInvocation,
+				0,
+				0,
+				nil,
+				errors.New(strings.TrimSpace(formatUsage)),
+			)
+		}
+		return report(stderr, ExitInvalidInvocation, formatUsage)
+	}
 	if ctx == nil {
+		if invocation.reporter == goxreport.JSON {
+			return reportFormatJSON(
+				stdout,
+				stderr,
+				formatInvocationMode(invocation),
+				ExitInternalError,
+				0,
+				0,
+				nil,
+				errors.New("context is required"),
+			)
+		}
 		return report(stderr, ExitInternalError, "gox: context is required\n")
 	}
 	if err := ctx.Err(); err != nil {
+		if invocation.reporter == goxreport.JSON {
+			return reportFormatJSON(
+				stdout,
+				stderr,
+				formatInvocationMode(invocation),
+				ExitCanceled,
+				0,
+				0,
+				nil,
+				err,
+			)
+		}
 		return report(stderr, ExitCanceled, "gox: %v\n", err)
-	}
-	invocation, valid := parseFormatInvocation(arguments)
-	if !valid {
-		return report(stderr, ExitInvalidInvocation, formatUsage)
 	}
 	if len(invocation.paths) > 0 {
 		if invocation.fragmentKind != 0 || invocation.stdinFilepath != "" {
-			return report(stderr, ExitInvalidInvocation, formatUsage)
+			return reportInvalidFormatInvocation(invocation, stdout, stderr)
 		}
 		if invocation.write {
-			return runFormatWrite(ctx, invocation, stderr, replaceFormatSnapshot)
+			return runFormatWriteReported(ctx, invocation, stdout, stderr, replaceFormatSnapshot)
 		}
 		if invocation.check {
 			return runFormatCheck(ctx, invocation, stdout, stderr)
 		}
 		if len(invocation.paths) != 1 {
-			return report(stderr, ExitInvalidInvocation, formatUsage)
+			return reportInvalidFormatInvocation(invocation, stdout, stderr)
+		}
+		if invocation.reporter == goxreport.JSON {
+			return reportInvalidFormatInvocation(invocation, stdout, stderr)
 		}
 		return runFormatFile(ctx, invocation, stdout, stderr)
 	}
 	if invocation.check || invocation.write {
-		return report(stderr, ExitInvalidInvocation, formatUsage)
+		return reportInvalidFormatInvocation(invocation, stdout, stderr)
+	}
+	if invocation.reporter == goxreport.JSON {
+		return reportInvalidFormatInvocation(invocation, stdout, stderr)
 	}
 	formatOptions, exitCode, err := resolveFormatOptions(invocation)
 	if err != nil {
@@ -122,6 +166,66 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 	return ExitSuccess
 }
 
+func reportInvalidFormatInvocation(invocation formatInvocation, stdout, stderr io.Writer) int {
+	if invocation.reporter == goxreport.JSON {
+		return reportFormatJSON(
+			stdout,
+			stderr,
+			formatInvocationMode(invocation),
+			ExitInvalidInvocation,
+			0,
+			0,
+			nil,
+			errors.New(strings.TrimSpace(formatUsage)),
+		)
+	}
+	return report(stderr, ExitInvalidInvocation, formatUsage)
+}
+
+func formatInvocationMode(invocation formatInvocation) string {
+	switch {
+	case invocation.check:
+		return "check"
+	case invocation.write:
+		return "write"
+	default:
+		return "stdout"
+	}
+}
+
+func requestsJSONReporter(arguments []string) bool {
+	if len(arguments) == 0 || arguments[0] != "fmt" {
+		return false
+	}
+	for index, argument := range arguments {
+		if argument == "--reporter=json" ||
+			(argument == "--reporter" && index+1 < len(arguments) && arguments[index+1] == "json") {
+			return true
+		}
+	}
+	return false
+}
+
+func invalidFormatInvocationMode(arguments []string) string {
+	check := false
+	write := false
+	for _, argument := range arguments[1:] {
+		switch argument {
+		case "--check":
+			check = true
+		case "--write":
+			write = true
+		}
+	}
+	if check == write {
+		return "invalid"
+	}
+	if check {
+		return "check"
+	}
+	return "write"
+}
+
 type formatTask struct {
 	file    discovery.File
 	root    string
@@ -142,12 +246,17 @@ func newFormatTaskError(exitCode int, format string, arguments ...any) error {
 }
 
 func reportFormatTaskError(stderr io.Writer, err error) int {
+	exitCode := formatTaskErrorExitCode(err)
+	return report(stderr, exitCode, "gox fmt: %v\n", err)
+}
+
+func formatTaskErrorExitCode(err error) int {
 	exitCode := exitCodeForError(ExitInternalError, err)
 	var taskError *formatTaskError
 	if exitCode != ExitCanceled && errors.As(err, &taskError) {
 		exitCode = taskError.exitCode
 	}
-	return report(stderr, exitCode, "gox fmt: %v\n", err)
+	return exitCode
 }
 
 func exitCodeForError(fallback int, err error) int {
@@ -253,6 +362,9 @@ func runFormatCheck(
 ) int {
 	tasks, exitCode, err := prepareFormatTasks(ctx, invocation)
 	if err != nil {
+		if invocation.reporter == goxreport.JSON {
+			return reportFormatJSON(stdout, stderr, "check", exitCode, 0, 0, nil, err)
+		}
 		return report(stderr, exitCode, "gox fmt: %v\n", err)
 	}
 	prepared, err := mapFormatTasks(ctx, tasks, formatWorkerLimit(len(tasks)), func(ctx context.Context, task formatTask) (preparedFormatCheck, error) {
@@ -273,16 +385,34 @@ func runFormatCheck(
 		return preparedFormatCheck{path: task.file.Path, changed: !bytes.Equal(input, formatted)}, nil
 	})
 	if err != nil {
+		if invocation.reporter == goxreport.JSON {
+			exitCode := formatTaskErrorExitCode(err)
+			return reportFormatJSON(stdout, stderr, "check", exitCode, len(tasks), 0, nil, err)
+		}
 		return reportFormatTaskError(stderr, err)
 	}
-	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
-	}
 	findings := make([]string, 0)
+	files := make([]goxreport.File, 0, len(prepared))
 	for _, item := range prepared {
 		if item.changed {
 			findings = append(findings, item.path)
+			files = append(files, goxreport.File{Path: item.path, Status: goxreport.FileDifferent})
+		} else {
+			files = append(files, goxreport.File{Path: item.path, Status: goxreport.FileUnchanged})
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		if invocation.reporter == goxreport.JSON {
+			return reportFormatJSON(stdout, stderr, "check", ExitCanceled, len(tasks), len(findings), files, err)
+		}
+		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
+	}
+	if invocation.reporter == goxreport.JSON {
+		exitCode := ExitSuccess
+		if len(findings) > 0 {
+			exitCode = ExitFindings
+		}
+		return reportFormatJSON(stdout, stderr, "check", exitCode, len(tasks), len(findings), files, nil)
 	}
 	if len(findings) == 0 {
 		return ExitSuccess
@@ -370,8 +500,20 @@ func runFormatWrite(
 	stderr io.Writer,
 	replace formatSnapshotReplacer,
 ) int {
+	return runFormatWriteReported(ctx, invocation, io.Discard, stderr, replace)
+}
+
+func runFormatWriteReported(
+	ctx context.Context,
+	invocation formatInvocation,
+	stdout, stderr io.Writer,
+	replace formatSnapshotReplacer,
+) int {
 	tasks, exitCode, err := prepareFormatTasks(ctx, invocation)
 	if err != nil {
+		if invocation.reporter == goxreport.JSON {
+			return reportFormatJSON(stdout, stderr, "write", exitCode, 0, 0, nil, err)
+		}
 		return report(stderr, exitCode, "gox fmt: %v\n", err)
 	}
 	prepared, err := mapFormatTasks(ctx, tasks, formatWorkerLimit(len(tasks)), func(ctx context.Context, task formatTask) (preparedFormatWrite, error) {
@@ -408,29 +550,62 @@ func runFormatWrite(
 		}, nil
 	})
 	if err != nil {
+		if invocation.reporter == goxreport.JSON {
+			exitCode := formatTaskErrorExitCode(err)
+			return reportFormatJSON(stdout, stderr, "write", exitCode, len(tasks), 0, nil, err)
+		}
 		return reportFormatTaskError(stderr, err)
 	}
+	files := make([]goxreport.File, len(prepared))
+	changedCount := 0
+	for index, item := range prepared {
+		files[index] = goxreport.File{Path: item.path, Status: goxreport.FilePending}
+		if item.changed {
+			changedCount++
+		}
+	}
 	replaced := make([]string, 0, len(prepared))
-	for _, item := range prepared {
+	for index, item := range prepared {
 		if err := ctx.Err(); err != nil {
+			if invocation.reporter == goxreport.JSON {
+				return reportFormatJSON(stdout, stderr, "write", ExitCanceled, len(tasks), changedCount, files, err)
+			}
 			return reportFormatWriteFailure(stderr, ExitCanceled, err, replaced, "")
 		}
 		if err := replace(item.snapshot, item.output); err != nil {
 			if errors.Is(err, filesystem.ErrStale) {
+				files[index].Status = goxreport.FileConflict
+				if invocation.reporter == goxreport.JSON {
+					return reportFormatJSON(stdout, stderr, "write", ExitConflict, len(tasks), changedCount, files, err)
+				}
 				return reportFormatWriteFailure(stderr, ExitConflict, err, replaced, "")
 			}
+			files[index].Status = goxreport.FileFailed
 			possiblyReplaced := ""
 			if item.changed {
 				possiblyReplaced = item.path
+				files[index].Status = goxreport.FilePossiblyFormatted
+			}
+			if invocation.reporter == goxreport.JSON {
+				return reportFormatJSON(stdout, stderr, "write", ExitFilesystemError, len(tasks), changedCount, files, err)
 			}
 			return reportFormatWriteFailure(stderr, ExitFilesystemError, err, replaced, possiblyReplaced)
 		}
 		if item.changed {
 			replaced = append(replaced, item.path)
+			files[index].Status = goxreport.FileFormatted
+		} else {
+			files[index].Status = goxreport.FileUnchanged
 		}
 	}
 	if err := ctx.Err(); err != nil {
+		if invocation.reporter == goxreport.JSON {
+			return reportFormatJSON(stdout, stderr, "write", ExitCanceled, len(tasks), changedCount, files, err)
+		}
 		return reportFormatWriteFailure(stderr, ExitCanceled, err, replaced, "")
+	}
+	if invocation.reporter == goxreport.JSON {
+		return reportFormatJSON(stdout, stderr, "write", ExitSuccess, len(tasks), changedCount, files, nil)
 	}
 	return ExitSuccess
 }
@@ -452,6 +627,93 @@ func reportFormatWriteFailure(
 		heading = "files replaced or possibly replaced before failure"
 	}
 	return report(stderr, exitCode, "gox fmt: %v\ngox fmt: %s:\n%s\n", err, heading, strings.Join(paths, "\n"))
+}
+
+func reportFormatJSON(
+	stdout, stderr io.Writer,
+	mode string,
+	exitCode, selected, changed int,
+	files []goxreport.File,
+	err error,
+) int {
+	errs := []goxreport.Error{}
+	if err != nil {
+		errs = append(errs, goxreport.Error{Message: err.Error()})
+	}
+	result := goxreport.NewFormatResult(
+		mode,
+		exitCategory(exitCode),
+		exitCode,
+		selected,
+		changed,
+		err == nil,
+		files,
+		errs,
+	)
+	encoded, err := goxreport.MarshalJSON(result)
+	if err != nil {
+		return report(stderr, moreSevereExitCode(exitCode, ExitInternalError), "gox fmt: encode JSON report: %v\n", err)
+	}
+	if err := write(stdout, encoded); err != nil {
+		outputExitCode := moreSevereExitCode(exitCode, ExitFilesystemError)
+		if mode == "write" {
+			completed := make([]string, 0)
+			possiblyCompleted := false
+			for _, file := range files {
+				switch file.Status {
+				case goxreport.FileFormatted:
+					completed = append(completed, file.Path)
+				case goxreport.FilePossiblyFormatted:
+					completed = append(completed, file.Path)
+					possiblyCompleted = true
+				}
+			}
+			if len(completed) > 0 {
+				heading := "files replaced before reporting failure"
+				if possiblyCompleted {
+					heading = "files replaced or possibly replaced before reporting failure"
+				}
+				return report(
+					stderr,
+					outputExitCode,
+					"gox fmt: write JSON report: %v\ngox fmt: %s:\n%s\n",
+					err,
+					heading,
+					strings.Join(completed, "\n"),
+				)
+			}
+		}
+		return report(stderr, outputExitCode, "gox fmt: write JSON report: %v\n", err)
+	}
+	return exitCode
+}
+
+func exitCategory(exitCode int) string {
+	switch exitCode {
+	case ExitSuccess:
+		return "success"
+	case ExitFindings:
+		return "findings"
+	case ExitSourceError:
+		return "source_error"
+	case ExitInvalidInvocation:
+		return "invalid_invocation"
+	case ExitConflict:
+		return "conflict"
+	case ExitFilesystemError:
+		return "filesystem_error"
+	case ExitCanceled:
+		return "canceled"
+	default:
+		return "internal_error"
+	}
+}
+
+func moreSevereExitCode(left, right int) int {
+	if left == ExitCanceled || right == ExitCanceled {
+		return ExitCanceled
+	}
+	return max(left, right)
 }
 
 func runFormatFile(ctx context.Context, invocation formatInvocation, stdout, stderr io.Writer) int {
@@ -571,10 +833,27 @@ func parseFormatInvocation(arguments []string) (formatInvocation, bool) {
 	if len(arguments) == 0 || arguments[0] != "fmt" {
 		return formatInvocation{}, false
 	}
-	var result formatInvocation
+	result := formatInvocation{reporter: goxreport.Text}
+	reporterSet := false
 	for index := 1; index < len(arguments); index++ {
 		argument := arguments[index]
 		switch {
+		case strings.HasPrefix(argument, "--reporter=") && !reporterSet:
+			reporter, valid := parseReporter(strings.TrimPrefix(argument, "--reporter="))
+			if !valid {
+				return formatInvocation{}, false
+			}
+			result.reporter = reporter
+			reporterSet = true
+		case argument == "--reporter" && !reporterSet &&
+			index+1 < len(arguments) && !strings.HasPrefix(arguments[index+1], "--"):
+			index++
+			reporter, valid := parseReporter(arguments[index])
+			if !valid {
+				return formatInvocation{}, false
+			}
+			result.reporter = reporter
+			reporterSet = true
 		case strings.HasPrefix(argument, "--fragment=") && result.fragmentKind == 0:
 			switch strings.TrimPrefix(argument, "--fragment=") {
 			case "declaration":
@@ -624,6 +903,17 @@ func parseFormatInvocation(arguments []string) (formatInvocation, bool) {
 		return formatInvocation{}, false
 	}
 	return result, true
+}
+
+func parseReporter(value string) (goxreport.Format, bool) {
+	switch value {
+	case "text":
+		return goxreport.Text, true
+	case "json":
+		return goxreport.JSON, true
+	default:
+		return "", false
+	}
 }
 
 func report(stderr io.Writer, exitCode int, format string, arguments ...any) int {
