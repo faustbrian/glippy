@@ -216,7 +216,8 @@ func TestLoadPackagesRetainsInvalidSourceForDiagnosticOnlyUse(t *testing.T) {
 		t.Fatalf("LoadPackages() invalid source = %#v, %t", file, found)
 	}
 	problems := result.Sources.Problems()
-	if len(problems) != 1 || problems[0].Path != path || problems[0].Message == "" {
+	if len(problems) != 1 || problems[0].Path != path || problems[0].Digest != file.Digest() ||
+		problems[0].Message == "" {
 		t.Fatalf("LoadPackages() source problems = %#v", problems)
 	}
 	if len(result.Diagnostics) == 0 {

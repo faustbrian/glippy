@@ -16,6 +16,7 @@ type PackageResult struct {
 	Selection       []rules.Selection
 	LoadDiagnostics []PackageDiagnostic
 	SourceProblems  []PackageSourceProblem
+	Sources         PackageSourceSet
 	Files           []Result
 }
 
@@ -74,6 +75,7 @@ func RunPackages(
 	}
 	result.LoadDiagnostics = slices.Clone(loaded.Diagnostics)
 	result.SourceProblems = loaded.Sources.Problems()
+	result.Sources = loaded.Sources
 	packages_, err := canonicalPackages(loaded.Packages)
 	if err != nil {
 		return result, err

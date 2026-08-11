@@ -21,6 +21,8 @@ type LintSummary struct {
 	Suppressed          int  `json:"suppressed"`
 	SuppressionProblems int  `json:"suppression_problems"`
 	UnusedSuppressions  int  `json:"unused_suppressions"`
+	PackageDiagnostics  int  `json:"package_diagnostics,omitempty"`
+	SourceProblems      int  `json:"source_problems,omitempty"`
 	FixedFiles          int  `json:"fixed_files,omitempty"`
 	AppliedFixes        int  `json:"applied_fixes,omitempty"`
 	RejectedFixes       int  `json:"rejected_fixes,omitempty"`
@@ -121,18 +123,20 @@ type UnusedSuppression struct {
 }
 
 type LintResult struct {
-	SchemaVersion       int                  `json:"schema_version"`
-	Command             string               `json:"command"`
-	Mode                string               `json:"mode"`
-	Outcome             Outcome              `json:"outcome"`
-	Summary             LintSummary          `json:"summary"`
-	Files               []LintFile           `json:"files"`
-	Diagnostics         []LintDiagnostic     `json:"diagnostics"`
-	SuppressionProblems []SuppressionProblem `json:"suppression_problems"`
-	UnusedSuppressions  []UnusedSuppression  `json:"unused_suppressions"`
-	AppliedFixes        []LintAppliedFix     `json:"applied_fixes,omitempty"`
-	RejectedFixes       []LintRejectedFix    `json:"rejected_fixes,omitempty"`
-	Errors              []Error              `json:"errors"`
+	SchemaVersion       int                     `json:"schema_version"`
+	Command             string                  `json:"command"`
+	Mode                string                  `json:"mode"`
+	Outcome             Outcome                 `json:"outcome"`
+	Summary             LintSummary             `json:"summary"`
+	Files               []LintFile              `json:"files"`
+	Diagnostics         []LintDiagnostic        `json:"diagnostics"`
+	SuppressionProblems []SuppressionProblem    `json:"suppression_problems"`
+	UnusedSuppressions  []UnusedSuppression     `json:"unused_suppressions"`
+	PackageDiagnostics  []LintPackageDiagnostic `json:"package_diagnostics,omitempty"`
+	SourceProblems      []LintSourceProblem     `json:"source_problems,omitempty"`
+	AppliedFixes        []LintAppliedFix        `json:"applied_fixes,omitempty"`
+	RejectedFixes       []LintRejectedFix       `json:"rejected_fixes,omitempty"`
+	Errors              []Error                 `json:"errors"`
 }
 
 // NewLintResult validates and maps ordered analysis results into schema version 1.

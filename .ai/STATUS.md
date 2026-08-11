@@ -276,3 +276,11 @@ on the existing path that cannot invoke `go/packages`. CLI
 package patterns, per-path configuration across package boundaries, typed
 fixing and post-fix reloads, package-wide rules, dependency analysis, facts,
 CFG, SSA, and caching remain open, so progress stays 45%.
+
+Typed package reporting now retains the immutable load-owned source index for
+physical rule locations and exposes package/type diagnostics and source-model
+problems as separate deterministic text and versioned JSON channels. Machine
+package kinds are stable `unknown`, `list`, `parse`, and `type` values; source
+problems retain normalized absolute paths and captured source digests; summary
+counts remain distinct from rule findings and generic tool errors. CLI
+package-pattern routing and exit handling remain open, so progress stays 45%.

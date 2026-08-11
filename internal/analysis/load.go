@@ -73,6 +73,7 @@ type PackageSourceSet struct {
 // PackageSourceProblem records why one captured source is diagnostic-only.
 type PackageSourceProblem struct {
 	Path    string
+	Digest  source.Digest
 	Message string
 }
 
@@ -215,7 +216,7 @@ func (c *packageSourceCollector) add(filename string, file *source.File, sourceE
 		c.files[path] = file
 	}
 	if sourceErr != nil {
-		problem := PackageSourceProblem{Path: path, Message: sourceErr.Error()}
+		problem := PackageSourceProblem{Path: path, Digest: file.Digest(), Message: sourceErr.Error()}
 		if previous, found := c.problems[path]; found && previous != problem && c.err == nil {
 			c.err = fmt.Errorf("package parser returned incompatible source problems for %q", path)
 		} else {

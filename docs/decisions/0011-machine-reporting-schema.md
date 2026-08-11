@@ -62,6 +62,16 @@ the summary count. The constructor rejects duplicate source paths and
 diagnostics whose path or digest does not match their file result. Source files
 and diagnostics are sorted canonically before encoding.
 
+Typed lint results add optional `package_diagnostics` and `source_problems`
+arrays plus matching summary counts. Package diagnostics carry the opaque
+package ID, a stable `unknown`, `list`, `parse`, or `type` kind, the upstream
+position when present, and the message. The upstream no-position sentinel `-`
+is omitted. Source problems carry a normalized absolute path, lowercase SHA-256
+digest of the captured bytes, and message. These records remain separate from
+rule diagnostics and generic tool errors so a consumer can classify required
+source/type failures without mistaking them for linter findings or internal
+failures.
+
 Lint text uses physical 1-based line and UTF-8 byte-column locations. Primary
 diagnostics use `path:line:column: severity[rule-id]: message`; related
 locations, notes, help, and named fix safety use indented continuation lines.
@@ -69,6 +79,13 @@ Suppression problems and unused directives remain distinct. The renderer sorts
 files and diagnostics canonically, validates exact source identity and every
 range associated with rendered records including fix edits and suppression
 targets, and omits source excerpts and replacement text.
+
+Typed lint text renders canonical package diagnostics before canonical
+source-model problems and exact-source lint records. It uses
+`position: package[kind] package-id: message` when an upstream position exists
+and `path: source: message` for source-model failures. The package result retains
+the immutable load-owned source index so text locations do not require a later
+filesystem read.
 
 The syntax-only lint check CLI emits these text and JSON contracts for success,
 findings, invalid invocation, source/configuration/filesystem failure, and

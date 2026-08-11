@@ -98,6 +98,11 @@ channels but MUST NOT produce an analyzed-file record. Package-local load or
 type errors MUST NOT discard valid file results when an enabled rule explicitly
 admits partial type information.
 
+The package result MUST retain the load's immutable source index so a text
+reporter can map rule ranges without rereading the filesystem. The text reporter
+MUST treat that index as read-only and MUST reject a file result whose path or
+digest does not match its captured source.
+
 Ordinary package loading MUST disable module proxies, private-module proxy
 bypass, direct version-control resolution, checksum-database access, automatic
 toolchain download, and ambient external package drivers. Network access MAY
@@ -152,6 +157,17 @@ suppression syntax problems and unused directives distinct from rule
 diagnostics, and MUST represent suppressed diagnostics by count without
 disclosing their bodies by default.
 
+Typed lint JSON MUST keep prerequisite diagnostics and source-model problems in
+separate optional arrays rather than converting either into rule diagnostics or
+generic tool errors. A prerequisite record MUST contain an opaque package ID, a
+stable `unknown`, `list`, `parse`, or `type` kind, the upstream position when
+present, and the message. An upstream `-` position MUST be represented as
+absent. A source-model problem MUST contain its normalized absolute path,
+lowercase SHA-256 digest of the captured bytes, and message. The summary MUST
+count both channels when they are non-empty. The reporter MUST reject
+unsupported prerequisite kind values, missing identities, digests, or messages,
+and non-normalized source-problem paths.
+
 Lint text MUST render each primary diagnostic as
 `path:line:byte-column: severity[rule-id]: message`. Related locations, notes,
 help, and named fix safety MUST use indented continuation lines. Suppression
@@ -161,6 +177,13 @@ exact source identity plus every primary, related, fix-edit, directive, and
 suppression-target range, and MUST NOT emit source excerpts or replacement
 text. Physical locations follow the source model and MUST NOT be adjusted by
 `//line` directives.
+
+Typed lint text MUST render prerequisite diagnostics as
+`position: package[kind] package-id: message` when a position exists and omit
+only the position prefix when it does not. Source-model failures MUST render as
+`path: source: message`. The reporter MUST order prerequisite diagnostics by
+package ID, position, message, and kind; source problems by path and message;
+and MUST render those channels separately from rule and suppression records.
 
 Fix reporters MUST retain original-source identity for every applied or
 rejected fix and use the post-format source identity for remaining diagnostics.

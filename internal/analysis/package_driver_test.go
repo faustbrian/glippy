@@ -74,6 +74,10 @@ func target() {}
 	if len(result.LoadDiagnostics) != 0 || len(result.Files) != 1 {
 		t.Fatalf("RunPackages() = %#v", result)
 	}
+	captured, found := result.Sources.Lookup(path)
+	if !found || captured.Digest() != result.Files[0].Digest {
+		t.Fatalf("RunPackages() sources = %#v, %t", captured, found)
+	}
 	fileResult := result.Files[0]
 	if fileResult.Path != path || fileResult.Requirement != rules.RequireTypes ||
 		!reflect.DeepEqual(fileResult.Selection, wantSelection) {
