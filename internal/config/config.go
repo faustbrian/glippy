@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
+
+	"github.com/faustbrian/gox/internal/rules"
 )
 
 // Filename is the project configuration filename.
@@ -26,23 +28,23 @@ const (
 )
 
 // Preset identifies one coherent lint-rule selection.
-type Preset string
+type Preset = rules.Preset
 
 const (
-	PresetCorrectness Preset = "correctness"
-	PresetSuspicious  Preset = "suspicious"
-	PresetPerformance Preset = "performance"
-	PresetComplexity  Preset = "complexity"
-	PresetStyle       Preset = "style"
+	PresetCorrectness = rules.PresetCorrectness
+	PresetSuspicious  = rules.PresetSuspicious
+	PresetPerformance = rules.PresetPerformance
+	PresetComplexity  = rules.PresetComplexity
+	PresetStyle       = rules.PresetStyle
 )
 
 // Severity controls whether and how a lint rule reports.
-type Severity string
+type Severity = rules.Severity
 
 const (
-	SeverityOff   Severity = "off"
-	SeverityWarn  Severity = "warn"
-	SeverityError Severity = "error"
+	SeverityOff   = rules.SeverityOff
+	SeverityWarn  = rules.SeverityWarn
+	SeverityError = rules.SeverityError
 )
 
 // Config is one fully defaulted and validated project configuration.

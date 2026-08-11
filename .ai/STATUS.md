@@ -79,3 +79,13 @@ covering width, indentation, blocks, semicolons, control flow, lists, binary
 expressions, selectors, comments, directives, preserved source choices, and
 write refusal. This closes the Phase 2 formatter-rule documentation item but
 does not resolve the remaining platform, naming, or external-adoption gates.
+
+Isolated Phase 3 foundation work now defines validated canonical rule metadata,
+an immutable ordered registry, preset and override resolution, maximum-tier
+selection, complete Go AST node interests, and one shared filtered syntax
+traversal. Syntax diagnostics carry exact source identity and physical ranges,
+resolve severity deterministically, reject undeclared or malformed fixes, sort
+independently of rule registration, and honor generated-file eligibility. No
+built-in rule, lint CLI, suppression engine, fix coordinator, or lint reporter
+is implemented yet, so this later-phase foundation does not advance progress
+past the incomplete 45% Phase 2 gate.
