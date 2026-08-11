@@ -69,4 +69,7 @@ selected 77 files, changed 69, and produced a zero-difference second Gox check.
 The migrated snapshot passes its tests, race tests, vet, and tidy check. A
 total of 63 files remain non-fixed-points under gofmt, so the module's current
 formatting gate and the unapproved 7,611-insertion/4,077-deletion migration keep
-external adoption open.
+external adoption open. The migration guide now defines non-mutating and
+disposable rehearsals, sole-formatter cutover, human review, and coherent
+rollback for repositories replacing gofmt, gofumpt, or golines; it does not
+advance the 45% capability gate.

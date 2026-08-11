@@ -1,5 +1,9 @@
 # Editor Integration
 
+Repositories replacing gofmt, gofumpt, or golines should complete the
+[formatter migration workflow](migration-from-go-formatters.md) before enabling
+format-on-save. Gox must be the only active formatter for the selected files.
+
 Gox's stable editor boundary is a complete Go file on standard input and the
 formatted file on standard output:
 

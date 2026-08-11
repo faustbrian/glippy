@@ -63,7 +63,9 @@ Golden and corpus tests record the Go toolchain version. Repositories that
 enforce gofmt cannot run it after Gox over the documented divergent classes
 without churn. They must keep their existing formatter until migration or make
 Gox the sole formatting authority and remove the conflicting gofmt check. Gox
-does not yet provide a gofmt-compatibility mode.
+does not yet provide a gofmt-compatibility mode. The
+[formatter migration guide](../migration-from-go-formatters.md) defines the
+required rehearsal, coordinated cutover, and rollback boundaries.
 
 ## Revisit Trigger
 
