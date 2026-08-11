@@ -25,6 +25,20 @@ ownership. The fix coordinator source-versions every edit, rejects all
 conflicts explicitly, reparses, formats, validates, and performs one atomic
 single-file replacement.
 
+The coordinator accepts explicit diagnostic and fix-name selections; choosing
+among alternative named fixes remains driver policy. Ordinary coordination
+accepts safe fixes only. Suggestion and unsafe selections require independent
+explicit options. Every selection is bound to the diagnostic path and source
+digest, and every edit boundary must be a valid UTF-8 byte boundary.
+The coordinator refuses an invalid input file rather than treating fixes as a
+syntax-recovery mechanism.
+
+Half-open replacements may coexist with insertions at their start or end.
+Insertions inside replacements, overlapping replacements, and two insertions at
+one offset conflict. A conflict rejects every complete fix that participates,
+while independent fixes may proceed. Any parse or formatter-validation failure
+rolls back every otherwise accepted fix in that source transaction.
+
 The initial suppression grammar is line-comment-only and accepts exactly one
 rule ID per directive:
 
@@ -77,6 +91,9 @@ audited. Conflicts produce an actionable outcome instead of partial success.
 Fixing necessarily depends on the formatter being stable first.
 Single-rule suppressions are more verbose than ESLint-compatible lists but
 retain one reason and one usage record per waived rule.
+The initial coordinator returns validated bytes and provenance in memory.
+On-disk digest recheck, atomic replacement, and reporter integration remain a
+separate transaction boundary.
 
 ## Revisit Trigger
 

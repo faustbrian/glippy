@@ -21,12 +21,25 @@ here.
 Severity and safety are independent. Imported or incompletely audited fixes
 MUST NOT default to safe.
 
+The coordinator MUST receive an explicit diagnostic and named-fix selection.
+Selecting among multiple named fixes is driver policy and MUST NOT be inferred
+from edit order. Ordinary coordination MUST accept safe fixes only. Suggestion
+and unsafe fixes MUST require independent explicit authorization.
+
 ## Edit Identity
 
 Every edit MUST identify one physical source file, exact source digest, and
 half-open byte range. Replacement bytes are opaque data until the full result
 passes validation. Ranges MUST be checked against UTF-8 byte boundaries and the
 exact source length when required by the edit contract.
+
+The coordinator MUST refuse a syntactically invalid input file. Lint fixing
+MUST NOT become an invalid-source recovery mechanism.
+
+Half-open replacements MAY coexist with insertions at their start or end.
+Insertions inside a replacement, overlapping replacements, and multiple
+insertions at one byte offset MUST conflict. A conflict in any edit MUST reject
+the complete named fix that owns it.
 
 ## Coordination Transaction
 
@@ -49,6 +62,12 @@ Any validation or replacement failure MUST preserve the original file. A
 single-file transaction MUST NOT claim multi-file atomicity. Multi-file fixes
 remain prohibited until recovery from partial filesystem failure has an
 accepted design and integration evidence.
+
+The in-memory coordinator MAY apply independent fixes after rejecting every
+fix in a conflict group. If the complete edited source does not parse or fails
+formatter validation, it MUST reject every otherwise accepted fix and return
+the original bytes. Applied and rejected records MUST retain stable rule, fix,
+range, and reason provenance.
 
 Formatter normalization after fixes MUST NOT make a semantic rewrite appear to
 be formatter behavior. Fix provenance remains attached to the resulting
