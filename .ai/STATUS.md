@@ -44,9 +44,11 @@ provisional 250 ms reference-host budget, but scheduler variance still blocks a
 stable CI threshold.
 
 Self-dogfood then validated all 32 discovered repository files but changed 30
-and exposed unacceptable control-flow keyword breaks plus open receiver and
-selector-chain readability findings. The control-flow defect is fixed, reducing
-stranded control keywords from 82 to zero in the same snapshot. The Phase 1
-readability claim is withdrawn until the remaining migration diff is classified
-and accepted. Complete platform-specific filesystem semantics, release
-artifacts, and external-repository adoption also remain open.
+and exposed unacceptable control-flow keyword and receiver breaks plus
+selector-chain readability findings. The control-flow repair reduces stranded
+control keywords from 82 to zero in the original snapshot. The receiver repair
+reduces the 20 receiver-prefix breaks to zero in the next committed snapshot;
+193 selector-pattern targets remain open there. The Phase 1 readability claim
+is withdrawn until the remaining migration diff is classified and accepted.
+Complete platform-specific filesystem semantics, release artifacts, and
+external-repository adoption also remain open.

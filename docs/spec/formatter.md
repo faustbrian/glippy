@@ -58,6 +58,12 @@ condition's own groups. Range headers MAY break after `range`, and initialized
 formatter MUST NOT strand `if`, `for`, `switch`, or `case` on a line solely to
 meet width. An otherwise atomic header MAY remain over width.
 
+An uncommented single method receiver MUST remain flat. A later break in the
+method name, type parameters, parameters, or results MUST NOT force the
+receiver itself to break after `func`. Comments between `func` and the receiver
+or inside the receiver MAY require the receiver's comment-preserving broken
+form. An otherwise atomic receiver MAY remain over width.
+
 Ordinary assignments MUST keep the assignment operator and the first
 right-hand expression on the same line. Width pressure inside the right-hand
 expression belongs to that expression's canonical groups, so a broken call

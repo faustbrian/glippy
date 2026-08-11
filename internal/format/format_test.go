@@ -2089,6 +2089,42 @@ func TestFormatWrapsGenericFunctionSignatures(t *testing.T) {
 	}
 }
 
+func TestFormatKeepsMethodReceiverFlatWhenParametersBreak(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package receiver\ntype Tool struct{}\nfunc (t *Tool) Execute(firstParameter string,secondParameter string){}\n")
+	file, err := source.Load("receiver.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 42, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package receiver\n\ntype Tool struct{}\n\nfunc (t *Tool) Execute(\n\tfirstParameter string,\n\tsecondParameter string,\n) {}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatKeepsNonCanonicalReceiverListsBreakable(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package receiver\ntype Tool struct{}\nfunc (left,right *Tool) MultiName(firstParameter string,secondParameter string){}\nfunc (left *Tool,right *Tool) MultiField(firstParameter string,secondParameter string){}\n")
+	file, err := source.Load("receiver_lists.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 42, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package receiver\n\ntype Tool struct{}\n\nfunc (\n\tleft, right *Tool,\n) MultiName(\n\tfirstParameter string,\n\tsecondParameter string,\n) {}\n\nfunc (\n\tleft *Tool,\n\tright *Tool,\n) MultiField(\n\tfirstParameter string,\n\tsecondParameter string,\n) {}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatPreservesInferredArrayLength(t *testing.T) {
 	t.Parallel()
 

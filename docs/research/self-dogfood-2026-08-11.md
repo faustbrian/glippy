@@ -21,16 +21,28 @@ The audit distinguishes three classes:
   uncommented operand. The repository snapshot contained 82 such lines. The
   lowering layer offered a keyword-adjacent break before the operand's own
   grammar-aware group, so it also added an unnecessary indentation level.
-- Two formatter-readability findings remain open: 20 method receivers broke
-  after `func`, and 207 lines ended in a selector component followed by `.`.
-  These counts identify review targets; they do not by themselves decide that
-  every occurrence is defective.
+- The initial audit also found 20 method receivers broken after `func` and 207
+  lines ending in a selector component followed by `.`. These counts identify
+  review targets; they do not by themselves decide that every occurrence is
+  defective.
 
 The control-flow fix keeps the keyword with its first operand, retains
 semicolon breaks for initialized headers, and retains the range break after
 `range`. Reformatting the same snapshot reduces stranded control keywords from
 82 to zero. All 32 files still validate and 30 still differ; receiver and
 selector counts are unchanged and require separate root-cause work.
+
+## Receiver Follow-Up
+
+The committed control-prefix snapshot at `08638c6` reproduced all 20 receiver
+breaks. A receiver used the ordinary parameter-list group, whose fit decision
+included the following method signature as continuation. Width pressure in
+later parameters therefore broke a short receiver that fit by itself.
+
+Treating a comment-free single receiver as an atomic receiver construct reduces
+the receiver-prefix count from 20 to zero. The same 32 files validate and the
+formatted snapshot is idempotent. The newer source snapshot contains 193
+selector-pattern review targets; selector readability remains open.
 
 ## Gate Impact
 

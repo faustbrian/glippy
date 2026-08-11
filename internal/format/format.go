@@ -975,7 +975,7 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 		return doc.ID{}, errors.New("function name has no physical boundary")
 	}
 	if function.Recv != nil {
-		receiver, err := l.fieldList(function.Recv)
+		receiver, err := l.receiverList(function.Type.Func, function.Recv)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -1057,6 +1057,38 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 		return doc.ID{}, errors.New("function declaration has no physical first operand")
 	}
 	return l.keywordHeader(function.Type.Func, "func", " ", firstStart, l.arena.Concat(parts...))
+}
+
+func (l *lowerer) receiverList(keywordPosition token.Pos, fields *ast.FieldList) (doc.ID, error) {
+	if fields == nil || len(fields.List) != 1 || len(fields.List[0].Names) > 1 {
+		return l.fieldList(fields)
+	}
+	keywordOffset, keywordFound := l.source.PhysicalOffset(keywordPosition)
+	_, openingFound := l.source.PhysicalOffset(fields.Opening)
+	closing, closingFound := l.source.PhysicalOffset(fields.Closing)
+	if !keywordFound || !openingFound || !closingFound {
+		return doc.ID{}, errors.New("function receiver has no physical boundary")
+	}
+	for _, comment := range l.comments {
+		if comment.Range.Start >= keywordOffset+len("func") && comment.Range.End <= closing {
+			return l.fieldList(fields)
+		}
+	}
+	field := fields.List[0]
+	item, err := l.field(field)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	start, startFound := l.source.PhysicalOffset(field.Pos())
+	end, endFound := l.source.PhysicalOffset(field.End())
+	if !startFound || !endFound {
+		return doc.ID{}, errors.New("function receiver item has no physical range")
+	}
+	return l.delimitedSingle(fields.Opening, fields.Closing, "(", ")", delimitedItem{
+		document: item,
+		start:    start,
+		end:      end,
+	})
 }
 
 func (l *lowerer) fieldList(fields *ast.FieldList) (doc.ID, error) {
