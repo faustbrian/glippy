@@ -494,3 +494,12 @@ ordering, suppression, CLI reporting, and exact source identity remain shared
 with node-scoped rules. Native dependency analysis and typed fixes remain open,
 and Phase 2 naming, release, platform-runtime, and approved external-adoption
 gates keep overall progress at 45%.
+
+The naming audit now has a concrete technical recommendation: **Gofettle**,
+binary `gofettle`, and proposed module path
+`github.com/faustbrian/gofettle`. Exact repository and common package-manager
+names were clear in the 2026-08-11 screen, while `gofettle.dev` had no RDAP
+record and `gofettle.com` was registered. This narrows the naming gate but does
+not close it: maintainer approval, a fresh pre-rename namespace check,
+professional trademark review, and explicit authority for external repository
+or namespace changes remain required. Progress stays 45%.
