@@ -57,8 +57,9 @@ sorted import order, and exposes dependency facts only to the current package
 and its direct imports. Gob snapshots isolate export and import values; unequal
 repeat encodings fail as nondeterministic, while custom encoders remain an
 explicit admission-audit boundary. Dependency diagnostics do not become user
-findings. Object-fact operations fail as unsupported until object identity and
-export-data persistence have a separate decision.
+findings. Object facts use exact run-owned object identity, current-package
+export ownership, filtered transitive dependency views, and the same isolated
+encoding. Persistent facts remain deferred to the cache decision.
 
 Native metadata remains authoritative. A typed adapter requires an explicit
 read-only audit and cannot opt into type-error packages unless the upstream
@@ -185,8 +186,8 @@ between not performed, completed, and possibly completed replacement.
 Imported syntax analyzers pay one isolated parse per analyzer and file. Typed
 adapters reuse package state, so their admission audit must exclude mutation
 that could affect a later adapter. Syntax adapters cannot use facts; neither
-tier can use object facts, flags, arbitrary cross-file reads, or preempt a
-callback that does not return.
+tier can use flags, arbitrary cross-file reads, or preempt a callback that does
+not return.
 
 ## Revisit Trigger
 

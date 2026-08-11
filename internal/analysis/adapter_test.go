@@ -5,6 +5,8 @@ import (
 	"errors"
 	"flag"
 	"go/ast"
+	"go/token"
+	"go/types"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -12,6 +14,7 @@ import (
 
 	goanalysis "golang.org/x/tools/go/analysis"
 	atomicanalyzer "golang.org/x/tools/go/analysis/passes/atomic"
+	ctrlflowanalyzer "golang.org/x/tools/go/analysis/passes/ctrlflow"
 	pkgfactanalyzer "golang.org/x/tools/go/analysis/passes/pkgfact"
 	testsanalyzer "golang.org/x/tools/go/analysis/passes/tests"
 
@@ -432,6 +435,84 @@ const _audience_ = "world"
 	}
 }
 
+func TestAdaptAnalyzerRunsObjectFactsAcrossDependencies(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "leaf", "leaf.go"),
+		"package leaf\ntype T struct{}\nfunc (T) Die() { panic(\"stop\") }\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "dep", "dep.go"),
+		"package dep\nimport \"example.com/adapter/leaf\"\ntype T = leaf.T\n",
+	)
+	path := filepath.Join(root, "adapter.go")
+	input := `package adapter
+
+import "example.com/adapter/dep"
+
+func Run() { dep.T{}.Die() }
+`
+	writeTypesFixture(t, path, input)
+	analyzer := &goanalysis.Analyzer{
+		Name: "objectfactconsumer",
+		Doc:  "reports control flow proven by an imported object fact",
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			object, _ := pass.Pkg.Scope().Lookup("Run").(*types.Func)
+			if object == nil {
+				return nil, nil
+			}
+			cfgs := pass.ResultOf[ctrlflowanalyzer.Analyzer].(*ctrlflowanalyzer.CFGs)
+			if !cfgs.NoReturn(object) {
+				return nil, errors.New("Run was not proven non-returning")
+			}
+			for _, declaration := range pass.Files[0].Decls {
+				if function, ok := declaration.(*ast.FuncDecl); ok && function.Name.Name == "Run" {
+					pass.ReportRangef(function.Name, "imported no-return fact")
+				}
+			}
+			return nil, nil
+		},
+		Requires: []*goanalysis.Analyzer{ctrlflowanalyzer.Analyzer},
+	}
+	options := adapterOptions("object-facts")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(analyzer, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("RunPackages() = %#v", result)
+	}
+	diagnostic := result.Files[0].Diagnostics[0]
+	start := strings.Index(input, "Run")
+	if diagnostic.RuleID != "object-facts" || diagnostic.Path != path ||
+		diagnostic.Range != (source.Range{Start: start, End: start + len("Run")}) ||
+		diagnostic.Message != "imported no-return fact" {
+		t.Fatalf("object fact diagnostic = %#v", diagnostic)
+	}
+}
+
 func TestAdaptAnalyzerScopesPackageFactsToEachRoot(t *testing.T) {
 	t.Parallel()
 
@@ -600,8 +681,8 @@ func TestAdaptAnalyzerRejectsUndeclaredPackageFactType(t *testing.T) {
 			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
 		},
 	)
-	if err == nil || !strings.Contains(err.Error(), "did not declare package fact type") {
-		t.Fatalf("RunPackages() error = %v, want undeclared package fact type", err)
+	if err == nil || !strings.Contains(err.Error(), "did not declare fact type") {
+		t.Fatalf("RunPackages() error = %v, want undeclared fact type", err)
 	}
 }
 
@@ -761,38 +842,189 @@ func TestAdaptAnalyzerRejectsIllTypedFactDependencyWithoutOptIn(t *testing.T) {
 	}
 }
 
-func TestAdaptAnalyzerRejectsObjectFactOperations(t *testing.T) {
+func TestAdaptAnalyzerCopiesAndScopesObjectFacts(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
-	writeTypesFixture(t, filepath.Join(root, "adapter.go"), "package adapter\nconst value = 1\n")
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "dep", "dep.go"),
+		"package dep\nfunc Second() {}\nfunc First() {}\nfunc hidden() {}\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "adapter.go"),
+		"package adapter\nimport _ \"example.com/adapter/dep\"\n",
+	)
+	analyzer := &goanalysis.Analyzer{
+		Name: "scopedobjectfacts",
+		Doc:  "reports copied object facts visible to each package",
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			if pass.Pkg.Path() == "example.com/adapter/dep" {
+				for _, name := range []string{"Second", "First", "hidden"} {
+					fact := &packageScopeFact{Value: name}
+					pass.ExportObjectFact(pass.Pkg.Scope().Lookup(name), fact)
+					fact.Value = "mutated"
+				}
+				pass.ReportRangef(pass.Files[0].Name, "dependency diagnostic")
+				return nil, nil
+			}
+			facts := pass.AllObjectFacts()
+			values := make([]string, len(facts))
+			for index, item := range facts {
+				fact := &packageScopeFact{Value: "dirty destination"}
+				if !pass.ImportObjectFact(item.Object, fact) {
+					return nil, errors.New("enumerated object fact could not be imported")
+				}
+				values[index] = fact.Value
+			}
+			pass.ReportRangef(pass.Files[0].Name, "%s", strings.Join(values, ","))
+			return nil, nil
+		},
+		FactTypes: []goanalysis.Fact{new(packageScopeFact)},
+	}
+	options := adapterOptions("scoped-object-facts")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(analyzer, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 ||
+		result.Files[0].Diagnostics[0].Message != "Second,First" {
+		t.Fatalf("RunPackages() = %#v", result)
+	}
+}
+
+func TestAdaptAnalyzerOrdersIndistinguishableSyntheticObjectFacts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "adapter.go"), "package adapter\n")
+	analyzer := &goanalysis.Analyzer{
+		Name: "syntheticobjectfacts",
+		Doc:  "reports a deterministic order for synthetic object facts",
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			signature := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+			for _, value := range []string{"second", "first"} {
+				object := types.NewFunc(token.NoPos, pass.Pkg, "Synthetic", signature)
+				pass.ExportObjectFact(object, &packageScopeFact{Value: value})
+			}
+			facts := pass.AllObjectFacts()
+			values := make([]string, len(facts))
+			for index, item := range facts {
+				values[index] = item.Fact.(*packageScopeFact).Value
+			}
+			pass.ReportRangef(pass.Files[0].Name, "%s", strings.Join(values, ","))
+			return nil, nil
+		},
+		FactTypes: []goanalysis.Fact{new(packageScopeFact)},
+	}
+	options := adapterOptions("synthetic-object-facts")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(analyzer, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 ||
+		result.Files[0].Diagnostics[0].Message != "first,second" {
+		t.Fatalf("RunPackages() = %#v", result)
+	}
+}
+
+func TestAdaptAnalyzerRejectsInvalidObjectFactOperations(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "dep", "dep.go"), "package dep\nconst Value = 1\n")
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "adapter.go"),
+		"package adapter\nimport _ \"example.com/adapter/dep\"\n",
+	)
 	tests := []struct {
-		name string
-		run  func(*goanalysis.Pass)
+		name      string
+		run       func(*goanalysis.Pass)
+		wantError string
 	}{
 		{
-			name: "import",
+			name: "nil import",
 			run: func(pass *goanalysis.Pass) {
-				pass.ImportObjectFact(pass.Pkg.Scope().Lookup("value"), new(adapterFact))
+				pass.ImportObjectFact(nil, new(adapterFact))
 			},
+			wantError: "object fact import requires an object",
 		},
 		{
-			name: "export",
+			name: "nil export",
 			run: func(pass *goanalysis.Pass) {
-				pass.ExportObjectFact(pass.Pkg.Scope().Lookup("value"), new(adapterFact))
+				pass.ExportObjectFact(nil, new(adapterFact))
 			},
+			wantError: "object fact export requires an object",
 		},
-		{name: "enumerate", run: func(pass *goanalysis.Pass) { pass.AllObjectFacts() }},
+		{
+			name: "foreign export",
+			run: func(pass *goanalysis.Pass) {
+				if len(pass.Pkg.Imports()) != 0 {
+					pass.ExportObjectFact(
+						pass.Pkg.Imports()[0].Scope().Lookup("Value"),
+						new(adapterFact),
+					)
+				}
+			},
+			wantError: "cannot export object fact",
+		},
+		{
+			name: "undeclared export",
+			run: func(pass *goanalysis.Pass) {
+				if object := pass.Pkg.Scope().Lookup("Value"); object != nil {
+					pass.ExportObjectFact(object, new(packageScopeFact))
+				}
+			},
+			wantError: "did not declare fact type",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			options := adapterOptions("object-facts-" + test.name)
+			options := adapterOptions("invalid-object-facts-" + strings.ReplaceAll(test.name, " ", "-"))
 			options.Metadata.Requirement = rules.RequireTypes
 			options.ReadOnlyAudited = true
 			adapted, err := analysis.AdaptAnalyzer(&goanalysis.Analyzer{
-				Name: "objectfacts" + test.name,
-				Doc:  "attempts an unsupported object fact operation",
+				Name: "invalidobjectfacts" + strings.ReplaceAll(test.name, " ", ""),
+				Doc:  "attempts an invalid object fact operation",
 				Run: func(pass *goanalysis.Pass) (any, error) {
 					test.run(pass)
 					return nil, nil
@@ -814,8 +1046,8 @@ func TestAdaptAnalyzerRejectsObjectFactOperations(t *testing.T) {
 					Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
 				},
 			)
-			if err == nil || !strings.Contains(err.Error(), "object facts are unsupported") {
-				t.Fatalf("RunPackages() error = %v, want unsupported object facts", err)
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("RunPackages() error = %v, want %q", err, test.wantError)
 			}
 		})
 	}

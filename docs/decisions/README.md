@@ -16,7 +16,7 @@ deferred status is an explicit gate, not silent approval.
 | Gofmt fixed point | ADR 0004; product-wide fixed point rejected with recorded divergences |
 | Semantic equivalence | Equivalence specification |
 | Invalid-source formatting | Source model specification; diagnostic-only |
-| Rule API and `go/analysis` | ADR 0006 and lint specification; syntax, typed DAG, and package-fact adapters implemented |
+| Rule API and `go/analysis` | ADR 0006 and lint specification; syntax, typed DAG, package-fact, and object-fact adapters implemented |
 | Analysis requirement tiers | ADR 0005 |
 | Suppression syntax and reasons | ADR 0006 and lint specification; initial Phase 3 grammar accepted |
 | Fix safety and conflicts | ADR 0006 and fix specification |

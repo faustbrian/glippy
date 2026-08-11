@@ -396,3 +396,14 @@ dependency boundary. Undeclared or nondeterministically encoded facts,
 ill-typed prerequisite incompatibility, cancellation, and every object-fact
 operation fail closed. Object facts, analyzer flags, persistent fact caching,
 and the open Phase 2 gates remain, so overall progress stays 45%.
+
+Typed `go/analysis` DAGs now also support run-local object facts. Exact object
+identity and declared fact type key each isolated Gob snapshot; exports are
+limited to non-nil objects owned by the current package; dependency views
+propagate deterministically through the current x/tools export-data
+overapproximation; and enumeration returns independent facts in canonical
+physical and encoded-value order. A real transitive x/tools `ctrlflow`
+prerequisite proves a no-return method fact across an intermediate type alias.
+Nil and foreign objects, undeclared types, and nondeterministic encodings fail
+closed. Persistent object identity and cache invalidation remain open, and the
+Phase 2 gates keep overall progress at 45%.

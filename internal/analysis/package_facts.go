@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"go/token"
 	"go/types"
 	"reflect"
 	"sort"
@@ -21,12 +22,32 @@ type packageFactKey struct {
 	type_    reflect.Type
 }
 
-type packageFactSet struct {
-	values map[packageFactKey][]byte
+type objectFactViewKey struct {
+	analyzer *goanalysis.Analyzer
+	package_ *types.Package
 }
 
-func newPackageFactSet() *packageFactSet {
-	return &packageFactSet{values: make(map[packageFactKey][]byte)}
+type objectFactKey struct {
+	object types.Object
+	type_  reflect.Type
+}
+
+type objectFactView struct {
+	values map[objectFactKey][]byte
+}
+
+type analyzerFactSet struct {
+	packageValues map[packageFactKey][]byte
+	objectViews   map[objectFactViewKey]*objectFactView
+	packages      map[*types.Package]*packages.Package
+}
+
+func newAnalyzerFactSet() *analyzerFactSet {
+	return &analyzerFactSet{
+		packageValues: make(map[packageFactKey][]byte),
+		objectViews:   make(map[objectFactViewKey]*objectFactView),
+		packages:      make(map[*types.Package]*packages.Package),
+	}
 }
 
 func (r *packageAnalyzerRule) usesFacts() bool {
@@ -46,7 +67,7 @@ func (r *packageAnalyzerRule) runPackageFactGraph(
 	metadata rules.Metadata,
 	severity rules.Severity,
 ) ([]rules.Diagnostic, error) {
-	facts := newPackageFactSet()
+	facts := newAnalyzerFactSet()
 	state := make(map[*packages.Package]uint8)
 	results := make(map[*packages.Package][]rules.Diagnostic)
 	var execute func(*packages.Package) error
@@ -114,7 +135,7 @@ func (r *packageAnalyzerRule) runPackageFactGraph(
 	return diagnostics, nil
 }
 
-func (s *packageFactSet) importPackageFact(
+func (s *analyzerFactSet) importPackageFact(
 	analyzer *goanalysis.Analyzer,
 	package_ *types.Package,
 	fact goanalysis.Fact,
@@ -126,19 +147,17 @@ func (s *packageFactSet) importPackageFact(
 	if err != nil {
 		panic(err)
 	}
-	encoded, found := s.values[packageFactKey{analyzer: analyzer, package_: package_, type_: type_}]
+	encoded, found := s.packageValues[packageFactKey{analyzer: analyzer, package_: package_, type_: type_}]
 	if !found {
 		return false
 	}
-	value := reflect.ValueOf(fact)
-	value.Elem().Set(reflect.Zero(value.Elem().Type()))
-	if err := gob.NewDecoder(bytes.NewReader(encoded)).Decode(fact); err != nil {
+	if err := decodeFact(encoded, fact); err != nil {
 		panic(fmt.Errorf("decode package fact %T: %w", fact, err))
 	}
 	return true
 }
 
-func (s *packageFactSet) exportPackageFact(
+func (s *analyzerFactSet) exportPackageFact(
 	analyzer *goanalysis.Analyzer,
 	package_ *types.Package,
 	fact goanalysis.Fact,
@@ -147,14 +166,14 @@ func (s *packageFactSet) exportPackageFact(
 	if err != nil {
 		panic(err)
 	}
-	encoded, err := encodePackageFact(fact)
+	encoded, err := encodeFact(fact)
 	if err != nil {
 		panic(err)
 	}
-	s.values[packageFactKey{analyzer: analyzer, package_: package_, type_: type_}] = encoded
+	s.packageValues[packageFactKey{analyzer: analyzer, package_: package_, type_: type_}] = encoded
 }
 
-func (s *packageFactSet) allPackageFacts(
+func (s *analyzerFactSet) allPackageFacts(
 	analyzer *goanalysis.Analyzer,
 	current *types.Package,
 ) []goanalysis.PackageFact {
@@ -164,7 +183,7 @@ func (s *packageFactSet) allPackageFacts(
 		visible[imported] = struct{}{}
 	}
 	keys := make([]packageFactKey, 0)
-	for key := range s.values {
+	for key := range s.packageValues {
 		if _, found := visible[key.package_]; key.analyzer == analyzer && found {
 			keys = append(keys, key)
 		}
@@ -173,13 +192,7 @@ func (s *packageFactSet) allPackageFacts(
 		if keys[left].package_.Path() != keys[right].package_.Path() {
 			return keys[left].package_.Path() < keys[right].package_.Path()
 		}
-		if keys[left].type_.PkgPath() != keys[right].type_.PkgPath() {
-			return keys[left].type_.PkgPath() < keys[right].type_.PkgPath()
-		}
-		if keys[left].type_.Elem().PkgPath() != keys[right].type_.Elem().PkgPath() {
-			return keys[left].type_.Elem().PkgPath() < keys[right].type_.Elem().PkgPath()
-		}
-		return keys[left].type_.String() < keys[right].type_.String()
+		return lessFactType(keys[left].type_, keys[right].type_)
 	})
 	result := make([]goanalysis.PackageFact, len(keys))
 	for index, key := range keys {
@@ -192,28 +205,236 @@ func (s *packageFactSet) allPackageFacts(
 	return result
 }
 
+func (s *analyzerFactSet) beginObjectFacts(
+	analyzer *goanalysis.Analyzer,
+	pkg *packages.Package,
+) error {
+	if analyzer == nil || pkg == nil || pkg.Types == nil {
+		return fmt.Errorf("object facts require an analyzer and typed package")
+	}
+	key := objectFactViewKey{analyzer: analyzer, package_: pkg.Types}
+	if _, found := s.objectViews[key]; found {
+		return nil
+	}
+	s.packages[pkg.Types] = pkg
+	view := &objectFactView{values: make(map[objectFactKey][]byte)}
+	imports := append([]*types.Package(nil), pkg.Types.Imports()...)
+	sort.Slice(imports, func(left, right int) bool {
+		return imports[left].Path() < imports[right].Path()
+	})
+	for _, imported := range imports {
+		dependency, found := s.objectViews[objectFactViewKey{
+			analyzer: analyzer,
+			package_: imported,
+		}]
+		if !found {
+			return fmt.Errorf(
+				"analyzer %q object facts for dependency %q did not run",
+				analyzer.Name,
+				imported.Path(),
+			)
+		}
+		for factKey, encoded := range dependency.values {
+			if !objectFactExportedFrom(factKey.object, imported) {
+				continue
+			}
+			if previous, duplicate := view.values[factKey]; duplicate && !bytes.Equal(previous, encoded) {
+				return fmt.Errorf(
+					"analyzer %q inherited conflicting object fact %T for %s",
+					analyzer.Name,
+					reflect.New(factKey.type_.Elem()).Interface(),
+					types.ObjectString(factKey.object, packagePath),
+				)
+			}
+			view.values[factKey] = encoded
+		}
+	}
+	s.objectViews[key] = view
+	return nil
+}
+
+func (s *analyzerFactSet) importObjectFact(
+	analyzer *goanalysis.Analyzer,
+	current *types.Package,
+	object types.Object,
+	fact goanalysis.Fact,
+) bool {
+	if object == nil {
+		panic("object fact import requires an object")
+	}
+	type_, err := declaredFactType(analyzer, fact)
+	if err != nil {
+		panic(err)
+	}
+	view, found := s.objectViews[objectFactViewKey{analyzer: analyzer, package_: current}]
+	if !found {
+		panic("object fact view was not initialized")
+	}
+	encoded, found := view.values[objectFactKey{object: object, type_: type_}]
+	if !found {
+		return false
+	}
+	if err := decodeFact(encoded, fact); err != nil {
+		panic(fmt.Errorf("decode object fact %T: %w", fact, err))
+	}
+	return true
+}
+
+func (s *analyzerFactSet) exportObjectFact(
+	analyzer *goanalysis.Analyzer,
+	current *types.Package,
+	object types.Object,
+	fact goanalysis.Fact,
+) {
+	if object == nil {
+		panic("object fact export requires an object")
+	}
+	if object.Pkg() != current {
+		panic(fmt.Sprintf(
+			"analyzer %q cannot export object fact for %s outside package %q",
+			analyzer.Name,
+			types.ObjectString(object, packagePath),
+			current.Path(),
+		))
+	}
+	type_, err := declaredFactType(analyzer, fact)
+	if err != nil {
+		panic(err)
+	}
+	encoded, err := encodeFact(fact)
+	if err != nil {
+		panic(err)
+	}
+	view, found := s.objectViews[objectFactViewKey{analyzer: analyzer, package_: current}]
+	if !found {
+		panic("object fact view was not initialized")
+	}
+	view.values[objectFactKey{object: object, type_: type_}] = encoded
+}
+
+func (s *analyzerFactSet) allObjectFacts(
+	analyzer *goanalysis.Analyzer,
+	current *types.Package,
+) []goanalysis.ObjectFact {
+	view, found := s.objectViews[objectFactViewKey{analyzer: analyzer, package_: current}]
+	if !found {
+		panic("object fact view was not initialized")
+	}
+	keys := make([]objectFactKey, 0, len(view.values))
+	for key := range view.values {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(left, right int) bool {
+		return s.lessObjectFact(view, keys[left], keys[right])
+	})
+	result := make([]goanalysis.ObjectFact, len(keys))
+	for index, key := range keys {
+		fact := reflect.New(key.type_.Elem()).Interface().(goanalysis.Fact)
+		if err := decodeFact(view.values[key], fact); err != nil {
+			panic(fmt.Errorf("decode object fact %T: %w", fact, err))
+		}
+		result[index] = goanalysis.ObjectFact{Object: key.object, Fact: fact}
+	}
+	return result
+}
+
+func (s *analyzerFactSet) lessObjectFact(
+	view *objectFactView,
+	left objectFactKey,
+	right objectFactKey,
+) bool {
+	leftPackage, rightPackage := "", ""
+	if left.object.Pkg() != nil {
+		leftPackage = left.object.Pkg().Path()
+	}
+	if right.object.Pkg() != nil {
+		rightPackage = right.object.Pkg().Path()
+	}
+	if leftPackage != rightPackage {
+		return leftPackage < rightPackage
+	}
+	leftPosition := s.objectFactPosition(left.object)
+	rightPosition := s.objectFactPosition(right.object)
+	if leftPosition.Filename != rightPosition.Filename {
+		return leftPosition.Filename < rightPosition.Filename
+	}
+	if leftPosition.Offset != rightPosition.Offset {
+		return leftPosition.Offset < rightPosition.Offset
+	}
+	leftObject := types.ObjectString(left.object, packagePath)
+	rightObject := types.ObjectString(right.object, packagePath)
+	if leftObject != rightObject {
+		return leftObject < rightObject
+	}
+	if left.type_ != right.type_ {
+		return lessFactType(left.type_, right.type_)
+	}
+	return bytes.Compare(view.values[left], view.values[right]) < 0
+}
+
+func (s *analyzerFactSet) objectFactPosition(object types.Object) token.Position {
+	if object.Pkg() == nil {
+		return token.Position{}
+	}
+	pkg := s.packages[object.Pkg()]
+	if pkg == nil || pkg.Fset == nil {
+		return token.Position{}
+	}
+	return pkg.Fset.PositionFor(object.Pos(), false)
+}
+
+func objectFactExportedFrom(object types.Object, pkg *types.Package) bool {
+	switch object := object.(type) {
+	case *types.Func:
+		return object.Exported() && object.Pkg() == pkg || object.Signature().Recv() != nil
+	case *types.Var:
+		return object.IsField() || object.Pkg() == pkg
+	case *types.TypeName, *types.Const:
+		return true
+	default:
+		return false
+	}
+}
+
+func packagePath(pkg *types.Package) string {
+	if pkg == nil {
+		return ""
+	}
+	return pkg.Path()
+}
+
 func declaredFactType(analyzer *goanalysis.Analyzer, fact goanalysis.Fact) (reflect.Type, error) {
 	if analyzer == nil || fact == nil {
-		return nil, fmt.Errorf("package fact requires an analyzer and non-nil fact")
+		return nil, fmt.Errorf("analysis fact requires an analyzer and non-nil fact")
 	}
 	type_ := reflect.TypeOf(fact)
 	value := reflect.ValueOf(fact)
 	if type_.Kind() != reflect.Pointer || value.IsNil() {
-		return nil, fmt.Errorf("package fact %T must be a non-nil pointer", fact)
+		return nil, fmt.Errorf("analysis fact %T must be a non-nil pointer", fact)
 	}
 	for _, declared := range analyzer.FactTypes {
 		if reflect.TypeOf(declared) == type_ {
 			return type_, nil
 		}
 	}
-	return nil, fmt.Errorf("analyzer %q did not declare package fact type %T", analyzer.Name, fact)
+	return nil, fmt.Errorf("analyzer %q did not declare fact type %T", analyzer.Name, fact)
 }
 
-func encodePackageFact(fact goanalysis.Fact) ([]byte, error) {
+func lessFactType(left, right reflect.Type) bool {
+	if left.PkgPath() != right.PkgPath() {
+		return left.PkgPath() < right.PkgPath()
+	}
+	if left.Elem().PkgPath() != right.Elem().PkgPath() {
+		return left.Elem().PkgPath() < right.Elem().PkgPath()
+	}
+	return left.String() < right.String()
+}
+
+func encodeFact(fact goanalysis.Fact) ([]byte, error) {
 	encode := func() ([]byte, error) {
 		var output bytes.Buffer
 		if err := gob.NewEncoder(&output).Encode(fact); err != nil {
-			return nil, fmt.Errorf("encode package fact %T: %w", fact, err)
+			return nil, fmt.Errorf("encode analysis fact %T: %w", fact, err)
 		}
 		return output.Bytes(), nil
 	}
@@ -226,7 +447,13 @@ func encodePackageFact(fact goanalysis.Fact) ([]byte, error) {
 		return nil, err
 	}
 	if !bytes.Equal(first, second) {
-		return nil, fmt.Errorf("package fact %T encoding is nondeterministic", fact)
+		return nil, fmt.Errorf("analysis fact %T encoding is nondeterministic", fact)
 	}
 	return first, nil
+}
+
+func decodeFact(encoded []byte, fact goanalysis.Fact) error {
+	value := reflect.ValueOf(fact)
+	value.Elem().Set(reflect.Zero(value.Elem().Type()))
+	return gob.NewDecoder(bytes.NewReader(encoded)).Decode(fact)
 }

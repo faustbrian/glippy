@@ -101,7 +101,7 @@ cannot cheaply clone `types.Info` while preserving AST-key identity. Native
 metadata continues to own selection, generated-file and type-error eligibility,
 and fix safety. Adapted package analyzers remain deterministic by package and
 rule ID, expose only captured compiled-source reads, and cannot use
-object facts, flags, cross-file related locations, or multi-file fixes. A
+flags, cross-file related locations, or multi-file fixes. A
 deterministic prerequisite DAG may produce exact-type results once per package;
 shared prerequisites execute once, diagnostics from metadata-less prerequisites
 fail, and cancellation stops dependent analyzers.
@@ -115,8 +115,18 @@ declared type. Gob export snapshots isolate later mutations; import decodes an
 independent value; and enumeration exposes only the current package plus direct
 imports in canonical order. Two unequal immediate encodings fail, while
 maintainer admission remains responsible for excluding nondeterministic custom
-Gob encoders and analyzer-owned state. Object facts remain deferred until an
-object-path and export-data contract is designed.
+Gob encoders and analyzer-owned state.
+
+Object facts use the same dependency-first schedule and encoded-value
+isolation. Each analyzer-package pair owns a run-local view keyed by exact
+`types.Object` identity. A package inherits direct dependency views using the
+current x/tools export-data overapproximation, so method and type facts can
+cross an intermediate alias boundary while irrelevant unexported functions are
+dropped. Exports for nil or foreign objects fail. Enumeration is canonical and
+returns decoded copies, using encoded fact bytes to break ties between distinct
+synthetic objects with otherwise identical source identity. Persistent object
+facts remain deferred because a cache must bind stable `objectpath` identities
+and export-data invalidation instead of retaining process pointers.
 
 Rules skip generated files unless their metadata opts in. Packages with type
 errors are also skipped by default; a types-tier or CFG-tier rule may explicitly

@@ -225,7 +225,7 @@ func (r *packageAnalyzerRule) runPackage(
 	files []typedSyntaxFile,
 	owners map[string]string,
 	severity rules.Severity,
-	facts *packageFactSet,
+	facts *analyzerFactSet,
 ) ([]rules.Diagnostic, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -266,12 +266,29 @@ func (r *packageAnalyzerRule) runPackage(
 			resultOf[required] = result
 		}
 		reported := make([]goanalysis.Diagnostic, 0)
+		importObjectFact := func(types.Object, goanalysis.Fact) bool { return false }
+		exportObjectFact := func(types.Object, goanalysis.Fact) {
+			panic("adapted analyzer attempted to export an undeclared object fact")
+		}
+		allObjectFacts := func() []goanalysis.ObjectFact { return nil }
 		importPackageFact := func(*types.Package, goanalysis.Fact) bool { return false }
 		exportPackageFact := func(goanalysis.Fact) {
 			panic("adapted analyzer attempted to export an undeclared package fact")
 		}
 		allPackageFacts := func() []goanalysis.PackageFact { return nil }
 		if facts != nil {
+			if err := facts.beginObjectFacts(planned.original, pkg); err != nil {
+				return nil, err
+			}
+			importObjectFact = func(object types.Object, fact goanalysis.Fact) bool {
+				return facts.importObjectFact(planned.original, pkg.Types, object, fact)
+			}
+			exportObjectFact = func(object types.Object, fact goanalysis.Fact) {
+				facts.exportObjectFact(planned.original, pkg.Types, object, fact)
+			}
+			allObjectFacts = func() []goanalysis.ObjectFact {
+				return facts.allObjectFacts(planned.original, pkg.Types)
+			}
 			importPackageFact = func(package_ *types.Package, fact goanalysis.Fact) bool {
 				return facts.importPackageFact(planned.original, package_, fact)
 			}
@@ -305,18 +322,12 @@ func (r *packageAnalyzerRule) runPackage(
 				}
 				return file.Bytes(), nil
 			},
-			ImportObjectFact: func(types.Object, goanalysis.Fact) bool {
-				panic("adapted analyzer object facts are unsupported")
-			},
+			ImportObjectFact:  importObjectFact,
 			ImportPackageFact: importPackageFact,
-			ExportObjectFact: func(types.Object, goanalysis.Fact) {
-				panic("adapted analyzer object facts are unsupported")
-			},
+			ExportObjectFact:  exportObjectFact,
 			ExportPackageFact: exportPackageFact,
 			AllPackageFacts:   allPackageFacts,
-			AllObjectFacts: func() []goanalysis.ObjectFact {
-				panic("adapted analyzer object facts are unsupported")
-			},
+			AllObjectFacts:    allObjectFacts,
 		}
 		if analyzer.RunDespiteErrors {
 			pass.TypeErrors = slices.Clone(pkg.TypeErrors)

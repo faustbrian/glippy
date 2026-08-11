@@ -307,8 +307,8 @@ a rule ID or disables all rules.
 Suitable analyzers MAY be adapted without replacing the native scheduler or
 metadata. The adapter accepts syntax-only and types-tier analyzers without
 analyzer flags. Syntax analyzers MUST NOT declare prerequisites, facts, or a
-result type. Types-tier analyzers MAY declare a prerequisite-result DAG and
-package facts. Native
+result type. Types-tier analyzers MAY declare a prerequisite-result DAG,
+package facts, and object facts. Native
 metadata MUST declare only the file node interest and either the syntax or
 types tier; it remains authoritative for rule identity, selection, severity,
 generated-file and type-error policy, documentation, and fix safety.
@@ -358,8 +358,28 @@ MUST return only facts for the current package and its direct imports, ordered
 by package path and fact type. Analyzer admission MUST separately audit custom
 Gob encoders and fact values for deterministic representation: equal immediate
 encodings are a runtime guard, not proof that arbitrary analyzer-owned mutable
-state is deterministic. Object facts remain unsupported and every object-fact
-operation MUST fail clearly.
+state is deterministic. Object facts MUST preserve the same isolation and
+declared-type checks.
+
+An object fact export MUST name a non-nil object owned by the package currently
+being analyzed. Imports MUST use exact run-owned `types.Object` identity and
+MUST expose only the current package's facts plus facts inherited through its
+sorted direct imports. Each import edge MUST retain the current x/tools
+export-data overapproximation: exported package functions, methods, fields,
+variables owned by the dependency, type names, and constants may propagate,
+while irrelevant unexported package functions and unsupported object kinds MUST
+not. The variable category includes x/tools' acknowledged overapproximation for
+parameters and locals. This behavior and x/tools' corresponding type-graph TODO
+MUST remain an explicit compatibility boundary rather than a claim of exact
+export-data reachability.
+
+`AllObjectFacts` MUST return independent decoded facts in deterministic package,
+physical-position, object-identity, fact-type, and encoded-value order. The
+encoded value MUST provide the final stable tie-breaker for distinct synthetic
+objects whose other observable identity fields are equal. Object fact
+persistence across runs remains deferred until cache serialization defines
+stable `objectpath` identity and invalidation; run-local interoperability MUST
+NOT be presented as persistent fact caching.
 
 An ill-typed selected root MUST retain native metadata eligibility. If native
 metadata admits type errors, every analyzer step MUST declare
@@ -397,8 +417,8 @@ until an independently cancellable execution boundary is proven.
 Before registration, maintainers MUST audit that an analyzer does not depend on
 deprecated object resolution or behavior absent from this pass contract. Such
 an analyzer is not suitable and MUST NOT be registered. Declared or observed
-unsupported CFG, SSA, object-fact, flag, cross-file related location, or
-multi-file fix behavior MUST be rejected with a clear
+unsupported CFG, SSA, flag, cross-file related location, or multi-file fix
+behavior MUST be rejected with a clear
 compatibility diagnostic.
 
 Rule documentation and `explain` output MUST derive from the same immutable
