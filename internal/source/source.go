@@ -242,8 +242,21 @@ func (f *File) CanFormat() bool { return f.parseErr == nil }
 
 // ReadSyntax provides an isolated parsed syntax view to a run-owned consumer.
 func (f *File) ReadSyntax(read func(*ast.File) error) error {
+	if read == nil {
+		return errors.New("read syntax callback is required")
+	}
+	return f.ReadSyntaxView(func(_ *token.FileSet, syntax *ast.File) error {
+		return read(syntax)
+	})
+}
+
+// ReadSyntaxView provides one isolated syntax tree and its matching file set.
+func (f *File) ReadSyntaxView(read func(*token.FileSet, *ast.File) error) error {
 	if f.parseErr != nil {
 		return f.parseErr
+	}
+	if read == nil {
+		return errors.New("read syntax view callback is required")
 	}
 	fileSet := token.NewFileSet()
 	syntax, err := parser.ParseFile(
@@ -255,7 +268,7 @@ func (f *File) ReadSyntax(read func(*ast.File) error) error {
 	if err != nil {
 		return fmt.Errorf("construct immutable syntax view: %w", err)
 	}
-	return read(syntax)
+	return read(fileSet, syntax)
 }
 
 // RawToken returns the exact physical spelling of the token at position.

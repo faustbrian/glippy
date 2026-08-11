@@ -2,6 +2,7 @@ package analysis_test
 
 import (
 	"context"
+	"errors"
 	"go/ast"
 	"reflect"
 	"slices"
@@ -26,6 +27,22 @@ func (r syntaxRule) RunSyntax(ctx *rules.Context, node ast.Node) ([]rules.Findin
 		*r.visits = append(*r.visits, r.metadata.ID)
 	}
 	return r.run(ctx, node)
+}
+
+type syntaxFileRule struct {
+	metadata rules.Metadata
+}
+
+func (r syntaxFileRule) Metadata() rules.Metadata { return r.metadata }
+
+func (syntaxFileRule) RunSyntaxFile(*source.File) ([]rules.Finding, error) { return nil, nil }
+
+type ambiguousSyntaxRule struct {
+	syntaxFileRule
+}
+
+func (ambiguousSyntaxRule) RunSyntax(*rules.Context, ast.Node) ([]rules.Finding, error) {
+	return nil, nil
 }
 
 func TestRunSyntaxDispatchesNodeInterestsAndSortsDiagnostics(t *testing.T) {
@@ -142,6 +159,93 @@ func TestRunSyntaxUsesTotalDiagnosticOrdering(t *testing.T) {
 	if got, want := []string{diagnostics[0].Message, diagnostics[1].Message},
 		[]string{"a message", "z message"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("diagnostic tie order = %#v, want %#v", got, want)
+	}
+}
+
+func TestRunSyntaxPreservesCancellationObservedDuringNativeRuleRun(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	file, err := source.Load("canceled.go", []byte("package example\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeRule := syntaxRule{
+		metadata: analysisMetadata("canceling-native", rules.NodeFile, false),
+		run: func(ruleContext *rules.Context, node ast.Node) ([]rules.Finding, error) {
+			sourceRange, err := ruleContext.Range(node)
+			if err != nil {
+				return nil, err
+			}
+			cancel()
+			return []rules.Finding{{
+				MessageKey: "canceled", Message: "diagnostic after cancellation", Range: sourceRange,
+			}}, nil
+		},
+	}
+	registry, err := rules.NewRegistry(nativeRule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := analysis.RunSyntax(ctx, file, registry, selection); !errors.Is(err, context.Canceled) {
+		t.Fatalf("RunSyntax() error = %v, want context cancellation", err)
+	}
+}
+
+func TestRunSyntaxRejectsAmbiguousOrMisdeclaredExecution(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		rule      rules.Rule
+		wantError string
+	}{
+		{
+			name: "ambiguous execution",
+			rule: ambiguousSyntaxRule{syntaxFileRule{
+				metadata: analysisMetadata("ambiguous-execution", rules.NodeFile, false),
+			}},
+			wantError: "ambiguous syntax execution",
+		},
+		{
+			name: "file rule with node interest",
+			rule: syntaxFileRule{
+				metadata: analysisMetadata("misdeclared-file", rules.NodeCallExpr, false),
+			},
+			wantError: "must declare only file interest",
+		},
+		{
+			name: "metadata without execution",
+			rule: metadataRuleAdapter{
+				metadata: analysisMetadata("missing-execution", rules.NodeCallExpr, false),
+			},
+			wantError: "does not implement syntax execution",
+		},
+	}
+	file, err := source.Load("execution.go", []byte("package example\nfunc run() {}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			registry, err := rules.NewRegistry(test.rule)
+			if err != nil {
+				t.Fatal(err)
+			}
+			selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := analysis.RunSyntax(context.Background(), file, registry, selection); err == nil ||
+				!strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("RunSyntax() error = %v, want %q", err, test.wantError)
+			}
+		})
 	}
 }
 

@@ -28,6 +28,26 @@ The fix coordinator source-versions every edit, rejects all conflicts
 explicitly, reparses, formats, validates, and performs one atomic single-file
 replacement.
 
+The initial `go/analysis` adapter is syntax-only. It accepts analyzers without
+prerequisites, facts, result types, or flags and schedules them as native
+file-interest rules. Every run reparses an isolated AST with a matching file
+set, supplies a minimal package-name shell without type information, exposes
+only the adapted source through `ReadFile`, and uses a run-local analyzer
+descriptor. Native metadata remains authoritative. Diagnostics and edits must
+map to that one physical source. Panics, foreign positions, undeclared fixes,
+unexpected results, and invalid help URLs fail analysis instead of producing
+partial findings. Help links follow upstream category and relative-URL
+resolution.
+
+Suggested fixes require exact message-to-native-metadata mappings and default
+to suggestion safety. A mapping can declare a safe fix only with an explicit
+audit assertion. Cancellation is checked immediately around analyzer execution;
+the adapter discards findings after cancellation, but cannot preempt an
+analyzer callback because the upstream run contract accepts no context.
+Maintainers audit imported analyzers for dependence on deprecated object
+resolution or other absent pass state before registration; those dependencies
+cannot be inferred reliably from an analyzer function value.
+
 The coordinator accepts explicit diagnostic and fix-name selections; choosing
 among alternative named fixes remains driver policy. The ordinary CLI driver
 selects exactly one safe alternative per diagnostic and treats multiple safe
@@ -93,6 +113,10 @@ unused diagnostics and structured expiry inputs remain deferred.
 
 - Make `analysis.Analyzer` the native rule API: insufficient tier, product,
   safety, and configuration metadata.
+- Share the native syntax tree with imported analyzers: analyzer mutation would
+  corrupt later rules and violate the immutable source contract.
+- Run unsupported analyzer prerequisites inside the file adapter: this would
+  duplicate typed scheduling and fact ownership before those tiers exist.
 - First-fix-wins or silently skip overlaps: nondeterministic and hides unsafe
   partial application.
 - Unscoped disable-all directives: unauditable and too easy to preserve against
@@ -113,6 +137,9 @@ retain one reason and one usage record per waived rule.
 The coordinator retains validated bytes and provenance independently from disk
 status. Reporter and lint-driver integration must preserve the distinction
 between not performed, completed, and possibly completed replacement.
+Imported syntax analyzers pay one isolated parse per analyzer and file. They
+cannot use typed state, facts, prerequisites, flags, or cross-file reads in this
+phase, and a callback that does not return cannot be preempted.
 
 ## Revisit Trigger
 

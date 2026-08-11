@@ -169,3 +169,18 @@ and possibly completed writes; cancellation and reporter failures disclose
 earlier replacements. Suggestion and unsafe selection, package patterns, typed
 loading, built-in rule admission, and dogfood signal measurement remain open,
 so progress stays 45%.
+
+The first `go/analysis` compatibility adapter now runs eligible syntax-only
+analyzers through native file-interest scheduling while preserving Gox metadata,
+severity, generated-file, suppression, diagnostic-ordering, and fix-safety
+contracts. Each analyzer receives an isolated AST, matching file set, minimal
+untyped package shell, exact single-file reads, and a run-local analyzer
+descriptor. Prerequisites, facts, result types, flags, foreign positions,
+undeclared fixes, and unexpected results are rejected; panics become errors.
+Imported fixes default to suggestion safety, and safe mappings require an
+explicit audit assertion. Diagnostic help preserves upstream category and
+relative-URL resolution. Cancellation is honored before and after the
+non-preemptible upstream callback. Analyzer suitability requires a maintainer
+audit for assumptions that cannot be inferred from a function value. Typed
+adapter support and analyzer prerequisite scheduling remain Phase 4 work, so
+progress remains 45%.

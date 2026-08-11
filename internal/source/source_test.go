@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"go/ast"
+	"go/token"
 	"os"
 	"slices"
 	"strings"
@@ -81,6 +82,37 @@ func TestSourceSyntaxViewsCannotMutateStoredState(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestFileReadSyntaxViewProvidesMatchingFileSetAndRequiresCallbacks(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("nested/../source.go", []byte("package sample\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.ReadSyntax(nil); err == nil {
+		t.Fatal("ReadSyntax(nil) error = nil")
+	}
+	if err := file.ReadSyntaxView(nil); err == nil {
+		t.Fatal("ReadSyntaxView(nil) error = nil")
+	}
+	if err := file.ReadSyntaxView(func(fileSet *token.FileSet, syntax *ast.File) error {
+		tokenFile := fileSet.File(syntax.Pos())
+		if tokenFile == nil {
+			t.Fatal("syntax view has no matching token file")
+		}
+		if tokenFile.Name() != "source.go" || tokenFile.Offset(syntax.Name.Pos()) != len("package ") {
+			t.Fatalf(
+				"syntax view file = %q, package offset = %d",
+				tokenFile.Name(),
+				tokenFile.Offset(syntax.Name.Pos()),
+			)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestLoadBuildsALosslessPhysicalSourceLedger(t *testing.T) {

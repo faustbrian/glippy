@@ -150,6 +150,12 @@ type SyntaxRule interface {
 	RunSyntax(*Context, ast.Node) ([]Finding, error)
 }
 
+// SyntaxFileRule runs once over one immutable source-backed syntax view.
+type SyntaxFileRule interface {
+	Rule
+	RunSyntaxFile(*source.File) ([]Finding, error)
+}
+
 // Context is the immutable per-file syntax rule context.
 type Context struct {
 	file *source.File

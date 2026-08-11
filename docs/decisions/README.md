@@ -16,7 +16,7 @@ deferred status is an explicit gate, not silent approval.
 | Gofmt fixed point | ADR 0004; product-wide fixed point rejected with recorded divergences |
 | Semantic equivalence | Equivalence specification |
 | Invalid-source formatting | Source model specification; diagnostic-only |
-| Rule API and `go/analysis` | ADR 0006 and lint specification |
+| Rule API and `go/analysis` | ADR 0006 and lint specification; isolated syntax adapter implemented |
 | Analysis requirement tiers | ADR 0005 |
 | Suppression syntax and reasons | ADR 0006 and lint specification; initial Phase 3 grammar accepted |
 | Fix safety and conflicts | ADR 0006 and fix specification |
@@ -26,7 +26,7 @@ deferred status is an explicit gate, not silent approval.
 | Machine diagnostics | ADR 0011; formatter, lint-check, and lint-fix prototype schema accepted |
 | Formatter diff output | ADR 0012; bounded text-only unified differences |
 | Editor architecture | Open: stdin/stdout is the prototype boundary; ADR required before Phase 5 integration |
-| Extension mechanism | `go/analysis` adapter only; no dynamic plugin API initially |
+| Extension mechanism | Syntax-only `go/analysis` adapter implemented; no dynamic plugin API initially |
 | Formatter and rule compatibility | ADR 0008 |
 
 The shared frontend and single-file edit model have no open question that

@@ -84,9 +84,25 @@ typed configuration schema, or node-interest declaration. Imported suggested
 fixes default to suggestion-only, carry a source digest through the Gox
 adapter, and pass through the same conflict and validation coordinator.
 
-Adapters must reject or isolate analyzers that mutate shared AST state, depend
-on deprecated `ast.Object` resolution, require multi-file fixes during the
-single-file phase, or otherwise violate the run's immutable frontend contract.
+The Phase 3 adapter therefore accepts only analyzers without prerequisites,
+facts, result types, or flags. It reparses one isolated AST and matching file
+set per analyzer and file, supplies a package-name shell without type
+information, and restricts `Pass.ReadFile` to the exact immutable source. A
+run-local analyzer descriptor prevents mutation through `Pass.Analyzer` from
+escaping into later runs. Diagnostic, related, and edit positions must belong
+to the adapted file; panics, foreign positions, undeclared fixes, and unexpected
+results fail the run. Diagnostic help follows the upstream category and
+relative-URL resolution contract. Safe imported fixes require an explicit audit
+assertion.
+
+The driver checks cancellation before and after `Analyzer.Run`, discarding
+findings when cancellation is observed. The upstream callback has no context
+parameter, so it cannot be preempted safely if it does not return. Typed
+prerequisites, facts, configuration-backed flags, results, and broader file
+access remain Phase 4 compatibility work rather than hidden syntax-tier costs.
+Because a function value does not reveal whether it reads deprecated
+`ast.Object` links or silently assumes absent pass fields, suitability for this
+syntax-only contract requires a maintainer audit before registration.
 
 ## Printer And Formatter Boundary
 

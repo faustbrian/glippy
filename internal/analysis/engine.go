@@ -23,6 +23,12 @@ type activeSyntaxRule struct {
 	severity rules.Severity
 }
 
+type activeSyntaxFileRule struct {
+	rule     rules.SyntaxFileRule
+	metadata rules.Metadata
+	severity rules.Severity
+}
+
 // RunSyntax executes selected syntax rules through one filtered AST traversal.
 func RunSyntax(
 	ctx context.Context,
@@ -48,6 +54,7 @@ func RunSyntax(
 	})
 	dispatch := make(map[rules.NodeKind][]activeSyntaxRule)
 	interests := make(map[rules.NodeKind]struct{})
+	fileRules := make([]activeSyntaxFileRule, 0)
 	previousID := ""
 	for _, selected := range ordered {
 		if selected.ID == previousID {
@@ -83,8 +90,21 @@ func RunSyntax(
 		if file.Metadata().Generated && !metadata.RunOnGenerated {
 			continue
 		}
-		syntaxRule, ok := nativeRule.(rules.SyntaxRule)
-		if !ok {
+		fileRule, fileRuleFound := nativeRule.(rules.SyntaxFileRule)
+		syntaxRule, syntaxRuleFound := nativeRule.(rules.SyntaxRule)
+		if fileRuleFound && syntaxRuleFound {
+			return nil, fmt.Errorf("selected rule %q implements ambiguous syntax execution", selected.ID)
+		}
+		if fileRuleFound {
+			if len(metadata.NodeInterests) != 1 || metadata.NodeInterests[0] != rules.NodeFile {
+				return nil, fmt.Errorf("selected file rule %q must declare only file interest", selected.ID)
+			}
+			fileRules = append(fileRules, activeSyntaxFileRule{
+				rule: fileRule, metadata: metadata, severity: selected.Severity,
+			})
+			continue
+		}
+		if !syntaxRuleFound {
 			return nil, fmt.Errorf("selected rule %q does not implement syntax execution", selected.ID)
 		}
 		active := activeSyntaxRule{
@@ -97,64 +117,90 @@ func RunSyntax(
 			interests[interest] = struct{}{}
 		}
 	}
-	if len(dispatch) == 0 {
+	if len(dispatch) == 0 && len(fileRules) == 0 {
 		return []rules.Diagnostic{}, nil
 	}
 
-	orderedInterests := make([]rules.NodeKind, 0, len(interests))
-	for interest := range interests {
-		orderedInterests = append(orderedInterests, interest)
-	}
-	sort.Slice(orderedInterests, func(left, right int) bool {
-		return orderedInterests[left] < orderedInterests[right]
-	})
-	filter := make([]ast.Node, 0, len(orderedInterests))
-	for _, interest := range orderedInterests {
-		prototype, found := rules.NodePrototype(interest)
-		if !found {
-			return nil, fmt.Errorf("node interest %q has no syntax prototype", interest)
-		}
-		filter = append(filter, prototype)
-	}
-
 	diagnostics := make([]rules.Diagnostic, 0)
-	ruleContext := rules.NewContext(file)
-	err := file.ReadSyntax(func(syntax *ast.File) error {
-		sharedInspector := inspector.New([]*ast.File{syntax})
-		var runErr error
-		sharedInspector.Preorder(filter, func(node ast.Node) {
-			if runErr != nil {
-				return
-			}
-			if err := ctx.Err(); err != nil {
-				runErr = err
-				return
-			}
-			kind, found := rules.KindOf(node)
+	if len(dispatch) > 0 {
+		orderedInterests := make([]rules.NodeKind, 0, len(interests))
+		for interest := range interests {
+			orderedInterests = append(orderedInterests, interest)
+		}
+		sort.Slice(orderedInterests, func(left, right int) bool {
+			return orderedInterests[left] < orderedInterests[right]
+		})
+		filter := make([]ast.Node, 0, len(orderedInterests))
+		for _, interest := range orderedInterests {
+			prototype, found := rules.NodePrototype(interest)
 			if !found {
-				runErr = fmt.Errorf("filtered syntax node %T has no stable kind", node)
-				return
+				return nil, fmt.Errorf("node interest %q has no syntax prototype", interest)
 			}
-			for _, active := range dispatch[kind] {
-				findings, err := active.rule.RunSyntax(ruleContext, node)
-				if err != nil {
-					runErr = fmt.Errorf("%s: %w", active.metadata.ID, err)
+			filter = append(filter, prototype)
+		}
+
+		ruleContext := rules.NewContext(file)
+		err := file.ReadSyntax(func(syntax *ast.File) error {
+			sharedInspector := inspector.New([]*ast.File{syntax})
+			var runErr error
+			sharedInspector.Preorder(filter, func(node ast.Node) {
+				if runErr != nil {
 					return
 				}
-				for _, finding := range findings {
-					diagnostic, err := diagnosticForFinding(file, active, finding)
+				if err := ctx.Err(); err != nil {
+					runErr = err
+					return
+				}
+				kind, found := rules.KindOf(node)
+				if !found {
+					runErr = fmt.Errorf("filtered syntax node %T has no stable kind", node)
+					return
+				}
+				for _, active := range dispatch[kind] {
+					findings, err := active.rule.RunSyntax(ruleContext, node)
+					if contextErr := ctx.Err(); contextErr != nil {
+						runErr = contextErr
+						return
+					}
 					if err != nil {
 						runErr = fmt.Errorf("%s: %w", active.metadata.ID, err)
 						return
 					}
-					diagnostics = append(diagnostics, diagnostic)
+					for _, finding := range findings {
+						diagnostic, err := diagnosticForFinding(file, active.metadata, active.severity, finding)
+						if err != nil {
+							runErr = fmt.Errorf("%s: %w", active.metadata.ID, err)
+							return
+						}
+						diagnostics = append(diagnostics, diagnostic)
+					}
 				}
-			}
+			})
+			return runErr
 		})
-		return runErr
-	})
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	for _, active := range fileRules {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		findings, err := active.rule.RunSyntaxFile(file)
+		if contextErr := ctx.Err(); contextErr != nil {
+			return nil, contextErr
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", active.metadata.ID, err)
+		}
+		for _, finding := range findings {
+			diagnostic, err := diagnosticForFinding(file, active.metadata, active.severity, finding)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", active.metadata.ID, err)
+			}
+			diagnostics = append(diagnostics, diagnostic)
+		}
 	}
 	return OrderDiagnostics(diagnostics), nil
 }
@@ -168,7 +214,8 @@ func OrderDiagnostics(diagnostics []rules.Diagnostic) []rules.Diagnostic {
 
 func diagnosticForFinding(
 	file *source.File,
-	active activeSyntaxRule,
+	metadata rules.Metadata,
+	severity rules.Severity,
 	finding rules.Finding,
 ) (rules.Diagnostic, error) {
 	if strings.TrimSpace(finding.MessageKey) == "" {
@@ -185,8 +232,8 @@ func diagnosticForFinding(
 			return rules.Diagnostic{}, fmt.Errorf("finding has invalid related range")
 		}
 	}
-	fixMetadata := make(map[string]rules.FixMetadata, len(active.metadata.Fixes))
-	for _, fix := range active.metadata.Fixes {
+	fixMetadata := make(map[string]rules.FixMetadata, len(metadata.Fixes))
+	for _, fix := range metadata.Fixes {
 		fixMetadata[fix.Name] = fix
 	}
 	fixes := slices.Clone(finding.Fixes)
@@ -215,8 +262,8 @@ func diagnosticForFinding(
 	related := slices.Clone(finding.Related)
 	notes := slices.Clone(finding.Notes)
 	return rules.Diagnostic{
-		RuleID:     active.metadata.ID,
-		Severity:   active.severity,
+		RuleID:     metadata.ID,
+		Severity:   severity,
 		MessageKey: finding.MessageKey,
 		Message:    finding.Message,
 		Path:       file.Path(),

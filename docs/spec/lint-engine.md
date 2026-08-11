@@ -132,11 +132,40 @@ all rules.
 ## `go/analysis` Interoperability
 
 Suitable analyzers MAY be adapted without replacing the native scheduler or
-metadata. Imported diagnostics and facts are sorted independently of emission
-order. Suggested fixes default to suggestion safety unless separately audited.
-Analyzers that mutate shared AST state, depend on deprecated object resolution,
-or require unsupported multi-file edits MUST be isolated or rejected with a
-clear compatibility diagnostic.
+metadata. The initial adapter accepts syntax-only analyzers with no prerequisite
+analyzers, facts, result type, or analyzer flags. Native metadata MUST declare
+the syntax tier and only the file node interest; it remains authoritative for
+rule identity, selection, severity, generated-file policy, documentation, and
+fix safety.
+
+Each adapted file run MUST receive a fresh AST, its matching `token.FileSet`,
+and a run-local analyzer descriptor. The syntax-only pass MUST expose exactly
+one file, a package-name shell, no type information, an empty prerequisite
+result map, and read access only to an independent copy of the adapted file's
+exact bytes. Analyzer AST or descriptor mutation MUST NOT affect native rules,
+other adapters, or a later run. An analyzer's own captured mutable state remains
+its responsibility.
+
+Imported diagnostics MUST map every primary, related, and edit position to the
+sole adapted source and enter the native deterministic ordering and suppression
+pipeline. Foreign or invalid positions, analyzer panics, undeclared suggested
+fixes, and unexpected non-nil results MUST fail the file analysis. Each
+suggested-fix message MUST have an explicit native name and description.
+Imported fixes default to suggestion safety; a safe classification MUST carry
+an explicit adapter audit assertion. Diagnostic help MUST resolve explicit,
+relative, and category-derived URLs according to the upstream `go/analysis`
+driver contract; invalid analyzer or diagnostic URLs MUST fail analysis.
+
+The scheduler MUST check cancellation immediately before and after an adapted
+analyzer run and MUST discard findings when cancellation was observed. The
+`go/analysis` run callback has no context parameter, so the syntax adapter
+cannot preempt a callback that does not return; only bounded analyzers are
+suitable until an independently cancellable execution boundary is proven.
+Before registration, maintainers MUST audit that an analyzer does not depend on
+deprecated object resolution or behavior absent from this pass contract. Such
+an analyzer is not suitable and MUST NOT be registered. Declared or observed
+unsupported typed, fact, prerequisite, flag, result, cross-file, or multi-file
+behavior MUST be rejected with a clear compatibility diagnostic.
 
 Rule documentation and `explain` output MUST derive from the same immutable
 registry metadata and examples. Human `explain` output MUST include the rule
