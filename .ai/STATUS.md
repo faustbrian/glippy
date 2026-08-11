@@ -415,7 +415,7 @@ inputs. Its rooted store bounds entries, verifies embedded key, length, and
 payload digest, treats corruption as a miss, repairs through recomputation, and
 uses create-if-absent hard-link publication so concurrent different values fail
 instead of silently replacing one another. No formatter or analysis consumer
-uses the store yet; fact snapshot serialization, eviction, platform
+uses the store yet; consumer wiring, eviction, platform
 evidence, and warm-cache benchmarks remain open. Progress stays 45% behind the
 Phase 2 gates.
 
@@ -424,5 +424,14 @@ package path and canonical x/tools `objectpath`. Package objects, named types,
 methods, fields, type parameters, parameters, and results resolve to the exact
 corresponding object after an independent type check; nil, predeclared, local,
 unexported package variables, mismatched packages, and malformed paths fail
-closed. Fact snapshot serialization, cache consumer wiring, and complete
-invalidation evidence remain open. Progress stays 45%.
+closed. Cache consumer wiring and complete invalidation evidence remain open.
+Progress stays 45%.
+
+Package fact snapshots now encode one analyzer-package pair with a version,
+analyzer and package identity, stable declared fact types, canonical object
+paths, and deterministic Gob values. Encoding is canonical and bounded;
+restore validates the full payload and all object paths before merging, rejects
+different live values, and leaves unsupported local-object packages
+uncacheable instead of producing partial warm behavior. No package execution
+path consumes these snapshots yet, so hit/miss and invalidation proof remain
+open and progress stays 45%.

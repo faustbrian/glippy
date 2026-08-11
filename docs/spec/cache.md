@@ -68,4 +68,19 @@ objects, named types, methods, fields, type parameters, parameters, and results.
 Objects without a stable API path fail closed. A persisted identity MUST resolve
 against a newly loaded package with the same package path; process-local
 `types.Object` pointers MUST NOT be serialized as cache identity. Fact snapshot
-serialization and cache integration remain deferred.
+serialization is implemented, while cache integration remains deferred.
+
+## Analysis Fact Snapshots
+
+One fact snapshot owns one analyzer-package pair. It embeds a schema version,
+analyzer name, package path, package-owned facts, canonical object identities,
+stable fact type package/name pairs, and deterministic Gob values. Imported
+facts remain separate dependency inputs rather than being duplicated into the
+package snapshot.
+
+Encoding MUST be byte-deterministic and bounded by the cache entry limit.
+Decoding MUST require exact canonical JSON, declared fact types, canonical Gob
+values, sorted unique records, and resolvable package-owned object paths before
+merging any value. A different existing value MUST be a conflict. An object
+without a stable path MUST make the snapshot uncacheable; it MUST NOT disappear
+from a partial snapshot that could change warm-run analyzer behavior.

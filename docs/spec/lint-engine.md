@@ -376,13 +376,22 @@ export-data reachability.
 `AllObjectFacts` MUST return independent decoded facts in deterministic package,
 physical-position, object-identity, fact-type, and encoded-value order. The
 encoded value MUST provide the final stable tie-breaker for distinct synthetic
-objects whose other observable identity fields are equal. Object fact
-persistence across runs remains deferred until cache serialization defines
-invalidation and a fact snapshot format. Stable object identity MUST use the
-owning package path plus the canonical x/tools `objectpath`, MUST resolve
-against the newly loaded package, and MUST reject nil, predeclared, local, and
-otherwise unreachable objects. Run-local interoperability and identity support
-alone MUST NOT be presented as persistent fact caching.
+objects whose other observable identity fields are equal. Stable object
+identity MUST use the owning package path plus the canonical x/tools
+`objectpath`, MUST resolve against the newly loaded package, and MUST reject
+nil, predeclared, local, and otherwise unreachable objects.
+
+One fact snapshot MUST bind its schema version, analyzer name, package path,
+stable declared fact types, canonical object identities, and deterministic Gob
+values. It MUST include only facts owned by that package; dependency snapshots
+remain separate graph inputs. Decode MUST reject oversized, malformed,
+noncanonical, unordered, duplicate, unknown-type, wrong-analyzer, wrong-package,
+stale-object, and noncanonical-Gob data before mutating live facts. Restore MUST
+reject a different existing value and MUST NOT partially replace facts.
+Unsupported local object facts make that package snapshot uncacheable rather
+than producing a partial warm result. Object fact persistence across runs
+remains deferred until a cache consumer binds complete invalidation inputs;
+snapshot support alone MUST NOT be presented as persistent fact caching.
 
 An ill-typed selected root MUST retain native metadata eligibility. If native
 metadata admits type errors, every analyzer step MUST declare

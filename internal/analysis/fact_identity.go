@@ -8,15 +8,27 @@ import (
 )
 
 type factObjectIdentity struct {
-	PackagePath string
-	ObjectPath  string
+	PackagePath string `json:"package"`
+	ObjectPath  string `json:"path"`
 }
 
 type factObjectEncoder struct {
 	encoder objectpath.Encoder
 }
 
+type factObjectResolver struct {
+	pkg     *types.Package
+	encoder objectpath.Encoder
+}
+
 func newFactObjectEncoder() *factObjectEncoder { return new(factObjectEncoder) }
+
+func newFactObjectResolver(pkg *types.Package) (*factObjectResolver, error) {
+	if pkg == nil {
+		return nil, fmt.Errorf("resolve fact object requires a package")
+	}
+	return &factObjectResolver{pkg: pkg}, nil
+}
 
 func (e *factObjectEncoder) Identity(object types.Object) (factObjectIdentity, error) {
 	if e == nil {
@@ -42,20 +54,28 @@ func (e *factObjectEncoder) Identity(object types.Object) (factObjectIdentity, e
 }
 
 func (i factObjectIdentity) Resolve(pkg *types.Package) (types.Object, error) {
-	if pkg == nil {
-		return nil, fmt.Errorf("resolve fact object requires a package")
+	resolver, err := newFactObjectResolver(pkg)
+	if err != nil {
+		return nil, err
+	}
+	return resolver.Resolve(i)
+}
+
+func (r *factObjectResolver) Resolve(i factObjectIdentity) (types.Object, error) {
+	if r == nil || r.pkg == nil {
+		return nil, fmt.Errorf("resolve fact object requires a resolver")
 	}
 	if i.PackagePath == "" || i.ObjectPath == "" {
 		return nil, fmt.Errorf("resolve fact object requires a complete identity")
 	}
-	if pkg.Path() != i.PackagePath {
+	if r.pkg.Path() != i.PackagePath {
 		return nil, fmt.Errorf(
 			"resolve fact object for package %q with package %q",
 			i.PackagePath,
-			pkg.Path(),
+			r.pkg.Path(),
 		)
 	}
-	object, err := objectpath.Object(pkg, objectpath.Path(i.ObjectPath))
+	object, err := objectpath.Object(r.pkg, objectpath.Path(i.ObjectPath))
 	if err != nil {
 		return nil, fmt.Errorf(
 			"resolve fact object %q in package %q: %w",
@@ -64,7 +84,7 @@ func (i factObjectIdentity) Resolve(pkg *types.Package) (types.Object, error) {
 			err,
 		)
 	}
-	canonical, err := objectpath.For(object)
+	canonical, err := r.encoder.For(object)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"resolve fact object %q in package %q without a stable path: %w",

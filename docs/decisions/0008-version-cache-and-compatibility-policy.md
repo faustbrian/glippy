@@ -51,9 +51,10 @@ cache. Cache data remains disposable and is never the only source of results.
 
 This foundation does not yet cache formatter or analysis results. Object facts
 now have package-bound canonical `objectpath` identity across independent type
-graphs, while fact snapshot serialization, consumer wiring, eviction, platform
-evidence for hard-link publication, and warm-run performance claims remain
-deferred.
+graphs. Versioned analyzer-package snapshots preserve package-owned facts with
+stable declared-type identity and validated deterministic values. Consumer
+wiring, complete invalidation evidence, eviction, platform evidence for
+hard-link publication, and warm-run performance claims remain deferred.
 
 Formatter output changes are user-visible compatibility changes. They require
 construct-specific before/after documentation and updated corpus evidence.
