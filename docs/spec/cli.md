@@ -24,6 +24,12 @@ gox explain <rule>
 gox version
 ```
 
+`gox version` MUST accept no operands or flags and MUST write exactly
+`gox <version>\n` to standard output. Version resolution MUST prefer explicit
+link-time release metadata, then a non-development Go module build version, and
+finally `devel`. The command MUST NOT read source or configuration files or
+modify the filesystem.
+
 `fmt` without a write or check flag writes formatted content to stdout for one
 explicit file or stdin. Multiple filesystem inputs require `--write` or
 `--check`. `--write` and `--check` are mutually exclusive. Standard input MAY

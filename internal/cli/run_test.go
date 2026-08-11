@@ -14,6 +14,7 @@ import (
 
 	"github.com/faustbrian/gox/internal/discovery"
 	"github.com/faustbrian/gox/internal/filesystem"
+	goxversion "github.com/faustbrian/gox/internal/version"
 )
 
 var errStream = errors.New("stream failure")
@@ -65,6 +66,77 @@ func decodeFormatJSONReport(t *testing.T, output []byte) formatJSONReport {
 		t.Fatalf("decode JSON report: %v; output = %q", err, output)
 	}
 	return report
+}
+
+func TestRunReportsResolvedVersion(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"version"}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSuccess {
+		t.Fatalf("Run() exit = %d, want %d", exitCode, ExitSuccess)
+	}
+	want := "gox " + goxversion.Current() + "\n"
+	if stdout.String() != want {
+		t.Fatalf("Run() stdout = %q, want %q", stdout.String(), want)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunVersionRejectsArguments(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"version", "extra"}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitInvalidInvocation {
+		t.Fatalf("Run() exit = %d, want %d", exitCode, ExitInvalidInvocation)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run() stdout = %q, want empty", stdout.String())
+	}
+	if stderr.String() != versionUsage {
+		t.Fatalf("Run() stderr = %q, want version usage", stderr.String())
+	}
+}
+
+func TestRunVersionHonorsCancellationBeforeOutput(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var stderr bytes.Buffer
+
+	exitCode := RunContext(ctx, []string{"version"}, failingReader{}, failingWriter{}, &stderr)
+
+	if exitCode != ExitCanceled {
+		t.Fatalf("RunContext() exit = %d, want %d", exitCode, ExitCanceled)
+	}
+	if !strings.Contains(stderr.String(), context.Canceled.Error()) {
+		t.Fatalf("RunContext() stderr = %q, want cancellation", stderr.String())
+	}
+}
+
+func TestRunVersionReportsOutputFailure(t *testing.T) {
+	t.Parallel()
+
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"version"}, failingReader{}, failingWriter{}, &stderr)
+
+	if exitCode != ExitFilesystemError {
+		t.Fatalf("Run() exit = %d, want %d", exitCode, ExitFilesystemError)
+	}
+	if !strings.Contains(stderr.String(), "write standard output") {
+		t.Fatalf("Run() stderr = %q, want output failure", stderr.String())
+	}
 }
 
 func TestRunFormatsCompleteFileFromStdinToStdout(t *testing.T) {

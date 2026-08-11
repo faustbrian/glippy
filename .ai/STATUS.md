@@ -34,6 +34,9 @@ interrupt, termination, and caller cancellation stop scheduling and are checked
 before every replacement with prior writes disclosed. Path-based check and
 write modes now share deterministic text outcomes and a versioned JSON envelope
 covering success, findings, invalid input, source failures, partial writes,
-conflicts, and reporting failures. Complete platform-specific filesystem
-semantics, editor workflows, release artifacts, and real-repository adoption
-remain open. Progress therefore remains at the Phase 1 exit gate of 35%.
+conflicts, and reporting failures. The required version command now reports
+explicit release metadata, a versioned Go installation, or a deterministic
+development fallback without loading project state. Complete platform-specific
+filesystem semantics, editor workflows, release artifacts, and real-repository
+adoption remain open. Progress therefore remains at the Phase 1 exit gate of
+35%.

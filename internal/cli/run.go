@@ -19,6 +19,7 @@ import (
 	goxformat "github.com/faustbrian/gox/internal/format"
 	goxreport "github.com/faustbrian/gox/internal/report"
 	"github.com/faustbrian/gox/internal/source"
+	goxversion "github.com/faustbrian/gox/internal/version"
 )
 
 const (
@@ -39,6 +40,7 @@ var defaultFormatOptions = goxformat.Options{
 }
 
 const formatUsage = "gox: expected 'fmt [--write|--check] [--reporter=text|json] [--config=<path>] [--stdin-filepath=<path>] [--fragment=declaration|statement|expression] [path...]'\n"
+const versionUsage = "gox: expected 'version'\n"
 
 const maximumFormatWorkers = 32
 
@@ -64,6 +66,9 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 			return ExitFilesystemError
 		}
 		return report(stderr, ExitFilesystemError, "gox: process streams are required\n")
+	}
+	if len(arguments) > 0 && arguments[0] == "version" {
+		return runVersion(ctx, arguments, stdout, stderr)
 	}
 	invocation, valid := parseFormatInvocation(arguments)
 	if !valid {
@@ -162,6 +167,22 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 	}
 	if err := write(stdout, formatted); err != nil {
 		return report(stderr, ExitFilesystemError, "gox fmt: write standard output: %v\n", err)
+	}
+	return ExitSuccess
+}
+
+func runVersion(ctx context.Context, arguments []string, stdout, stderr io.Writer) int {
+	if len(arguments) != 1 {
+		return report(stderr, ExitInvalidInvocation, versionUsage)
+	}
+	if ctx == nil {
+		return report(stderr, ExitInternalError, "gox version: context is required\n")
+	}
+	if err := ctx.Err(); err != nil {
+		return report(stderr, ExitCanceled, "gox version: %v\n", err)
+	}
+	if err := write(stdout, []byte("gox "+goxversion.Current()+"\n")); err != nil {
+		return report(stderr, ExitFilesystemError, "gox version: write standard output: %v\n", err)
 	}
 	return ExitSuccess
 }

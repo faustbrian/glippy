@@ -10,11 +10,23 @@ printer behavior can drift with the build toolchain. Typed analysis also
 depends on module/workspace state, build selection, environment, dependency
 export data, and overlays. No persistent-cache evidence exists yet.
 
+At Oxc commit `fed2b90`, Oxfmt 0.63.0 and Oxlint 1.78.0 both derive their
+version option from the build-owned Cargo package version. Go versioned installs
+carry an equivalent main-module version in build information, while ordinary
+local builds identify themselves as development builds.
+
 ## Decision
 
 Phase 0 development targets Go 1.26 source and uses module language version
 1.26. A public release must separately state minimum runtime toolchain,
 official build toolchain, supported source versions, and newer-syntax behavior.
+
+`gox version` prints one deterministic product version. Explicit link-time
+release metadata takes precedence over the Go main-module version; a binary
+with neither reports `devel`. Official release builders set
+`github.com/faustbrian/gox/internal/version.linked` through Go's `-X` linker
+flag. Version inspection performs no source, configuration, package, or network
+work.
 
 No persistent result cache is implemented before Phase 4. Any cache key must
 include tool version, build Go toolchain, selected source language version,

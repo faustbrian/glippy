@@ -19,6 +19,13 @@ runtime timing and thread fields are not deterministic result data and its
 example envelope carries no explicit schema version. ADR 0011 records Gox's
 deliberate versioned formatter-report boundary.
 
+Version behavior was refreshed on 2026-08-11 against Oxc commit
+[`fed2b90`](https://github.com/oxc-project/oxc/commit/fed2b900ebca2deafdc4fa41680ee47af09f2f28).
+Oxfmt 0.63.0 and Oxlint 1.78.0 both expose their build-owned Cargo package
+version through the CLI parser. Gox retains its contracted `version`
+subcommand, gives explicit release metadata the same authority, and defines Go
+module and `devel` fallbacks for other builds.
+
 ## Formatter Findings
 
 Oxfmt separates language parsing and lowering, a language-neutral document IR,
