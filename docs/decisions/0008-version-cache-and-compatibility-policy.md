@@ -49,10 +49,11 @@ valid values for one key fail as nondeterministic instead of overwriting one
 another. Rooted filesystem operations refuse symlink traversal outside the
 cache. Cache data remains disposable and is never the only source of results.
 
-This foundation does not yet cache formatter or analysis results. Consumer
-wiring, stable `objectpath` identity for persisted object facts, eviction,
-platform evidence for hard-link publication, and warm-run performance claims
-remain deferred.
+This foundation does not yet cache formatter or analysis results. Object facts
+now have package-bound canonical `objectpath` identity across independent type
+graphs, while fact snapshot serialization, consumer wiring, eviction, platform
+evidence for hard-link publication, and warm-run performance claims remain
+deferred.
 
 Formatter output changes are user-visible compatibility changes. They require
 construct-specific before/after documentation and updated corpus evidence.

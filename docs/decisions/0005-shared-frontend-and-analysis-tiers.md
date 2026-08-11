@@ -125,8 +125,11 @@ cross an intermediate alias boundary while irrelevant unexported functions are
 dropped. Exports for nil or foreign objects fail. Enumeration is canonical and
 returns decoded copies, using encoded fact bytes to break ties between distinct
 synthetic objects with otherwise identical source identity. Persistent object
-facts remain deferred because a cache must bind stable `objectpath` identities
-and export-data invalidation instead of retaining process pointers.
+facts now have a stable identity primitive that binds package paths to canonical
+x/tools `objectpath` values and resolves them against a newly loaded type graph.
+Objects outside the package API graph fail closed. Snapshot serialization,
+cache consumer wiring, and export-data invalidation remain deferred; process
+pointers are never persistence identities.
 
 Rules skip generated files unless their metadata opts in. Packages with type
 errors are also skipped by default; a types-tier or CFG-tier rule may explicitly

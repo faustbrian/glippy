@@ -405,8 +405,8 @@ overapproximation; and enumeration returns independent facts in canonical
 physical and encoded-value order. A real transitive x/tools `ctrlflow`
 prerequisite proves a no-return method fact across an intermediate type alias.
 Nil and foreign objects, undeclared types, and nondeterministic encodings fail
-closed. Persistent object identity and cache invalidation remain open, and the
-Phase 2 gates keep overall progress at 45%.
+closed. Persistent fact serialization and cache invalidation remain open, and
+the Phase 2 gates keep overall progress at 45%.
 
 The Phase 4 persistent-cache foundation now provides versioned canonical keys
 for toolchain, language, configuration, rule, build-selection, environment,
@@ -415,6 +415,14 @@ inputs. Its rooted store bounds entries, verifies embedded key, length, and
 payload digest, treats corruption as a miss, repairs through recomputation, and
 uses create-if-absent hard-link publication so concurrent different values fail
 instead of silently replacing one another. No formatter or analysis consumer
-uses the store yet; stable persisted object identity, eviction, platform
+uses the store yet; fact snapshot serialization, eviction, platform
 evidence, and warm-cache benchmarks remain open. Progress stays 45% behind the
 Phase 2 gates.
+
+Persistent object facts now have process-independent identity through an owning
+package path and canonical x/tools `objectpath`. Package objects, named types,
+methods, fields, type parameters, parameters, and results resolve to the exact
+corresponding object after an independent type check; nil, predeclared, local,
+unexported package variables, mismatched packages, and malformed paths fail
+closed. Fact snapshot serialization, cache consumer wiring, and complete
+invalidation evidence remain open. Progress stays 45%.

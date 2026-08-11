@@ -60,6 +60,12 @@ entry MUST therefore degrade to normal computation.
 The key and rooted store are implemented, but no formatter or analyzer result
 uses them yet. Gox MUST NOT claim warm persistent-cache performance or completed
 invalidation until an integrated consumer supplies the complete identity above
-and passes hit, miss, corruption, and invalidation tests. Persistent object
-facts additionally require stable `objectpath` identity; process-local
-`types.Object` pointers MUST NOT be serialized as cache identity.
+and passes hit, miss, corruption, and invalidation tests.
+
+Persistent object identity is the owning package path plus the canonical
+x/tools `objectpath`. It is proven across independent type checks for package
+objects, named types, methods, fields, type parameters, parameters, and results.
+Objects without a stable API path fail closed. A persisted identity MUST resolve
+against a newly loaded package with the same package path; process-local
+`types.Object` pointers MUST NOT be serialized as cache identity. Fact snapshot
+serialization and cache integration remain deferred.

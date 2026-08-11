@@ -378,8 +378,11 @@ physical-position, object-identity, fact-type, and encoded-value order. The
 encoded value MUST provide the final stable tie-breaker for distinct synthetic
 objects whose other observable identity fields are equal. Object fact
 persistence across runs remains deferred until cache serialization defines
-stable `objectpath` identity and invalidation; run-local interoperability MUST
-NOT be presented as persistent fact caching.
+invalidation and a fact snapshot format. Stable object identity MUST use the
+owning package path plus the canonical x/tools `objectpath`, MUST resolve
+against the newly loaded package, and MUST reject nil, predeclared, local, and
+otherwise unreachable objects. Run-local interoperability and identity support
+alone MUST NOT be presented as persistent fact caching.
 
 An ill-typed selected root MUST retain native metadata eligibility. If native
 metadata admits type errors, every analyzer step MUST declare
