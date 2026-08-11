@@ -21,7 +21,7 @@ type PackageResult struct {
 }
 
 // RunPackages resolves a typed rule plan, loads its maximum prerequisite once,
-// and combines syntax, types, and CFG diagnostics before applying suppressions.
+// and combines syntax, types, CFG, and SSA diagnostics before suppressing.
 func RunPackages(
 	ctx context.Context,
 	registry *rules.Registry,
@@ -50,7 +50,7 @@ func RunPackages(
 	}
 	for _, selected := range selection {
 		switch selected.Requirement {
-		case rules.RequireSyntax, rules.RequireTypes, rules.RequireControlFlow:
+		case rules.RequireSyntax, rules.RequireTypes, rules.RequireControlFlow, rules.RequireSSA:
 		default:
 			return result, fmt.Errorf(
 				"selected rule %q requires %s; %s rules are not implemented by package analysis",
@@ -62,8 +62,8 @@ func RunPackages(
 	}
 	switch result.Requirement {
 	case rules.RequireLexical, rules.RequireSyntax:
-		return result, fmt.Errorf("package analysis requires at least one types-tier or CFG-tier rule")
-	case rules.RequireTypes, rules.RequireControlFlow:
+		return result, fmt.Errorf("package analysis requires at least one types-tier, CFG-tier, or SSA-tier rule")
+	case rules.RequireTypes, rules.RequireControlFlow, rules.RequireSSA:
 	default:
 		return result, fmt.Errorf("package analysis has invalid requirement %d", result.Requirement)
 	}
@@ -88,6 +88,7 @@ func RunPackages(
 	syntaxSelection := selectRequirement(selection, rules.RequireSyntax)
 	typesSelection := selectRequirement(selection, rules.RequireTypes)
 	controlFlowSelection := selectRequirement(selection, rules.RequireControlFlow)
+	ssaSelection := selectRequirement(selection, rules.RequireSSA)
 	typedDiagnostics, err := RunTypes(ctx, loaded, registry, typesSelection)
 	if err != nil {
 		return result, err
@@ -107,6 +108,14 @@ func RunPackages(
 			diagnostic,
 		)
 	}
+	ssaDiagnostics, err := RunSSA(ctx, loaded, registry, ssaSelection)
+	if err != nil {
+		return result, err
+	}
+	ssaByPath := make(map[string][]rules.Diagnostic)
+	for _, diagnostic := range ssaDiagnostics {
+		ssaByPath[diagnostic.Path] = append(ssaByPath[diagnostic.Path], diagnostic)
+	}
 
 	for _, work := range files {
 		if err := ctx.Err(); err != nil {
@@ -121,6 +130,8 @@ func RunPackages(
 		delete(typedByPath, file.Path())
 		diagnostics = append(diagnostics, controlFlowByPath[file.Path()]...)
 		delete(controlFlowByPath, file.Path())
+		diagnostics = append(diagnostics, ssaByPath[file.Path()]...)
+		delete(ssaByPath, file.Path())
 		diagnostics = OrderDiagnostics(diagnostics)
 
 		index, problems := suppressions.Parse(file, suppressions.ParseOptions{
@@ -144,6 +155,9 @@ func RunPackages(
 	}
 	if len(controlFlowByPath) != 0 {
 		return result, fmt.Errorf("control-flow diagnostics reference an unselected package source")
+	}
+	if len(ssaByPath) != 0 {
+		return result, fmt.Errorf("SSA diagnostics reference an unselected package source")
 	}
 	return result, nil
 }

@@ -31,6 +31,10 @@ type cliControlFlowRule struct {
 	metadata rules.Metadata
 }
 
+type cliSSARule struct {
+	metadata rules.Metadata
+}
+
 type cliFixRule struct {
 	metadata    rules.Metadata
 	target      string
@@ -114,6 +118,20 @@ func (r cliControlFlowRule) RunControlFlow(ctx *rules.ControlFlowContext) ([]rul
 	return []rules.Finding{{
 		MessageKey: "cfg-function",
 		Message:    "function requires control-flow review",
+		Range:      sourceRange,
+	}}, nil
+}
+
+func (r cliSSARule) Metadata() rules.Metadata { return r.metadata }
+
+func (r cliSSARule) RunSSA(ctx *rules.SSAContext) ([]rules.Finding, error) {
+	sourceRange, err := ctx.Range(ctx.Syntax())
+	if err != nil {
+		return nil, err
+	}
+	return []rules.Finding{{
+		MessageKey: "ssa-function",
+		Message:    "function requires SSA review",
 		Range:      sourceRange,
 	}}, nil
 }
@@ -449,6 +467,40 @@ func TestRunLintCheckRoutesControlFlowRulesThroughPackageAnalysis(t *testing.T) 
 	}
 	if !bytes.Equal(got, input) {
 		t.Fatalf("runLintCheck(CFG) mutated source: %q", got)
+	}
+}
+
+func TestRunLintCheckRoutesSSARulesThroughPackageAnalysis(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	input := []byte("package project\nfunc run() {}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{paths: []string{path}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLISSARegistry(t),
+	)
+	want := path + ":2:1: warn[ssa-function]: function requires SSA review\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf("runLintCheck(SSA) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("runLintCheck(SSA) mutated source: %q", got)
 	}
 }
 
@@ -1564,6 +1616,25 @@ func newCLIControlFlowRegistry(t *testing.T) *rules.Registry {
 		Presets:          []rules.Preset{rules.PresetCorrectness},
 		MinimumGoVersion: "1.22",
 		Requirement:      rules.RequireControlFlow,
+		Categories:       []rules.Category{rules.CategoryCorrectness},
+		Examples:         []rules.Example{{Incorrect: "func bad() {}", Correct: "func good() {}"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return registry
+}
+
+func newCLISSARegistry(t *testing.T) *rules.Registry {
+	t.Helper()
+	registry, err := rules.NewRegistry(cliSSARule{metadata: rules.Metadata{
+		ID:               "ssa-function",
+		Summary:          "reports SSA functions",
+		Documentation:    "Reports functions that require SSA review.",
+		DefaultSeverity:  rules.SeverityWarn,
+		Presets:          []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion: "1.22",
+		Requirement:      rules.RequireSSA,
 		Categories:       []rules.Category{rules.CategoryCorrectness},
 		Examples:         []rules.Example{{Incorrect: "func bad() {}", Correct: "func good() {}"}},
 	}})

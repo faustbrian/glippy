@@ -107,6 +107,22 @@ func TestRegistryRejectsIncompleteOrInconsistentMetadata(t *testing.T) {
 			wantError: "control flow rule must not declare node interests",
 		},
 		{
+			name: "SSA rule with node interests",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.Requirement = rules.RequireSSA
+			},
+			wantError: "SSA rule must not declare node interests",
+		},
+		{
+			name: "SSA rule with type-error policy",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.Requirement = rules.RequireSSA
+				metadata.NodeInterests = nil
+				metadata.RunDespiteTypeErrors = true
+			},
+			wantError: "SSA rule cannot run on type-error packages",
+		},
+		{
 			name: "syntax rule with type-error policy",
 			mutate: func(metadata *rules.Metadata) {
 				metadata.RunDespiteTypeErrors = true

@@ -9,6 +9,7 @@ import (
 
 	"github.com/faustbrian/gox/internal/source"
 	"golang.org/x/tools/go/cfg"
+	"golang.org/x/tools/go/ssa"
 )
 
 // Requirement is the most expensive representation a rule requires.
@@ -173,6 +174,13 @@ type ControlFlowRule interface {
 	RunControlFlow(*ControlFlowContext) ([]Finding, error)
 }
 
+// SSARule runs once for each source function through a program shared with
+// every enabled SSA rule.
+type SSARule interface {
+	Rule
+	RunSSA(*SSAContext) ([]Finding, error)
+}
+
 // Context is the immutable per-file syntax rule context.
 type Context struct {
 	file *source.File
@@ -200,6 +208,118 @@ type ControlFlowContext struct {
 	function     ast.Node
 	body         *ast.BlockStmt
 	graph        *cfg.CFG
+}
+
+// SSAContext binds one source function to its shared SSA program, typed
+// package, and exact immutable physical source.
+type SSAContext struct {
+	typesContext *TypesContext
+	program      *ssa.Program
+	ssaPackage   *ssa.Package
+	function     *ssa.Function
+	syntax       ast.Node
+}
+
+// NewSSAContext constructs one read-only SSA rule context.
+func NewSSAContext(
+	typesContext *TypesContext,
+	program *ssa.Program,
+	ssaPackage *ssa.Package,
+	function *ssa.Function,
+	syntax ast.Node,
+) *SSAContext {
+	return &SSAContext{
+		typesContext: typesContext,
+		program:      program,
+		ssaPackage:   ssaPackage,
+		function:     function,
+		syntax:       syntax,
+	}
+}
+
+// Program returns the shared read-only SSA program for the package load.
+func (c *SSAContext) Program() *ssa.Program {
+	if c == nil {
+		return nil
+	}
+	return c.program
+}
+
+// SSAPackage returns the shared read-only SSA package for the function.
+func (c *SSAContext) SSAPackage() *ssa.Package {
+	if c == nil {
+		return nil
+	}
+	return c.ssaPackage
+}
+
+// Function returns the shared read-only SSA function.
+func (c *SSAContext) Function() *ssa.Function {
+	if c == nil {
+		return nil
+	}
+	return c.function
+}
+
+// Syntax returns the function declaration or literal represented by Function.
+func (c *SSAContext) Syntax() ast.Node {
+	if c == nil {
+		return nil
+	}
+	return c.syntax
+}
+
+// IllTyped reports whether package loading encountered type errors.
+func (c *SSAContext) IllTyped() bool {
+	return c != nil && c.typesContext.IllTyped()
+}
+
+// File returns the exact immutable source version for the current package AST.
+func (c *SSAContext) File() *source.File {
+	if c == nil {
+		return nil
+	}
+	return c.typesContext.File()
+}
+
+// PackageID returns the opaque go/packages identity for the current package.
+func (c *SSAContext) PackageID() string {
+	if c == nil {
+		return ""
+	}
+	return c.typesContext.PackageID()
+}
+
+// Package returns the shared read-only go/types package.
+func (c *SSAContext) Package() *types.Package {
+	if c == nil {
+		return nil
+	}
+	return c.typesContext.Package()
+}
+
+// Info returns the shared read-only type information for package AST nodes.
+func (c *SSAContext) Info() *types.Info {
+	if c == nil {
+		return nil
+	}
+	return c.typesContext.Info()
+}
+
+// Range maps a package AST node to its current physical source range.
+func (c *SSAContext) Range(node ast.Node) (source.Range, error) {
+	if c == nil || c.typesContext == nil {
+		return source.Range{}, fmt.Errorf("SSA range requires a context")
+	}
+	return c.typesContext.Range(node)
+}
+
+// PositionRange maps package positions to the exact current physical source.
+func (c *SSAContext) PositionRange(start, end token.Pos) (source.Range, error) {
+	if c == nil || c.typesContext == nil {
+		return source.Range{}, fmt.Errorf("SSA range requires a context")
+	}
+	return c.typesContext.PositionRange(start, end)
 }
 
 // NewControlFlowContext constructs one read-only control-flow rule context.

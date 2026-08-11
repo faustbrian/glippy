@@ -19,6 +19,7 @@ func TestRunPackagesCombinesSyntaxAndTypesBeforeSuppressing(t *testing.T) {
 	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
 	path := filepath.Join(root, "project.go")
 	writeTypesFixture(t, path, `//gox:ignore-file cfg-function -- reviewed file
+//gox:ignore-file ssa-function -- reviewed file
 package project
 
 //gox:ignore typed-call -- reviewed here
@@ -61,7 +62,17 @@ func target() {}
 			return []rules.Finding{{MessageKey: "cfg-function", Message: "cfg function", Range: range_}}, nil
 		},
 	}
-	registry, err := rules.NewRegistry(typed, syntax, controlFlow)
+	ssaRule := ssaRule{
+		metadata: ssaMetadata("ssa-function"),
+		run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
+			range_, err := ctx.Range(ctx.Syntax())
+			if err != nil {
+				return nil, err
+			}
+			return []rules.Finding{{MessageKey: "ssa-function", Message: "SSA function", Range: range_}}, nil
+		},
+	}
+	registry, err := rules.NewRegistry(typed, syntax, controlFlow, ssaRule)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,10 +88,11 @@ func target() {}
 	}
 	wantSelection := []rules.Selection{
 		{ID: "cfg-function", Severity: rules.SeverityWarn, Requirement: rules.RequireControlFlow},
+		{ID: "ssa-function", Severity: rules.SeverityWarn, Requirement: rules.RequireSSA},
 		{ID: "syntax-call", Severity: rules.SeverityWarn, Requirement: rules.RequireSyntax},
 		{ID: "typed-call", Severity: rules.SeverityWarn, Requirement: rules.RequireTypes},
 	}
-	if result.Requirement != rules.RequireControlFlow || !reflect.DeepEqual(result.Selection, wantSelection) {
+	if result.Requirement != rules.RequireSSA || !reflect.DeepEqual(result.Selection, wantSelection) {
 		t.Fatalf("RunPackages() plan = %s, %#v", result.Requirement, result.Selection)
 	}
 	if len(result.LoadDiagnostics) != 0 || len(result.Files) != 1 {
@@ -91,7 +103,7 @@ func target() {}
 		t.Fatalf("RunPackages() sources = %#v, %t", captured, found)
 	}
 	fileResult := result.Files[0]
-	if fileResult.Path != path || fileResult.Requirement != rules.RequireControlFlow ||
+	if fileResult.Path != path || fileResult.Requirement != rules.RequireSSA ||
 		!reflect.DeepEqual(fileResult.Selection, wantSelection) {
 		t.Fatalf("RunPackages() file = %#v", fileResult)
 	}
@@ -101,11 +113,14 @@ func target() {}
 		fileResult.Diagnostics[2].RuleID != "typed-call" {
 		t.Fatalf("RunPackages() diagnostics = %#v", fileResult.Diagnostics)
 	}
-	if len(fileResult.Suppressed) != 4 ||
+	if len(fileResult.Suppressed) != 7 ||
 		fileResult.Suppressed[0].Diagnostic.RuleID != "cfg-function" ||
-		fileResult.Suppressed[1].Diagnostic.RuleID != "typed-call" ||
-		fileResult.Suppressed[2].Diagnostic.RuleID != "cfg-function" ||
+		fileResult.Suppressed[1].Diagnostic.RuleID != "ssa-function" ||
+		fileResult.Suppressed[2].Diagnostic.RuleID != "typed-call" ||
 		fileResult.Suppressed[3].Diagnostic.RuleID != "cfg-function" ||
+		fileResult.Suppressed[4].Diagnostic.RuleID != "ssa-function" ||
+		fileResult.Suppressed[5].Diagnostic.RuleID != "cfg-function" ||
+		fileResult.Suppressed[6].Diagnostic.RuleID != "ssa-function" ||
 		len(fileResult.UnusedSuppressions) != 0 || len(fileResult.SuppressionProblems) != 0 {
 		t.Fatalf("RunPackages() suppressions = %#v", fileResult)
 	}
@@ -129,7 +144,7 @@ func TestRunPackagesRequiresTypesBeforeLoading(t *testing.T) {
 		analysis.RunOptions{Preset: rules.PresetCorrectness},
 		analysis.PackageLoadOptions{},
 	)
-	if err == nil || !strings.Contains(err.Error(), "requires at least one types-tier or CFG-tier rule") {
+	if err == nil || !strings.Contains(err.Error(), "requires at least one types-tier, CFG-tier, or SSA-tier rule") {
 		t.Fatalf("RunPackages() error = %v", err)
 	}
 }

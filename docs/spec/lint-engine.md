@@ -44,6 +44,22 @@ undefined order. A rule MUST NOT select or order diagnostics from raw block
 iteration order. Reporter-visible diagnostics MUST be canonically ordered by
 physical source identity and diagnostic fields after all rule callbacks.
 
+Every native SSA-tier rule MUST NOT declare node interests and MUST NOT opt
+into type-error packages. The SSA runner MUST use `x/tools/go/ssa` through one
+`ssautil.Packages` program built from only the well-typed selected root
+packages containing a physical source eligible for at least one enabled SSA
+rule. It MUST create dependency package shells from the shared type graph but
+MUST NOT load or build dependency syntax speculatively.
+
+The SSA runner MUST build that program once and run each eligible rule once for
+every source function declaration and function literal in canonical physical
+file and function-position order. All SSA rules for one invocation MUST receive
+the same program; rules for one package MUST receive the same SSA package; and
+rules for one source function MUST receive the same SSA function, typed values,
+and exact immutable physical source. An SSA rule MUST NOT mutate those shared
+values. Synthetic wrappers and range-over-function helpers MUST NOT become
+independent source-rule callbacks.
+
 The scheduler MUST compute the maximum required representation across enabled
 rules and MUST NOT construct types, CFG, or SSA speculatively. Syntax rules
 MUST share one direct preorder AST traversal per file and receive only nodes
@@ -105,14 +121,14 @@ exact physical file, and cross-file or invalid byte ranges MUST fail the run.
 
 The suppression-aware package driver MUST resolve preset and severity policy
 once and MUST replace the loader requirement with the maximum enabled tier. It
-MUST require at least one types-tier or CFG-tier rule; syntax-only work MUST
-remain on the file-owned driver and MUST NOT invoke `go/packages`. Enabled
-lexical or SSA rules MUST fail before package loading rather than being
+MUST require at least one types-tier, CFG-tier, or SSA-tier rule; syntax-only
+work MUST remain on the file-owned driver and MUST NOT invoke `go/packages`.
+Enabled lexical rules MUST fail before package loading rather than being
 silently skipped from a mixed selection.
 
 For one successful typed load, the package driver MUST retain canonical package
-and type diagnostics plus source-model problems, run syntax, types, and CFG
-rules only at their declared tiers, combine and order their diagnostics by
+and type diagnostics plus source-model problems, run syntax, types, CFG, and
+SSA rules only at their declared tiers, combine and order their diagnostics by
 exact source identity, and apply each physical file's suppression index once.
 Invalid diagnostic-only sources MUST remain represented by those distinct
 problem channels but MUST NOT produce an analyzed-file record. Package-local

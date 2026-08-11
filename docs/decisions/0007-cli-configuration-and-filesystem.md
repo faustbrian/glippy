@@ -36,10 +36,11 @@ revisit boundary are recorded in
 The lint CLI resolves configuration before selecting its analysis boundary.
 Syntax-only files, directories, and terminal `...` patterns reuse deterministic
 physical-file discovery and cannot invoke `go/packages`. A selection containing
-types-tier or CFG-tier rules instead converts its inputs into one read-only,
-test-aware package request rooted at the common project boundary, then uses the
-shared package driver and typed reporters. Package prerequisite and source-model
-problems map to source-error exit code 2 while retaining valid partial results.
+types-tier, CFG-tier, or SSA-tier rules instead converts its inputs into one
+read-only, test-aware package request rooted at the common project boundary,
+then uses the shared package driver and typed reporters. Package prerequisite
+and source-model problems map to source-error exit code 2 while retaining valid
+partial results.
 
 One typed invocation accepts only one project root and configuration. This
 avoids silently applying one package graph to heterogeneous policy until

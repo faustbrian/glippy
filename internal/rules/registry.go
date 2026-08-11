@@ -187,6 +187,12 @@ func validateMetadata(metadata Metadata) error {
 	if metadata.Requirement == RequireControlFlow && len(metadata.NodeInterests) != 0 {
 		return fmt.Errorf("%s: control flow rule must not declare node interests", metadata.ID)
 	}
+	if metadata.Requirement == RequireSSA && len(metadata.NodeInterests) != 0 {
+		return fmt.Errorf("%s: SSA rule must not declare node interests", metadata.ID)
+	}
+	if metadata.Requirement == RequireSSA && metadata.RunDespiteTypeErrors {
+		return fmt.Errorf("%s: SSA rule cannot run on type-error packages", metadata.ID)
+	}
 	if err := validateUnique(metadata.NodeInterests, validNodeKind, "node interest"); err != nil {
 		return fmt.Errorf("%s: %w", metadata.ID, err)
 	}

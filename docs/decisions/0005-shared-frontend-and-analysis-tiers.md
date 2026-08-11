@@ -74,6 +74,16 @@ deliberately less precise than the interprocedural facts in the upstream
 edges or complete abnormal panic flow; rules needing those contracts require
 SSA or a later reviewed control-flow extension.
 
+Native SSA-tier rules do not declare node interests or run on ill-typed
+packages. The SSA runner filters the selected roots to well-typed packages
+containing at least one physical source eligible for an enabled SSA rule, then
+uses `ssautil.Packages` to build one run-owned program. Dependencies receive
+type-backed package shells without speculative body construction. Each source
+function declaration and literal maps to its package's built `ssa.Function`;
+package initializer closures and methods are included, while synthetic wrappers
+and range-over-function helpers are not separate callbacks. Rules share the
+program, package, function, typed values, and exact source without mutation.
+
 When tests are enabled, `go/packages` may expose one production file through
 both its ordinary package and an augmented test variant. Gox analyzes that
 physical source once and prefers the ordinary package as its type owner; a
@@ -89,11 +99,11 @@ or source-model-invalid files remain diagnostic-only and are never traversed.
 
 The suppression-aware package driver is a separate entry point from the
 file-owned syntax driver. It resolves one rule selection, requires at least one
-types-tier or CFG-tier rule, overwrites the loader requirement with that
-selection's maximum tier, and performs one typed load. Unsupported lexical and
-SSA rules fail before that load rather than disappearing from a mixed
-selection. It then runs enabled syntax, types, and CFG rules over the selected
-physical roots, orders their combined diagnostics, and applies each file's
+types-tier, CFG-tier, or SSA-tier rule, overwrites the loader requirement with
+that selection's maximum tier, and performs one typed load. Unsupported
+lexical rules fail before that load rather than disappearing from a mixed
+selection. It then runs enabled syntax, types, CFG, and SSA rules over the
+selected physical roots, orders their combined diagnostics, and applies each file's
 suppression index once. Package/type diagnostics and source-model problems
 remain separate result channels. Syntax-only callers retain the existing file
 path and therefore never reach `go/packages`.
@@ -140,11 +150,10 @@ share immutable state.
 Syntax dispatch visits uninterested nodes once to avoid indexing or repeated
 walks; a secondary index requires new representative benchmark evidence.
 
-SSA construction, analyzer fact scheduling, cache reuse, package-wide typed
-rules, heterogeneous per-path package configuration, and typed fixes remain
-separate tier-runner work. A types-only request does not construct CFGs, and an
-SSA request currently shares the typed prerequisite graph without constructing
-SSA.
+Analyzer fact scheduling, cache reuse, package-wide typed rules, heterogeneous
+per-path package configuration, and typed fixes remain separate tier-runner
+work. Types-only requests do not construct CFG or SSA, and CFG-only requests do
+not construct SSA.
 
 The typed package AST and physical source model use separate parser file sets.
 The package parser preserves `go/packages`' existing AST object-resolution
