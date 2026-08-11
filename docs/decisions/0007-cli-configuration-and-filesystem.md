@@ -48,6 +48,15 @@ per-path package configuration has an explicit design. Typed fixes and
 post-fix package reloads remain unsupported and are rejected before source
 mutation; syntax-only recursive fixes retain the existing file transactions.
 
+Combined `check` uses the same tier-sensitive planning. Syntax selections keep
+the physical file driver. A types, CFG, or SSA selection performs one package
+load, and both formatting and linting consume only the immutable sources
+captured by that load. Package prerequisite and source-model problems remain
+completed source-error results alongside valid formatting outcomes. Text is
+buffered until reporting succeeds, while JSON retains those typed problem
+channels and exact source digests. This prevents a second filesystem read from
+giving formatting and deep analysis different source versions.
+
 ## Alternatives Rejected
 
 - Default in-place `fmt`: unsafe and surprising for stdin/editor workflows.

@@ -328,6 +328,18 @@ shape changes. Default Go 1.26.5 vet accepted the proving defect, while focused
 tests cover dereference, comparison, panic, conversion, negative, generated,
 type-error, suppression, severity, no-fix, lint, and explain behavior. Explicit
 non-mutating dogfood over 335 Gox and x/tools files produced no findings or
-tool failures. The rule remains opt-in because making SSA part of the default
-preset would currently regress standalone-file, combined-check, and fix-only
-planning. Overall progress remains 45% behind the existing Phase 2 gates.
+tool failures. The rule remains opt-in because its default signal and cost have
+not been accepted and typed fixes remain unsupported. Overall progress remains
+45% behind the existing Phase 2 gates.
+
+Combined `gox check` now shares the tier-sensitive lint plan. Syntax-only
+selections retain physical discovery, while types, CFG, or SSA selections use
+one read-only, test-aware package load. Formatting consumes the same immutable
+load-owned bytes as every analysis tier, so no later filesystem read can split
+their source identities. Text and versioned JSON report formatting differences,
+deep diagnostics, package prerequisites, and source-model problems without
+mutation; exact digests bind each format result and diagnostic. Terminal `...`
+patterns now work for combined checks, and focused SSA, type-error,
+invalid-source, reporter, and non-mutation coverage passes. Progress remains
+45% behind the existing Phase 2 naming, release, platform, and approved
+external-adoption gates.

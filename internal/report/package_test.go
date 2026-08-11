@@ -58,6 +58,39 @@ func TestNewPackageLintResultMapsStableProblemChannels(t *testing.T) {
 	}
 }
 
+func TestNewPackageCheckResultCombinesFormattingAndPackageProblems(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("/project/source.go", []byte("package project\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := NewPackageCheckResult(
+		"source_error",
+		2,
+		true,
+		analysis.PackageResult{
+			Files: []analysis.Result{{Path: file.Path(), Digest: file.Digest()}},
+			LoadDiagnostics: []analysis.PackageDiagnostic{{
+				PackageID: "example.com/project",
+				Position:  "/project/source.go:1:1",
+				Message:   "type prerequisite failed",
+				Kind:      packages.TypeError,
+			}},
+		},
+		[]CheckFormatOutcome{{Path: file.Path(), Digest: file.Digest(), Different: true}},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary.Files != 1 || result.Summary.FormattingDifferences != 1 ||
+		result.Summary.PackageDiagnostics != 1 || len(result.PackageDiagnostics) != 1 ||
+		len(result.Files) != 1 || result.Files[0].FormatStatus != CheckFormatDifferent {
+		t.Fatalf("NewPackageCheckResult() = %#v", result)
+	}
+}
+
 func TestRenderPackageLintTextOrdersDistinctProblemChannels(t *testing.T) {
 	t.Parallel()
 

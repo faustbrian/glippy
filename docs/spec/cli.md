@@ -131,26 +131,38 @@ describes the validated in-memory coordination result; the file status controls
 whether replacement was confirmed, refused as stale, or may have completed.
 Stale replacement records also reject each coordinated fix with the stable
 `stale-source` reason so text consumers receive an actionable explanation.
-`check` accepts explicit files and directories, defaults to the current
-directory, and accepts `--reporter=text|json` plus an optional explicit
-configuration path. It performs one sorted discovery and configuration pass,
-reads each selected file once, and runs formatting and lint analysis against
-the same immutable source version. It MUST never write source, permissions, or
-modification times.
+`check` accepts explicit files, directories, and filesystem package patterns
+ending in `...`; defaults to the current directory; and accepts
+`--reporter=text|json` plus an optional explicit configuration path. It MUST
+resolve configuration and the enabled maximum analysis tier before selecting
+its input engine. Syntax-only selections use one sorted physical-file
+discovery and run formatting plus lint analysis against each immutable file
+read. A selection requiring types, CFG, or SSA MUST use the same one-root,
+one-configuration package query contract as typed `lint`; formatting and every
+analysis tier MUST consume the exact immutable sources captured by that one
+package load and MUST NOT reread them. `check` MUST never write source,
+permissions, or modification times.
 
 Text output is buffered until the complete selection succeeds. In normalized
-path order it emits `path: format differs` before any lint records for the same
-file. A source, configuration, discovery, analysis, or formatting failure MUST
-therefore emit no partial text findings. Successful clean checks are silent.
+path order it emits `path: format differs` before that file's lint records. A
+package-aware check emits all ordered formatting differences before its typed
+lint records; package prerequisite and source-model records retain the typed
+lint text contract. A source, configuration, discovery, analysis, or formatting
+tool failure MUST therefore emit no partial text findings. Package prerequisite
+or source-model problems are completed source-error results and MUST remain
+reportable with valid formatting and lint results. Successful clean checks are
+silent.
 
 Combined JSON uses command and mode `check`. Each ordered file record carries
 the normalized absolute path, source digest, and format status `unchanged` or
 `different`. Diagnostics and suppression records use the lint schema and MUST
 carry the same path and digest as their file record. The summary includes file,
 formatting-difference, visible diagnostic, suppressed diagnostic, suppression
-problem, and unused-suppression counts plus completeness. Incomplete JSON
-retains results completed before the failure. Invalid invocations requesting
-JSON MUST still receive this envelope.
+problem, unused-suppression, package-diagnostic, and source-problem counts plus
+completeness. Package-aware JSON MUST expose package diagnostics and
+source-model problems in the same stable channels as typed lint. Incomplete
+JSON retains results completed before the failure. Invalid invocations
+requesting JSON MUST still receive this envelope.
 
 Formatting inputs are file-oriented. Typed lint inputs are package-oriented;
 explicit files use exact-file queries, directories select one package, and a
@@ -211,6 +223,8 @@ Combined-check JSON reuses the lint diagnostic and suppression arrays while
 adding `formatting_differences` to the summary and `format_status` to each file.
 The format outcome and lint result for a file MUST match the same normalized
 path and source digest or report construction fails as an internal invariant.
+When package analysis is selected, combined-check JSON also reuses
+`package_diagnostics` and `source_problems` with their distinct summary counts.
 
 Lint text reports physical 1-based line and UTF-8 byte-column locations as
 `path:line:column: severity[rule-id]: message`, followed by indented related

@@ -17,6 +17,8 @@ type CheckSummary struct {
 	Suppressed            int  `json:"suppressed"`
 	SuppressionProblems   int  `json:"suppression_problems"`
 	UnusedSuppressions    int  `json:"unused_suppressions"`
+	PackageDiagnostics    int  `json:"package_diagnostics,omitempty"`
+	SourceProblems        int  `json:"source_problems,omitempty"`
 	Complete              bool `json:"complete"`
 }
 
@@ -41,16 +43,18 @@ type CheckFormatOutcome struct {
 }
 
 type CheckResult struct {
-	SchemaVersion       int                  `json:"schema_version"`
-	Command             string               `json:"command"`
-	Mode                string               `json:"mode"`
-	Outcome             Outcome              `json:"outcome"`
-	Summary             CheckSummary         `json:"summary"`
-	Files               []CheckFile          `json:"files"`
-	Diagnostics         []LintDiagnostic     `json:"diagnostics"`
-	SuppressionProblems []SuppressionProblem `json:"suppression_problems"`
-	UnusedSuppressions  []UnusedSuppression  `json:"unused_suppressions"`
-	Errors              []Error              `json:"errors"`
+	SchemaVersion       int                     `json:"schema_version"`
+	Command             string                  `json:"command"`
+	Mode                string                  `json:"mode"`
+	Outcome             Outcome                 `json:"outcome"`
+	Summary             CheckSummary            `json:"summary"`
+	Files               []CheckFile             `json:"files"`
+	Diagnostics         []LintDiagnostic        `json:"diagnostics"`
+	SuppressionProblems []SuppressionProblem    `json:"suppression_problems"`
+	UnusedSuppressions  []UnusedSuppression     `json:"unused_suppressions"`
+	PackageDiagnostics  []LintPackageDiagnostic `json:"package_diagnostics,omitempty"`
+	SourceProblems      []LintSourceProblem     `json:"source_problems,omitempty"`
+	Errors              []Error                 `json:"errors"`
 }
 
 // NewCheckResult validates and combines formatting and lint outcomes produced
@@ -67,6 +71,27 @@ func NewCheckResult(
 	if err != nil {
 		return CheckResult{}, err
 	}
+	return newCheckResult(lintResult, formats)
+}
+
+// NewPackageCheckResult combines formatting with package-aware lint outcomes
+// produced from the package loader's exact source versions.
+func NewPackageCheckResult(
+	category string,
+	exitCode int,
+	complete bool,
+	packageResult analysis.PackageResult,
+	formats []CheckFormatOutcome,
+	errs []Error,
+) (CheckResult, error) {
+	lintResult, err := NewPackageLintResult("check", category, exitCode, complete, packageResult, errs)
+	if err != nil {
+		return CheckResult{}, err
+	}
+	return newCheckResult(lintResult, formats)
+}
+
+func newCheckResult(lintResult LintResult, formats []CheckFormatOutcome) (CheckResult, error) {
 	orderedFormats := slices.Clone(formats)
 	sort.Slice(orderedFormats, func(left, right int) bool {
 		return orderedFormats[left].Path < orderedFormats[right].Path
@@ -89,12 +114,16 @@ func NewCheckResult(
 			Suppressed:          lintResult.Summary.Suppressed,
 			SuppressionProblems: lintResult.Summary.SuppressionProblems,
 			UnusedSuppressions:  lintResult.Summary.UnusedSuppressions,
+			PackageDiagnostics:  lintResult.Summary.PackageDiagnostics,
+			SourceProblems:      lintResult.Summary.SourceProblems,
 			Complete:            lintResult.Summary.Complete,
 		},
 		Files:               make([]CheckFile, len(orderedFormats)),
 		Diagnostics:         lintResult.Diagnostics,
 		SuppressionProblems: lintResult.SuppressionProblems,
 		UnusedSuppressions:  lintResult.UnusedSuppressions,
+		PackageDiagnostics:  lintResult.PackageDiagnostics,
+		SourceProblems:      lintResult.SourceProblems,
 		Errors:              lintResult.Errors,
 	}
 	for index, format := range orderedFormats {
