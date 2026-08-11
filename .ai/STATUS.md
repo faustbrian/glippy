@@ -570,3 +570,24 @@ validation-to-open race in the current Darwin runtime evidence. Linux and
 Windows runtime evidence for this path remains open, and the Phase 2 naming,
 release, platform-runtime, and approved external-adoption gates keep overall
 progress at 45%.
+
+The Phase 2 prototype release builder now produces path-trimmed, cgo-free
+Darwin arm64 and Linux arm64 binaries with explicit linked versions inside
+normalized tar/gzip archives. A versioned manifest binds the complete source
+revision, exact Go toolchain, target, size, and SHA-256 digest; a sorted checksum
+file covers every archive and the manifest. The builder verifies exact `HEAD`
+with no tracked, untracked, or ignored content, rejects external local module
+replacements, builds from an immutable Git archive with a fresh invocation-owned
+Go cache, disables external cache programs and FIPS source substitution, and
+refuses existing output. Git validation and export ignore ambient repository
+routing and user/system configuration. Artifact writes and cleanup use a pinned
+private directory, followed by atomic no-replacement publication to the
+requested path. All fallible output closing and source/cache cleanup completes
+before publication, preventing a returned cleanup error from coexisting with a
+published release. The builder disables ambient Go workspace, environment-file,
+toolchain-download, and implicit VCS inputs and performs no signing or remote
+publication. Integration evidence builds the complete target set twice,
+compares every output byte, verifies the archives and checksums, and executes
+the extracted current-host binary's version command. The final name, an
+independent Linux-host artifact rehearsal, signing/publication, Windows runtime,
+and approved external adoption remain open, so progress stays 45%.

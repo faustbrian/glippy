@@ -36,6 +36,27 @@ with neither reports `devel`. Official release builders set
 flag. Version inspection performs no source, configuration, package, or network
 work.
 
+The maintainer-only prototype release builder admits only the runtime-proven
+Darwin arm64 and Linux arm64 targets. It uses the selected local Go toolchain,
+disables ambient workspace, environment-file, toolchain-download, and VCS
+metadata, builds without cgo, trims paths, and links the exact canonical
+version. Deterministic tar/gzip metadata, a versioned JSON manifest, and sorted
+SHA-256 checksums make two identical-input builds byte-comparable. The builder
+requires a repository with no tracked, untracked, or ignored working-tree
+content whose `HEAD` equals the complete supplied revision. Local module
+replacements must resolve within that same root. Builds use an immutable Git
+archive of the supplied object. Git validation and export ignore ambient
+repository-routing variables and user/system Git configuration. Builds use an
+invocation-owned empty Go build cache, with external cache programs and FIPS
+source substitution disabled. The build environment admits only required host
+paths plus explicitly pinned Go settings, then binds the revision and exact Go
+toolchain version into the output. A pinned private directory owns all artifact
+writes and failure cleanup. Completed artifacts are atomically renamed to the
+requested path with a platform no-replacement primitive only after all fallible
+output closing and temporary-resource cleanup succeeds. The builder neither
+signs nor publishes remotely and must be updated after the final product-name
+decision.
+
 The Phase 4 cache foundation uses a versioned SHA-256 key over canonical,
 length-prefixed fields. Every consumer must supply its result namespace, tool
 version, build Go toolchain, selected source language version, configuration
