@@ -33,6 +33,11 @@ type cliPostFixFailureRule struct {
 	cliFixRule
 }
 
+type cliAlternativeFixRule struct {
+	cliFixRule
+	secondSafety rules.FixSafety
+}
+
 type lintMutationContext struct {
 	context.Context
 	calls    int
@@ -114,6 +119,18 @@ func (r cliPostFixFailureRule) RunSyntax(ctx *rules.Context, node ast.Node) ([]r
 		}
 	}
 	return r.cliFixRule.RunSyntax(ctx, node)
+}
+
+func (r cliAlternativeFixRule) RunSyntax(ctx *rules.Context, node ast.Node) ([]rules.Finding, error) {
+	findings, err := r.cliFixRule.RunSyntax(ctx, node)
+	if err != nil || len(findings) == 0 {
+		return findings, err
+	}
+	alternative := findings[0].Fixes[0]
+	alternative.Name = "alternative"
+	alternative.Safety = r.secondSafety
+	findings[0].Fixes = append(findings[0].Fixes, alternative)
+	return findings, nil
 }
 
 func TestRunLintCheckAnalyzesConfiguredSyntaxRulesWithoutMutation(t *testing.T) {
@@ -595,6 +612,179 @@ func TestRunLintFixLeavesSuggestionDiagnosticsUnchanged(t *testing.T) {
 	}
 	if !bytes.Equal(got, input) {
 		t.Fatalf("runLintFix() changed suggestion-only source: %q", got)
+	}
+}
+
+func TestRunLintFixAppliesOnlyExplicitSuggestionFixes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){target()}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fixSuggestions: true, paths: []string{path}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLIFixRegistry(t, rules.FixSuggestion),
+	)
+
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("runLintFix(suggestion) exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+	want := "package sample\n\nfunc run() {\n\tprimary()\n}\n"
+	if got, err := os.ReadFile(path); err != nil || string(got) != want {
+		t.Fatalf("runLintFix(suggestion) source = %q, error = %v", got, err)
+	}
+}
+
+func TestRunLintFixAppliesOnlyExplicitUnsafeFixes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){target()}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fixUnsafe: true, paths: []string{path}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLIFixRegistry(t, rules.FixUnsafe),
+	)
+
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("runLintFix(unsafe) exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+	want := "package sample\n\nfunc run() {\n\tprimary()\n}\n"
+	if got, err := os.ReadFile(path); err != nil || string(got) != want {
+		t.Fatalf("runLintFix(unsafe) source = %q, error = %v", got, err)
+	}
+}
+
+func TestParseLintInvocationAcceptsIndependentFixModes(t *testing.T) {
+	t.Parallel()
+
+	invocation, valid := parseLintInvocation([]string{
+		"lint",
+		"--fix",
+		"--fix-suggestions",
+		"--fix-unsafe",
+		"source.go",
+	})
+
+	if !valid || !invocation.fix || !invocation.fixSuggestions || !invocation.fixUnsafe ||
+		len(invocation.paths) != 1 || invocation.paths[0] != "source.go" {
+		t.Fatalf("parseLintInvocation() = %#v, %t", invocation, valid)
+	}
+}
+
+func TestRunLintExplicitFixModesUseFixReporter(t *testing.T) {
+	t.Parallel()
+
+	for _, flag := range []string{"--fix-suggestions", "--fix-unsafe"} {
+		flag := flag
+		t.Run(flag, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			path := filepath.Join(root, "source.go")
+			input := []byte("package sample\n")
+			if err := os.WriteFile(path, input, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+
+			exitCode := Run(
+				[]string{"lint", flag, "--reporter=json", path},
+				failingReader{},
+				&stdout,
+				&stderr,
+			)
+
+			if exitCode != ExitSuccess || stderr.Len() != 0 {
+				t.Fatalf("Run(lint %s) exit = %d, stderr = %q", flag, exitCode, stderr.String())
+			}
+			var result goxreport.LintResult
+			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+				t.Fatalf("decode lint %s JSON: %v; output = %q", flag, err, stdout.String())
+			}
+			if result.Mode != "fix" || !result.Summary.Complete || result.Outcome.ExitCode != ExitSuccess {
+				t.Fatalf("Run(lint %s) result = %#v", flag, result)
+			}
+			if got, err := os.ReadFile(path); err != nil || !bytes.Equal(got, input) {
+				t.Fatalf("Run(lint %s) source = %q, error = %v", flag, got, err)
+			}
+		})
+	}
+}
+
+func TestRunLintFixPrevalidatesAmbiguousEnabledAlternativesBeforeWriting(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	firstPath := filepath.Join(root, "a.go")
+	firstInput := []byte("package sample\nfunc first(){firstTarget()}\n")
+	if err := os.WriteFile(firstPath, firstInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secondPath := filepath.Join(root, "z.go")
+	secondInput := []byte("package sample\nfunc second(){secondTarget()}\n")
+	if err := os.WriteFile(secondPath, secondInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstRule := newCLIFixRuleFor("first-fix", "firstTarget", "primary", rules.FixSafe)
+	secondRule := cliAlternativeFixRule{
+		cliFixRule:   newCLIFixRuleFor("second-fix", "secondTarget", "secondary", rules.FixSafe),
+		secondSafety: rules.FixSuggestion,
+	}
+	secondRule.metadata.Fixes = append(secondRule.metadata.Fixes, rules.FixMetadata{
+		Name:        "alternative",
+		Description: "replace the target call with an alternative",
+		Safety:      rules.FixSuggestion,
+	})
+	registry, err := rules.NewRegistry(firstRule, secondRule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{
+			fix:            true,
+			fixSuggestions: true,
+			paths:          []string{firstPath, secondPath},
+			reporter:       goxreport.Text,
+		},
+		&stdout,
+		&stderr,
+		registry,
+	)
+
+	if exitCode != ExitInternalError || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "multiple authorized fixes") {
+		t.Fatalf("runLintFix(ambiguous) exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+	for path, input := range map[string][]byte{firstPath: firstInput, secondPath: secondInput} {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, input) {
+			t.Fatalf("runLintFix(ambiguous) changed %s: %q", path, got)
+		}
 	}
 }
 

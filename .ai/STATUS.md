@@ -227,3 +227,12 @@ text failures emit no partial findings. Clean, finding, configuration, source,
 cancellation, and output-failure paths are non-mutating. This completes the
 combined non-writing CI surface, while Phase 2 naming, release artifacts, and
 approved external adoption keep overall progress at 45%.
+
+Lint fixing now exposes independently composable `--fix`,
+`--fix-suggestions`, and `--fix-unsafe` modes. Each flag authorizes only safe,
+suggestion, or unsafe fixes respectively; diagnostics with multiple enabled
+named alternatives fail prevalidation instead of receiving an arbitrary fix.
+Every mode retains the existing source-version, conflict, reparse, formatter,
+post-analysis, atomic-replacement, and reporting transaction. This closes the
+explicit fix-class selection item, while Phase 2 naming, release artifacts,
+and approved external adoption keep overall progress at 45%.

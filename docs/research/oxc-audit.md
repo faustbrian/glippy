@@ -48,6 +48,15 @@ Windows because newline conversion changes offsets. Gox retains physical byte
 offsets over immutable source bytes, an explicit source digest and schema
 version, and no timing or thread identity in ordinary result data.
 
+Fix-mode behavior was refreshed on 2026-08-11 against Oxc commit
+[`00e1b76`](https://github.com/oxc-project/oxc/commit/00e1b762e0dd0d1cb451c3e46ea2751459dadb46).
+Current Oxlint
+[`FixOptions`](https://github.com/oxc-project/oxc/blob/00e1b762e0dd0d1cb451c3e46ea2751459dadb46/apps/oxlint/src/command/lint.rs#L219-L256)
+and documentation expose independent `--fix` and `--fix-suggestions` switches,
+while `--fix-dangerously` enables its combined dangerous-fix-or-suggestion
+class. Gox retains separate safe, suggestion, and unsafe authorizations so
+selecting unsafe transformations never implicitly selects suggestions.
+
 ## Formatter Findings
 
 Oxfmt separates language parsing and lowering, a language-neutral document IR,

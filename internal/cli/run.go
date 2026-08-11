@@ -112,7 +112,7 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 		if err != nil {
 			return report(stderr, ExitInternalError, "gox lint: initialize rule registry: %v\n", err)
 		}
-		if invocation.fix {
+		if invocation.fixEnabled() {
 			return runLintFix(ctx, invocation, stdout, stderr, registry)
 		}
 		return runLintCheck(ctx, invocation, stdout, stderr, registry)

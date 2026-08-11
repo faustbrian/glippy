@@ -14,9 +14,9 @@ here.
 - **Safe:** semantics-preserving under a documented and tested rule contract;
   eligible for ordinary `--fix`.
 - **Suggestion:** useful but requiring review; available through explicit
-  selection or editor code action.
+  `--fix-suggestions` selection or editor code action.
 - **Unsafe:** capable of changing behavior or public contracts; requires an
-  explicit unsafe-fix selection.
+  explicit `--fix-unsafe` selection.
 
 Severity and safety are independent. Imported or incompletely audited fixes
 MUST NOT default to safe.
@@ -26,11 +26,14 @@ Selecting among multiple named fixes is driver policy and MUST NOT be inferred
 from edit order. Ordinary coordination MUST accept safe fixes only. Suggestion
 and unsafe fixes MUST require independent explicit authorization.
 
-The ordinary CLI driver selects a fix only when one diagnostic offers exactly
-one safe named alternative. It selects none when no safe fix exists and MUST
-fail the complete prevalidation pass when a diagnostic offers multiple safe
-alternatives. That ambiguity is a rule-contract error, not a deterministic
-first-choice policy.
+The ordinary CLI driver selects safe fixes only under `--fix`, suggestions only
+under `--fix-suggestions`, and unsafe fixes only under `--fix-unsafe`. The flags
+MAY be combined, but one flag MUST NOT implicitly authorize another safety
+class. For each diagnostic, the driver selects a fix only when the enabled
+classes expose exactly one named alternative. It selects none when no enabled
+fix exists and MUST fail the complete prevalidation pass when multiple enabled
+alternatives exist. That ambiguity is a rule-contract error, not a
+deterministic first-choice policy.
 
 ## Edit Identity
 

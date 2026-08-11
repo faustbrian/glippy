@@ -17,6 +17,12 @@ plugin-name compatibility can broaden rule matching. Gox needs exact native
 rule identity, one auditable scope per directive, and formatter-stable physical
 ownership rather than ESLint-compatible breadth.
 
+Fix-mode behavior was refreshed against Oxc commit `00e1b76` on 2026-08-11.
+Oxlint's current `FixOptions` exposes `--fix`, `--fix-suggestions`, and
+`--fix-dangerously`; its dangerous mode also selects suggestions. Gox needs
+independent authorization for all three classes because an unsafe
+transformation does not imply consent to every suggestion.
+
 ## Decision
 
 Native rule metadata controls scheduling, documentation, presets, generated
@@ -52,7 +58,10 @@ The coordinator accepts explicit diagnostic and fix-name selections; choosing
 among alternative named fixes remains driver policy. The ordinary CLI driver
 selects exactly one safe alternative per diagnostic and treats multiple safe
 alternatives as an invalid rule contract before writing. Suggestion and unsafe
-selections require independent explicit options. Every selection is bound to
+selections use `--fix-suggestions` and `--fix-unsafe` respectively. The three
+flags compose, but each authorizes only its named class. If the enabled classes
+expose more than one named alternative for one diagnostic, prevalidation fails
+instead of choosing or applying competing fixes. Every selection is bound to
 the diagnostic path and source digest, and every edit boundary must be a valid
 UTF-8 byte boundary.
 The coordinator refuses an invalid input file rather than treating fixes as a

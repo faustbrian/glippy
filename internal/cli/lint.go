@@ -20,13 +20,15 @@ import (
 	"github.com/faustbrian/gox/internal/source"
 )
 
-const lintUsage = "gox: expected 'lint [--fix] [--reporter=text|json] [--config=<path>] [path...]'\n"
+const lintUsage = "gox: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--reporter=text|json] [--config=<path>] [path...]'\n"
 
 type lintInvocation struct {
-	configPath string
-	fix        bool
-	paths      []string
-	reporter   goxreport.Format
+	configPath     string
+	fix            bool
+	fixSuggestions bool
+	fixUnsafe      bool
+	paths          []string
+	reporter       goxreport.Format
 }
 
 type lintTaskOptions struct {
@@ -63,6 +65,10 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 		case argument == "--fix" && !fixSet:
 			result.fix = true
 			fixSet = true
+		case argument == "--fix-suggestions" && !result.fixSuggestions:
+			result.fixSuggestions = true
+		case argument == "--fix-unsafe" && !result.fixUnsafe:
+			result.fixUnsafe = true
 		case strings.HasPrefix(argument, "--reporter=") && !reporterSet:
 			reporter, valid := parseReporter(strings.TrimPrefix(argument, "--reporter="))
 			if !valid {
@@ -101,6 +107,18 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 		result.paths = []string{"."}
 	}
 	return result, true
+}
+
+func (invocation lintInvocation) fixEnabled() bool {
+	return invocation.fix || invocation.fixSuggestions || invocation.fixUnsafe
+}
+
+func (invocation lintInvocation) selectionOptions() fixengine.SelectionOptions {
+	return fixengine.SelectionOptions{
+		AllowSafe:       invocation.fix,
+		AllowSuggestion: invocation.fixSuggestions,
+		AllowUnsafe:     invocation.fixUnsafe,
+	}
 }
 
 func requestsLintJSONReporter(arguments []string) bool {
@@ -291,7 +309,7 @@ func runLintFix(
 	if err != nil {
 		return reportLintFixFailure(invocation, stdout, stderr, exitCode, nil, err)
 	}
-	executions, exitCode, err := prepareLintFixExecutions(ctx, tasks, registry)
+	executions, exitCode, err := prepareLintFixExecutions(ctx, tasks, registry, invocation.selectionOptions())
 	if err != nil {
 		return reportLintFixFailure(invocation, stdout, stderr, exitCode, executions, err)
 	}
@@ -304,7 +322,11 @@ func runLintFix(
 		postResult := execution.result
 		postFile := execution.file
 		var postAnalysisErr error
-		options := fixengine.Options{Format: execution.task.options.format}
+		options := fixengine.Options{
+			AllowSuggestion: invocation.fixSuggestions,
+			AllowUnsafe:     invocation.fixUnsafe,
+			Format:          execution.task.options.format,
+		}
 		options.Validate = func(formatted *source.File) error {
 			analyzed, err := analysis.Run(ctx, formatted, registry, execution.task.options.analysis)
 			if err != nil {
@@ -391,6 +413,7 @@ func prepareLintFixExecutions(
 	ctx context.Context,
 	tasks []lintTask,
 	registry *rules.Registry,
+	selectionOptions fixengine.SelectionOptions,
 ) ([]lintFixExecution, int, error) {
 	executions := make([]lintFixExecution, 0, len(tasks))
 	for _, task := range tasks {
@@ -415,7 +438,7 @@ func prepareLintFixExecutions(
 		if err != nil {
 			return executions, exitCodeForError(ExitInternalError, err), err
 		}
-		selections, err := fixengine.SelectSafe(analyzed.Diagnostics)
+		selections, err := fixengine.Select(analyzed.Diagnostics, selectionOptions)
 		if err != nil {
 			return executions, ExitInternalError, err
 		}
