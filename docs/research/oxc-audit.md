@@ -40,6 +40,14 @@ optional `--` justification. Gox retains only the explicit separator and
 rejects disable-all, rule lists, and plugin-name equivalence; ADR 0006 records
 the exact physical-scope grammar.
 
+Lint reporting was refreshed against the same current commit. Oxlint's JSON
+formatter still buffers diagnostics, delegates their shape to Miette, and adds
+file, rule, thread, and elapsed-time counts without a schema version. It offers
+multiple human and integration formats, but its JSON test remains disabled on
+Windows because newline conversion changes offsets. Gox retains physical byte
+offsets over immutable source bytes, an explicit source digest and schema
+version, and no timing or thread identity in ordinary result data.
+
 ## Formatter Findings
 
 Oxfmt separates language parsing and lowering, a language-neutral document IR,

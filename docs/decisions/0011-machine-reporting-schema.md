@@ -1,6 +1,6 @@
 # ADR 0011: Versioned Machine Reporting
 
-- Status: accepted for formatter prototype; lint extensions deferred
+- Status: accepted for formatter and lint-check prototypes
 - Date: 2026-08-10
 
 ## Context And Evidence
@@ -43,15 +43,35 @@ Check file statuses are `unchanged` and `different`. Write statuses are
 `possibly_formatted`. A JSON output failure falls back to a concise text error
 on stderr and still discloses completed or possibly completed replacements.
 
-Lint diagnostics and fix metadata will extend the versioned envelope through a
-separately reviewed Phase 3 decision. Existing version 1 fields will not be
-silently repurposed.
+Lint check results use the same versioned envelope with command `lint`, mode
+`check`, and a command-specific summary. The summary records analyzed files,
+visible diagnostics, suppressed diagnostics, suppression problems, unused
+suppressions, and completeness. Ordered file records carry normalized absolute
+paths, lowercase SHA-256 source digests, and status `analyzed`.
+
+Each lint diagnostic carries rule ID, severity, message key and text, path,
+source digest, half-open physical UTF-8 byte range, related ranges, notes, help,
+and named fixes with their safety class. Ordinary JSON does not carry original
+source snippets or fix replacement text. An explicit editor or code-action
+surface must authorize edit payload disclosure later.
+
+Suppression syntax problems and unused directives remain separate ordered
+records so reporters cannot confuse malformed policy with rule findings.
+Suppressed diagnostic bodies are omitted by default and represented only by
+the summary count. The constructor rejects duplicate source paths and
+diagnostics whose path or digest does not match their file result. Source files
+and diagnostics are sorted canonically before encoding.
+
+Lint-fix file outcomes, text rendering, and CLI integration remain deferred.
+Existing version 1 fields will not be silently repurposed.
 
 ## Alternatives Rejected
 
 - Copy Oxfmt's human-only formatter reporter: insufficient for CI consumers.
 - Copy Oxlint's current JSON object verbatim: language-specific diagnostics,
   timing, and thread fields do not define Gox formatter outcomes.
+- Expose source excerpts or replacement text in ordinary lint JSON: violates
+  the local-source disclosure boundary and is unnecessary for diagnostics.
 - Encode formatted source inside JSON: increases memory and source-disclosure
   risk while weakening ordinary stdin/stdout editor compatibility.
 - Emit JSON on stderr beside formatted stdout: two result channels make shell
@@ -62,13 +82,15 @@ silently repurposed.
 ## Consequences
 
 Machine consumers can distinguish findings from failures without parsing text
-and can detect incomplete summaries. The driver must retain ordered per-file
-outcomes until final rendering. Large selections therefore add one small
-record per file, and JSON is buffered before one stream write so encoding
-failure cannot produce a partial document.
+and can detect incomplete summaries. Lint consumers can bind diagnostics to an
+exact source version without receiving source text. The driver must retain
+ordered per-file outcomes until final rendering. Large selections therefore
+add one small record per file, and JSON is buffered before one stream write so
+encoding failure cannot produce a partial document.
 
 ## Revisit Trigger
 
-Before lint reporters stabilize, before relative-path or URI policy changes,
-before source snippets are exposed, or when a validated consumer requires
-streaming, SARIF, GitHub annotations, or another schema.
+Before lint-fix results or text reporters stabilize, before relative-path or
+URI policy changes, before source snippets or code-action edits are exposed, or
+when a validated consumer requires streaming, SARIF, GitHub annotations, or
+another schema.

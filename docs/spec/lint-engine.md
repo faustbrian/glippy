@@ -43,6 +43,14 @@ source identity and digest, named fixes, and fix safety. Every reporter MUST
 consume the same globally sorted diagnostic records. JSON carries an explicit
 schema version before external consumers are supported.
 
+Schema-version-1 lint JSON MUST identify every analyzed file by normalized
+absolute path and lowercase SHA-256 source digest. Primary and related ranges
+MUST use half-open physical UTF-8 byte offsets. Ordinary lint JSON MUST expose
+only fix name and safety, not source snippets or replacement text. It MUST keep
+suppression syntax problems and unused directives distinct from rule
+diagnostics, and MUST represent suppressed diagnostics by count without
+disclosing their bodies by default.
+
 ## Suppressions
 
 Suppressions MUST name exact rule IDs. The grammar MUST define line, next-line,

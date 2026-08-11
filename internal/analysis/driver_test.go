@@ -67,6 +67,9 @@ func visible() { target() }
 	if result.Requirement != rules.RequireSyntax {
 		t.Fatalf("Run() requirement = %s, want syntax", result.Requirement)
 	}
+	if result.Path != file.Path() || result.Digest != file.Digest() {
+		t.Fatalf("Run() source identity = %q/%x", result.Path, result.Digest)
+	}
 	wantSelection := []rules.Selection{
 		{ID: "call-rule", Severity: rules.SeverityError, Requirement: rules.RequireSyntax},
 		{ID: "unused-rule", Severity: rules.SeverityWarn, Requirement: rules.RequireSyntax},
@@ -136,6 +139,7 @@ func TestRunEmptyRegistryProducesOneCompleteEmptyResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.Requirement != rules.RequireLexical || len(result.Selection) != 0 ||
+		result.Path != file.Path() || result.Digest != file.Digest() ||
 		len(result.Diagnostics) != 0 || len(result.Suppressed) != 0 ||
 		len(result.UnusedSuppressions) != 0 || len(result.SuppressionProblems) != 0 {
 		t.Fatalf("Run() = %#v", result)

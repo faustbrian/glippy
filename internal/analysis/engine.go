@@ -156,8 +156,14 @@ func RunSyntax(
 	if err != nil {
 		return nil, err
 	}
-	sortDiagnostics(diagnostics)
-	return diagnostics, nil
+	return OrderDiagnostics(diagnostics), nil
+}
+
+// OrderDiagnostics returns one canonically ordered diagnostic slice.
+func OrderDiagnostics(diagnostics []rules.Diagnostic) []rules.Diagnostic {
+	ordered := slices.Clone(diagnostics)
+	sortDiagnostics(ordered)
+	return ordered
 }
 
 func diagnosticForFinding(

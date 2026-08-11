@@ -79,6 +79,10 @@ func NewFormatResult(
 }
 
 func MarshalJSON(result Result) ([]byte, error) {
+	return marshalJSON(result)
+}
+
+func marshalJSON(result any) ([]byte, error) {
 	encoded, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return nil, err

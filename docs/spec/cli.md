@@ -115,6 +115,12 @@ Successful reports use mode `check` or `write`. Invalid invocations retain the
 requested path mode when it can be resolved; mode is `invalid` when parsing
 cannot establish one.
 
+Lint JSON uses the same schema version and outcome envelope with a
+command-specific summary, exact source digests, and half-open physical byte
+ranges. It MUST NOT include original source snippets or fix replacement text by
+default. Suppression problems and unused directives remain distinct arrays;
+suppressed diagnostic bodies are represented only by a summary count.
+
 Formatter read, parse, and layout preparation uses at most the smaller of the
 selection size, `GOMAXPROCS`, and 32 workers. Task identity is assigned only
 after normalized-path sorting. Completion timing cannot reorder findings.

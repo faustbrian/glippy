@@ -121,3 +121,10 @@ applies the exact-source suppression index. It keeps visible, suppressed,
 unused, and malformed-suppression outcomes distinct and refuses unsupported
 tiers instead of silently skipping them. Lint reporters, CLI modes, fix
 selection, and built-in rule admission remain open, so progress stays 45%.
+
+The first versioned lint-check JSON result now validates exact per-file source
+identity, orders files and diagnostics canonically, and reports visible counts,
+suppressed counts, suppression problems, unused directives, rich diagnostic
+ranges, and named fix safety. It deliberately omits source snippets and edit
+replacement text. Text reporting, lint CLI modes, fix outcome reporting, and
+built-in rules remain open, so progress stays 45%.

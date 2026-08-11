@@ -19,6 +19,8 @@ type RunOptions struct {
 
 // Result is one reporter-ready syntax analysis result over one source version.
 type Result struct {
+	Path                string
+	Digest              source.Digest
 	Requirement         rules.Requirement
 	Selection           []rules.Selection
 	Diagnostics         []rules.Diagnostic
@@ -51,6 +53,8 @@ func Run(
 		return Result{}, fmt.Errorf("resolve analysis rules: %w", err)
 	}
 	result := Result{
+		Path:                file.Path(),
+		Digest:              file.Digest(),
 		Requirement:         rules.MaximumRequirement(selection),
 		Selection:           slices.Clone(selection),
 		Diagnostics:         []rules.Diagnostic{},
