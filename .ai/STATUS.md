@@ -51,9 +51,17 @@ separates terminal call arguments from callee fit decisions and reduces 193
 selector-pattern targets to two lines belonging to one intentionally broken,
 deeply indented indexed chain. The complete migration snapshot is classified,
 valid, and idempotent, restoring the Phase 1 exit gate. Existing safe
-filesystem, configuration, and CLI proof supports 45%. Complete
-platform-specific filesystem semantics, release artifacts, and
+filesystem, configuration, and CLI proof supports 45%. Windows and other
+unverified filesystem semantics, release artifacts, and
 external-repository adoption remain open before the 55% gate.
+
+The replacement integration suite now passes on Darwin 27.0.0 arm64 with APFS
+and Linux arm64 with overlayfs under Go 1.26.5. Windows amd64 filesystem, fix,
+and CLI tests cross-compile, but no Windows runtime evidence exists and Go does
+not promise atomic non-Unix rename. Release support is therefore scoped to the
+two recorded platform/filesystem pairs; Windows, network filesystems, and
+crash-durability under forced power loss remain unverified. This narrows the
+platform gate without advancing progress beyond 45%.
 
 An immutable external check of `go-libraries` at
 `a6f1c1f66a1b754e7384da0f6e97e0b3587c5f71` selected 5,051 files. It exposed

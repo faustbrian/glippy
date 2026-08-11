@@ -25,6 +25,14 @@ Signal or caller cancellation stops scheduling and is observed before every
 filesystem replacement; exit code 130 distinguishes cancellation from an
 internal tool defect.
 
+Write-mode support claims are scoped to platform and filesystem pairs with
+runtime integration evidence. The current Phase 2 evidence covers Darwin arm64
+on APFS and Linux arm64 on overlayfs. Windows amd64 cross-compiles, but Go's
+non-Unix rename contract is not atomic and no Windows runtime suite has passed,
+so Windows write and fix behavior is not release-supported. The evidence and
+revisit boundary are recorded in
+[`../research/filesystem-platform-evidence-2026-08-11.md`](../research/filesystem-platform-evidence-2026-08-11.md).
+
 The first syntax-only lint CLI reuses the same project/configuration and
 physical-file discovery boundary. It validates all selected configurations,
 sorts file tasks, then analyzes them sequentially through the shared file
@@ -48,6 +56,8 @@ overrides. Exit categories are more detailed than common formatter tools but
 support reliable CI and machine consumers. Parallel preparation increases open
 file and memory pressure up to the documented ceiling, while serialized
 replacement preserves deterministic disclosure of partial multi-file writes.
+Successful compilation on another target does not imply supported write
+atomicity or durability there.
 
 ## Revisit Trigger
 

@@ -246,3 +246,11 @@ JSON reporting MUST preserve the same disclosure through ordered file statuses.
 If JSON construction, encoding, or stream output fails after replacements,
 stderr MUST name every completed or possibly completed replacement, and the
 invocation MUST return the applicable failure category.
+
+Gox MUST advertise write and fix mode support only for operating-system,
+architecture, and filesystem combinations with runtime replacement evidence.
+The current Phase 2 evidence covers Darwin arm64 on APFS and Linux arm64 on
+overlayfs. Windows amd64 compilation is proven, but a release MUST NOT advertise
+Windows write or fix support until a runtime suite passes and the non-atomic
+rename boundary is accepted or replaced. Network and distributed filesystems
+are unproven even on an otherwise supported operating system.
