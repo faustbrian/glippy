@@ -98,13 +98,19 @@ The source-versioned application pass now filters ordered diagnostics, records
 their owning directives, and identifies unused waivers without accepting
 cross-file or stale ranges. The contract was refreshed against Oxc `f2125a8`.
 Canonical unused and expiry diagnostics, lint CLI/reporting, built-in rules,
-and the on-disk fix transaction remain open, so progress remains 45%.
+and lint-driver integration remain open, so progress remains 45%.
 
 The first in-memory fix coordinator now refuses invalid input, validates exact
 source identity, fix safety, UTF-8 byte ranges, and replacement text; rejects
 every participant in overlapping or same-offset insertion conflicts; applies
 independent edits in a deterministic range-safe order; reparses and
 formatter-normalizes the complete result; and rolls back all accepted fixes on
-validation failure. It records stable applied and rejected provenance. On-disk
-stale recheck, atomic replacement, lint-driver selection, and reporter
-integration remain open, so the 45% gate does not advance.
+validation failure. It records stable applied and rejected provenance without
+claiming that coordinated bytes reached disk.
+
+The single-file fix transaction now starts from the shared descriptor-validated
+snapshot, coordinates its exact source version, skips writes when no fix can
+apply or output is unchanged, and uses the permission-preserving same-directory
+atomic writer. It distinguishes confirmed stale refusal, completed replacement,
+and other failures that may have followed rename. Lint CLI selection and
+reporting remain open, so progress stays 45%.

@@ -39,6 +39,13 @@ one offset conflict. A conflict rejects every complete fix that participates,
 while independent fixes may proceed. Any parse or formatter-validation failure
 rolls back every otherwise accepted fix in that source transaction.
 
+The on-disk transaction begins from one descriptor-validated filesystem
+snapshot, coordinates its exact bytes, and delegates replacement to the shared
+permission-preserving same-directory atomic writer. A stale-source error proves
+that replacement did not occur. Any other replacement error is reported as
+possibly completed because directory-sync failure can follow a successful
+rename.
+
 The initial suppression grammar is line-comment-only and accepts exactly one
 rule ID per directive:
 
@@ -91,9 +98,9 @@ audited. Conflicts produce an actionable outcome instead of partial success.
 Fixing necessarily depends on the formatter being stable first.
 Single-rule suppressions are more verbose than ESLint-compatible lists but
 retain one reason and one usage record per waived rule.
-The initial coordinator returns validated bytes and provenance in memory.
-On-disk digest recheck, atomic replacement, and reporter integration remain a
-separate transaction boundary.
+The coordinator retains validated bytes and provenance independently from disk
+status. Reporter and lint-driver integration must preserve the distinction
+between not performed, completed, and possibly completed replacement.
 
 ## Revisit Trigger
 

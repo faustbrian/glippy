@@ -58,16 +58,25 @@ For one source version, the coordinator MUST:
 10. replace atomically while preserving permissions where supported; and
 11. report diagnostics and fixes left unapplied with a stable reason.
 
-Any validation or replacement failure MUST preserve the original file. A
-single-file transaction MUST NOT claim multi-file atomicity. Multi-file fixes
-remain prohibited until recovery from partial filesystem failure has an
-accepted design and integration evidence.
+Any validation failure or replacement failure before rename MUST preserve the
+original file. A post-rename durability failure MAY leave the validated new
+content in place and MUST be reported as possibly written. A single-file
+transaction MUST NOT claim multi-file atomicity. Multi-file fixes remain
+prohibited until recovery from partial filesystem failure has an accepted
+design and integration evidence.
 
 The in-memory coordinator MAY apply independent fixes after rejecting every
 fix in a conflict group. If the complete edited source does not parse or fails
 formatter validation, it MUST reject every otherwise accepted fix and return
 the original bytes. Applied and rejected records MUST retain stable rule, fix,
 range, and reason provenance.
+
+The disk transaction MUST begin from a validated regular-file snapshot and
+MUST recheck identity, digest, permissions, and authorized-root ownership before
+replacement. A stale-source result MUST be reported as not written. Any other
+replacement error that cannot prove whether rename occurred MUST be reported
+as possibly written. Reporters MUST NOT collapse coordinated bytes, confirmed
+replacement, and possible replacement into one success state.
 
 Formatter normalization after fixes MUST NOT make a semantic rewrite appear to
 be formatter behavior. Fix provenance remains attached to the resulting
