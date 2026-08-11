@@ -416,7 +416,7 @@ inputs. Its rooted store bounds entries, verifies embedded key, length, and
 payload digest, treats corruption as a miss, repairs through recomputation, and
 uses create-if-absent hard-link publication so concurrent different values fail
 instead of silently replacing one another. The first analysis consumer is
-described below; formatter and native-tier wiring, automatic eviction policy,
+described below; formatter wiring, automatic eviction policy,
 platform evidence, and broader warm-cache benchmarks remain open. Progress
 stays 45% behind the Phase 2 gates.
 
@@ -447,9 +447,9 @@ and uncacheable-local-fact fallback are proven. A five-sample owned workload
 probe executes 42 analyzer packages per cold population and zero per warm
 independent load. Its 1.32-second cold and 478-millisecond warm medians are
 directional only because the host was not isolated and package loading still
-dominates allocations. The CLI does not enable this cache, native types/CFG/SSA
-results remain uncached, and no product-wide latency threshold or automatic
-eviction-policy claim is made. Phase 2 naming, release, platform-runtime, and
+dominates allocations. The CLI does not enable this cache, and no product-wide
+latency threshold or automatic eviction-policy claim is made. Native-tier
+caching is described below. Phase 2 naming, release, platform-runtime, and
 approved external-adoption gates keep overall progress at 45%.
 
 The cache store now supports explicit bounded pruning over canonical entries.
@@ -503,3 +503,17 @@ record and `gofettle.com` was registered. This narrows the naming gate but does
 not close it: maintainer approval, a fresh pre-rename namespace check,
 professional trademark review, and explicit authority for external repository
 or namespace changes remain required. Progress stays 45%.
+
+The opt-in persistent analysis cache now covers native types, package-wide
+types, CFG, and SSA rules as one canonical pre-suppression result over the
+complete error-free loaded graph. Warm independent loads revalidate the
+complete selected rule set and execution metadata, exact source identity and
+physical package ownership, ranges, fixes, and ordering before bypassing all
+native callbacks and CFG or SSA construction.
+Cold population, identical warm results, storage-corruption recomputation and
+repair, source invalidation, zero-diagnostic rule-policy changes, and package
+ownership drift are proven across all four native callback shapes. Error-bearing
+loads remain uncached, native warm-run timing is not yet
+benchmarked, and the CLI still owns no cache lifecycle or pruning policy. The
+Phase 2 naming, release, platform-runtime, and approved external-adoption gates
+keep overall progress at 45%.

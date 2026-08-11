@@ -444,6 +444,17 @@ dependency keys are imported-fact inputs, so a stale dependency prevents a
 parent hit. Unsupported local facts disable persistence for that package and
 its dependents without changing the authoritative cold result.
 
+The same caller-owned cache MAY persist one canonical result for the complete
+selected native types, CFG, and SSA tier set over an error-free loaded graph.
+The entry contains pre-suppression diagnostics so current suppression ownership
+is always recomputed from the exact source. It MUST bind every selected rule,
+including zero-diagnostic rules, to its current scheduling metadata, execution
+shape, fix contract, and resolved options. Restore MUST validate every
+diagnostic against that complete rule set, its source digest, physical owner
+package, ranges, fixes, and canonical order. Any invalid entry is a miss; a
+valid entry may skip native callbacks and CFG or SSA construction without
+changing reporter or suppression behavior.
+
 An ill-typed selected root MUST retain native metadata eligibility. If native
 metadata admits type errors, every analyzer step MUST declare
 `RunDespiteErrors`. A required ill-typed dependency whose fact-producing step

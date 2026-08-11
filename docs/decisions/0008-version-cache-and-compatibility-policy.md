@@ -58,18 +58,26 @@ unknown and temporary files remain untouched. Concurrent eviction can cause a
 miss but cannot supply invalid bytes. Cache data remains disposable and is never
 the only source of results.
 
-Fact-bearing typed analyzer runs may use a caller-owned store. The consumer
-requires `GOENV=off`, explicit platform and cgo inputs, and canonical rule and
-configuration digests. It hashes one complete loaded-graph manifest once, then
-derives dependency-first analyzer-package keys from that manifest and direct
+Fact-bearing typed analyzer runs and native types, CFG, and SSA runs may use a
+caller-owned store. The consumers require `GOENV=off`, explicit platform and
+cgo inputs, and canonical rule and configuration digests. They hash one
+complete loaded-graph manifest once, then derive dependency-first
+analyzer-package keys from that manifest and direct
 dependency keys. Entries bind canonical diagnostics and every analyzer-step
 fact snapshot; restore validates them transactionally against the new type
 graph and exact captured source. Unsupported local object facts keep the
 package and its dependents uncached. An owned 42-package workload proves zero
-analyzer executions on warm independent loads, but package loading still
+analyzer executions on warm independent loads. One separate native entry binds
+the complete selected native tier set and canonical pre-suppression diagnostics.
+The payload includes every selected rule even when it reports nothing, plus its
+scheduling metadata, execution shape, fix contract, and resolved-options
+digest. Restore compares that complete snapshot and revalidates exact physical
+owner package, source digest, ranges, fixes, and ordering before it may bypass
+native callbacks and CFG or SSA construction. Error-bearing loads remain
+uncached. Package loading still
 dominates and host variance prevents a latency threshold. CLI ownership,
 automatic pruning policy, stale-temporary recovery, platform evidence for hard-
-link publication, native-rule caching, and product-wide warm-run performance
+link publication, native-tier benchmarks, and product-wide warm-run performance
 claims remain deferred.
 
 Formatter output changes are user-visible compatibility changes. They require
@@ -103,7 +111,6 @@ key schema, store schema, entry schema, and machine-output schema versions.
 
 ## Revisit Trigger
 
-Before Phase 1 claims cross-version syntax support; when the CLI, formatter, or
-native analysis tiers adopt caching; when eviction, cross-machine sharing, or a
-filesystem without reliable hard links is admitted; and before the first public
-release.
+Before Phase 1 claims cross-version syntax support; when the CLI or formatter
+adopts caching; when eviction, cross-machine sharing, or a filesystem without
+reliable hard links is admitted; and before the first public release.

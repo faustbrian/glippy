@@ -80,21 +80,36 @@ Cache-enabled package loading MUST also receive explicit GOOS and GOARCH,
 `GOENV=off`, and an exact `CGO_ENABLED` value. This prevents an unrecorded Go
 environment file or platform default from changing a reused result.
 
-The consumer builds one canonical run manifest over the reachable loaded graph,
-then derives one key per native rule and analyzer package. Package keys include
-the run manifest and each direct dependency package key, so imported package and
-object facts invalidate dependency-first. Location-only build-cache paths,
-unrelated process environment, and dependency export-file locations are not
-semantic identity; export bytes remain digested under package identity.
+The fact-bearing adapter consumer builds one canonical run manifest over the
+reachable loaded graph, then derives one key per adapted native rule and
+analyzer package. Package keys include the run manifest and each direct
+dependency package key, so imported package and object facts invalidate
+dependency-first. Location-only build-cache paths, unrelated process
+environment, and dependency export-file locations are not semantic identity;
+export bytes remain digested under package identity.
+
+Native types, control-flow, and SSA execution MAY use the same explicit cache
+identity. One native entry covers the complete selected native tier set for one
+error-free loaded graph and stores canonical diagnostics before suppression.
+The entry MUST bind the complete ordered rule set even when a rule reports no
+diagnostics, including severity, requirement, execution shape, node interests,
+generated and type-error policies, minimum Go version, declared fix identity,
+and resolved options. Restore MUST compare that snapshot to the current
+registry and revalidate each diagnostic's exact source digest, physical owner
+package, ranges, fixes, and canonical order before returning any result. A
+missing, corrupt, malformed, stale, or unowned entry MUST fall back to complete
+native execution. A valid warm entry MAY bypass native callbacks and CFG or SSA
+construction because the key and payload bind every selected rule and
+loaded-graph input.
 
 This proves cold population, independent-load hits, source invalidation,
 corruption-as-recomputation, and transactional restore for the implemented
-fact-bearing adapter boundary. The owned workload benchmark also proves zero
-analyzer executions on warm independent loads; its timing remains directional
-because package loading dominates and the reference host is not isolated. This
-does not enable caching in the CLI, cache native types/CFG/SSA rules, establish
-automatic pruning or stale-temporary cleanup, or support a product-wide
-warm-performance claim.
+fact-bearing adapter and native-tier boundaries. The owned analyzer workload
+benchmark also proves zero analyzer executions on warm independent loads; its
+timing remains directional because package loading dominates and the reference
+host is not isolated. Native-tier timing has not been benchmarked. This does
+not enable caching in the CLI, establish automatic pruning or stale-temporary
+cleanup, or support a product-wide warm-performance claim.
 
 Persistent object identity is the owning package path plus the canonical
 x/tools `objectpath`. It is proven across independent type checks for package

@@ -3,12 +3,14 @@ package analysis_test
 import (
 	"context"
 	"go/ast"
+	"maps"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/faustbrian/gox/internal/analysis"
+	"github.com/faustbrian/gox/internal/cache"
 	"github.com/faustbrian/gox/internal/rules"
 )
 
@@ -197,6 +199,266 @@ func TestRunPackagesRoutesTypedOptionsAcrossEveryTier(t *testing.T) {
 		if visits[tier] == 0 {
 			t.Fatalf("%s rule was not visited", tier)
 		}
+	}
+}
+
+func TestRunPackagesCachesNativeTypedTiersAcrossIndependentLoads(t *testing.T) {
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/nativecache\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "native.go")
+	writeTypesFixture(t, path, "package nativecache\nfunc run(){target()}\nfunc target(){}\n")
+
+	runs := map[string]int{}
+	packageRule := packageRule{
+		metadata: packageMetadata("cached-package"),
+		run: func(ctx *rules.PackageContext) ([]rules.PackageFinding, error) {
+			runs["package"]++
+			for _, file := range ctx.Files() {
+				if !file.Target() {
+					continue
+				}
+				range_, err := file.Range(file.Syntax().Name)
+				if err != nil {
+					return nil, err
+				}
+				return []rules.PackageFinding{{
+					File: file,
+					Finding: rules.Finding{
+						MessageKey: "package", Message: "package", Range: range_,
+					},
+				}}, nil
+			}
+			return nil, nil
+		},
+	}
+	typedRule := typesRule{
+		metadata: typesMetadata("cached-types", rules.NodeCallExpr),
+		run: func(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
+			runs["types"]++
+			range_, err := ctx.Range(node)
+			if err != nil {
+				return nil, err
+			}
+			return []rules.Finding{{MessageKey: "types", Message: "types", Range: range_}}, nil
+		},
+	}
+	controlFlowRule := controlFlowRule{
+		metadata: controlFlowMetadata("cached-cfg"),
+		run: func(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+			runs["cfg"]++
+			range_, err := ctx.Range(ctx.Function())
+			if err != nil {
+				return nil, err
+			}
+			return []rules.Finding{{MessageKey: "cfg", Message: "cfg", Range: range_}}, nil
+		},
+	}
+	ssaRule := ssaRule{
+		metadata: ssaMetadata("cached-ssa"),
+		run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
+			runs["ssa"]++
+			range_, err := ctx.Range(ctx.Syntax())
+			if err != nil {
+				return nil, err
+			}
+			return []rules.Finding{{MessageKey: "ssa", Message: "ssa", Range: range_}}, nil
+		},
+	}
+	registry, err := rules.NewRegistry(packageRule, typedRule, controlFlowRule, ssaRule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := filepath.Join(t.TempDir(), "cache")
+	store, err := cache.Open(cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	runOptions := analysis.RunOptions{
+		Preset: rules.PresetCorrectness,
+		Cache:  packageAnalyzerCacheOptions(store),
+	}
+	loadOptions := packageAnalyzerCacheLoadOptions(root)
+
+	first, err := analysis.RunPackages(context.Background(), registry, runOptions, loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coldRuns := maps.Clone(runs)
+	for _, tier := range []string{"package", "types", "cfg", "ssa"} {
+		if coldRuns[tier] == 0 {
+			t.Fatalf("cold %s callbacks = %d", tier, coldRuns[tier])
+		}
+	}
+	second, err := analysis.RunPackages(context.Background(), registry, runOptions, loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(runs, coldRuns) || !reflect.DeepEqual(second.Files, first.Files) {
+		t.Fatalf("warm native callbacks = %#v, want %#v; result = %#v", runs, coldRuns, second)
+	}
+
+	corruptPackageAnalyzerCache(t, cacheRoot)
+	recovered, err := analysis.RunPackages(context.Background(), registry, runOptions, loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(runs, coldRuns) || !reflect.DeepEqual(recovered.Files, first.Files) {
+		t.Fatalf("recovered native callbacks = %#v; result = %#v", runs, recovered)
+	}
+	recoveredRuns := maps.Clone(runs)
+	if _, err := analysis.RunPackages(context.Background(), registry, runOptions, loadOptions); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(runs, recoveredRuns) {
+		t.Fatalf("repaired warm native callbacks = %#v, want %#v", runs, recoveredRuns)
+	}
+
+	writeTypesFixture(t, path, "package nativecache\n\nfunc run(){target()}\nfunc target(){}\n")
+	invalidated, err := analysis.RunPackages(context.Background(), registry, runOptions, loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(runs, recoveredRuns) || reflect.DeepEqual(invalidated.Files, first.Files) {
+		t.Fatalf("source-invalidated native callbacks = %#v; result = %#v", runs, invalidated)
+	}
+}
+
+func TestRunPackagesRejectsCachedNativeDiagnosticAfterGeneratedPolicyChanges(t *testing.T) {
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/generatedcache\n\ngo 1.26.0\n")
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "generated.go"),
+		"// Code generated by fixture. DO NOT EDIT.\npackage generatedcache\nfunc run(){target()}\nfunc target(){}\n",
+	)
+
+	runs := 0
+	metadata := typesMetadata("generated-policy", rules.NodeCallExpr)
+	metadata.RunOnGenerated = true
+	rule := func(metadata rules.Metadata) typesRule {
+		return typesRule{
+			metadata: metadata,
+			run: func(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
+				runs++
+				range_, err := ctx.Range(node)
+				if err != nil {
+					return nil, err
+				}
+				return []rules.Finding{{
+					MessageKey: "generated", Message: "generated", Range: range_,
+				}}, nil
+			},
+		}
+	}
+	cacheRoot := filepath.Join(t.TempDir(), "cache")
+	store, err := cache.Open(cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	runOptions := analysis.RunOptions{
+		Preset: rules.PresetCorrectness,
+		Cache:  packageAnalyzerCacheOptions(store),
+	}
+	loadOptions := packageAnalyzerCacheLoadOptions(root)
+	firstRegistry, err := rules.NewRegistry(rule(metadata))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := analysis.RunPackages(context.Background(), firstRegistry, runOptions, loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runs != 1 || len(first.Files) != 1 || len(first.Files[0].Diagnostics) != 1 {
+		t.Fatalf("generated-enabled native result = %#v, runs = %d", first, runs)
+	}
+
+	metadata.RunOnGenerated = false
+	secondRegistry, err := rules.NewRegistry(rule(metadata))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := analysis.RunPackages(context.Background(), secondRegistry, runOptions, loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runs != 1 || len(second.Files) != 1 || len(second.Files[0].Diagnostics) != 0 {
+		t.Fatalf("generated-disabled cached native result = %#v, runs = %d", second, runs)
+	}
+}
+
+func TestRunPackagesRejectsCachedEmptyNativeResultAfterGeneratedPolicyChanges(t *testing.T) {
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/emptygeneratedcache\n\ngo 1.26.0\n")
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "generated.go"),
+		"// Code generated by fixture. DO NOT EDIT.\npackage emptygeneratedcache\nfunc run(){target()}\nfunc target(){}\n",
+	)
+
+	runs := 0
+	metadata := typesMetadata("empty-generated-policy", rules.NodeCallExpr)
+	rule := func(metadata rules.Metadata) typesRule {
+		return typesRule{
+			metadata: metadata,
+			run: func(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
+				runs++
+				range_, err := ctx.Range(node)
+				if err != nil {
+					return nil, err
+				}
+				return []rules.Finding{{
+					MessageKey: "generated", Message: "generated", Range: range_,
+				}}, nil
+			},
+		}
+	}
+	store, err := cache.Open(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	runOptions := analysis.RunOptions{
+		Preset: rules.PresetCorrectness,
+		Cache:  packageAnalyzerCacheOptions(store),
+	}
+	loadOptions := packageAnalyzerCacheLoadOptions(root)
+	firstRegistry, err := rules.NewRegistry(rule(metadata))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := analysis.RunPackages(context.Background(), firstRegistry, runOptions, loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runs != 0 || len(first.Files) != 1 || len(first.Files[0].Diagnostics) != 0 {
+		t.Fatalf("generated-disabled native result = %#v, runs = %d", first, runs)
+	}
+
+	metadata.RunOnGenerated = true
+	secondRegistry, err := rules.NewRegistry(rule(metadata))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := analysis.RunPackages(context.Background(), secondRegistry, runOptions, loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runs != 1 || len(second.Files) != 1 || len(second.Files[0].Diagnostics) != 1 {
+		t.Fatalf("generated-enabled cached native result = %#v, runs = %d", second, runs)
 	}
 }
 

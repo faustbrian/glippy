@@ -2,7 +2,9 @@ package analysis
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"go/ast"
 	"reflect"
 	"strings"
 	"testing"
@@ -14,6 +16,14 @@ import (
 	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
 )
+
+type nativeCacheTestRule struct{ metadata rules.Metadata }
+
+func (r nativeCacheTestRule) Metadata() rules.Metadata { return r.metadata }
+
+func (nativeCacheTestRule) RunTypes(*rules.TypesContext, ast.Node) ([]rules.Finding, error) {
+	return nil, nil
+}
 
 func TestPackageAnalyzerCacheEntryRestoresDiagnosticsAndFacts(t *testing.T) {
 	t.Parallel()
@@ -268,6 +278,91 @@ func TestPreparePackageCachePlanDerivesResolvedRuleOptions(t *testing.T) {
 	}
 }
 
+func TestRestoreNativePackageCacheEntryRejectsChangedPackageOwnership(t *testing.T) {
+	root := t.TempDir()
+	writePackageCacheFile(t, root, "go.mod", "module example.com/nativeowner\n\ngo 1.26.0\n")
+	firstPath := writePackageCacheFile(t, root, "first/first.go", "package first\n")
+	secondPath := writePackageCacheFile(t, root, "second/second.go", "package second\n")
+	loaded, err := LoadPackages(context.Background(), PackageLoadOptions{
+		Dir: root, Patterns: []string{"./..."}, Requirement: rules.RequireTypes,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := rules.Metadata{
+		ID: "native-owner", Summary: "reports typed syntax",
+		Documentation:    "Full typed rule documentation.",
+		DefaultSeverity:  rules.SeverityWarn,
+		Presets:          []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion: "1.22", Requirement: rules.RequireTypes,
+		NodeInterests: []rules.NodeKind{rules.NodeFile},
+		Categories:    []rules.Category{rules.CategoryCorrectness},
+		Examples:      []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+	}
+	registry, err := rules.NewRegistry(nativeCacheTestRule{metadata: metadata})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := []rules.Selection{{
+		ID: metadata.ID, Severity: rules.SeverityWarn, Requirement: rules.RequireTypes,
+	}}
+	snapshots, err := nativeRuleSnapshots(registry, selection, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, found := loaded.Sources.Lookup(firstPath)
+	if !found {
+		t.Fatalf("loaded source %q is missing", firstPath)
+	}
+	range_, found := file.TokenRangeAtOffset(len("package "))
+	if !found {
+		t.Fatal("package name token is missing")
+	}
+	diagnostic, err := diagnosticForFinding(file, metadata, rules.SeverityWarn, rules.Finding{
+		MessageKey: "owner", Message: "owner", Range: range_,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := encodeNativePackageCacheEntry(selection, snapshots, loaded, []rules.Diagnostic{diagnostic})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := decodeNativePackageCacheEntry(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingRule := entry
+	missingRule.Rules = []nativeRuleSnapshot{}
+	missingRuleBytes, err := json.Marshal(missingRule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restoreNativePackageCacheEntry(
+		registry, selection, snapshots, loaded, missingRuleBytes,
+	); err == nil || !strings.Contains(err.Error(), "rule metadata is stale") {
+		t.Fatalf("restoreNativePackageCacheEntry() rule-set error = %v", err)
+	}
+	owners, err := nativeSourceOwners(loaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondOwner, found := owners[secondPath]
+	if !found || secondOwner == entry.Diagnostics[0].PackageID {
+		t.Fatalf("package owners = %#v", owners)
+	}
+	entry.Diagnostics[0].PackageID = secondOwner
+	corrupt, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restoreNativePackageCacheEntry(
+		registry, selection, snapshots, loaded, corrupt,
+	); err == nil || !strings.Contains(err.Error(), "source is not owned") {
+		t.Fatalf("restoreNativePackageCacheEntry() ownership error = %v", err)
+	}
+}
+
 func packageAnalyzerCacheTestRule() (*packageAnalyzerRule, *goanalysis.Analyzer) {
 	analyzer := &goanalysis.Analyzer{
 		Name: "cachefacts", FactTypes: []goanalysis.Fact{new(snapshotFact)},
@@ -316,6 +411,24 @@ func FuzzDecodePackageAnalyzerCacheEntry(f *testing.F) {
 		}
 		if !bytes.Equal(reencoded, encoded) {
 			t.Fatal("accepted package analyzer cache entry was not canonical")
+		}
+	})
+}
+
+func FuzzDecodeNativePackageCacheEntry(f *testing.F) {
+	f.Add([]byte(`{"version":1,"requirement":2,"rules":[],"diagnostics":[]}`))
+	f.Add([]byte("corrupt"))
+	f.Fuzz(func(t *testing.T, encoded []byte) {
+		entry, err := decodeNativePackageCacheEntry(encoded)
+		if err != nil {
+			return
+		}
+		reencoded, err := json.Marshal(entry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(reencoded, encoded) {
+			t.Fatal("accepted native analysis cache entry was not canonical")
 		}
 	})
 }

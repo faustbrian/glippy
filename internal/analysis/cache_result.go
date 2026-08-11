@@ -295,13 +295,22 @@ func decodePackageAnalyzerCacheEntry(encoded []byte) (packageAnalyzerCacheEntry,
 }
 
 func persistDiagnostic(diagnostic rules.Diagnostic) persistedDiagnostic {
-	related := make([]persistedRelated, len(diagnostic.Related))
+	var related []persistedRelated
+	if diagnostic.Related != nil {
+		related = make([]persistedRelated, len(diagnostic.Related))
+	}
 	for index, item := range diagnostic.Related {
 		related[index] = persistedRelated{Range: persistRange(item.Range), Message: item.Message}
 	}
-	fixes := make([]persistedFix, len(diagnostic.Fixes))
+	var fixes []persistedFix
+	if diagnostic.Fixes != nil {
+		fixes = make([]persistedFix, len(diagnostic.Fixes))
+	}
 	for index, fix := range diagnostic.Fixes {
-		edits := make([]persistedEdit, len(fix.Edits))
+		var edits []persistedEdit
+		if fix.Edits != nil {
+			edits = make([]persistedEdit, len(fix.Edits))
+		}
 		for editIndex, edit := range fix.Edits {
 			edits[editIndex] = persistedEdit{Range: persistRange(edit.Range), NewText: edit.NewText}
 		}
@@ -324,13 +333,22 @@ func restorePersistedDiagnostic(persisted persistedDiagnostic) (rules.Diagnostic
 	}
 	var digest source.Digest
 	copy(digest[:], digestBytes)
-	related := make([]rules.Related, len(persisted.Related))
+	var related []rules.Related
+	if persisted.Related != nil {
+		related = make([]rules.Related, len(persisted.Related))
+	}
 	for index, item := range persisted.Related {
 		related[index] = rules.Related{Range: restoreRange(item.Range), Message: item.Message}
 	}
-	fixes := make([]rules.Fix, len(persisted.Fixes))
+	var fixes []rules.Fix
+	if persisted.Fixes != nil {
+		fixes = make([]rules.Fix, len(persisted.Fixes))
+	}
 	for index, fix := range persisted.Fixes {
-		edits := make([]rules.Edit, len(fix.Edits))
+		var edits []rules.Edit
+		if fix.Edits != nil {
+			edits = make([]rules.Edit, len(fix.Edits))
+		}
 		for editIndex, edit := range fix.Edits {
 			edits[editIndex] = rules.Edit{Range: restoreRange(edit.Range), NewText: edit.NewText}
 		}

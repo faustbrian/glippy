@@ -108,32 +108,22 @@ func RunPackages(
 	}
 	controlFlowSelection := selectRequirement(selection, rules.RequireControlFlow)
 	ssaSelection := selectRequirement(selection, rules.RequireSSA)
-	typedDiagnostics, err := RunTypes(ctx, loaded, registry, nativeTypesSelection)
+	nativeDiagnostics, err := runNativePackageAnalysis(
+		ctx,
+		loaded,
+		loadOptions,
+		cachePlan,
+		registry,
+		nativeTypesSelection,
+		controlFlowSelection,
+		ssaSelection,
+	)
 	if err != nil {
 		return result, err
 	}
-	typedByPath := make(map[string][]rules.Diagnostic)
-	for _, diagnostic := range typedDiagnostics {
-		typedByPath[diagnostic.Path] = append(typedByPath[diagnostic.Path], diagnostic)
-	}
-	controlFlowDiagnostics, err := RunControlFlow(ctx, loaded, registry, controlFlowSelection)
-	if err != nil {
-		return result, err
-	}
-	controlFlowByPath := make(map[string][]rules.Diagnostic)
-	for _, diagnostic := range controlFlowDiagnostics {
-		controlFlowByPath[diagnostic.Path] = append(
-			controlFlowByPath[diagnostic.Path],
-			diagnostic,
-		)
-	}
-	ssaDiagnostics, err := RunSSA(ctx, loaded, registry, ssaSelection)
-	if err != nil {
-		return result, err
-	}
-	ssaByPath := make(map[string][]rules.Diagnostic)
-	for _, diagnostic := range ssaDiagnostics {
-		ssaByPath[diagnostic.Path] = append(ssaByPath[diagnostic.Path], diagnostic)
+	nativeByPath := make(map[string][]rules.Diagnostic)
+	for _, diagnostic := range nativeDiagnostics {
+		nativeByPath[diagnostic.Path] = append(nativeByPath[diagnostic.Path], diagnostic)
 	}
 	packageAnalyzerDiagnostics, err := runPackageAnalyzers(
 		ctx,
@@ -147,7 +137,7 @@ func RunPackages(
 		return result, err
 	}
 	for _, diagnostic := range packageAnalyzerDiagnostics {
-		typedByPath[diagnostic.Path] = append(typedByPath[diagnostic.Path], diagnostic)
+		nativeByPath[diagnostic.Path] = append(nativeByPath[diagnostic.Path], diagnostic)
 	}
 
 	for _, work := range files {
@@ -159,12 +149,8 @@ func RunPackages(
 		if err != nil {
 			return result, err
 		}
-		diagnostics = append(diagnostics, typedByPath[file.Path()]...)
-		delete(typedByPath, file.Path())
-		diagnostics = append(diagnostics, controlFlowByPath[file.Path()]...)
-		delete(controlFlowByPath, file.Path())
-		diagnostics = append(diagnostics, ssaByPath[file.Path()]...)
-		delete(ssaByPath, file.Path())
+		diagnostics = append(diagnostics, nativeByPath[file.Path()]...)
+		delete(nativeByPath, file.Path())
 		diagnostics = OrderDiagnostics(diagnostics)
 
 		index, problems := suppressions.Parse(file, suppressions.ParseOptions{
@@ -184,14 +170,8 @@ func RunPackages(
 			SuppressionProblems: problems,
 		})
 	}
-	if len(typedByPath) != 0 {
-		return result, fmt.Errorf("typed diagnostics reference an unselected package source")
-	}
-	if len(controlFlowByPath) != 0 {
-		return result, fmt.Errorf("control-flow diagnostics reference an unselected package source")
-	}
-	if len(ssaByPath) != 0 {
-		return result, fmt.Errorf("SSA diagnostics reference an unselected package source")
+	if len(nativeByPath) != 0 {
+		return result, fmt.Errorf("package diagnostics reference an unselected package source")
 	}
 	return result, nil
 }
