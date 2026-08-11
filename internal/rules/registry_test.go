@@ -18,7 +18,42 @@ type pointerMetadataRule struct {
 	metadata rules.Metadata
 }
 
+type packageMetadataRule struct {
+	metadata rules.Metadata
+}
+
 func (r *pointerMetadataRule) Metadata() rules.Metadata { return r.metadata }
+
+func (r packageMetadataRule) Metadata() rules.Metadata { return r.metadata }
+
+func (r packageMetadataRule) RunPackage(*rules.PackageContext) ([]rules.PackageFinding, error) {
+	return nil, nil
+}
+
+func TestRegistryValidatesPackageWideRuleMetadata(t *testing.T) {
+	t.Parallel()
+
+	metadata := validMetadata("package-rule")
+	metadata.Requirement = rules.RequireTypes
+	metadata.NodeInterests = nil
+	if _, err := rules.NewRegistry(packageMetadataRule{metadata: metadata}); err != nil {
+		t.Fatalf("NewRegistry() package-wide metadata error = %v", err)
+	}
+
+	withInterests := metadata
+	withInterests.NodeInterests = []rules.NodeKind{rules.NodeFile}
+	if _, err := rules.NewRegistry(packageMetadataRule{metadata: withInterests}); err == nil ||
+		!strings.Contains(err.Error(), "package-wide rule must not declare node interests") {
+		t.Fatalf("NewRegistry() package-wide interests error = %v", err)
+	}
+
+	cheap := metadata
+	cheap.Requirement = rules.RequireSyntax
+	if _, err := rules.NewRegistry(packageMetadataRule{metadata: cheap}); err == nil ||
+		!strings.Contains(err.Error(), "package-wide rule must require types") {
+		t.Fatalf("NewRegistry() package-wide requirement error = %v", err)
+	}
+}
 
 func TestRegistryValidatesAndOrdersNativeRuleMetadata(t *testing.T) {
 	t.Parallel()

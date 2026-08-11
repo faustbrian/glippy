@@ -11,6 +11,7 @@ import (
 
 	"github.com/faustbrian/gox/internal/analysis"
 	"github.com/faustbrian/gox/internal/rules"
+	"golang.org/x/tools/go/packages"
 )
 
 type typesRule struct {
@@ -18,10 +19,346 @@ type typesRule struct {
 	run      func(*rules.TypesContext, ast.Node) ([]rules.Finding, error)
 }
 
+type packageRule struct {
+	metadata rules.Metadata
+	run      func(*rules.PackageContext) ([]rules.PackageFinding, error)
+}
+
 func (r typesRule) Metadata() rules.Metadata { return r.metadata }
 
 func (r typesRule) RunTypes(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
 	return r.run(ctx, node)
+}
+
+func (r packageRule) Metadata() rules.Metadata { return r.metadata }
+
+func (r packageRule) RunPackage(ctx *rules.PackageContext) ([]rules.PackageFinding, error) {
+	return r.run(ctx)
+}
+
+func TestRunTypesRunsPackageRulesOncePerOwnedPackage(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	projectPath := filepath.Join(root, "project.go")
+	testPath := filepath.Join(root, "project_test.go")
+	writeTypesFixture(t, projectPath, "package project\nfunc target() {}\n")
+	writeTypesFixture(t, testPath, "package project\nimport \"testing\"\nfunc TestTarget(t *testing.T) { target() }\n")
+
+	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes, Tests: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	packageIDs := make([]string, 0, 2)
+	configured := rules.BooleanOption(true)
+	metadata := packageMetadata("package-target")
+	defaultValue := rules.BooleanOption(false)
+	metadata.Options = []rules.OptionMetadata{{
+		Name: "enabled", Summary: "controls package reporting", Kind: rules.OptionBoolean,
+		Default: &defaultValue,
+	}}
+	rule := packageRule{
+		metadata: metadata,
+		run: func(ctx *rules.PackageContext) ([]rules.PackageFinding, error) {
+			packageIDs = append(packageIDs, ctx.PackageID())
+			if ctx.Package() == nil || ctx.Info() == nil || ctx.Sizes() == nil ||
+				ctx.FileSet() == nil || ctx.IllTyped() {
+				t.Fatalf("package context is incomplete: %#v", ctx)
+			}
+			if enabled, found := ctx.BooleanOption("enabled"); !found || !enabled {
+				t.Fatalf("package option = %v, %v", enabled, found)
+			}
+			findings := make([]rules.PackageFinding, 0)
+			for _, file := range ctx.Files() {
+				if !file.Target() {
+					continue
+				}
+				range_, err := file.Range(file.Syntax().Name)
+				if err != nil {
+					return nil, err
+				}
+				findings = append(findings, rules.PackageFinding{
+					File: file,
+					Finding: rules.Finding{
+						MessageKey: "package-target",
+						Message:    "package target",
+						Range:      range_,
+					},
+				})
+			}
+			return findings, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.ResolveConfigured(
+		rules.PresetCorrectness,
+		nil,
+		map[string]rules.OptionSet{
+			"package-target": rules.NewOptionSet(map[string]rules.OptionValue{"enabled": configured}),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diagnostics, err := analysis.RunTypes(context.Background(), loaded, registry, selection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diagnostics) != 2 || diagnostics[0].Path != projectPath || diagnostics[1].Path != testPath {
+		t.Fatalf("RunTypes() package diagnostics = %#v", diagnostics)
+	}
+	if len(packageIDs) != 2 || packageIDs[0] != "example.com/project" ||
+		!strings.Contains(packageIDs[1], "[example.com/project.test]") {
+		t.Fatalf("RunTypes() package callbacks = %#v", packageIDs)
+	}
+}
+
+func TestRunTypesRejectsPackageFindingFromUnownedTestVariant(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "project.go"), "package project\nfunc target() {}\n")
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "project_test.go"),
+		"package project\nimport \"testing\"\nfunc TestTarget(t *testing.T) { target() }\n",
+	)
+	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes, Tests: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule := packageRule{
+		metadata: packageMetadata("foreign-package-target"),
+		run: func(ctx *rules.PackageContext) ([]rules.PackageFinding, error) {
+			for _, file := range ctx.Files() {
+				if file.Target() {
+					continue
+				}
+				range_, err := file.Range(file.Syntax().Name)
+				if err != nil {
+					return nil, err
+				}
+				return []rules.PackageFinding{{
+					File: file,
+					Finding: rules.Finding{
+						MessageKey: "foreign", Message: "foreign", Range: range_,
+					},
+				}}, nil
+			}
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = analysis.RunTypes(context.Background(), loaded, registry, selection)
+	if err == nil || !strings.Contains(err.Error(), "requires an owned target file") {
+		t.Fatalf("RunTypes() unowned finding error = %v", err)
+	}
+}
+
+func TestRunTypesPackageRulesHonorGeneratedPolicy(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "generated.go")
+	writeTypesFixture(
+		t,
+		path,
+		"// Code generated by fixture. DO NOT EDIT.\npackage project\nfunc generated() {}\n",
+	)
+	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	skippedCalls := 0
+	allowedCalls := 0
+	skipped := packageRule{
+		metadata: packageMetadata("generated-skipped"),
+		run: func(*rules.PackageContext) ([]rules.PackageFinding, error) {
+			skippedCalls++
+			return nil, nil
+		},
+	}
+	allowedMetadata := packageMetadata("generated-allowed")
+	allowedMetadata.RunOnGenerated = true
+	allowed := packageRule{
+		metadata: allowedMetadata,
+		run: func(ctx *rules.PackageContext) ([]rules.PackageFinding, error) {
+			allowedCalls++
+			files := ctx.Files()
+			if len(files) != 1 || !files[0].Target() || files[0].Source().Path() != path {
+				t.Fatalf("generated package files = %#v", files)
+			}
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(skipped, allowed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunTypes(context.Background(), loaded, registry, selection); err != nil {
+		t.Fatal(err)
+	}
+	if skippedCalls != 0 || allowedCalls != 1 {
+		t.Fatalf("generated package callbacks = skipped %d, allowed %d", skippedCalls, allowedCalls)
+	}
+}
+
+func TestRunTypesPackageRulesHonorTypeErrorPolicy(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "project.go"), "package project\nvar value = missing\n")
+	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	skippedCalls := 0
+	allowedCalls := 0
+	skipped := packageRule{
+		metadata: packageMetadata("type-error-skipped"),
+		run: func(*rules.PackageContext) ([]rules.PackageFinding, error) {
+			skippedCalls++
+			return nil, nil
+		},
+	}
+	allowedMetadata := packageMetadata("type-error-allowed")
+	allowedMetadata.RunDespiteTypeErrors = true
+	allowed := packageRule{
+		metadata: allowedMetadata,
+		run: func(ctx *rules.PackageContext) ([]rules.PackageFinding, error) {
+			allowedCalls++
+			if !ctx.IllTyped() {
+				t.Fatal("package rule did not receive type-error state")
+			}
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(skipped, allowed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunTypes(context.Background(), loaded, registry, selection); err != nil {
+		t.Fatal(err)
+	}
+	if skippedCalls != 0 || allowedCalls != 1 {
+		t.Fatalf("type-error package callbacks = skipped %d, allowed %d", skippedCalls, allowedCalls)
+	}
+}
+
+func TestRunTypesPackageRulesRequireTypeSizes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "project.go"), "package project\nfunc target() {}\n")
+	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	packageWithoutSizes := *loaded.Packages[0]
+	packageWithoutSizes.TypesSizes = nil
+	loaded.Packages = append([]*packages.Package(nil), loaded.Packages...)
+	loaded.Packages[0] = &packageWithoutSizes
+	rule := packageRule{
+		metadata: packageMetadata("missing-sizes"),
+		run:      func(*rules.PackageContext) ([]rules.PackageFinding, error) { return nil, nil },
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = analysis.RunTypes(context.Background(), loaded, registry, selection)
+	if err == nil || !strings.Contains(err.Error(), "missing type sizes") {
+		t.Fatalf("RunTypes() missing sizes error = %v", err)
+	}
+}
+
+func TestRunTypesRejectsPackageFindingFromPriorCallback(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "project.go"), "package project\nfunc target() {}\n")
+	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var prior rules.PackageFile
+	usePrior := false
+	rule := packageRule{
+		metadata: packageMetadata("stale-package-target"),
+		run: func(ctx *rules.PackageContext) ([]rules.PackageFinding, error) {
+			file := ctx.Files()[0]
+			if !usePrior {
+				prior = file
+				return nil, nil
+			}
+			range_, err := file.Range(file.Syntax().Name)
+			if err != nil {
+				return nil, err
+			}
+			return []rules.PackageFinding{{
+				File: prior,
+				Finding: rules.Finding{
+					MessageKey: "stale", Message: "stale", Range: range_,
+				},
+			}}, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunTypes(context.Background(), loaded, registry, selection); err != nil {
+		t.Fatal(err)
+	}
+	usePrior = true
+	_, err = analysis.RunTypes(context.Background(), loaded, registry, selection)
+	if err == nil || !strings.Contains(err.Error(), "same package callback") {
+		t.Fatalf("RunTypes() prior callback finding error = %v", err)
+	}
 }
 
 func TestRunTypesSharesTypedPackageAndExactSource(t *testing.T) {
@@ -443,6 +780,14 @@ func typesMetadata(id string, interest rules.NodeKind) rules.Metadata {
 			Correct:   "good()",
 		}},
 	}
+}
+
+func packageMetadata(id string) rules.Metadata {
+	metadata := typesMetadata(id, rules.NodeFile)
+	metadata.Summary = "reports package-wide typed syntax"
+	metadata.Documentation = "Full package-wide typed rule documentation."
+	metadata.NodeInterests = nil
+	return metadata
 }
 
 func writeTypesFixture(t *testing.T, path, contents string) {

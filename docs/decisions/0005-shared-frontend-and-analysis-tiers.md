@@ -57,6 +57,17 @@ the loader. Package positions map through the physical file set with `//line`
 adjustments disabled and are rejected when either endpoint belongs to another
 file or falls outside the captured bytes.
 
+Native package-wide types rules instead declare no node interests and run once
+per canonical selected package that owns at least one eligible physical source.
+Their context exposes every valid captured compiled file for package-wide
+reasoning alongside the package's type information and architecture-specific
+sizes, with an explicit target bit that preserves ordinary-package ownership
+for production files and augmented-test ownership for test-only files.
+Findings must return a target descriptor from that exact context, so a rule
+cannot report against an unowned test variant, ineligible generated file,
+dependency, or stale source version. This retains single-file diagnostic and
+fix semantics while admitting cross-file package reasoning.
+
 Native CFG-tier rules do not declare node interests. The CFG runner visits
 every function declaration and nested function literal with a body once in
 canonical physical source order. It constructs one
@@ -91,8 +102,9 @@ test-only source uses its test variant. This prevents duplicate diagnostics
 while preserving the ordinary package's production type context. The loader
 also removes the synthetic test-main package from the selected package set, so
 its generated Go-cache artifact cannot become a reporter-visible lint target.
-Native typed execution is currently root-package-only; native package-wide
-rules and general dependency analysis require separate contracts.
+Native typed execution remains root-package-only; package-wide native rules do
+not implicitly analyze dependencies or turn dependency syntax into lint
+targets.
 
 Suitable types-tier `go/analysis` analyzers may run package-wide over the same
 load-owned syntax and type state after all native types, CFG, and SSA consumers
@@ -195,10 +207,9 @@ Syntax dispatch visits uninterested nodes once to avoid indexing or repeated
 walks; a secondary index requires new representative benchmark evidence.
 
 Fact-bearing adapted analyzers now have opt-in dependency-first cache reuse.
-Native package-wide typed rules, native tier caching, heterogeneous per-path
-package configuration, and typed fix application remain separate tier-runner
-work. Types-only requests do not construct CFG or SSA, and CFG-only requests do
-not construct SSA.
+Native tier caching, heterogeneous per-path package configuration, and typed
+fix application remain separate tier-runner work. Types-only requests do not
+construct CFG or SSA, and CFG-only requests do not construct SSA.
 
 The typed package AST and physical source model use separate parser file sets.
 The package parser preserves `go/packages`' existing AST object-resolution

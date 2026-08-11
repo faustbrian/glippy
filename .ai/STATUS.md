@@ -482,3 +482,15 @@ factory panics. Detectable aliases between flag value stores are rejected
 instead of making binding order observable. The adapter also contains flag
 getter and setter panics and never mutates a shared analyzer flag set. Progress
 remains 45% behind the Phase 2 gates.
+
+Native types-tier rules may now choose node-scoped shared traversal or one
+package-wide callback without constructing CFG or SSA. Package callbacks see
+the complete valid compiled package in physical-path order but may report only
+through exact target descriptors owned by that package and admitted by the
+generated-file policy. Ordinary packages retain production ownership while
+augmented test variants own only test files; foreign, stale, and non-owning
+targets fail closed. Typed options, partial-type eligibility, deterministic
+ordering, suppression, CLI reporting, and exact source identity remain shared
+with node-scoped rules. Native dependency analysis and typed fixes remain open,
+and Phase 2 naming, release, platform-runtime, and approved external-adoption
+gates keep overall progress at 45%.

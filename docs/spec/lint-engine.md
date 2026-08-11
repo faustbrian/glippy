@@ -17,11 +17,29 @@ node interests where applicable, generated-file policy, diagnostic categories,
 fix availability and safety, typed options schema, deprecation metadata, known
 limitations, and paired incorrect/correct examples.
 
-Every native types-tier rule MUST declare node interests. It MUST receive only
-matching AST nodes together with the root package's shared `go/types.Package`,
-`types.Info`, opaque package ID, package file set, package type-error state, and
-the exact immutable physical source captured during loading. The callback MUST
-NOT mutate shared typed values. Package-wide native rules are not yet admitted.
+Every native node-scoped types-tier rule MUST declare node interests. It MUST
+receive only matching AST nodes together with the root package's shared
+`go/types.Package`, `types.Info`, opaque package ID, package file set, package
+type-error state, and the exact immutable physical source captured during
+loading. The callback MUST NOT mutate shared typed values.
+
+A native package-wide rule MUST require the types tier and MUST NOT declare
+node interests or implement another execution interface. It MUST run once per
+canonical selected package that owns at least one eligible physical target.
+Its context MUST expose all valid captured compiled files for that package in
+physical-path order together with the shared package, type information,
+architecture-specific type sizes, and file set, while marking only files
+canonically owned by that package and admitted by the rule's generated-file
+policy as reporter targets. This allows an augmented test package to inspect
+production declarations without duplicating production diagnostics; its
+test-only files remain its targets.
+
+A package-wide finding MUST bind to a target descriptor from the same callback
+context. Foreign, stale, generated-but-ineligible, dependency, or non-owning
+test-variant descriptors MUST fail analysis. Primary ranges, related ranges,
+and fixes remain single-file under the ordinary finding contract. Package-wide
+rules receive the same immutable typed option snapshot and type-error policy as
+node-scoped types rules and MUST NOT mutate shared AST or type state.
 
 Every enabled native rule MUST receive the typed option values resolved from
 its own metadata and the selected configuration. A rule MUST NOT observe
@@ -112,12 +130,12 @@ AST object-resolution compatibility expected by suitable `go/analysis`
 analyzers.
 
 The native types runner MUST traverse each selected physical root source at
-most once and MUST order rule, package, file, and diagnostic work
-deterministically. When test loading exposes a production file through both its
-ordinary package and an augmented test variant, the ordinary package MUST own
-that file's analysis; test-only files MUST retain their test-variant owner.
-Dependency syntax MAY be loaded for later fact or dependency work but MUST NOT
-implicitly make dependencies lint targets.
+most once and MUST order node-scoped and package-wide rule, package, file, and
+diagnostic work deterministically. When test loading exposes a production file
+through both its ordinary package and an augmented test variant, the ordinary
+package MUST own that file's analysis; test-only files MUST retain their
+test-variant owner. Dependency syntax MAY be loaded for later fact or
+dependency work but MUST NOT implicitly make dependencies lint targets.
 
 Generated files MUST be excluded unless a rule explicitly opts in. A package
 with type errors MUST be excluded for a rule unless that types-tier or CFG-tier

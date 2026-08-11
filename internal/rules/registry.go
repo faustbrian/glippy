@@ -38,7 +38,8 @@ func NewRegistry(nativeRules ...Rule) (*Registry, error) {
 			return nil, fmt.Errorf("rule %d is nil", index)
 		}
 		metadata := cloneMetadata(nativeRule.Metadata())
-		if err := validateMetadata(metadata); err != nil {
+		_, packageWide := nativeRule.(PackageRule)
+		if err := validateMetadata(metadata, packageWide); err != nil {
 			return nil, fmt.Errorf("rule %d: %w", index, err)
 		}
 		if _, exists := entries[metadata.ID]; exists {
@@ -237,7 +238,7 @@ func MaximumRequirement(selection []Selection) Requirement {
 	return maximum
 }
 
-func validateMetadata(metadata Metadata) error {
+func validateMetadata(metadata Metadata, packageWide bool) error {
 	if !ruleIDPattern.MatchString(metadata.ID) {
 		return fmt.Errorf("invalid rule ID %q", metadata.ID)
 	}
@@ -265,9 +266,17 @@ func validateMetadata(metadata Metadata) error {
 	if metadata.RunDespiteTypeErrors && metadata.Requirement < RequireTypes {
 		return fmt.Errorf("%s: cheap-tier rule cannot opt into type-error packages", metadata.ID)
 	}
-	if (metadata.Requirement == RequireSyntax || metadata.Requirement == RequireTypes) &&
-		len(metadata.NodeInterests) == 0 {
+	if packageWide && metadata.Requirement != RequireTypes {
+		return fmt.Errorf("%s: package-wide rule must require types", metadata.ID)
+	}
+	if metadata.Requirement == RequireSyntax && len(metadata.NodeInterests) == 0 {
 		return fmt.Errorf("%s: %s rule must declare node interests", metadata.ID, metadata.Requirement)
+	}
+	if metadata.Requirement == RequireTypes && packageWide && len(metadata.NodeInterests) != 0 {
+		return fmt.Errorf("%s: package-wide rule must not declare node interests", metadata.ID)
+	}
+	if metadata.Requirement == RequireTypes && !packageWide && len(metadata.NodeInterests) == 0 {
+		return fmt.Errorf("%s: types rule must declare node interests", metadata.ID)
 	}
 	if metadata.Requirement == RequireControlFlow && len(metadata.NodeInterests) != 0 {
 		return fmt.Errorf("%s: control flow rule must not declare node interests", metadata.ID)

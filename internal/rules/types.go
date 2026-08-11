@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 
 	"github.com/faustbrian/gox/internal/source"
 	"golang.org/x/tools/go/cfg"
@@ -168,6 +169,13 @@ type TypesRule interface {
 	RunTypes(*TypesContext, ast.Node) ([]Finding, error)
 }
 
+// PackageRule runs once for each selected typed package and may report against
+// the package's canonically owned physical source files.
+type PackageRule interface {
+	Rule
+	RunPackage(*PackageContext) ([]PackageFinding, error)
+}
+
 // ControlFlowRule runs once for each function declaration and function literal
 // through a graph shared with every enabled control-flow rule.
 type ControlFlowRule interface {
@@ -202,6 +210,231 @@ type TypesContext struct {
 	info      *types.Info
 	illTyped  bool
 	options   OptionSet
+}
+
+// PackageFile binds one package AST to its exact immutable physical source and
+// records whether the current package invocation owns reporter-visible output
+// for that file.
+type PackageFile struct {
+	file      *source.File
+	syntax    *ast.File
+	fileSet   *token.FileSet
+	target    bool
+	contextID *packageContextID
+}
+
+type packageContextID struct{ marker byte }
+
+// PackageContext exposes one shared typed package and its canonical physical
+// source mapping to a package-wide native rule.
+type PackageContext struct {
+	fileSet   *token.FileSet
+	packageID string
+	package_  *types.Package
+	info      *types.Info
+	sizes     types.Sizes
+	illTyped  bool
+	files     []PackageFile
+	options   OptionSet
+	contextID *packageContextID
+}
+
+// PackageFinding binds one ordinary finding to the owned physical file it
+// targets.
+type PackageFinding struct {
+	File    PackageFile
+	Finding Finding
+}
+
+// NewPackageFile constructs one read-only package-file view.
+func NewPackageFile(
+	file *source.File,
+	syntax *ast.File,
+	fileSet *token.FileSet,
+	target bool,
+) PackageFile {
+	return PackageFile{file: file, syntax: syntax, fileSet: fileSet, target: target}
+}
+
+// NewPackageContext constructs one read-only package-wide rule context.
+func NewPackageContext(
+	fileSet *token.FileSet,
+	packageID string,
+	package_ *types.Package,
+	info *types.Info,
+	sizes types.Sizes,
+	illTyped bool,
+	files []PackageFile,
+	options OptionSet,
+) *PackageContext {
+	contextID := &packageContextID{}
+	files = slices.Clone(files)
+	for index := range files {
+		files[index].contextID = contextID
+	}
+	return &PackageContext{
+		fileSet:   fileSet,
+		packageID: packageID,
+		package_:  package_,
+		info:      info,
+		sizes:     sizes,
+		illTyped:  illTyped,
+		files:     files,
+		options:   options,
+		contextID: contextID,
+	}
+}
+
+// Source returns the exact immutable source captured for this package file.
+func (f PackageFile) Source() *source.File { return f.file }
+
+// Syntax returns the shared package AST for this physical file.
+func (f PackageFile) Syntax() *ast.File { return f.syntax }
+
+// Target reports whether this package invocation owns diagnostics for the file.
+func (f PackageFile) Target() bool { return f.target }
+
+// Range maps an AST node to this package file's exact physical byte range.
+func (f PackageFile) Range(node ast.Node) (source.Range, error) {
+	if node == nil {
+		return source.Range{}, fmt.Errorf("package range requires a syntax node")
+	}
+	return f.PositionRange(node.Pos(), node.End())
+}
+
+// PositionRange maps package positions to this exact physical source.
+func (f PackageFile) PositionRange(start, end token.Pos) (source.Range, error) {
+	if f.file == nil || f.fileSet == nil {
+		return source.Range{}, fmt.Errorf("package range requires source and package positions")
+	}
+	if !start.IsValid() || !end.IsValid() {
+		return source.Range{}, fmt.Errorf("package range positions are invalid")
+	}
+	physicalStart := f.fileSet.PositionFor(start, false)
+	physicalEnd := f.fileSet.PositionFor(end, false)
+	if physicalStart.Filename != f.file.Path() || physicalEnd.Filename != f.file.Path() {
+		return source.Range{}, fmt.Errorf("package range positions belong to another source file")
+	}
+	range_ := source.Range{Start: physicalStart.Offset, End: physicalEnd.Offset}
+	if _, valid := f.file.Slice(range_); !valid {
+		return source.Range{}, fmt.Errorf("package positions map to an invalid physical range")
+	}
+	return range_, nil
+}
+
+// TokenRange maps a package position to this file's exact lexical token.
+func (f PackageFile) TokenRange(position token.Pos) (source.Range, error) {
+	if f.file == nil || f.fileSet == nil || !position.IsValid() {
+		return source.Range{}, fmt.Errorf("package token range requires source and a package position")
+	}
+	physical := f.fileSet.PositionFor(position, false)
+	if physical.Filename != f.file.Path() {
+		return source.Range{}, fmt.Errorf("package token position belongs to another source file")
+	}
+	range_, found := f.file.TokenRangeAtOffset(physical.Offset)
+	if !found {
+		return source.Range{}, fmt.Errorf("package token position does not identify a physical token")
+	}
+	return range_, nil
+}
+
+// Files returns independent descriptors in canonical physical path order.
+func (c *PackageContext) Files() []PackageFile {
+	if c == nil {
+		return nil
+	}
+	return slices.Clone(c.files)
+}
+
+// OwnsTarget reports whether a descriptor came from this exact callback and is
+// eligible for reporter-visible output.
+func (c *PackageContext) OwnsTarget(file PackageFile) bool {
+	if c == nil || c.contextID == nil || file.contextID != c.contextID || !file.target {
+		return false
+	}
+	for _, candidate := range c.files {
+		if candidate.contextID == file.contextID && candidate.target &&
+			candidate.file == file.file && candidate.syntax == file.syntax &&
+			candidate.fileSet == file.fileSet {
+			return true
+		}
+	}
+	return false
+}
+
+// PackageID returns the opaque go/packages identity for this package.
+func (c *PackageContext) PackageID() string {
+	if c == nil {
+		return ""
+	}
+	return c.packageID
+}
+
+// Package returns the shared read-only go/types package.
+func (c *PackageContext) Package() *types.Package {
+	if c == nil {
+		return nil
+	}
+	return c.package_
+}
+
+// Info returns the shared read-only type information for package AST nodes.
+func (c *PackageContext) Info() *types.Info {
+	if c == nil {
+		return nil
+	}
+	return c.info
+}
+
+// Sizes returns the shared architecture-specific type-size implementation.
+func (c *PackageContext) Sizes() types.Sizes {
+	if c == nil {
+		return nil
+	}
+	return c.sizes
+}
+
+// FileSet returns the shared read-only package position mapping.
+func (c *PackageContext) FileSet() *token.FileSet {
+	if c == nil {
+		return nil
+	}
+	return c.fileSet
+}
+
+// IllTyped reports whether package loading encountered type errors.
+func (c *PackageContext) IllTyped() bool { return c != nil && c.illTyped }
+
+// BooleanOption returns one configured boolean rule option.
+func (c *PackageContext) BooleanOption(name string) (bool, bool) {
+	if c == nil {
+		return false, false
+	}
+	return c.options.Boolean(name)
+}
+
+// IntegerOption returns one configured integer rule option.
+func (c *PackageContext) IntegerOption(name string) (int64, bool) {
+	if c == nil {
+		return 0, false
+	}
+	return c.options.Integer(name)
+}
+
+// StringOption returns one configured string rule option.
+func (c *PackageContext) StringOption(name string) (string, bool) {
+	if c == nil {
+		return "", false
+	}
+	return c.options.String(name)
+}
+
+// StringsOption returns one independently owned string-list rule option.
+func (c *PackageContext) StringsOption(name string) ([]string, bool) {
+	if c == nil {
+		return nil, false
+	}
+	return c.options.Strings(name)
 }
 
 // ControlFlowContext binds one function graph to its shared typed package and

@@ -304,6 +304,60 @@ func TestRunPackagesRunsControlFlowRulesBeforeSuppressing(t *testing.T) {
 	}
 }
 
+func TestRunPackagesRunsPackageWideRulesBeforeSuppressing(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "project.go")
+	writeTypesFixture(
+		t,
+		path,
+		"//gox:ignore-file package-rule -- reviewed package\npackage project\nfunc run() {}\n",
+	)
+	rule := packageRule{
+		metadata: packageMetadata("package-rule"),
+		run: func(ctx *rules.PackageContext) ([]rules.PackageFinding, error) {
+			for _, file := range ctx.Files() {
+				if !file.Target() {
+					continue
+				}
+				range_, err := file.Range(file.Syntax().Name)
+				if err != nil {
+					return nil, err
+				}
+				return []rules.PackageFinding{{
+					File: file,
+					Finding: rules.Finding{
+						MessageKey: "package", Message: "package", Range: range_,
+					},
+				}}, nil
+			}
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Requirement != rules.RequireTypes || len(result.Files) != 1 ||
+		result.Files[0].Path != path || len(result.Files[0].Diagnostics) != 0 ||
+		len(result.Files[0].Suppressed) != 1 ||
+		result.Files[0].Suppressed[0].Diagnostic.RuleID != "package-rule" {
+		t.Fatalf("RunPackages() package-wide result = %#v", result)
+	}
+}
+
 func TestRunPackagesRejectsExpiredSuppressions(t *testing.T) {
 	t.Parallel()
 
