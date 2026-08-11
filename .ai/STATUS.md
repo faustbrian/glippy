@@ -73,3 +73,9 @@ external adoption open. The migration guide now defines non-mutating and
 disposable rehearsals, sole-formatter cutover, human review, and coherent
 rollback for repositories replacing gofmt, gofumpt, or golines; it does not
 advance the 45% capability gate.
+
+The current formatter dialect is now published with evidence-linked examples
+covering width, indentation, blocks, semicolons, control flow, lists, binary
+expressions, selectors, comments, directives, preserved source choices, and
+write refusal. This closes the Phase 2 formatter-rule documentation item but
+does not resolve the remaining platform, naming, or external-adoption gates.

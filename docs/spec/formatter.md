@@ -1,5 +1,9 @@
 # Formatter Specification
 
+The user-facing dialect and examples are published in
+[`../formatter-rules.md`](../formatter-rules.md). This specification remains the
+normative contract.
+
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
 "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
 "OPTIONAL" in this document are to be interpreted as described in BCP 14

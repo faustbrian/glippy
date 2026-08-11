@@ -26,7 +26,8 @@ currently recorded divergence classes are:
 Gofumpt adds policy beyond gofmt, and golines rewrites long lines around a
 gofmt-compatible pipeline. They therefore cannot remain authoritative after a
 Gox migration either. The exact Gox compatibility decision and evidence are in
-[ADR 0004](decisions/0004-gofmt-compatibility.md).
+[ADR 0004](decisions/0004-gofmt-compatibility.md). The current canonical output
+is documented in the [formatter rules](formatter-rules.md).
 
 ## Rehearse Without Mutation
 
