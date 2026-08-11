@@ -20,7 +20,8 @@ import (
 )
 
 type cliSyntaxRule struct {
-	metadata rules.Metadata
+	metadata   rules.Metadata
+	optionName string
 }
 
 type cliTypesRule struct {
@@ -314,6 +315,15 @@ func run(ready bool) {
 func (r cliSyntaxRule) Metadata() rules.Metadata { return r.metadata }
 
 func (r cliSyntaxRule) RunSyntax(ctx *rules.Context, node ast.Node) ([]rules.Finding, error) {
+	if r.optionName != "" {
+		enabled, found := ctx.BooleanOption(r.optionName)
+		if !found {
+			return nil, errors.New("configured CLI rule did not receive its option")
+		}
+		if !enabled {
+			return nil, nil
+		}
+	}
 	sourceRange, err := ctx.Range(node)
 	if err != nil {
 		return nil, err
@@ -323,6 +333,75 @@ func (r cliSyntaxRule) RunSyntax(ctx *rules.Context, node ast.Node) ([]rules.Fin
 		Message:    "call requires review",
 		Range:      sourceRange,
 	}}, nil
+}
+
+func TestRunLintCheckAppliesTypedRuleOptionsFromConfiguration(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/configured\n\ngo 1.26.0\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "configured.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){target()}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(configurationPath, []byte(`version = 1
+
+[lint.rule-options."configured-rule"]
+enabled = true
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	metadata := rules.Metadata{
+		ID: "configured-rule", Summary: "reports configured calls",
+		Documentation: "Reports calls when configured.", DefaultSeverity: rules.SeverityWarn,
+		Presets: []rules.Preset{rules.PresetCorrectness}, MinimumGoVersion: "1.22",
+		Requirement: rules.RequireSyntax, NodeInterests: []rules.NodeKind{rules.NodeCallExpr},
+		Categories: []rules.Category{rules.CategoryCorrectness},
+		Options: []rules.OptionMetadata{{
+			Name: "enabled", Summary: "enable reporting", Kind: rules.OptionBoolean, Required: true,
+		}},
+		Examples: []rules.Example{{Incorrect: "target()", Correct: "reviewed()"}},
+	}
+	registry, err := rules.NewRegistry(cliSyntaxRule{metadata: metadata, optionName: "enabled"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{configPath: configurationPath, paths: []string{path}},
+		&stdout,
+		&stderr,
+		registry,
+	)
+	if exitCode != ExitFindings || stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "configured-rule") {
+		t.Fatalf("runLintCheck() = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+	if err := os.WriteFile(configurationPath, []byte("version = 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = runLintCheck(
+		context.Background(),
+		lintInvocation{configPath: configurationPath, paths: []string{path}},
+		&stdout,
+		&stderr,
+		registry,
+	)
+	if exitCode != ExitInvalidInvocation || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "missing required option \"enabled\"") {
+		t.Fatalf("runLintCheck() missing option = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
 }
 
 func (r cliTypesRule) Metadata() rules.Metadata { return r.metadata }

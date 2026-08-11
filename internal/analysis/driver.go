@@ -14,6 +14,7 @@ import (
 type RunOptions struct {
 	Preset                   rules.Preset
 	Overrides                map[string]rules.Severity
+	RuleOptions              map[string]rules.OptionSet
 	RequireSuppressionReason bool
 	SuppressionExpiryCutoff  string
 	Cache                    *PackageCacheOptions
@@ -50,7 +51,7 @@ func Run(
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	selection, err := registry.Resolve(options.Preset, options.Overrides)
+	selection, err := registry.ResolveConfigured(options.Preset, options.Overrides, options.RuleOptions)
 	if err != nil {
 		return Result{}, fmt.Errorf("resolve analysis rules: %w", err)
 	}

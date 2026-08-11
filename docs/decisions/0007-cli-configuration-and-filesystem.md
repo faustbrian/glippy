@@ -19,6 +19,14 @@ configuration, and formatting/fix validation completes before a file's atomic
 replacement. Recursive discovery excludes vendor, module caches, VCS metadata,
 and symlink traversal by default.
 
+Rule options use one `lint.rule-options."rule-id"` table and are validated
+against canonical registry metadata as boolean, integer, string, or string-list
+values. Unknown rules, unknown option names, wrong scalar kinds, and missing
+required values on enabled rules fail before traversal. Required options have
+no default; every optional option declares one canonical metadata default of
+the same type. One immutable resolved snapshot is routed to that rule across
+every native analysis tier; no option value is an ambient environment input.
+
 File-formatting preparation is bounded by the selection size, `GOMAXPROCS`, and
 a hard ceiling of 32 workers. Sorted task indexes own result and error ordering.
 Signal or caller cancellation stops scheduling and is observed before every

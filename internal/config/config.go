@@ -65,6 +65,7 @@ type Format struct {
 type Lint struct {
 	Preset       Preset
 	Rules        map[string]Severity
+	RuleOptions  map[string]rules.OptionSet
 	Suppressions Suppressions
 }
 
@@ -76,7 +77,8 @@ type Suppressions struct {
 
 // ParseOptions supplies registry state needed to validate rule identifiers.
 type ParseOptions struct {
-	KnownRules []string
+	KnownRules  []string
+	RuleOptions map[string][]rules.OptionMetadata
 }
 
 // Error is one path-aware configuration diagnostic.
@@ -111,9 +113,10 @@ type formatConfig struct {
 }
 
 type lintConfig struct {
-	Preset       *string           `toml:"preset"`
-	Rules        map[string]string `toml:"rules"`
-	Suppressions suppressionConfig `toml:"suppressions"`
+	Preset       *string                   `toml:"preset"`
+	Rules        map[string]string         `toml:"rules"`
+	RuleOptions  map[string]map[string]any `toml:"rule-options"`
+	Suppressions suppressionConfig         `toml:"suppressions"`
 }
 
 type suppressionConfig struct {
@@ -130,8 +133,9 @@ func Defaults() Config {
 			TabWidth:  DefaultTabWidth,
 		},
 		Lint: Lint{
-			Preset: PresetCorrectness,
-			Rules:  make(map[string]Severity),
+			Preset:      PresetCorrectness,
+			Rules:       make(map[string]Severity),
+			RuleOptions: make(map[string]rules.OptionSet),
 		},
 	}
 }
@@ -202,12 +206,12 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 	for _, rule := range options.KnownRules {
 		knownRules[rule] = struct{}{}
 	}
-	rules := make([]string, 0, len(decoded.Lint.Rules))
+	ruleIDs := make([]string, 0, len(decoded.Lint.Rules))
 	for rule := range decoded.Lint.Rules {
-		rules = append(rules, rule)
+		ruleIDs = append(ruleIDs, rule)
 	}
-	sort.Strings(rules)
-	for _, rule := range rules {
+	sort.Strings(ruleIDs)
+	for _, rule := range ruleIDs {
 		if _, found := knownRules[rule]; !found {
 			return Config{}, semanticError(path, "unknown lint rule %q", rule)
 		}
@@ -217,7 +221,80 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 		}
 		result.Lint.Rules[rule] = severity
 	}
+	optionRuleIDs := make([]string, 0, len(decoded.Lint.RuleOptions))
+	for rule := range decoded.Lint.RuleOptions {
+		optionRuleIDs = append(optionRuleIDs, rule)
+	}
+	sort.Strings(optionRuleIDs)
+	for _, rule := range optionRuleIDs {
+		if _, found := knownRules[rule]; !found {
+			return Config{}, semanticError(path, "unknown lint rule %q in lint.rule-options", rule)
+		}
+		schema := make(map[string]rules.OptionMetadata, len(options.RuleOptions[rule]))
+		for _, option := range options.RuleOptions[rule] {
+			schema[option.Name] = option
+		}
+		names := make([]string, 0, len(decoded.Lint.RuleOptions[rule]))
+		for name := range decoded.Lint.RuleOptions[rule] {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		values := make(map[string]rules.OptionValue, len(names))
+		for _, name := range names {
+			metadata, found := schema[name]
+			if !found {
+				return Config{}, semanticError(path, "unknown option %q for lint rule %q", name, rule)
+			}
+			value, err := decodeRuleOption(decoded.Lint.RuleOptions[rule][name], metadata.Kind)
+			if err != nil {
+				return Config{}, semanticError(
+					path,
+					"option %q for lint rule %q must be %s",
+					name,
+					rule,
+					metadata.Kind,
+				)
+			}
+			values[name] = value
+		}
+		result.Lint.RuleOptions[rule] = rules.NewOptionSet(values)
+	}
 	return result, nil
+}
+
+func decodeRuleOption(value any, kind rules.OptionKind) (rules.OptionValue, error) {
+	switch kind {
+	case rules.OptionBoolean:
+		value, valid := value.(bool)
+		if valid {
+			return rules.BooleanOption(value), nil
+		}
+	case rules.OptionInteger:
+		value, valid := value.(int64)
+		if valid {
+			return rules.IntegerOption(value), nil
+		}
+	case rules.OptionString:
+		value, valid := value.(string)
+		if valid {
+			return rules.StringOption(value), nil
+		}
+	case rules.OptionStrings:
+		items, valid := value.([]any)
+		if !valid {
+			break
+		}
+		values := make([]string, len(items))
+		for index, item := range items {
+			text, valid := item.(string)
+			if !valid {
+				return rules.OptionValue{}, fmt.Errorf("invalid string list")
+			}
+			values[index] = text
+		}
+		return rules.StringsOption(values), nil
+	}
+	return rules.OptionValue{}, fmt.Errorf("invalid %s option", kind)
 }
 
 func semanticError(path, format string, arguments ...any) error {

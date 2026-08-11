@@ -19,12 +19,14 @@ type activeSyntaxRule struct {
 	rule     rules.SyntaxRule
 	metadata rules.Metadata
 	severity rules.Severity
+	context  *rules.Context
 }
 
 type activeSyntaxFileRule struct {
 	rule     rules.SyntaxFileRule
 	metadata rules.Metadata
 	severity rules.Severity
+	context  *rules.Context
 }
 
 // RunSyntax executes selected syntax rules through one shared AST traversal.
@@ -98,6 +100,7 @@ func RunSyntax(
 			}
 			fileRules = append(fileRules, activeSyntaxFileRule{
 				rule: fileRule, metadata: metadata, severity: selected.Severity,
+				context: rules.NewContext(file, selected.Options),
 			})
 			continue
 		}
@@ -108,6 +111,7 @@ func RunSyntax(
 			rule:     syntaxRule,
 			metadata: metadata,
 			severity: selected.Severity,
+			context:  rules.NewContext(file, selected.Options),
 		}
 		for _, interest := range metadata.NodeInterests {
 			dispatch[interest] = append(dispatch[interest], active)
@@ -119,7 +123,6 @@ func RunSyntax(
 
 	diagnostics := make([]rules.Diagnostic, 0)
 	if len(dispatch) > 0 {
-		ruleContext := rules.NewContext(file)
 		err := file.ReadSyntax(func(syntax *ast.File) error {
 			var runErr error
 			ast.Inspect(syntax, func(node ast.Node) bool {
@@ -138,7 +141,7 @@ func RunSyntax(
 					return true
 				}
 				for _, active := range dispatch[kind] {
-					findings, err := active.rule.RunSyntax(ruleContext, node)
+					findings, err := active.rule.RunSyntax(active.context, node)
 					if contextErr := ctx.Err(); contextErr != nil {
 						runErr = contextErr
 						return false
@@ -169,7 +172,7 @@ func RunSyntax(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		findings, err := active.rule.RunSyntaxFile(file)
+		findings, err := active.rule.RunSyntaxFile(active.context)
 		if contextErr := ctx.Err(); contextErr != nil {
 			return nil, contextErr
 		}

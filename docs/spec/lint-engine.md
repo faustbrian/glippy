@@ -23,6 +23,13 @@ matching AST nodes together with the root package's shared `go/types.Package`,
 the exact immutable physical source captured during loading. The callback MUST
 NOT mutate shared typed values. Package-wide native rules are not yet admitted.
 
+Every enabled native rule MUST receive the typed option values resolved from
+its own metadata and the selected configuration. A rule MUST NOT observe
+another rule's options or mutate string-list values retained by the run.
+Required options MUST have no default and fail planning before source traversal
+when absent. Optional options MUST declare a canonical metadata default of the
+same type, and that resolved default MUST be present in the callback snapshot.
+
 Every native CFG-tier rule MUST NOT declare node interests. It MUST run once
 for every function declaration and function literal with a body in canonical
 physical file and function-position order. All eligible CFG rules for one
@@ -436,6 +443,11 @@ an analyzer is not suitable and MUST NOT be registered. Declared or observed
 unsupported CFG, SSA, flag, cross-file related location, or multi-file fix
 behavior MUST be rejected with a clear
 compatibility diagnostic.
+
+The current adapter rejects analyzer flags and rejects native option metadata
+that has no analyzer flag binding. Analyzer flag support requires isolated
+per-run values; mutating a shared analyzer flag set is not an accepted
+configuration mechanism.
 
 Rule documentation and `explain` output MUST derive from the same immutable
 registry metadata and examples. Human `explain` output MUST include the rule

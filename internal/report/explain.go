@@ -55,9 +55,9 @@ func RenderRuleText(registry *rules.Registry, ruleID string) ([]byte, bool) {
 		output.WriteString("  none\n")
 	}
 	for _, option := range metadata.Options {
-		requirement := "optional"
-		if option.Required {
-			requirement = "required"
+		requirement := "required"
+		if !option.Required && option.Default != nil {
+			requirement = "optional, default " + option.Default.String()
 		}
 		fmt.Fprintf(
 			&output,

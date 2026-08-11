@@ -18,6 +18,7 @@ type activeSSARule struct {
 	rule     rules.SSARule
 	metadata rules.Metadata
 	severity rules.Severity
+	options  rules.OptionSet
 }
 
 // RunSSA executes selected SSA-tier rules once per source function through one
@@ -90,9 +91,18 @@ func RunSSA(
 			functionMap = sourceSSAFunctions(program, ssaPackage, pkg)
 			functionsByPackage[ssaPackage] = functionMap
 		}
-		typesContext := rules.NewTypesContext(
-			file.source, pkg.Fset, pkg.ID, pkg.Types, pkg.TypesInfo, pkg.IllTyped,
-		)
+		typesContexts := make(map[string]*rules.TypesContext, len(activeRules))
+		for _, active := range activeRules {
+			typesContexts[active.metadata.ID] = rules.NewTypesContext(
+				file.source,
+				pkg.Fset,
+				pkg.ID,
+				pkg.Types,
+				pkg.TypesInfo,
+				pkg.IllTyped,
+				active.options,
+			)
+		}
 		for _, sourceFunction := range functionBodies(file.syntax) {
 			if err := ctx.Err(); err != nil {
 				return nil, err
@@ -101,13 +111,17 @@ func RunSSA(
 			if function == nil {
 				return nil, fmt.Errorf("package %q source function has no SSA function", pkg.ID)
 			}
-			ruleContext := rules.NewSSAContext(
-				typesContext, program, ssaPackage, function, sourceFunction.function,
-			)
 			for _, active := range activeRules {
 				if file.source.Metadata().Generated && !active.metadata.RunOnGenerated {
 					continue
 				}
+				ruleContext := rules.NewSSAContext(
+					typesContexts[active.metadata.ID],
+					program,
+					ssaPackage,
+					function,
+					sourceFunction.function,
+				)
 				findings, err := active.rule.RunSSA(ruleContext)
 				if contextErr := ctx.Err(); contextErr != nil {
 					return nil, contextErr
@@ -166,6 +180,7 @@ func prepareSSARules(
 		}
 		activeRules = append(activeRules, activeSSARule{
 			rule: ssaRule, metadata: metadata, severity: selected.Severity,
+			options: selected.Options,
 		})
 	}
 	return activeRules, nil

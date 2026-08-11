@@ -40,6 +40,11 @@ selection, result-changing environment input, dependency export, and fact.
 Duplicate rule or component identities fail instead of being resolved by input
 order.
 
+Resolved typed rule options, including canonical metadata defaults, use the
+`gox-rule-options-v1` canonical encoding. The cache consumer derives each digest
+from the same immutable snapshot routed to the rule instead of accepting a
+caller-supplied surrogate.
+
 Persistent entries live under a caller-selected normalized absolute root and a
 store schema directory. Each entry embeds its key, payload length, and payload
 SHA-256 digest. Reads are bounded to 16 MiB, and corruption is a cache miss.

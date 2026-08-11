@@ -313,9 +313,13 @@ func prepareLintInputPlans(
 			if err != nil {
 				return nil, exitCode, err
 			}
-			selected, err := registry.Resolve(options.analysis.Preset, options.analysis.Overrides)
+			selected, err := registry.ResolveConfigured(
+				options.analysis.Preset,
+				options.analysis.Overrides,
+				options.analysis.RuleOptions,
+			)
 			if err != nil {
-				return nil, ExitInternalError, err
+				return nil, ExitInvalidInvocation, err
 			}
 			resolved = resolvedOptions{options: options, requirement: rules.MaximumRequirement(selected)}
 			optionsByConfiguration[selection.Path] = resolved
@@ -487,7 +491,9 @@ func lintOptionsForSelection(
 	selection config.Selection,
 	registry *rules.Registry,
 ) (lintTaskOptions, int, error) {
-	loaded, err := config.Load(selection, config.ParseOptions{KnownRules: registry.IDs()})
+	loaded, err := config.Load(selection, config.ParseOptions{
+		KnownRules: registry.IDs(), RuleOptions: registry.OptionSchemas(),
+	})
 	if err != nil {
 		return lintTaskOptions{}, configurationErrorExitCode(err), err
 	}
@@ -495,6 +501,7 @@ func lintOptionsForSelection(
 		analysis: analysis.RunOptions{
 			Preset:                   loaded.Lint.Preset,
 			Overrides:                loaded.Lint.Rules,
+			RuleOptions:              loaded.Lint.RuleOptions,
 			RequireSuppressionReason: loaded.Lint.Suppressions.RequireReason,
 			SuppressionExpiryCutoff:  loaded.Lint.Suppressions.ExpiryCutoff,
 		},

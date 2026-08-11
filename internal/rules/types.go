@@ -107,6 +107,7 @@ type OptionMetadata struct {
 	Summary  string
 	Kind     OptionKind
 	Required bool
+	Default  *OptionValue
 }
 
 // Deprecation records a rule replacement without silently changing its ID.
@@ -157,7 +158,7 @@ type SyntaxRule interface {
 // SyntaxFileRule runs once over one immutable source-backed syntax view.
 type SyntaxFileRule interface {
 	Rule
-	RunSyntaxFile(*source.File) ([]Finding, error)
+	RunSyntaxFile(*Context) ([]Finding, error)
 }
 
 // TypesRule receives package AST nodes with shared type information and exact
@@ -183,12 +184,13 @@ type SSARule interface {
 
 // Context is the immutable per-file syntax rule context.
 type Context struct {
-	file *source.File
+	file    *source.File
+	options OptionSet
 }
 
 // NewContext creates an immutable per-file rule context.
-func NewContext(file *source.File) *Context {
-	return &Context{file: file}
+func NewContext(file *source.File, options OptionSet) *Context {
+	return &Context{file: file, options: options}
 }
 
 // TypesContext binds one package AST to its exact immutable physical source.
@@ -199,6 +201,7 @@ type TypesContext struct {
 	package_  *types.Package
 	info      *types.Info
 	illTyped  bool
+	options   OptionSet
 }
 
 // ControlFlowContext binds one function graph to its shared typed package and
@@ -338,6 +341,38 @@ func (c *SSAContext) TokenRange(position token.Pos) (source.Range, error) {
 	return c.typesContext.TokenRange(position)
 }
 
+// BooleanOption returns one configured boolean rule option.
+func (c *SSAContext) BooleanOption(name string) (bool, bool) {
+	if c == nil || c.typesContext == nil {
+		return false, false
+	}
+	return c.typesContext.BooleanOption(name)
+}
+
+// IntegerOption returns one configured integer rule option.
+func (c *SSAContext) IntegerOption(name string) (int64, bool) {
+	if c == nil || c.typesContext == nil {
+		return 0, false
+	}
+	return c.typesContext.IntegerOption(name)
+}
+
+// StringOption returns one configured string rule option.
+func (c *SSAContext) StringOption(name string) (string, bool) {
+	if c == nil || c.typesContext == nil {
+		return "", false
+	}
+	return c.typesContext.StringOption(name)
+}
+
+// StringsOption returns one independently owned string-list rule option.
+func (c *SSAContext) StringsOption(name string) ([]string, bool) {
+	if c == nil || c.typesContext == nil {
+		return nil, false
+	}
+	return c.typesContext.StringsOption(name)
+}
+
 // NewControlFlowContext constructs one read-only control-flow rule context.
 func NewControlFlowContext(
 	typesContext *TypesContext,
@@ -430,6 +465,38 @@ func (c *ControlFlowContext) PositionRange(start, end token.Pos) (source.Range, 
 	return c.typesContext.PositionRange(start, end)
 }
 
+// BooleanOption returns one configured boolean rule option.
+func (c *ControlFlowContext) BooleanOption(name string) (bool, bool) {
+	if c == nil || c.typesContext == nil {
+		return false, false
+	}
+	return c.typesContext.BooleanOption(name)
+}
+
+// IntegerOption returns one configured integer rule option.
+func (c *ControlFlowContext) IntegerOption(name string) (int64, bool) {
+	if c == nil || c.typesContext == nil {
+		return 0, false
+	}
+	return c.typesContext.IntegerOption(name)
+}
+
+// StringOption returns one configured string rule option.
+func (c *ControlFlowContext) StringOption(name string) (string, bool) {
+	if c == nil || c.typesContext == nil {
+		return "", false
+	}
+	return c.typesContext.StringOption(name)
+}
+
+// StringsOption returns one independently owned string-list rule option.
+func (c *ControlFlowContext) StringsOption(name string) ([]string, bool) {
+	if c == nil || c.typesContext == nil {
+		return nil, false
+	}
+	return c.typesContext.StringsOption(name)
+}
+
 // NewTypesContext constructs one read-only typed rule context.
 func NewTypesContext(
 	file *source.File,
@@ -438,6 +505,7 @@ func NewTypesContext(
 	package_ *types.Package,
 	info *types.Info,
 	illTyped bool,
+	options OptionSet,
 ) *TypesContext {
 	return &TypesContext{
 		file:      file,
@@ -446,6 +514,7 @@ func NewTypesContext(
 		package_:  package_,
 		info:      info,
 		illTyped:  illTyped,
+		options:   options,
 	}
 }
 
@@ -460,6 +529,38 @@ func (c *TypesContext) File() *source.File {
 		return nil
 	}
 	return c.file
+}
+
+// BooleanOption returns one configured boolean rule option.
+func (c *TypesContext) BooleanOption(name string) (bool, bool) {
+	if c == nil {
+		return false, false
+	}
+	return c.options.Boolean(name)
+}
+
+// IntegerOption returns one configured integer rule option.
+func (c *TypesContext) IntegerOption(name string) (int64, bool) {
+	if c == nil {
+		return 0, false
+	}
+	return c.options.Integer(name)
+}
+
+// StringOption returns one configured string rule option.
+func (c *TypesContext) StringOption(name string) (string, bool) {
+	if c == nil {
+		return "", false
+	}
+	return c.options.String(name)
+}
+
+// StringsOption returns one independently owned string-list rule option.
+func (c *TypesContext) StringsOption(name string) ([]string, bool) {
+	if c == nil {
+		return nil, false
+	}
+	return c.options.Strings(name)
 }
 
 // PackageID returns the opaque go/packages identity for the current package.
@@ -597,6 +698,47 @@ type Selection struct {
 	ID          string
 	Severity    Severity
 	Requirement Requirement
+	Options     OptionSet
+}
+
+// File returns the exact immutable source version for the syntax rule.
+func (c *Context) File() *source.File {
+	if c == nil {
+		return nil
+	}
+	return c.file
+}
+
+// BooleanOption returns one configured boolean rule option.
+func (c *Context) BooleanOption(name string) (bool, bool) {
+	if c == nil {
+		return false, false
+	}
+	return c.options.Boolean(name)
+}
+
+// IntegerOption returns one configured integer rule option.
+func (c *Context) IntegerOption(name string) (int64, bool) {
+	if c == nil {
+		return 0, false
+	}
+	return c.options.Integer(name)
+}
+
+// StringOption returns one configured string rule option.
+func (c *Context) StringOption(name string) (string, bool) {
+	if c == nil {
+		return "", false
+	}
+	return c.options.String(name)
+}
+
+// StringsOption returns one independently owned string-list rule option.
+func (c *Context) StringsOption(name string) ([]string, bool) {
+	if c == nil {
+		return nil, false
+	}
+	return c.options.Strings(name)
 }
 
 // PositionRange converts a token range when a caller already owns positions.

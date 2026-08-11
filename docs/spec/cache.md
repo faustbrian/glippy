@@ -17,6 +17,11 @@ configuration digest, build tags, GOOS, GOARCH, cgo selection, and formatter
 compatibility mode. Every enabled lint rule MUST contribute its rule ID,
 severity, and canonical options digest.
 
+The options digest MUST be derived from the resolved typed option snapshot,
+including canonical metadata defaults, ordered by option name and encoded with
+the `gox-rule-options-v1` schema. A cache caller MUST NOT substitute an
+unrelated digest for the values delivered to the rule callback.
+
 A consumer MUST add one named, digested component for every applicable source,
 module file, workspace file, overlay, package/build selection, result-changing
 environment input, dependency export, and imported fact. Component identity

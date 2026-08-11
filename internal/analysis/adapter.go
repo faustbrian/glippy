@@ -94,6 +94,12 @@ func AdaptAnalyzer(
 			)
 		}
 	}
+	if len(options.Metadata.Options) != 0 {
+		return nil, fmt.Errorf(
+			"adapt go/analysis %q: native options require analyzer flag bindings",
+			analyzer.Name,
+		)
+	}
 	if len(options.Metadata.Fixes) != 0 {
 		return nil, fmt.Errorf("adapt go/analysis %q: native fix metadata must come from suggested-fix mappings", analyzer.Name)
 	}
@@ -210,10 +216,11 @@ func (r *packageAnalyzerRule) Metadata() rules.Metadata {
 	return cloneAnalyzerMetadata(r.metadata)
 }
 
-func (r *analyzerRule) RunSyntaxFile(file *source.File) ([]rules.Finding, error) {
-	if file == nil {
+func (r *analyzerRule) RunSyntaxFile(ctx *rules.Context) ([]rules.Finding, error) {
+	if ctx == nil || ctx.File() == nil {
 		return nil, fmt.Errorf("go/analysis adapter requires a source file")
 	}
+	file := ctx.File()
 	analyzer := r.analyzer
 	findings := make([]rules.Finding, 0)
 	err := file.ReadSyntaxView(func(fileSet *token.FileSet, syntax *ast.File) error {

@@ -459,3 +459,14 @@ temporary files remain untouched; cancellation, deleted roots, count and byte
 limits, deterministic ties, and concurrent equal publication across independent
 store handles are covered. No CLI policy invokes pruning, stale crash temporary
 files remain deferred, and progress stays 45% behind the Phase 2 gates.
+
+Rule configuration now accepts strict per-rule boolean, integer, string, and
+string-list values under `lint.rule-options`. Canonical metadata rejects unknown
+or mistyped fields, requires canonical defaults for optional fields, and rejects
+defaults or missing values for required fields before source traversal.
+Immutable resolved option snapshots reach syntax, types, CFG, and SSA native
+contexts and are bound to each discovered configuration in the CLI. Adapted
+analyzers still reject flags and unbound native options until an isolated flag
+instance contract is proven. Persistent analysis keys derive option digests,
+including resolved defaults, from those same snapshots rather than caller
+assertions. Progress remains 45% behind the Phase 2 gates.

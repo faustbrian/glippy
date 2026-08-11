@@ -83,8 +83,30 @@ func (r *Registry) Metadata(id string) (Metadata, bool) {
 	return cloneMetadata(entry.metadata), true
 }
 
+// OptionSchemas returns independent typed option metadata by rule ID.
+func (r *Registry) OptionSchemas() map[string][]OptionMetadata {
+	if r == nil {
+		return nil
+	}
+	result := make(map[string][]OptionMetadata, len(r.entries))
+	for _, id := range r.ids {
+		result[id] = cloneOptionMetadata(r.entries[id].metadata.Options)
+	}
+	return result
+}
+
 // Resolve applies one preset and explicit overrides into an ordered selection.
 func (r *Registry) Resolve(preset Preset, overrides map[string]Severity) ([]Selection, error) {
+	return r.ResolveConfigured(preset, overrides, nil)
+}
+
+// ResolveConfigured applies severity and typed option configuration into an
+// ordered immutable selection.
+func (r *Registry) ResolveConfigured(
+	preset Preset,
+	overrides map[string]Severity,
+	options map[string]OptionSet,
+) ([]Selection, error) {
 	if r == nil {
 		return nil, fmt.Errorf("resolve requires a registry")
 	}
@@ -105,6 +127,20 @@ func (r *Registry) Resolve(preset Preset, overrides map[string]Severity) ([]Sele
 			return nil, fmt.Errorf("invalid severity %q for rule %q", severity, id)
 		}
 	}
+	optionRuleIDs := make([]string, 0, len(options))
+	for id := range options {
+		optionRuleIDs = append(optionRuleIDs, id)
+	}
+	sort.Strings(optionRuleIDs)
+	for _, id := range optionRuleIDs {
+		entry, found := r.entries[id]
+		if !found {
+			return nil, fmt.Errorf("unknown rule %q in rule options", id)
+		}
+		if err := validateOptionSet(entry.metadata, options[id]); err != nil {
+			return nil, err
+		}
+	}
 	selection := make([]Selection, 0, len(r.ids))
 	for _, id := range r.ids {
 		metadata := r.entries[id].metadata
@@ -118,13 +154,57 @@ func (r *Registry) Resolve(preset Preset, overrides map[string]Severity) ([]Sele
 		if severity == SeverityOff {
 			continue
 		}
+		configured := options[id]
+		resolvedValues := make(map[string]OptionValue, len(metadata.Options))
+		for _, option := range metadata.Options {
+			value, found := configured.values[option.Name]
+			if option.Required && !found {
+				return nil, fmt.Errorf("rule %q is missing required option %q", id, option.Name)
+			}
+			if !found && option.Default != nil {
+				value, found = *option.Default, true
+			}
+			if found {
+				resolvedValues[option.Name] = value
+			}
+		}
 		selection = append(selection, Selection{
 			ID:          id,
 			Severity:    severity,
 			Requirement: metadata.Requirement,
+			Options:     NewOptionSet(resolvedValues),
 		})
 	}
 	return selection, nil
+}
+
+func validateOptionSet(metadata Metadata, configured OptionSet) error {
+	schema := make(map[string]OptionMetadata, len(metadata.Options))
+	for _, option := range metadata.Options {
+		schema[option.Name] = option
+	}
+	names := make([]string, 0, len(configured.values))
+	for name := range configured.values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		value := configured.values[name]
+		option, found := schema[name]
+		if !found {
+			return fmt.Errorf("rule %q has unknown option %q", metadata.ID, name)
+		}
+		if value.kind != option.Kind {
+			return fmt.Errorf(
+				"rule %q option %q has kind %q; want %q",
+				metadata.ID,
+				name,
+				value.kind,
+				option.Kind,
+			)
+		}
+	}
+	return nil
 }
 
 func nilRule(nativeRule Rule) bool {
@@ -223,6 +303,21 @@ func validateMetadata(metadata Metadata) error {
 		if !validOptionKind(option.Kind) {
 			return fmt.Errorf("%s: invalid option kind %q", metadata.ID, option.Kind)
 		}
+		if option.Required && option.Default != nil {
+			return fmt.Errorf("%s: required option %q must not declare a default", metadata.ID, option.Name)
+		}
+		if !option.Required && option.Default == nil {
+			return fmt.Errorf("%s: optional option %q requires a default", metadata.ID, option.Name)
+		}
+		if option.Default != nil && option.Default.kind != option.Kind {
+			return fmt.Errorf(
+				"%s: option %q default has kind %q; want %q",
+				metadata.ID,
+				option.Name,
+				option.Default.kind,
+				option.Kind,
+			)
+		}
 		if _, duplicate := optionNames[option.Name]; duplicate {
 			return fmt.Errorf("%s: duplicate option name %q", metadata.ID, option.Name)
 		}
@@ -320,7 +415,7 @@ func cloneMetadata(metadata Metadata) Metadata {
 	result.NodeInterests = slices.Clone(metadata.NodeInterests)
 	result.Categories = slices.Clone(metadata.Categories)
 	result.Fixes = slices.Clone(metadata.Fixes)
-	result.Options = slices.Clone(metadata.Options)
+	result.Options = cloneOptionMetadata(metadata.Options)
 	result.KnownLimitations = slices.Clone(metadata.KnownLimitations)
 	result.Examples = slices.Clone(metadata.Examples)
 	if metadata.Deprecation != nil {

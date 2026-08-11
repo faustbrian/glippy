@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/faustbrian/gox/internal/config"
+	"github.com/faustbrian/gox/internal/rules"
 )
 
 func TestParseReportsStrictDecodeErrorsAtSourceLocation(t *testing.T) {
@@ -177,6 +178,92 @@ disabled-rule = "off"
 	}
 	if got.Lint.Rules["disabled-rule"] != config.SeverityOff {
 		t.Fatalf("Parse() disabled-rule = %q, want %q", got.Lint.Rules["disabled-rule"], config.SeverityOff)
+	}
+}
+
+func TestParseAppliesTypedRuleOptions(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(`version = 1
+
+[lint.rule-options."configured-rule"]
+allow-comment = true
+limit = 12
+label = "stable"
+names = ["first", "second"]
+`)
+	configured, err := config.Parse("project/.gox.toml", input, config.ParseOptions{
+		KnownRules: []string{"configured-rule"},
+		RuleOptions: map[string][]rules.OptionMetadata{
+			"configured-rule": {
+				{Name: "allow-comment", Summary: "allow comments", Kind: rules.OptionBoolean},
+				{Name: "limit", Summary: "set a limit", Kind: rules.OptionInteger},
+				{Name: "label", Summary: "set a label", Kind: rules.OptionString},
+				{Name: "names", Summary: "set names", Kind: rules.OptionStrings},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, found := configured.Lint.RuleOptions["configured-rule"]
+	if !found {
+		t.Fatal("Parse() omitted configured rule options")
+	}
+	allow, allowFound := options.Boolean("allow-comment")
+	limit, limitFound := options.Integer("limit")
+	label, labelFound := options.String("label")
+	names, namesFound := options.Strings("names")
+	if !allowFound || !allow || !limitFound || limit != 12 || !labelFound || label != "stable" ||
+		!namesFound || strings.Join(names, ",") != "first,second" {
+		t.Fatalf("Parse() rule options = %#v", options)
+	}
+	names[0] = "mutated"
+	again, _ := options.Strings("names")
+	if again[0] != "first" {
+		t.Fatalf("rule option strings were mutable: %#v", again)
+	}
+}
+
+func TestParseRejectsInvalidRuleOptionsDeterministically(t *testing.T) {
+	t.Parallel()
+
+	schema := map[string][]rules.OptionMetadata{
+		"configured-rule": {
+			{Name: "enabled", Summary: "enable behavior", Kind: rules.OptionBoolean},
+		},
+	}
+	tests := []struct {
+		name      string
+		input     string
+		wantError string
+	}{
+		{
+			name:      "unknown rule",
+			input:     "version = 1\n[lint.rule-options.missing]\nenabled = true\n",
+			wantError: "unknown lint rule \"missing\" in lint.rule-options",
+		},
+		{
+			name:      "unknown option",
+			input:     "version = 1\n[lint.rule-options.configured-rule]\nunknown = true\n",
+			wantError: "unknown option \"unknown\" for lint rule \"configured-rule\"",
+		},
+		{
+			name:      "wrong type",
+			input:     "version = 1\n[lint.rule-options.configured-rule]\nenabled = \"yes\"\n",
+			wantError: "option \"enabled\" for lint rule \"configured-rule\" must be boolean",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := config.Parse("project/.gox.toml", []byte(test.input), config.ParseOptions{
+				KnownRules:  []string{"configured-rule"},
+				RuleOptions: schema,
+			})
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("Parse() error = %v, want %q", err, test.wantError)
+			}
+		})
 	}
 }
 

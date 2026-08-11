@@ -643,6 +643,35 @@ func TestRunCombinedCheckHonorsLintAndFormatConfiguration(t *testing.T) {
 	}
 }
 
+func TestRunFormatAcceptsBuiltInLintConfiguration(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "formatted.go")
+	if err := os.WriteFile(path, []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n[lint.rules]\nduplicate-condition = \"off\"\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"fmt", "--check", "--config", configurationPath, path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("Run(fmt lint config) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
 func TestRunCombinedCheckReportsOutputFailure(t *testing.T) {
 	t.Parallel()
 

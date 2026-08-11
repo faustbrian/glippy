@@ -16,6 +16,7 @@ type activeControlFlowRule struct {
 	rule     rules.ControlFlowRule
 	metadata rules.Metadata
 	severity rules.Severity
+	options  rules.OptionSet
 }
 
 type functionBody struct {
@@ -73,14 +74,18 @@ func RunControlFlow(
 		if len(eligible) == 0 {
 			continue
 		}
-		typesContext := rules.NewTypesContext(
-			file.source,
-			pkg.Fset,
-			pkg.ID,
-			pkg.Types,
-			pkg.TypesInfo,
-			pkg.IllTyped,
-		)
+		typesContexts := make(map[string]*rules.TypesContext, len(eligible))
+		for _, active := range eligible {
+			typesContexts[active.metadata.ID] = rules.NewTypesContext(
+				file.source,
+				pkg.Fset,
+				pkg.ID,
+				pkg.Types,
+				pkg.TypesInfo,
+				pkg.IllTyped,
+				active.options,
+			)
+		}
 		for _, function := range functionBodies(file.syntax) {
 			if err := ctx.Err(); err != nil {
 				return nil, err
@@ -89,13 +94,13 @@ func RunControlFlow(
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			ruleContext := rules.NewControlFlowContext(
-				typesContext,
-				function.function,
-				function.body,
-				graph,
-			)
 			for _, active := range eligible {
+				ruleContext := rules.NewControlFlowContext(
+					typesContexts[active.metadata.ID],
+					function.function,
+					function.body,
+					graph,
+				)
 				findings, err := active.rule.RunControlFlow(ruleContext)
 				if contextErr := ctx.Err(); contextErr != nil {
 					return nil, contextErr
@@ -161,6 +166,7 @@ func prepareControlFlowRules(
 		}
 		activeRules = append(activeRules, activeControlFlowRule{
 			rule: controlFlowRule, metadata: metadata, severity: selected.Severity,
+			options: selected.Options,
 		})
 	}
 	return activeRules, nil

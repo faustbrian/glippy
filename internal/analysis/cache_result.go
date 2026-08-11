@@ -30,7 +30,6 @@ type PackageCacheOptions struct {
 	BuildGoVersion  string
 	SourceGoVersion string
 	Configuration   cache.Digest
-	RuleOptions     map[string]cache.Digest
 	CGOEnabled      bool
 	FormatterMode   string
 }
@@ -68,20 +67,14 @@ func preparePackageCachePlan(
 	if options.Configuration == (cache.Digest{}) {
 		return nil, fmt.Errorf("package analysis cache configuration digest is required")
 	}
-	if options.RuleOptions == nil {
-		return nil, fmt.Errorf("package analysis cache rule option digests are required")
-	}
 	if err := validatePackageCacheLoadIdentity(loadOptions, options.CGOEnabled); err != nil {
 		return nil, err
 	}
 	inputs := make([]cache.RuleInput, len(selection))
 	for index, selected := range selection {
-		digest, found := options.RuleOptions[selected.ID]
-		if !found || digest == (cache.Digest{}) {
-			return nil, fmt.Errorf("package analysis cache rule %q options digest is required", selected.ID)
-		}
 		inputs[index] = cache.RuleInput{
-			ID: selected.ID, Severity: string(selected.Severity), Options: digest,
+			ID: selected.ID, Severity: string(selected.Severity),
+			Options: cache.DigestOf(selected.Options.CanonicalBytes()),
 		}
 	}
 	return &packageCachePlan{options: *options, rules: inputs}, nil

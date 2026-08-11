@@ -155,9 +155,6 @@ func benchmarkPackageCacheRunOptions(store *cache.Store) analysis.RunOptions {
 		Cache: &analysis.PackageCacheOptions{
 			Store: store, ToolVersion: "benchmark-v1", BuildGoVersion: runtime.Version(),
 			SourceGoVersion: "1.26", Configuration: cache.DigestOf([]byte("benchmark-configuration")),
-			RuleOptions: map[string]cache.Digest{
-				"benchmark-package-facts": cache.DigestOf(nil),
-			},
 			FormatterMode: "gox-v1",
 		},
 	}

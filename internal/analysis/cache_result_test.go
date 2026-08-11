@@ -202,7 +202,6 @@ func TestPreparePackageCachePlanRejectsAmbientGoEnvironment(t *testing.T) {
 	options := &PackageCacheOptions{
 		Store: store, ToolVersion: "v0.1.0", BuildGoVersion: "go1.26.5",
 		SourceGoVersion: "1.26", Configuration: cache.DigestOf([]byte("configuration")),
-		RuleOptions:   map[string]cache.Digest{"cache-rule": cache.DigestOf(nil)},
 		FormatterMode: "gox-v1",
 	}
 	selection := []rules.Selection{{
@@ -225,6 +224,47 @@ func TestPreparePackageCachePlanRejectsAmbientGoEnvironment(t *testing.T) {
 				t.Fatalf("preparePackageCachePlan() error = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestPreparePackageCachePlanDerivesResolvedRuleOptions(t *testing.T) {
+	t.Parallel()
+
+	store, err := cache.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	options := &PackageCacheOptions{
+		Store: store, ToolVersion: "v0.1.0", BuildGoVersion: "go1.26.5",
+		SourceGoVersion: "1.26", Configuration: cache.DigestOf([]byte("configuration")),
+		FormatterMode: "gox-v1",
+	}
+	loadOptions := PackageLoadOptions{
+		Env: []string{"GOENV=off", "CGO_ENABLED=0"}, GOOS: "linux", GOARCH: "amd64",
+	}
+	selection := func(enabled bool) []rules.Selection {
+		return []rules.Selection{{
+			ID: "cache-rule", Severity: rules.SeverityWarn, Requirement: rules.RequireTypes,
+			Options: rules.NewOptionSet(map[string]rules.OptionValue{
+				"enabled": rules.BooleanOption(enabled),
+			}),
+		}}
+	}
+	first, err := preparePackageCachePlan(options, selection(false), loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := preparePackageCachePlan(options, selection(true), loadOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.rules[0].Options == second.rules[0].Options {
+		t.Fatal("resolved rule option values produced one cache identity")
 	}
 }
 

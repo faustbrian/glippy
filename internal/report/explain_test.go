@@ -104,6 +104,7 @@ func TestRenderRuleTextUsesCanonicalMetadata(t *testing.T) {
 			Summary:  "allow an explanatory comment",
 			Kind:     rules.OptionBoolean,
 			Required: false,
+			Default:  reportOptionValue(rules.BooleanOption(false)),
 		}},
 		KnownLimitations: []string{"does not inspect generated files"},
 		Examples: []rules.Example{{
@@ -134,7 +135,7 @@ func TestRenderRuleTextUsesCanonicalMetadata(t *testing.T) {
 		"fixes:\n" +
 		"  rewrite [safe]: replace the ignored call\n\n" +
 		"configuration:\n" +
-		"  allow-comment (boolean, optional): allow an explanatory comment\n\n" +
+		"  allow-comment (boolean, optional, default false): allow an explanatory comment\n\n" +
 		"known limitations:\n" +
 		"  - does not inspect generated files\n\n" +
 		"examples:\n" +
@@ -150,3 +151,5 @@ func TestRenderRuleTextUsesCanonicalMetadata(t *testing.T) {
 		t.Fatal("RenderRuleText() found an unknown rule")
 	}
 }
+
+func reportOptionValue(value rules.OptionValue) *rules.OptionValue { return &value }

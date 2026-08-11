@@ -145,3 +145,41 @@ func TestRunEmptyRegistryProducesOneCompleteEmptyResult(t *testing.T) {
 		t.Fatalf("Run() = %#v", result)
 	}
 }
+
+func TestRunRoutesTypedOptionsToSyntaxRules(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("configured.go", []byte("package sample\nfunc run(){target()}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := analysisMetadata("configured-rule", rules.NodeCallExpr, false)
+	metadata.Options = []rules.OptionMetadata{{
+		Name: "enabled", Summary: "enable reporting", Kind: rules.OptionBoolean, Required: true,
+	}}
+	rule := syntaxRule{
+		metadata: metadata,
+		run: func(ctx *rules.Context, node ast.Node) ([]rules.Finding, error) {
+			enabled, found := ctx.BooleanOption("enabled")
+			if !found || !enabled {
+				t.Fatalf("syntax option enabled = %t, %t", enabled, found)
+			}
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = analysis.Run(context.Background(), file, registry, analysis.RunOptions{
+		Preset: rules.PresetCorrectness,
+		RuleOptions: map[string]rules.OptionSet{
+			"configured-rule": rules.NewOptionSet(map[string]rules.OptionValue{
+				"enabled": rules.BooleanOption(true),
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

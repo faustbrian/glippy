@@ -17,6 +17,7 @@ type activeTypesRule struct {
 	rule     rules.TypesRule
 	metadata rules.Metadata
 	severity rules.Severity
+	options  rules.OptionSet
 }
 
 type typedSyntaxFile struct {
@@ -78,14 +79,7 @@ func RunTypes(
 		) {
 			continue
 		}
-		ruleContext := rules.NewTypesContext(
-			file.source,
-			pkg.Fset,
-			pkg.ID,
-			pkg.Types,
-			pkg.TypesInfo,
-			pkg.IllTyped,
-		)
+		ruleContexts := make(map[string]*rules.TypesContext)
 		var runErr error
 		ast.Inspect(file.syntax, func(node ast.Node) bool {
 			if runErr != nil {
@@ -108,6 +102,19 @@ func RunTypes(
 				}
 				if pkg.IllTyped && !active.metadata.RunDespiteTypeErrors {
 					continue
+				}
+				ruleContext := ruleContexts[active.metadata.ID]
+				if ruleContext == nil {
+					ruleContext = rules.NewTypesContext(
+						file.source,
+						pkg.Fset,
+						pkg.ID,
+						pkg.Types,
+						pkg.TypesInfo,
+						pkg.IllTyped,
+						active.options,
+					)
+					ruleContexts[active.metadata.ID] = ruleContext
 				}
 				findings, err := active.rule.RunTypes(ruleContext, node)
 				if contextErr := ctx.Err(); contextErr != nil {
@@ -198,7 +205,9 @@ func prepareTypesRules(
 		if _, ambiguous := nativeRule.(rules.SyntaxRule); ambiguous {
 			return nil, fmt.Errorf("selected rule %q implements ambiguous syntax and types execution", selected.ID)
 		}
-		active := activeTypesRule{rule: typedRule, metadata: metadata, severity: selected.Severity}
+		active := activeTypesRule{
+			rule: typedRule, metadata: metadata, severity: selected.Severity, options: selected.Options,
+		}
 		for _, interest := range metadata.NodeInterests {
 			dispatch[interest] = append(dispatch[interest], active)
 		}

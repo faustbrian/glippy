@@ -126,6 +126,80 @@ func target() {}
 	}
 }
 
+func TestRunPackagesRoutesTypedOptionsAcrossEveryTier(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/options\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "options.go"), "package options\nfunc run(){target()}\nfunc target(){}\n")
+	optionMetadata := []rules.OptionMetadata{{
+		Name: "enabled", Summary: "enable the rule", Kind: rules.OptionBoolean, Required: true,
+	}}
+	assertEnabled := func(name string, enabled bool, found bool) {
+		t.Helper()
+		if !found || !enabled {
+			t.Fatalf("%s option enabled = %t, %t", name, enabled, found)
+		}
+	}
+	visits := make(map[string]int)
+	syntaxMetadata := analysisMetadata("syntax-options", rules.NodeCallExpr, false)
+	syntaxMetadata.Options = optionMetadata
+	typedMetadata := typesMetadata("types-options", rules.NodeCallExpr)
+	typedMetadata.Options = optionMetadata
+	cfgMetadata := controlFlowMetadata("cfg-options")
+	cfgMetadata.Options = optionMetadata
+	ssaMetadata := ssaMetadata("ssa-options")
+	ssaMetadata.Options = optionMetadata
+	registry, err := rules.NewRegistry(
+		syntaxRule{metadata: syntaxMetadata, run: func(ctx *rules.Context, _ ast.Node) ([]rules.Finding, error) {
+			enabled, found := ctx.BooleanOption("enabled")
+			assertEnabled("syntax", enabled, found)
+			visits["syntax"]++
+			return nil, nil
+		}},
+		typesRule{metadata: typedMetadata, run: func(ctx *rules.TypesContext, _ ast.Node) ([]rules.Finding, error) {
+			enabled, found := ctx.BooleanOption("enabled")
+			assertEnabled("types", enabled, found)
+			visits["types"]++
+			return nil, nil
+		}},
+		controlFlowRule{metadata: cfgMetadata, run: func(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+			enabled, found := ctx.BooleanOption("enabled")
+			assertEnabled("CFG", enabled, found)
+			visits["cfg"]++
+			return nil, nil
+		}},
+		ssaRule{metadata: ssaMetadata, run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
+			enabled, found := ctx.BooleanOption("enabled")
+			assertEnabled("SSA", enabled, found)
+			visits["ssa"]++
+			return nil, nil
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := make(map[string]rules.OptionSet)
+	for _, id := range []string{"syntax-options", "types-options", "cfg-options", "ssa-options"} {
+		options[id] = rules.NewOptionSet(map[string]rules.OptionValue{
+			"enabled": rules.BooleanOption(true),
+		})
+	}
+	if _, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness, RuleOptions: options},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, tier := range []string{"syntax", "types", "cfg", "ssa"} {
+		if visits[tier] == 0 {
+			t.Fatalf("%s rule was not visited", tier)
+		}
+	}
+}
+
 func TestRunPackagesRequiresTypesBeforeLoading(t *testing.T) {
 	t.Parallel()
 

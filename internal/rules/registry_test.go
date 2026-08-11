@@ -149,6 +149,28 @@ func TestRegistryRejectsIncompleteOrInconsistentMetadata(t *testing.T) {
 			wantError: "duplicate option name \"allow-comment\"",
 		},
 		{
+			name: "optional option without default",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.Options[0].Default = nil
+			},
+			wantError: "optional option \"allow-comment\" requires a default",
+		},
+		{
+			name: "required option with default",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.Options[0].Required = true
+			},
+			wantError: "required option \"allow-comment\" must not declare a default",
+		},
+		{
+			name: "option default kind",
+			mutate: func(metadata *rules.Metadata) {
+				value := rules.StringOption("no")
+				metadata.Options[0].Default = &value
+			},
+			wantError: "option \"allow-comment\" default has kind \"string\"; want \"boolean\"",
+		},
+		{
 			name: "empty known limitation",
 			mutate: func(metadata *rules.Metadata) {
 				metadata.KnownLimitations = []string{" "}
@@ -229,6 +251,82 @@ func TestRegistryReportsInvalidOverridesInRuleIDOrder(t *testing.T) {
 	}
 }
 
+func TestRegistryResolvesTypedRuleOptionsForEnabledRules(t *testing.T) {
+	t.Parallel()
+
+	metadata := validMetadata("configured-rule")
+	metadata.Options[0].Required = true
+	metadata.Options[0].Default = nil
+	registry, err := rules.NewRegistry(metadataRule{metadata: metadata})
+	if err != nil {
+		t.Fatal(err)
+	}
+	configured := rules.NewOptionSet(map[string]rules.OptionValue{
+		"allow-comment": rules.BooleanOption(true),
+	})
+	selection, err := registry.ResolveConfigured(
+		rules.PresetCorrectness,
+		nil,
+		map[string]rules.OptionSet{"configured-rule": configured},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selection) != 1 {
+		t.Fatalf("ResolveConfigured() = %#v", selection)
+	}
+	allow, found := selection[0].Options.Boolean("allow-comment")
+	if !found || !allow {
+		t.Fatalf("resolved allow-comment = %t, %t", allow, found)
+	}
+
+	if _, err := registry.ResolveConfigured(rules.PresetCorrectness, nil, nil); err == nil ||
+		!strings.Contains(err.Error(), "required option \"allow-comment\"") {
+		t.Fatalf("ResolveConfigured() missing required option error = %v", err)
+	}
+	disabled, err := registry.ResolveConfigured(rules.PresetSuspicious, nil, nil)
+	if err != nil || len(disabled) != 0 {
+		t.Fatalf("ResolveConfigured() disabled required option = %#v, %v", disabled, err)
+	}
+	unknown := rules.NewOptionSet(map[string]rules.OptionValue{
+		"unknown": rules.BooleanOption(true),
+	})
+	if _, err := registry.ResolveConfigured(
+		rules.PresetCorrectness,
+		nil,
+		map[string]rules.OptionSet{"configured-rule": unknown},
+	); err == nil || !strings.Contains(err.Error(), "unknown option \"unknown\"") {
+		t.Fatalf("ResolveConfigured() unknown option error = %v", err)
+	}
+	wrongKind := rules.NewOptionSet(map[string]rules.OptionValue{
+		"allow-comment": rules.StringOption("yes"),
+	})
+	if _, err := registry.ResolveConfigured(
+		rules.PresetCorrectness,
+		nil,
+		map[string]rules.OptionSet{"configured-rule": wrongKind},
+	); err == nil || !strings.Contains(err.Error(), "has kind \"string\"; want \"boolean\"") {
+		t.Fatalf("ResolveConfigured() wrong option kind error = %v", err)
+	}
+}
+
+func TestRegistryAppliesDocumentedOptionDefaults(t *testing.T) {
+	t.Parallel()
+
+	registry, err := rules.NewRegistry(metadataRule{metadata: validMetadata("defaulted-rule")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.ResolveConfigured(rules.PresetCorrectness, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, found := selection[0].Options.Boolean("allow-comment")
+	if !found || value {
+		t.Fatalf("default allow-comment = %t, %t", value, found)
+	}
+}
+
 func validMetadata(id string) rules.Metadata {
 	return rules.Metadata{
 		ID:               id,
@@ -250,6 +348,7 @@ func validMetadata(id string) rules.Metadata {
 			Name:    "allow-comment",
 			Summary: "allow an explanatory comment",
 			Kind:    rules.OptionBoolean,
+			Default: optionValue(rules.BooleanOption(false)),
 		}},
 		KnownLimitations: []string{"does not inspect generated files"},
 		Examples: []rules.Example{{
@@ -258,3 +357,5 @@ func validMetadata(id string) rules.Metadata {
 		}},
 	}
 }
+
+func optionValue(value rules.OptionValue) *rules.OptionValue { return &value }

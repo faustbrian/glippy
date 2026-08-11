@@ -482,7 +482,7 @@ func TestAdaptAnalyzerCachesPackageFactsAcrossIndependentLoads(t *testing.T) {
 	})
 	runOptions := analysis.RunOptions{
 		Preset: rules.PresetCorrectness,
-		Cache:  packageAnalyzerCacheOptions(store, "cached-package-facts"),
+		Cache:  packageAnalyzerCacheOptions(store),
 	}
 	loadOptions := analysis.PackageLoadOptions{
 		Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
@@ -579,7 +579,7 @@ func TestAdaptAnalyzerDoesNotCacheUnsupportedLocalObjectFacts(t *testing.T) {
 	})
 	runOptions := analysis.RunOptions{
 		Preset: rules.PresetCorrectness,
-		Cache:  packageAnalyzerCacheOptions(store, "uncacheable-local-facts"),
+		Cache:  packageAnalyzerCacheOptions(store),
 	}
 	loadOptions := packageAnalyzerCacheLoadOptions(root)
 	for range 2 {
@@ -598,11 +598,10 @@ func TestAdaptAnalyzerDoesNotCacheUnsupportedLocalObjectFacts(t *testing.T) {
 	}
 }
 
-func packageAnalyzerCacheOptions(store *cache.Store, ruleID string) *analysis.PackageCacheOptions {
+func packageAnalyzerCacheOptions(store *cache.Store) *analysis.PackageCacheOptions {
 	return &analysis.PackageCacheOptions{
 		Store: store, ToolVersion: "v0.1.0", BuildGoVersion: runtime.Version(),
 		SourceGoVersion: "1.26", Configuration: cache.DigestOf([]byte("configuration")),
-		RuleOptions:   map[string]cache.Digest{ruleID: cache.DigestOf(nil)},
 		FormatterMode: "gox-v1",
 	}
 }
@@ -2164,6 +2163,18 @@ func TestAdaptAnalyzerRejectsUnsupportedAnalyzerContracts(t *testing.T) {
 			options: adapterOptions("result-analyzer"), wantError: "result",
 		},
 		{name: "flags", analyzer: flagged, options: adapterOptions("flagged-analyzer"), wantError: "flags"},
+		{
+			name:     "unbound native options",
+			analyzer: &goanalysis.Analyzer{Name: "options", Doc: "declares no flags", Run: validRun},
+			options: func() analysis.AnalyzerAdapterOptions {
+				options := adapterOptions("option-analyzer")
+				options.Metadata.Options = []rules.OptionMetadata{{
+					Name: "enabled", Summary: "enable analysis", Kind: rules.OptionBoolean, Required: true,
+				}}
+				return options
+			}(),
+			wantError: "options require analyzer flag bindings",
+		},
 		{
 			name:     "predeclared native fixes",
 			analyzer: &goanalysis.Analyzer{Name: "fixes", Doc: "declares fixes twice", Run: validRun},

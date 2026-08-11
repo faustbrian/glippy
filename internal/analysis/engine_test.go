@@ -31,11 +31,17 @@ func (r syntaxRule) RunSyntax(ctx *rules.Context, node ast.Node) ([]rules.Findin
 
 type syntaxFileRule struct {
 	metadata rules.Metadata
+	run      func(*rules.Context) ([]rules.Finding, error)
 }
 
 func (r syntaxFileRule) Metadata() rules.Metadata { return r.metadata }
 
-func (syntaxFileRule) RunSyntaxFile(*source.File) ([]rules.Finding, error) { return nil, nil }
+func (r syntaxFileRule) RunSyntaxFile(ctx *rules.Context) ([]rules.Finding, error) {
+	if r.run == nil {
+		return nil, nil
+	}
+	return r.run(ctx)
+}
 
 type ambiguousSyntaxRule struct {
 	syntaxFileRule
@@ -121,6 +127,47 @@ func TestRunSyntaxDispatchesNodeInterestsAndSortsDiagnostics(t *testing.T) {
 		if !valid || gotSource != wantSource[index] {
 			t.Fatalf("diagnostic %d source = %q, want %q", index, gotSource, wantSource[index])
 		}
+	}
+}
+
+func TestRunSyntaxRoutesTypedOptionsToFileRules(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("file.go", []byte("package sample\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := analysisMetadata("file-options", rules.NodeFile, false)
+	metadata.Options = []rules.OptionMetadata{{
+		Name: "enabled", Summary: "enable the rule", Kind: rules.OptionBoolean, Required: true,
+	}}
+	registry, err := rules.NewRegistry(syntaxFileRule{
+		metadata: metadata,
+		run: func(ctx *rules.Context) ([]rules.Finding, error) {
+			enabled, found := ctx.BooleanOption("enabled")
+			if !found || !enabled || ctx.File() != file {
+				t.Fatalf("file rule context = %#v, enabled %t, %t", ctx, enabled, found)
+			}
+			return nil, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.ResolveConfigured(
+		rules.PresetCorrectness,
+		nil,
+		map[string]rules.OptionSet{
+			"file-options": rules.NewOptionSet(map[string]rules.OptionValue{
+				"enabled": rules.BooleanOption(true),
+			}),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunSyntax(context.Background(), file, registry, selection); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -957,7 +957,13 @@ func resolveFormatOptions(invocation formatInvocation) (goxformat.Options, int, 
 }
 
 func formatOptionsForSelection(selection config.Selection) (goxformat.Options, int, error) {
-	loaded, err := config.Load(selection, config.ParseOptions{})
+	registry, err := rules.NewDefaultRegistry()
+	if err != nil {
+		return goxformat.Options{}, ExitInternalError, fmt.Errorf("initialize rule registry: %w", err)
+	}
+	loaded, err := config.Load(selection, config.ParseOptions{
+		KnownRules: registry.IDs(), RuleOptions: registry.OptionSchemas(),
+	})
 	if err != nil {
 		return goxformat.Options{}, configurationErrorExitCode(err), err
 	}

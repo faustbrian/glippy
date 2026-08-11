@@ -31,7 +31,23 @@ require-reason = false
 
 [lint.rules]
 no-unexplained-suppression = "error"
+
+[lint.rule-options."no-unexplained-suppression"]
+require-ticket = true
 ```
+
+`lint.rule-options` MUST use one rule-ID table per configured rule. The
+documented canonical spelling quotes the rule ID even where TOML also permits a
+bare key.
+Every field MUST be declared by that rule's canonical metadata as a boolean,
+integer, string, or string list. Unknown rule IDs, unknown fields, and values
+of the wrong type MUST fail configuration loading. A required option MUST be
+present whenever its rule is enabled and MUST NOT declare a default. Every
+optional option MUST declare one canonical metadata default of the same type.
+Options for disabled rules MAY remain in configuration so preset changes do not
+require destructive edits. Each run MUST bind one immutable option snapshot,
+including resolved defaults, to every callback for that rule across syntax,
+types, CFG, and SSA execution.
 
 `lint.suppressions.require-reason` MUST be a boolean and MUST default to
 `false`. When it is `true`, every direct suppression and range start MUST carry
