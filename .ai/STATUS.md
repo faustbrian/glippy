@@ -513,7 +513,13 @@ native callbacks and CFG or SSA construction.
 Cold population, identical warm results, storage-corruption recomputation and
 repair, source invalidation, zero-diagnostic rule-policy changes, and package
 ownership drift are proven across all four native callback shapes. Error-bearing
-loads remain uncached, native warm-run timing is not yet
-benchmarked, and the CLI still owns no cache lifecycle or pruning policy. The
-Phase 2 naming, release, platform-runtime, and approved external-adoption gates
-keep overall progress at 45%.
+loads remain uncached. A five-sample owned workload probe now measures cold
+population and warm restoration at the types, CFG, and SSA maximum tiers while
+retaining package loading in both paths. Every warm sample executes zero native
+callbacks, proving reuse for node-scoped types, package-wide types, CFG, and SSA
+rules; the 112-150 millisecond warm medians are not consistently faster than
+the 118-125 millisecond cold medians on the small workload and non-isolated
+host, so no CI or product-wide performance threshold is claimed. The CLI still
+owns no cache lifecycle or pruning policy. The Phase 2 naming, release,
+platform-runtime, and approved external-adoption gates keep overall progress at
+45%.

@@ -13,6 +13,7 @@ go test ./benchmarks -run '^$' -bench 'Benchmark(Scan|Parse|GoFormat|ASTInspect|
 GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkSyntaxRuleTraversalStrategies$' -benchmem -benchtime=500ms -count=7
 go test ./benchmarks -run '^$' -bench '^BenchmarkPackagesLoadSyntax(Cold|Warm)BuildCache$' -benchmem -benchtime=1x -count=3
 GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkPackageAnalyzerFactCache$' -benchmem -benchtime=1x -count=5
+GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkNativeAnalysisResultCache$' -benchmem -benchtime=1x -count=5
 GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkGoxFormatManyClassicLoops$' -benchmem -benchtime=10x -count=3
 go test ./internal/format/doc -run '^$' -bench '^BenchmarkRenderAdversarial(Nesting|Siblings)$' -benchmem -benchtime=3x -count=5
 go test ./internal/format/doc -run '^TestRenderBoundsAdversarialDepthAndBreadthAllocations$' -count=1
@@ -95,6 +96,54 @@ both allocation profiles. No CI latency or allocation threshold is set. A
 larger module/workspace corpus, isolated runner, CLI-owned cache policy, and
 peak-resident-memory measurement remain prerequisites for a product-wide warm
 cache performance claim.
+
+## Native Analysis Result-Cache Probe
+
+The 2026-08-12 native result-cache probe runs cumulative native rule plans over
+the owned workload module: types includes one node-scoped and one package-wide
+rule, control flow adds one per-function CFG rule, and SSA adds one per-function
+SSA rule. Every rule deliberately produces no diagnostics, so the probe also
+exercises complete rule-set persistence for zero-diagnostic callbacks. Each
+cold operation creates an empty result store outside the timer and includes
+entry publication. Warm setup populates one store outside the timer, while each
+measured operation performs an independent package load and restores its native
+result. Package loading, source capture, cache identity construction, and
+reporting remain inside both measured paths.
+
+Five one-operation samples ran with Go 1.26.5, `GOMAXPROCS=1`, and
+`darwin/arm64` on an Apple M4 Max with 128 GiB RAM and macOS 27.0 (26A5388g).
+The task-owned build cache remained warm within the bounded campaign; all
+result-store roots and the build cache were removed afterward.
+
+| Maximum tier | Result cache | Median time | Observed range | Native callbacks/op | Bytes/op | Allocs/op |
+| --- | --- | ---: | ---: | --- | ---: | ---: |
+| Types | Cold population | 125 ms | 111-283 ms | types 8, package 1 | 2,919,728-3,681,072 | 11,660-12,896 |
+| Types | Warm restore | 112 ms | 92.7-149 ms | all 0 | 2,920,720-2,921,056 | 11,617-11,621 |
+| Control flow | Cold population | 121 ms | 95.3-198 ms | types 8, package 1, CFG 3 | 2,926,192-3,059,024 | 11,748-11,776 |
+| Control flow | Warm restore | 150 ms | 124-214 ms | all 0 | 2,924,672-2,925,496 | 11,644-11,654 |
+| SSA | Cold population | 118 ms | 106-160 ms | types 8, package 1, CFG 3, SSA 3 | 3,139,208-3,272,120 | 13,407-13,435 |
+| SSA | Warm restore | 130 ms | 104-162 ms | all 0 | 2,928,632-2,929,248 | 11,679-11,683 |
+
+Raw elapsed samples, in nanoseconds per operation:
+
+```text
+types/cold 282506709 119151667 110935292 124788416 155787042
+types/warm 148704125  92967792 119071375 112349917  92726583
+cfg/cold   121155458 118864292 125968124 198338751  95344042
+cfg/warm   214029209 123711709 129681834 208126500 149525958
+ssa/cold   159720208 106366749 118163417 148926000 113805583
+ssa/warm   161502958 104205750 106707500 159895417 130179791
+```
+
+Zero callbacks in every warm sample prove that valid hits bypass node-scoped
+types, package-wide types, CFG, and SSA execution, including graph construction
+owned by the latter runners. The small workload and non-isolated host do not
+show a consistent elapsed-time improvement: package loading dominates, the
+subbenchmarks were ordered, and control-flow and SSA warm medians exceeded cold
+medians under observed scheduler variance. Lower steady-state warm allocations
+at the CFG and SSA tiers are directional only. No CI threshold or product-wide
+performance claim is set; an isolated runner, larger module/workspace corpus,
+peak-resident-memory measurement, and CLI-owned cache lifecycle remain open.
 
 ## Syntax Traversal Strategy Probe
 
