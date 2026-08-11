@@ -151,6 +151,39 @@ func TestLoadKeepsPhysicalOffsetsWhenLineDirectivesAdjustDiagnostics(t *testing.
 	}
 }
 
+func TestFilePositionUsesPhysicalByteLinesAndColumns(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("//line generated.go:100\r\npackage sample\r\nvar β = 1\r\n")
+	file, err := source.Load("physical.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		target string
+		line   int
+		column int
+	}{
+		{target: "package", line: 2, column: 1},
+		{target: "β", line: 3, column: 5},
+		{target: "=", line: 3, column: 8},
+	}
+	for _, test := range tests {
+		offset := bytes.Index(input, []byte(test.target))
+		position, found := file.Position(offset)
+		if !found || position.Offset != offset || position.Line != test.line || position.Column != test.column {
+			t.Fatalf("Position(%q) = %#v, %v", test.target, position, found)
+		}
+	}
+	insideBeta := bytes.Index(input, []byte("β")) + 1
+	if _, found := file.Position(insideBeta); found {
+		t.Fatal("Position() accepted an offset inside a UTF-8 encoding")
+	}
+	if _, found := file.Position(len(input) + 1); found {
+		t.Fatal("Position() accepted an out-of-bounds offset")
+	}
+}
+
 func TestLoadReturnsDiagnosticOnlyStateForInvalidSource(t *testing.T) {
 	t.Parallel()
 

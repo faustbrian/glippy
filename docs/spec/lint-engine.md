@@ -51,6 +51,16 @@ suppression syntax problems and unused directives distinct from rule
 diagnostics, and MUST represent suppressed diagnostics by count without
 disclosing their bodies by default.
 
+Lint text MUST render each primary diagnostic as
+`path:line:byte-column: severity[rule-id]: message`. Related locations, notes,
+help, and named fix safety MUST use indented continuation lines. Suppression
+syntax problems and unused directives MUST remain visibly distinct. The text
+reporter MUST order source files and diagnostics canonically, validate the
+exact source identity plus every primary, related, fix-edit, directive, and
+suppression-target range, and MUST NOT emit source excerpts or replacement
+text. Physical locations follow the source model and MUST NOT be adjusted by
+`//line` directives.
+
 ## Suppressions
 
 Suppressions MUST name exact rule IDs. The grammar MUST define line, next-line,

@@ -43,6 +43,13 @@ identity and version. Edit ordering and conflict checks MUST use normalized
 physical path plus byte offset. Logical filenames and locations produced by
 `//line` MAY be reported to users but MUST NOT control reads or writes.
 
+Human-facing physical locations use 1-based physical lines and 1-based UTF-8
+byte columns. A CRLF sequence terminates one physical line at its LF byte;
+multibyte code points therefore advance the byte column by their encoded
+length. Range boundaries used for locations MUST fall on UTF-8 boundaries.
+Physical locations MUST NOT inherit filename or line adjustments from
+`//line` directives.
+
 The lexical pass MUST record every scanner token with raw start/end offsets,
 kind, raw bytes, and whether a semicolon was explicit or inserted. The source
 layer MUST derive token gaps from the original bytes and classify whitespace,

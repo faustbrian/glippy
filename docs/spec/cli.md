@@ -121,6 +121,13 @@ ranges. It MUST NOT include original source snippets or fix replacement text by
 default. Suppression problems and unused directives remain distinct arrays;
 suppressed diagnostic bodies are represented only by a summary count.
 
+Lint text reports physical 1-based line and UTF-8 byte-column locations as
+`path:line:column: severity[rule-id]: message`, followed by indented related
+locations, notes, help, and named fix safety when present. Suppression problems
+and unused directives use distinct labels. Text reporting MUST validate exact
+source identity and every range associated with a rendered record before
+emitting output, and MUST NOT include source excerpts or fix replacement text.
+
 Formatter read, parse, and layout preparation uses at most the smaller of the
 selection size, `GOMAXPROCS`, and 32 workers. Task identity is assigned only
 after normalized-path sorting. Completion timing cannot reorder findings.

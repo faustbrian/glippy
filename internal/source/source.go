@@ -133,6 +133,13 @@ type Metadata struct {
 // Digest identifies the exact bytes used to construct a File.
 type Digest [sha256.Size]byte
 
+// Position is one 1-based physical byte location in immutable source.
+type Position struct {
+	Offset int
+	Line   int
+	Column int
+}
+
 // File is an immutable physical source unit.
 type File struct {
 	path       string
@@ -147,6 +154,7 @@ type File struct {
 	comments   []Comment
 	directives []Directive
 	metadata   Metadata
+	lineStarts []int
 	parseErr   error
 }
 
@@ -189,6 +197,7 @@ func Load(path string, input []byte) (*File, error) {
 		comments:   comments,
 		directives: directives,
 		metadata:   metadata,
+		lineStarts: physicalLineStarts(physical),
 		parseErr:   loadErr,
 	}, loadErr
 }
@@ -268,6 +277,35 @@ func (f *File) PhysicalOffset(position token.Pos) (int, bool) {
 	}
 	offset := f.tokenFile.Offset(position)
 	return offset, offset >= 0 && offset <= len(f.bytes)
+}
+
+// Position maps a UTF-8 byte boundary to a physical line and byte column.
+func (f *File) Position(offset int) (Position, bool) {
+	if f == nil || offset < 0 || offset > len(f.bytes) ||
+		(offset < len(f.bytes) && !utf8.RuneStart(f.bytes[offset])) {
+		return Position{}, false
+	}
+	lineIndex := sort.Search(len(f.lineStarts), func(index int) bool {
+		return f.lineStarts[index] > offset
+	}) - 1
+	if lineIndex < 0 {
+		return Position{}, false
+	}
+	return Position{
+		Offset: offset,
+		Line:   lineIndex + 1,
+		Column: offset - f.lineStarts[lineIndex] + 1,
+	}, true
+}
+
+func physicalLineStarts(input []byte) []int {
+	starts := []int{0}
+	for index, value := range input {
+		if value == '\n' {
+			starts = append(starts, index+1)
+		}
+	}
+	return starts
 }
 
 // Slice returns exact physical source text for a valid byte range.

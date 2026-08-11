@@ -128,3 +128,12 @@ suppressed counts, suppression problems, unused directives, rich diagnostic
 ranges, and named fix safety. It deliberately omits source snippets and edit
 replacement text. Text reporting, lint CLI modes, fix outcome reporting, and
 built-in rules remain open, so progress stays 45%.
+
+The first lint text renderer now binds each analysis result to its exact source
+version, maps physical byte offsets to CRLF-aware 1-based line and byte-column
+locations without inheriting `//line` adjustments, and validates every primary,
+related, fix-edit, suppression-directive, and suppression-target range at UTF-8
+boundaries. It emits canonically ordered diagnostics with related locations,
+notes, help, and named fix safety while omitting source excerpts and replacement
+text. Lint CLI modes, fix outcome reporting, and built-in rules remain open, so
+progress stays 45%.

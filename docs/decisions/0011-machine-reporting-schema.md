@@ -62,8 +62,16 @@ the summary count. The constructor rejects duplicate source paths and
 diagnostics whose path or digest does not match their file result. Source files
 and diagnostics are sorted canonically before encoding.
 
-Lint-fix file outcomes, text rendering, and CLI integration remain deferred.
-Existing version 1 fields will not be silently repurposed.
+Lint text uses physical 1-based line and UTF-8 byte-column locations. Primary
+diagnostics use `path:line:column: severity[rule-id]: message`; related
+locations, notes, help, and named fix safety use indented continuation lines.
+Suppression problems and unused directives remain distinct. The renderer sorts
+files and diagnostics canonically, validates exact source identity and every
+range associated with rendered records including fix edits and suppression
+targets, and omits source excerpts and replacement text.
+
+Lint-fix file outcomes and CLI integration remain deferred. Existing version 1
+fields and the text diagnostic grammar will not be silently repurposed.
 
 ## Alternatives Rejected
 
@@ -90,7 +98,7 @@ encoding failure cannot produce a partial document.
 
 ## Revisit Trigger
 
-Before lint-fix results or text reporters stabilize, before relative-path or
-URI policy changes, before source snippets or code-action edits are exposed, or
-when a validated consumer requires streaming, SARIF, GitHub annotations, or
-another schema.
+Before lint-fix results stabilize, before relative-path, URI, or physical
+location policy changes, before source snippets or code-action edits are
+exposed, or when a validated consumer requires streaming, SARIF, GitHub
+annotations, or another schema.
