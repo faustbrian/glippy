@@ -50,3 +50,31 @@ acceptance of the 4,816-file diff. A later dogfood rehearsal must select writabl
 non-generated files deliberately, inspect the complete migration, and run the
 external repository's own scoped gates before it can count as completed
 adoption.
+
+## Bounded Write Rehearsal
+
+The `pkg/prompts` module was selected for a bounded write rehearsal because it
+contained one of the original binary-comment failures and has its own module
+and verification boundary. Two immutable copies of the same source commit were
+created; Gox modified only the disposable rehearsal copy.
+
+Write mode selected 77 files, changed 69, and completed without a generated,
+validation, replacement, or reporting failure. A second Gox check selected the
+same 77 files with zero differences. Against that formatted snapshot:
+
+- `go test ./... -count=1` passed for the module and terminal package;
+- `go test -race ./... -count=1` passed for both packages;
+- `go vet ./...` passed; and
+- `go mod tidy -diff` reported no module metadata difference.
+
+The complete migration has 7,611 inserted and 4,077 deleted lines across 69
+files. Automated review found no stranded control keyword, receiver, or
+selector pattern, and remaining lines over width are unbreakable string
+literals. However, 63 files are not gofmt fixed points. The module's current
+`format-check` gate would reject this migration, exactly matching Gox's recorded
+gofmt incompatibility boundary.
+
+This rehearsal proves writable non-generated module behavior, idempotency, and
+the named local gates on a disposable snapshot. It still does not establish
+owner approval, migration-policy acceptance, complete human review of the
+large diff, or a repository-wide write result.

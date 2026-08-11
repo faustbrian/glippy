@@ -63,3 +63,10 @@ with 4,816 formatting differences and no tool error. This is check-mode corpus
 evidence, not completed adoption: generated-file refusal prevented a full-tree
 write rehearsal, and the 4,816-file migration diff has not received human
 readability approval.
+
+A bounded disposable write rehearsal on the external `pkg/prompts` module
+selected 77 files, changed 69, and produced a zero-difference second Gox check.
+The migrated snapshot passes its tests, race tests, vet, and tidy check. A
+total of 63 files remain non-fixed-points under gofmt, so the module's current
+formatting gate and the unapproved 7,611-insertion/4,077-deletion migration keep
+external adoption open.
