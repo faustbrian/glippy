@@ -1,0 +1,215 @@
+package suppressions_test
+
+import (
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/gox/internal/suppressions"
+)
+
+func TestParseAssignsPhysicalSuppressionScopes(t *testing.T) {
+	t.Parallel()
+
+	input := `//gox:ignore-file file-rule -- generated adapter
+package sample
+
+func run() {
+	lineTarget() //gox:ignore-line line-rule -- platform branch
+	//gox:ignore next-rule -- legacy call
+	nextTarget()
+	outsideNext()
+	//gox:ignore-start range-rule -- paired setup
+	rangeTarget()
+	//gox:ignore-end range-rule
+	outsideRange()
+}
+`
+	file := loadFile(t, input)
+	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
+		KnownRules: []string{"file-rule", "line-rule", "next-rule", "range-rule"},
+	})
+	if len(problems) != 0 {
+		t.Fatalf("Parse() problems = %#v", problems)
+	}
+	directives := index.Directives()
+	if len(directives) != 4 {
+		t.Fatalf("Directives() length = %d, want 4", len(directives))
+	}
+	directives[0].RuleID = "mutated"
+	if index.Directives()[0].RuleID == "mutated" {
+		t.Fatal("Directives() exposed mutable index state")
+	}
+
+	tests := []struct {
+		rule       string
+		target     string
+		suppressed bool
+		scope      suppressions.Scope
+	}{
+		{rule: "file-rule", target: "outsideRange()", suppressed: true, scope: suppressions.ScopeFile},
+		{rule: "line-rule", target: "lineTarget()", suppressed: true, scope: suppressions.ScopeLine},
+		{rule: "line-rule", target: "nextTarget()", suppressed: false},
+		{rule: "next-rule", target: "nextTarget()", suppressed: true, scope: suppressions.ScopeNextLine},
+		{rule: "next-rule", target: "outsideNext()", suppressed: false},
+		{rule: "range-rule", target: "rangeTarget()", suppressed: true, scope: suppressions.ScopeRange},
+		{rule: "range-rule", target: "outsideRange()", suppressed: false},
+	}
+	for _, test := range tests {
+		t.Run(test.rule+"/"+test.target, func(t *testing.T) {
+			t.Parallel()
+			match, found := index.Match(test.rule, rangeOf(input, test.target))
+			if found != test.suppressed {
+				t.Fatalf("Match() found = %v, want %v", found, test.suppressed)
+			}
+			if found && match.Scope != test.scope {
+				t.Fatalf("Match() scope = %v, want %v", match.Scope, test.scope)
+			}
+		})
+	}
+}
+
+func TestParseReportsMalformedAndUnknownDirectivesInSourceOrder(t *testing.T) {
+	t.Parallel()
+
+	input := `//gox:ignore known-rule
+//gox:ignore
+//gox:ignore unknown-rule -- reason
+//gox:ignore known-rule --
+package sample
+
+//gox:ignore-file known-rule -- too late
+func run() {}
+`
+	file := loadFile(t, input)
+	_, problems := suppressions.Parse(file, suppressions.ParseOptions{
+		KnownRules:    []string{"known-rule"},
+		RequireReason: true,
+	})
+	want := []suppressions.ProblemKind{
+		suppressions.ProblemMissingReason,
+		suppressions.ProblemMalformed,
+		suppressions.ProblemUnknownRule,
+		suppressions.ProblemMissingReason,
+		suppressions.ProblemMisplacedFileScope,
+	}
+	got := make([]suppressions.ProblemKind, len(problems))
+	for index, problem := range problems {
+		got[index] = problem.Kind
+		if problem.Range.Start < 0 || problem.Range.End <= problem.Range.Start {
+			t.Fatalf("problem %d range = %#v", index, problem.Range)
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Parse() problem kinds = %#v, want %#v", got, want)
+	}
+}
+
+func TestParseRequiresDeterministicRangePairs(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+//gox:ignore-end unmatched-rule
+//gox:ignore-start nested-rule -- first
+//gox:ignore-start nested-rule -- duplicate
+func run() {}
+`
+	file := loadFile(t, input)
+	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
+		KnownRules: []string{"unmatched-rule", "nested-rule"},
+	})
+	want := []suppressions.ProblemKind{
+		suppressions.ProblemUnmatchedRangeEnd,
+		suppressions.ProblemUnclosedRange,
+		suppressions.ProblemNestedRange,
+	}
+	got := make([]suppressions.ProblemKind, len(problems))
+	for position, problem := range problems {
+		got[position] = problem.Kind
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Parse() problem kinds = %#v, want %#v", got, want)
+	}
+	if _, found := index.Match("nested-rule", rangeOf(input, "func run")); found {
+		t.Fatal("an unclosed suppression range must not suppress diagnostics")
+	}
+}
+
+func TestParseRejectsDuplicateKnownRuleConfiguration(t *testing.T) {
+	t.Parallel()
+
+	file := loadFile(t, "package sample\n")
+	_, problems := suppressions.Parse(file, suppressions.ParseOptions{
+		KnownRules: []string{"known-rule", "known-rule"},
+	})
+	if len(problems) != 1 || problems[0].Kind != suppressions.ProblemInvalidConfiguration {
+		t.Fatalf("Parse() problems = %#v", problems)
+	}
+}
+
+func TestParseAcceptsTabsAndCRLFAtDirectiveBoundaries(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\r\n\r\nfunc run() {\r\n\t//gox:ignore\tnext-rule\t--\tlegacy call\r\n\tnextTarget()\r\n}\r\n"
+	file := loadFile(t, input)
+	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
+		KnownRules:    []string{"next-rule"},
+		RequireReason: true,
+	})
+	if len(problems) != 0 {
+		t.Fatalf("Parse() problems = %#v", problems)
+	}
+	match, found := index.Match("next-rule", rangeOf(input, "nextTarget()"))
+	if !found || match.Reason != "legacy call" || match.Scope != suppressions.ScopeNextLine {
+		t.Fatalf("Match() = %#v, %v", match, found)
+	}
+}
+
+func FuzzParse(f *testing.F) {
+	f.Add([]byte("package sample\n//gox:ignore known-rule -- reason\nfunc run() {}\n"))
+	f.Add([]byte("//gox:ignore-file known-rule\r\npackage sample\r\n"))
+	f.Add([]byte("package sample\n//gox:ignore-start known-rule\n//gox:ignore-end known-rule\n"))
+	f.Fuzz(func(t *testing.T, input []byte) {
+		file, _ := source.Load("fuzz.go", input)
+		if file == nil {
+			return
+		}
+		options := suppressions.ParseOptions{KnownRules: []string{"known-rule"}}
+		first, firstProblems := suppressions.Parse(file, options)
+		second, secondProblems := suppressions.Parse(file, options)
+		if !reflect.DeepEqual(first.Directives(), second.Directives()) ||
+			!reflect.DeepEqual(firstProblems, secondProblems) {
+			t.Fatal("Parse() is nondeterministic")
+		}
+		for _, directive := range first.Directives() {
+			if !validRange(directive.Range, len(input)) || !validRange(directive.Target, len(input)) {
+				t.Fatalf("directive has invalid physical ranges: %#v", directive)
+			}
+		}
+		for _, problem := range firstProblems {
+			if !validRange(problem.Range, len(input)) {
+				t.Fatalf("problem has invalid physical range: %#v", problem)
+			}
+		}
+	})
+}
+
+func loadFile(t *testing.T, input string) *source.File {
+	t.Helper()
+	file, err := source.Load("sample.go", []byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return file
+}
+
+func rangeOf(input, target string) source.Range {
+	start := strings.Index(input, target)
+	return source.Range{Start: start, End: start + len(target)}
+}
+
+func validRange(candidate source.Range, size int) bool {
+	return candidate.Start >= 0 && candidate.End >= candidate.Start && candidate.End <= size
+}

@@ -31,6 +31,15 @@ Diff behavior was refreshed against the same current commit. Oxfmt exposes
 its path-listing check output and deliberately adds a bounded, Go-familiar
 unified `--diff` surface; ADR 0012 records the resource and stdout boundaries.
 
+Suppression behavior was refreshed on 2026-08-11 against Oxc commit
+[`f2125a8`](https://github.com/oxc-project/oxc/commit/f2125a8aab3476954b803ebfe1993f2cb0e255e3).
+Oxlint still accepts both ESLint and Oxlint disable forms, including unscoped
+disable-all comments, and uses interval lookup with compatibility-oriented
+rule-name matching. Its current plugin API separates rule text from an
+optional `--` justification. Gox retains only the explicit separator and
+rejects disable-all, rule lists, and plugin-name equivalence; ADR 0006 records
+the exact physical-scope grammar.
+
 ## Formatter Findings
 
 Oxfmt separates language parsing and lowering, a language-neutral document IR,

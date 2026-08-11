@@ -86,6 +86,14 @@ selection, complete Go AST node interests, and one shared filtered syntax
 traversal. Syntax diagnostics carry exact source identity and physical ranges,
 resolve severity deterministically, reject undeclared or malformed fixes, sort
 independently of rule registration, and honor generated-file eligibility. No
-built-in rule, lint CLI, suppression engine, fix coordinator, or lint reporter
-is implemented yet, so this later-phase foundation does not advance progress
-past the incomplete 45% Phase 2 gate.
+built-in rule, lint CLI, suppression application, fix coordinator, or lint
+reporter is implemented yet, so this later-phase foundation does not advance
+progress past the incomplete 45% Phase 2 gate.
+
+The first suppression foundation now parses one exact rule per `//gox:`
+directive, assigns deterministic physical line, next-line, paired-range, and
+file ownership, supports optional or required reasons, and reports malformed,
+unknown, misplaced, nested, unmatched, and unclosed directives in source order.
+The contract was refreshed against Oxc `f2125a8`. Suppression application,
+unused and expiry diagnostics, lint CLI/reporting, built-in rules, and fix
+coordination remain open, so progress remains 45%.

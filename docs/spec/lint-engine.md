@@ -47,6 +47,31 @@ identity, not incidental output line numbers. Formatting MUST preserve the
 directive bytes and target relationship. A formatter change that would move a
 suppression to a different target MUST be rejected.
 
+The initial grammar accepts one exact rule per line comment:
+
+```text
+//gox:ignore rule-id [-- reason]
+//gox:ignore-line rule-id [-- reason]
+//gox:ignore-start rule-id [-- reason]
+//gox:ignore-end rule-id
+//gox:ignore-file rule-id [-- reason]
+```
+
+`ignore` MUST target only the immediately following physical line;
+`ignore-line` MUST target only the directive's physical line. A same-rule
+`ignore-start` and `ignore-end` pair MUST target the half-open byte range
+between the comments and MUST NOT nest. `ignore-file` MUST appear before the
+package clause and MUST target the complete source file. The matcher MUST
+suppress a diagnostic only when its primary range start belongs to the target.
+Overlap by a larger enclosing range is insufficient.
+
+`--` introduces a reason. When reason policy is enabled, starts and direct
+scopes MUST carry a non-empty reason. Range ends MUST NOT carry a reason.
+Unknown rules, malformed directives, missing reasons, misplaced file scopes,
+nested ranges, unmatched ends, and unclosed starts MUST be reported in source
+order. The parser MUST NOT accept a directive that omits a rule ID or disables
+all rules.
+
 ## `go/analysis` Interoperability
 
 Suitable analyzers MAY be adapted without replacing the native scheduler or
