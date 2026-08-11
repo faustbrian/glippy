@@ -114,3 +114,10 @@ apply or output is unchanged, and uses the permission-preserving same-directory
 atomic writer. It distinguishes confirmed stale refusal, completed replacement,
 and other failures that may have followed rename. Lint CLI selection and
 reporting remain open, so progress stays 45%.
+
+The first file-owned lint driver now resolves preset and severity policy,
+records the maximum required tier, runs the shared syntax traversal once, and
+applies the exact-source suppression index. It keeps visible, suppressed,
+unused, and malformed-suppression outcomes distinct and refuses unsupported
+tiers instead of silently skipping them. Lint reporters, CLI modes, fix
+selection, and built-in rule admission remain open, so progress stays 45%.

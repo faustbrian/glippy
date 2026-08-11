@@ -27,6 +27,14 @@ misleading, or highly suspicious behavior with measured signal. Suspicious,
 performance, complexity, style, and migration groups are opt-in until their
 admission evidence supports a compatibility change.
 
+The Phase 3 file driver MUST resolve the preset and overrides once, record the
+maximum enabled requirement, execute the shared syntax runner once, and apply
+the source-versioned suppression index before returning reporter-facing
+records. Unsuppressed diagnostics, suppressed diagnostics, unused directives,
+and suppression problems MUST remain distinct outcomes. Until another tier
+runner is implemented, the driver MUST reject every enabled non-syntax rule
+rather than skip it or construct a representation speculatively.
+
 ## Diagnostics
 
 A diagnostic MUST contain rule ID, resolved severity, stable message key and
