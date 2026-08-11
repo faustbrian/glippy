@@ -62,14 +62,23 @@ type lintInputPlan struct {
 	requirement rules.Requirement
 }
 
+type lintPackageValidationError struct {
+	err error
+}
+
+func (e *lintPackageValidationError) Error() string { return e.err.Error() }
+
+func (e *lintPackageValidationError) Unwrap() error { return e.err }
+
 type lintFixExecution struct {
-	file       *source.File
-	resultFile *source.File
-	result     analysis.Result
-	outcome    goxreport.LintFixOutcome
-	selections []fixengine.Selection
-	task       lintTask
-	snapshot   *filesystem.Snapshot
+	file        *source.File
+	resultFile  *source.File
+	result      analysis.Result
+	outcome     goxreport.LintFixOutcome
+	selections  []fixengine.Selection
+	task        lintTask
+	packageTask *lintPackageTask
+	snapshot    *filesystem.Snapshot
 }
 
 func parseLintInvocation(arguments []string) (lintInvocation, bool) {
@@ -527,25 +536,30 @@ func runLintFix(
 	if err != nil {
 		return reportLintFixFailure(invocation, stdout, stderr, exitCode, nil, err)
 	}
-	_, packageMode, exitCode, err := prepareLintPackageTask(plans)
+	packageTask, packageMode, exitCode, err := prepareLintPackageTask(plans)
 	if err != nil {
 		return reportLintFixFailure(invocation, stdout, stderr, exitCode, nil, err)
 	}
+	var executions []lintFixExecution
 	if packageMode {
-		return reportLintFixFailure(
-			invocation,
-			stdout,
-			stderr,
-			ExitInvalidInvocation,
-			nil,
-			errors.New("typed lint fixes are not supported"),
+		executions, exitCode, err = prepareLintPackageFixExecutions(
+			ctx,
+			packageTask,
+			registry,
+			invocation.selectionOptions(),
 		)
+	} else {
+		var tasks []lintTask
+		tasks, exitCode, err = prepareLintTasksFromPlans(ctx, plans, invocation.configPath, registry)
+		if err == nil {
+			executions, exitCode, err = prepareLintFixExecutions(
+				ctx,
+				tasks,
+				registry,
+				invocation.selectionOptions(),
+			)
+		}
 	}
-	tasks, exitCode, err := prepareLintTasksFromPlans(ctx, plans, invocation.configPath, registry)
-	if err != nil {
-		return reportLintFixFailure(invocation, stdout, stderr, exitCode, nil, err)
-	}
-	executions, exitCode, err := prepareLintFixExecutions(ctx, tasks, registry, invocation.selectionOptions())
 	if err != nil {
 		return reportLintFixFailure(invocation, stdout, stderr, exitCode, executions, err)
 	}
@@ -555,6 +569,17 @@ func runLintFix(
 			return reportLintFixFailure(invocation, stdout, stderr, ExitCanceled, executions, err)
 		}
 		execution := &executions[index]
+		if execution.packageTask != nil {
+			exitCode, err := refreshLintPackageFixExecution(
+				ctx,
+				registry,
+				execution,
+				invocation.selectionOptions(),
+			)
+			if err != nil {
+				return reportLintFixFailure(invocation, stdout, stderr, exitCode, executions, err)
+			}
+		}
 		postResult := execution.result
 		postFile := execution.file
 		var postAnalysisErr error
@@ -564,13 +589,29 @@ func runLintFix(
 			Format:          execution.task.options.format,
 		}
 		options.Validate = func(formatted *source.File) error {
-			analyzed, err := analysis.Run(ctx, formatted, registry, execution.task.options.analysis)
+			var analyzed analysis.Result
+			var analyzedFile *source.File
+			var err error
+			if execution.packageTask == nil {
+				analyzed, err = analysis.Run(ctx, formatted, registry, execution.task.options.analysis)
+				analyzedFile = formatted
+			} else {
+				analyzed, analyzedFile, err = validateLintPackageFix(
+					ctx,
+					registry,
+					*execution.packageTask,
+					formatted,
+				)
+			}
 			if err != nil {
-				postAnalysisErr = err
+				var validationErr *lintPackageValidationError
+				if !errors.As(err, &validationErr) {
+					postAnalysisErr = err
+				}
 				return err
 			}
 			postResult = analyzed
-			postFile = formatted
+			postFile = analyzedFile
 			return nil
 		}
 		transaction, transactionErr := fixengine.CoordinateAndReplace(
@@ -601,6 +642,12 @@ func runLintFix(
 				executions,
 				transactionErr,
 			)
+		}
+	}
+	if packageMode {
+		exitCode, err := refreshFinalLintPackageResults(ctx, registry, packageTask, executions)
+		if err != nil {
+			return reportLintFixFailure(invocation, stdout, stderr, exitCode, executions, err)
 		}
 	}
 	if err := ctx.Err(); err != nil {
@@ -643,6 +690,267 @@ func runLintFix(
 		}
 	}
 	return exitCode
+}
+
+func prepareLintPackageFixExecutions(
+	ctx context.Context,
+	task lintPackageTask,
+	registry *rules.Registry,
+	selectionOptions fixengine.SelectionOptions,
+) ([]lintFixExecution, int, error) {
+	packageResult, err := runUncachedPackageAnalysis(ctx, registry, task, nil)
+	if err != nil {
+		return nil, packageAnalysisErrorExitCode(err), err
+	}
+	if err := validateLintPackagePrerequisites(packageResult); err != nil {
+		return nil, ExitSourceError, err
+	}
+	executions := make([]lintFixExecution, 0, len(packageResult.Files))
+	for _, result := range packageResult.Files {
+		if err := ctx.Err(); err != nil {
+			return executions, ExitCanceled, err
+		}
+		file, found := packageResult.Sources.Lookup(result.Path)
+		if !found {
+			return executions, ExitInternalError, fmt.Errorf("typed lint result source %q is missing", result.Path)
+		}
+		if file.Metadata().Generated {
+			return executions, ExitFilesystemError, fmt.Errorf("refusing to fix generated file %q", file.Path())
+		}
+		snapshot, exitCode, err := prepareLintPackageSnapshot(ctx, task.root, file)
+		if err != nil {
+			return executions, exitCode, err
+		}
+		selections, err := fixengine.Select(result.Diagnostics, selectionOptions)
+		if err != nil {
+			return executions, ExitInternalError, err
+		}
+		packageTask := task
+		executions = append(executions, lintFixExecution{
+			file:       file,
+			resultFile: file,
+			result:     result,
+			outcome: goxreport.LintFixOutcome{
+				Path:         file.Path(),
+				SourceDigest: file.Digest(),
+				Status:       goxreport.LintFilePending,
+			},
+			selections: selections,
+			task: lintTask{
+				file:    discovery.File{Path: file.Path()},
+				root:    task.root,
+				options: task.options,
+			},
+			packageTask: &packageTask,
+			snapshot:    snapshot,
+		})
+	}
+	return executions, ExitSuccess, nil
+}
+
+func refreshLintPackageFixExecution(
+	ctx context.Context,
+	registry *rules.Registry,
+	execution *lintFixExecution,
+	selectionOptions fixengine.SelectionOptions,
+) (int, error) {
+	packageResult, err := runUncachedPackageAnalysis(ctx, registry, *execution.packageTask, nil)
+	if err != nil {
+		return packageAnalysisErrorExitCode(err), err
+	}
+	if err := validateLintPackagePrerequisites(packageResult); err != nil {
+		return ExitSourceError, err
+	}
+	for _, result := range packageResult.Files {
+		if result.Path != execution.file.Path() {
+			continue
+		}
+		file, found := packageResult.Sources.Lookup(result.Path)
+		if !found {
+			return ExitInternalError, fmt.Errorf("typed lint result source %q is missing", result.Path)
+		}
+		if file.Metadata().Generated {
+			return ExitFilesystemError, fmt.Errorf("refusing to fix generated file %q", file.Path())
+		}
+		snapshot, exitCode, err := prepareLintPackageSnapshot(ctx, execution.task.root, file)
+		if err != nil {
+			return exitCode, err
+		}
+		selections, err := fixengine.Select(result.Diagnostics, selectionOptions)
+		if err != nil {
+			return ExitInternalError, err
+		}
+		execution.file = file
+		execution.resultFile = file
+		execution.result = result
+		execution.selections = selections
+		execution.snapshot = snapshot
+		execution.outcome = goxreport.LintFixOutcome{
+			Path:         file.Path(),
+			SourceDigest: file.Digest(),
+			Status:       goxreport.LintFilePending,
+		}
+		return ExitSuccess, nil
+	}
+	return ExitSourceError, newLintPackageValidationError(
+		"typed lint result %q is missing during fix planning",
+		execution.file.Path(),
+	)
+}
+
+func refreshFinalLintPackageResults(
+	ctx context.Context,
+	registry *rules.Registry,
+	task lintPackageTask,
+	executions []lintFixExecution,
+) (int, error) {
+	packageResult, err := runUncachedPackageAnalysis(ctx, registry, task, nil)
+	if err != nil {
+		return packageAnalysisErrorExitCode(err), err
+	}
+	if err := validateLintPackagePrerequisites(packageResult); err != nil {
+		return ExitSourceError, err
+	}
+	results := make(map[string]analysis.Result, len(packageResult.Files))
+	for _, result := range packageResult.Files {
+		results[result.Path] = result
+	}
+	if len(results) != len(executions) {
+		return ExitSourceError, newLintPackageValidationError(
+			"typed package source selection changed during fix execution",
+		)
+	}
+	for index := range executions {
+		execution := &executions[index]
+		result, found := results[execution.file.Path()]
+		if !found {
+			return ExitSourceError, newLintPackageValidationError(
+				"final typed lint result %q is missing",
+				execution.file.Path(),
+			)
+		}
+		file, found := packageResult.Sources.Lookup(result.Path)
+		if !found {
+			return ExitInternalError, fmt.Errorf("final typed lint source %q is missing", result.Path)
+		}
+		execution.result = result
+		execution.resultFile = file
+	}
+	return ExitSuccess, nil
+}
+
+func prepareLintPackageSnapshot(
+	ctx context.Context,
+	root string,
+	file *source.File,
+) (*filesystem.Snapshot, int, error) {
+	files, err := discovery.GoFiles(ctx, []string{file.Path()}, discovery.Options{Root: root})
+	if err != nil {
+		return nil, exitCodeForError(ExitFilesystemError, err), err
+	}
+	if len(files) != 1 || files[0].Path != file.Path() {
+		return nil, ExitInternalError, fmt.Errorf("typed fix source %q was not rediscovered exactly", file.Path())
+	}
+	if files[0].TraversesSymlink {
+		return nil, ExitFilesystemError, fmt.Errorf("refusing to fix symlink %q", file.Path())
+	}
+	snapshot, err := filesystem.ReadWithin(root, file.Path())
+	if err != nil {
+		return nil, ExitFilesystemError, err
+	}
+	snapshotFile, err := source.Load(snapshot.Path(), snapshot.Bytes())
+	if err != nil {
+		return nil, ExitSourceError, err
+	}
+	if snapshotFile.Digest() != file.Digest() {
+		return nil, ExitConflict, fmt.Errorf("typed fix source %q changed during package analysis: %w", file.Path(), filesystem.ErrStale)
+	}
+	return snapshot, ExitSuccess, nil
+}
+
+func validateLintPackageFix(
+	ctx context.Context,
+	registry *rules.Registry,
+	task lintPackageTask,
+	formatted *source.File,
+) (analysis.Result, *source.File, error) {
+	packageResult, err := runUncachedPackageAnalysis(
+		ctx,
+		registry,
+		task,
+		map[string][]byte{formatted.Path(): formatted.Bytes()},
+	)
+	if err != nil {
+		return analysis.Result{}, nil, err
+	}
+	if err := validateLintPackagePrerequisites(packageResult); err != nil {
+		return analysis.Result{}, nil, err
+	}
+	for _, result := range packageResult.Files {
+		if result.Path != formatted.Path() {
+			continue
+		}
+		file, found := packageResult.Sources.Lookup(result.Path)
+		if !found {
+			return analysis.Result{}, nil, newLintPackageValidationError(
+				"post-fix typed source %q is missing",
+				result.Path,
+			)
+		}
+		if file.Digest() != formatted.Digest() {
+			return analysis.Result{}, nil, newLintPackageValidationError(
+				"post-fix typed source %q does not match the validated overlay",
+				result.Path,
+			)
+		}
+		return result, file, nil
+	}
+	return analysis.Result{}, nil, newLintPackageValidationError(
+		"post-fix typed result %q is missing",
+		formatted.Path(),
+	)
+}
+
+func runUncachedPackageAnalysis(
+	ctx context.Context,
+	registry *rules.Registry,
+	task lintPackageTask,
+	overlay map[string][]byte,
+) (analysis.PackageResult, error) {
+	return analysis.RunPackages(ctx, registry, task.options.analysis, analysis.PackageLoadOptions{
+		Dir:        task.root,
+		Patterns:   task.patterns,
+		Tests:      true,
+		ModuleMode: analysis.ModuleReadonly,
+		Overlay:    overlay,
+	})
+}
+
+func validateLintPackagePrerequisites(result analysis.PackageResult) error {
+	if len(result.SourceProblems) > 0 {
+		problem := result.SourceProblems[0]
+		return newLintPackageValidationError(
+			"typed package source %q failed validation: %s",
+			problem.Path,
+			problem.Message,
+		)
+	}
+	if len(result.LoadDiagnostics) > 0 {
+		diagnostic := result.LoadDiagnostics[0]
+		if diagnostic.Position != "" {
+			return newLintPackageValidationError(
+				"typed package validation failed at %s: %s",
+				diagnostic.Position,
+				diagnostic.Message,
+			)
+		}
+		return newLintPackageValidationError("typed package validation failed: %s", diagnostic.Message)
+	}
+	return nil
+}
+
+func newLintPackageValidationError(format string, arguments ...any) error {
+	return &lintPackageValidationError{err: fmt.Errorf(format, arguments...)}
 }
 
 func prepareLintFixExecutions(

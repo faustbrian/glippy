@@ -89,11 +89,16 @@ replacement, and possible replacement into one success state.
 
 Before the first CLI replacement, every selected source MUST load, parse, pass
 generated-file policy, and resolve through a non-symlink path inside its
-authorized root. After coordination and formatting, the same enabled syntax
-analysis MUST run against the final source. A validation failure rejects every
-otherwise accepted fix in that file and preserves the original bytes. A failure
-of the analysis engine itself retains its tool-failure or cancellation category;
-it MUST NOT be represented only as an actionable lint finding.
+authorized root. After coordination and formatting, syntax-only fixes MUST run
+the same enabled syntax analysis against the final source. Typed, CFG, and SSA
+fixes MUST run a fresh cache-independent package analysis with the candidate
+bound through an exact-path overlay, recover the target file and result from
+that load, and reject package diagnostics, source-model problems, or identity
+mismatches. A validation failure rejects every otherwise accepted fix in that
+file and preserves the original bytes. A failure of the analysis engine itself
+retains its tool-failure or cancellation category; it MUST NOT be represented
+only as an actionable lint finding. Typed fixing MUST perform one final fresh
+package analysis for reporting after all serialized writes.
 
 Formatter normalization after fixes MUST NOT make a semantic rewrite appear to
 be formatter behavior. Fix provenance remains attached to the resulting

@@ -181,8 +181,11 @@ filesystem patterns into one read-only, test-aware package request after every
 input resolves to the same project root and configuration. Syntax-only patterns
 remain on physical-file discovery and cannot invoke `go/packages`. Required
 package or source-model diagnostics map to source-error exit code 2 without
-discarding valid partial rule results. Typed fixes and post-fix reloads remain a
-separate unimplemented transaction boundary.
+discarding valid partial rule results. Typed fixes use the same boundary without
+persistent result reuse: the initial selection and every formatted candidate
+receive fresh package loads, with candidate bytes supplied as an exact-path
+overlay before the single-file transaction may replace source. One final fresh
+load supplies complete reporting results after every serialized transaction.
 
 ## Alternatives Rejected
 
@@ -207,8 +210,9 @@ Syntax dispatch visits uninterested nodes once to avoid indexing or repeated
 walks; a secondary index requires new representative benchmark evidence.
 
 Fact-bearing adapted analyzers now have opt-in dependency-first cache reuse.
-Native tier caching, heterogeneous per-path package configuration, and typed
-fix application remain separate tier-runner work. Types-only requests do not
+Heterogeneous per-path package configuration remains separate tier-runner work;
+typed fix execution deliberately bypasses persistent analysis caching so
+validation cannot accept a stale package result. Types-only requests do not
 construct CFG or SSA, and CFG-only requests do not construct SSA.
 
 The typed package AST and physical source model use separate parser file sets.

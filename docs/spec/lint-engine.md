@@ -208,8 +208,15 @@ The typed CLI MUST classify any retained package-list, parse, type, or
 source-model problem as a source error while preserving valid partial file
 results. A package run that returns all available prerequisite, source, and rule
 records without an engine error MUST remain complete even when its exit category
-is source error. Typed fix selection and post-fix package reloads remain
-unsupported and MUST fail before any source mutation.
+is source error. Typed fix planning MUST use a fresh cache-independent package
+analysis, bind selections to the load-owned physical source digests, and
+prevalidate generated-file and rooted-filesystem policy before replacement.
+Each formatted candidate MUST be reanalyzed through an exact-path package
+overlay. Package or source-model problems, a missing target result, or overlay
+identity mismatch MUST reject that file's fixes without mutation; an analysis
+engine failure retains its tool-failure category. After all serialized
+transactions, one final fresh package analysis MUST replace every per-file
+reporting result so diagnostics enabled by a later write remain visible.
 
 The syntax-only fix driver MUST select no more than one safe named fix from each
 visible diagnostic. A diagnostic with multiple safe alternatives is an invalid

@@ -106,11 +106,21 @@ possibly completed because directory-sync failure can follow a successful
 rename.
 
 The CLI prevalidates every selected configuration and source before its first
-replacement, refuses generated and symlink-traversing paths, and reruns the
-enabled syntax analysis after formatter normalization. Reporters retain the
-original source digest and coordinated fix provenance separately from the
-result digest and replacement status. Cancellation and reporting failures
-disclose confirmed or possibly completed replacements.
+replacement and refuses generated and symlink-traversing paths. Syntax-only
+fixing reruns the enabled syntax analysis after formatter normalization.
+Reporters retain the original source digest and coordinated fix provenance
+separately from the result digest and replacement status. Cancellation and
+reporting failures disclose confirmed or possibly completed replacements.
+
+Typed, CFG, and SSA selections use the same serialized single-file coordinator
+after a fresh cache-independent package plan. Validation reruns the complete
+package analysis with the formatted candidate supplied through an exact-path
+overlay. Package diagnostics, source-model problems, missing target results,
+and overlay identity mismatches reject the candidate without writing; package
+engine failures retain their tool-failure category. This does not introduce
+multi-file fixes or multi-file atomicity. A final fresh package analysis replaces
+all per-file reporting results so a later write cannot hide a newly enabled
+finding in an earlier file.
 
 The initial suppression grammar is line-comment-only and accepts exactly one
 rule ID per directive:

@@ -109,8 +109,11 @@ fail before any write.
 Every lint fix mode prevalidates every selected configuration and source before
 its first write, refuses generated files and paths traversing symlinks,
 coordinates each source version independently, reparses and
-formatter-normalizes accepted edits, reruns syntax analysis over the final
-bytes, and then uses the shared atomic replacement boundary. Stale files and
+formatter-normalizes accepted edits, and then uses the shared atomic replacement
+boundary. Syntax-only fixes rerun syntax analysis over the final bytes. Typed,
+CFG, or SSA selections rerun the complete package analysis with the formatted
+candidate supplied through an exact-path overlay and reject the fix if package
+loading, source capture, or target-file recovery fails. Stale files and
 overlapping fixes are conflicts. One file's conflict does not silently select a
 winner or prevent independent file transactions from being attempted.
 Cancellation stops before the next replacement and reports earlier confirmed
@@ -118,10 +121,15 @@ writes. A post-format analysis engine failure remains an internal or
 cancellation outcome and MUST NOT be downgraded to an ordinary rejected-fix
 finding.
 
-Typed package fixes and post-fix package reloads are not implemented. A fix
-invocation whose enabled selection requires types, CFG, or SSA MUST fail as an
-invalid invocation before source discovery or replacement begins. Syntax-only
-recursive patterns MAY use the existing file-owned fix transactions.
+Typed package fixing is cache-independent even when persistent analysis caching
+is enabled for non-mutating lint. The initial plan and each candidate validation
+use fresh package loads in read-only module mode with test variants enabled.
+Package or source-model problems in the initial plan fail with source error
+before replacement; the same problems caused by a candidate become a stable
+validation rejection and preserve the original file. A final fresh package
+analysis supplies every file's reported result so a later write cannot hide a
+finding newly enabled in an earlier file. Transactions remain single-file and
+serialized; an invocation MUST NOT claim multi-file atomicity.
 
 Successful text fix output contains only diagnostics and rejected-fix reasons
 left after coordination; a completely fixed invocation is silent. Lint-fix JSON

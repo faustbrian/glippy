@@ -52,9 +52,13 @@ partial results.
 
 One typed invocation accepts only one project root and configuration. This
 avoids silently applying one package graph to heterogeneous policy until
-per-path package configuration has an explicit design. Typed fixes and
-post-fix package reloads remain unsupported and are rejected before source
-mutation; syntax-only recursive fixes retain the existing file transactions.
+per-path package configuration has an explicit design. Typed fixes reuse the
+single-file transaction boundary: planning uses a fresh package analysis,
+candidate validation reloads the package through an exact-path overlay, and
+package or source-model failures preserve the original file. A final fresh load
+supplies complete reporting results. Typed fixing is serialized and
+cache-independent and does not claim multi-file atomicity; syntax-only recursive
+fixes retain the file-owned validation path.
 
 Combined `check` uses the same tier-sensitive planning. Syntax selections keep
 the physical file driver. A types, CFG, or SSA selection performs one package

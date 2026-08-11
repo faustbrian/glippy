@@ -506,9 +506,9 @@ generated-file policy. Ordinary packages retain production ownership while
 augmented test variants own only test files; foreign, stale, and non-owning
 targets fail closed. Typed options, partial-type eligibility, deterministic
 ordering, suppression, CLI reporting, and exact source identity remain shared
-with node-scoped rules. Native dependency analysis and typed fixes remain open,
-and Phase 2 naming, release, platform-runtime, and approved external-adoption
-gates keep overall progress at 45%.
+with node-scoped rules. Native dependency analysis remains open; typed fix
+application is described below. Phase 2 naming, release, platform-runtime, and
+approved external-adoption gates keep overall progress at 45%.
 
 The naming audit now has a concrete technical recommendation: **Gofettle**,
 binary `gofettle`, and proposed module path
@@ -591,3 +591,27 @@ compares every output byte, verifies the archives and checksums, and executes
 the extracted current-host binary's version command. The final name, an
 independent Linux-host artifact rehearsal, signing/publication, Windows runtime,
 and approved external adoption remain open, so progress stays 45%.
+
+Typed, CFG, and SSA lint selections may now apply admitted single-file fixes.
+The fix driver builds its plan from a fresh cache-independent, read-only,
+test-aware package analysis; binds diagnostics to the load-owned physical source
+and an equal rooted filesystem snapshot; refuses generated and
+symlink-traversing sources; and retains the existing stale, overlap, formatting,
+and atomic-replacement boundaries. Before each serialized file transaction it
+reanalyzes and reselects against the current package graph, preventing an
+earlier write from making a later typed selection semantically stale. Every
+formatted candidate is then reanalyzed through an exact-path package overlay
+before replacement. Package diagnostics, source-model failures, missing target
+results, and overlay identity mismatches become validation rejections that
+preserve the original file, while package engine failures remain tool failures.
+One final fresh package analysis replaces every per-file reporting result, so a
+later write cannot hide a newly enabled finding in an earlier file. Transactions
+are single-file and do not claim multi-file atomicity. Focused end-to-end
+fixtures prove a safe typed rewrite reaches formatted, diagnostic-free output,
+a syntax-valid rewrite introducing an undefined identifier is rejected without
+mutation, cross-file selections are refreshed, final cross-file findings remain
+visible, stale package snapshots conflict, and symlinked-directory sources are
+refused.
+Persistent lint caching is intentionally bypassed for planning, reselection,
+and post-fix validation. The Phase 2 naming, release-platform, publication, and
+approved external-adoption gates remain open, so progress stays 45%.

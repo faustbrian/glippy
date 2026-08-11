@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"go/ast"
+	"go/types"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +32,20 @@ type cliTypesRule struct {
 	metadata rules.Metadata
 	runs     *atomic.Int64
 	cancel   context.CancelFunc
+}
+
+type cliTypesFixRule struct {
+	metadata    rules.Metadata
+	target      string
+	replacement string
+}
+
+type cliPackageStateFixRule struct {
+	metadata rules.Metadata
+}
+
+type cliPackageEnablingFixRule struct {
+	metadata rules.Metadata
 }
 
 type cliControlFlowRule struct {
@@ -427,6 +442,117 @@ func (r cliTypesRule) RunTypes(ctx *rules.TypesContext, node ast.Node) ([]rules.
 		Message:    "typed call requires review",
 		Range:      sourceRange,
 	}}, nil
+}
+
+func (r cliTypesFixRule) Metadata() rules.Metadata { return r.metadata }
+
+func (r cliTypesFixRule) RunTypes(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
+	call, ok := node.(*ast.CallExpr)
+	if !ok {
+		return nil, nil
+	}
+	identifier, ok := call.Fun.(*ast.Ident)
+	if !ok || identifier.Name != r.target {
+		return nil, nil
+	}
+	sourceRange, err := ctx.Range(call)
+	if err != nil {
+		return nil, err
+	}
+	fix := r.metadata.Fixes[0]
+	return []rules.Finding{{
+		MessageKey: "typed-target-call",
+		Message:    "typed target call requires replacement",
+		Range:      sourceRange,
+		Fixes: []rules.Fix{{
+			Name:   fix.Name,
+			Safety: fix.Safety,
+			Edits:  []rules.Edit{{Range: sourceRange, NewText: r.replacement + "()"}},
+		}},
+	}}, nil
+}
+
+func (r cliPackageStateFixRule) Metadata() rules.Metadata { return r.metadata }
+
+func (r cliPackageStateFixRule) RunTypes(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
+	gate, ok := ctx.Package().Scope().Lookup("Gate").(*types.Const)
+	if !ok || gate.Val().ExactString() != "true" {
+		return nil, nil
+	}
+	var replacement string
+	switch current := node.(type) {
+	case *ast.Ident:
+		if current.Name != "true" {
+			return nil, nil
+		}
+		replacement = "false"
+	case *ast.CallExpr:
+		identifier, ok := current.Fun.(*ast.Ident)
+		if !ok || identifier.Name != "target" {
+			return nil, nil
+		}
+		replacement = "primary()"
+	default:
+		return nil, nil
+	}
+	sourceRange, err := ctx.Range(node)
+	if err != nil {
+		return nil, err
+	}
+	fix := r.metadata.Fixes[0]
+	return []rules.Finding{{
+		MessageKey: "package-state",
+		Message:    "package state permits a rewrite",
+		Range:      sourceRange,
+		Fixes: []rules.Fix{{
+			Name:   fix.Name,
+			Safety: fix.Safety,
+			Edits:  []rules.Edit{{Range: sourceRange, NewText: replacement}},
+		}},
+	}}, nil
+}
+
+func (r cliPackageEnablingFixRule) Metadata() rules.Metadata { return r.metadata }
+
+func (r cliPackageEnablingFixRule) RunTypes(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
+	gate, ok := ctx.Package().Scope().Lookup("Gate").(*types.Const)
+	if !ok {
+		return nil, nil
+	}
+	gateEnabled := gate.Val().ExactString() == "true"
+	var replacement string
+	switch current := node.(type) {
+	case *ast.Ident:
+		if gateEnabled || current.Name != "false" {
+			return nil, nil
+		}
+		replacement = "true"
+	case *ast.CallExpr:
+		identifier, ok := current.Fun.(*ast.Ident)
+		if !gateEnabled || !ok || identifier.Name != "target" {
+			return nil, nil
+		}
+	default:
+		return nil, nil
+	}
+	sourceRange, err := ctx.Range(node)
+	if err != nil {
+		return nil, err
+	}
+	finding := rules.Finding{
+		MessageKey: "package-enabled",
+		Message:    "enabled package state requires review",
+		Range:      sourceRange,
+	}
+	if replacement != "" {
+		fix := r.metadata.Fixes[0]
+		finding.Fixes = []rules.Fix{{
+			Name:   fix.Name,
+			Safety: fix.Safety,
+			Edits:  []rules.Edit{{Range: sourceRange, NewText: replacement}},
+		}}
+	}
+	return []rules.Finding{finding}, nil
 }
 
 func (r cliControlFlowRule) Metadata() rules.Metadata { return r.metadata }
@@ -1449,7 +1575,39 @@ func TestRunLintCheckRejectsHeterogeneousTypedPackageRoots(t *testing.T) {
 	}
 }
 
-func TestRunLintFixRejectsTypedPackageAnalysisBeforeMutation(t *testing.T) {
+func TestRunLintFixAppliesFormatsAndReanalyzesOneSafeTypedFix(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	input := []byte("package project\nfunc run() { target() }\nfunc target() {}\nfunc primary() {}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{filepath.Join(root, "...")}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLITypesFixRegistry(t, "primary"),
+	)
+
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("runLintFix(typed) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+	want := "package project\n\nfunc run() {\n\tprimary()\n}\n\nfunc target() {}\n\nfunc primary() {}\n"
+	if got, err := os.ReadFile(path); err != nil || string(got) != want {
+		t.Fatalf("runLintFix(typed) source = %q, error = %v", got, err)
+	}
+}
+
+func TestRunLintFixRejectsTypedFixThatFailsPackageValidation(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -1469,16 +1627,180 @@ func TestRunLintFixRejectsTypedPackageAnalysisBeforeMutation(t *testing.T) {
 		lintInvocation{fix: true, paths: []string{filepath.Join(root, "...")}, reporter: goxreport.Text},
 		&stdout,
 		&stderr,
-		newCLITypesRegistry(t),
+		newCLITypesFixRegistry(t, "missing"),
 	)
 
 	got, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if exitCode != ExitInvalidInvocation || stdout.Len() != 0 ||
-		!strings.Contains(stderr.String(), "typed lint fixes are not supported") || !bytes.Equal(got, input) {
-		t.Fatalf("runLintFix(typed) = exit %d, stdout %q, stderr %q, source %q", exitCode, stdout.String(), stderr.String(), got)
+	if exitCode != ExitFindings || stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "rejected fix[typed-fix/rewrite/validation]") ||
+		!strings.Contains(stdout.String(), "undefined: missing") || !bytes.Equal(got, input) {
+		t.Fatalf("runLintFix(invalid typed fix) = exit %d, stdout %q, stderr %q, source %q", exitCode, stdout.String(), stderr.String(), got)
+	}
+}
+
+func TestRunLintFixReselectsTypedFixesAfterEachPackageWrite(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(root, "a.go")
+	if err := os.WriteFile(
+		firstPath,
+		[]byte("package project\nconst Gate = true\nfunc target() {}\nfunc primary() {}\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	secondPath := filepath.Join(root, "b.go")
+	secondInput := []byte("package project\nfunc run() { target() }\n")
+	if err := os.WriteFile(secondPath, secondInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{filepath.Join(root, "...")}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLIPackageStateFixRegistry(t),
+	)
+
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("runLintFix(package state) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+	first, err := os.ReadFile(firstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(first, []byte("const Gate = false")) {
+		t.Fatalf("runLintFix(package state) first source = %q", first)
+	}
+	second, err := os.ReadFile(secondPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(second, secondInput) {
+		t.Fatalf("runLintFix(package state) applied stale second selection: %q", second)
+	}
+}
+
+func TestRunLintFixReportsFindingEnabledInEarlierFileByLaterWrite(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(root, "a.go")
+	firstInput := []byte("package project\nfunc run() { target() }\nfunc target() {}\n")
+	if err := os.WriteFile(firstPath, firstInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secondPath := filepath.Join(root, "b.go")
+	if err := os.WriteFile(secondPath, []byte("package project\nconst Gate = false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{filepath.Join(root, "...")}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLIPackageEnablingFixRegistry(t),
+	)
+
+	if exitCode != ExitFindings || stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "warn[package-enabling-fix]: enabled package state requires review") {
+		t.Fatalf("runLintFix(enabled earlier finding) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+	first, err := os.ReadFile(firstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, firstInput) {
+		t.Fatalf("runLintFix(enabled earlier finding) changed first source: %q", first)
+	}
+	second, err := os.ReadFile(secondPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(second, []byte("const Gate = true")) {
+		t.Fatalf("runLintFix(enabled earlier finding) second source = %q", second)
+	}
+}
+
+func TestRunLintFixRejectsTypedSourceThroughSymlinkedDirectory(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	realDirectory := filepath.Join(root, "real")
+	if err := os.Mkdir(realDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(realDirectory, "source.go")
+	input := []byte("package real\nfunc run() { target() }\nfunc target() {}\nfunc primary() {}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	linkedDirectory := filepath.Join(root, "linked")
+	if err := os.Symlink(realDirectory, linkedDirectory); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{
+			fix:      true,
+			paths:    []string{filepath.Join(linkedDirectory, "source.go")},
+			reporter: goxreport.Text,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesFixRegistry(t, "primary"),
+	)
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitFilesystemError || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "symlink") || !bytes.Equal(got, input) {
+		t.Fatalf("runLintFix(typed symlink) = exit %d, stdout %q, stderr %q, source %q", exitCode, stdout.String(), stderr.String(), got)
+	}
+}
+
+func TestPrepareLintPackageSnapshotRejectsBytesChangedAfterPackageAnalysis(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	input := []byte("package project\nfunc target() {}\n")
+	file, err := source.Load(path, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("package project\nfunc changed() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, exitCode, err := prepareLintPackageSnapshot(context.Background(), root, file)
+
+	if snapshot != nil || exitCode != ExitConflict || !errors.Is(err, filesystem.ErrStale) {
+		t.Fatalf("prepareLintPackageSnapshot(stale) = snapshot %#v, exit %d, error %v", snapshot, exitCode, err)
 	}
 }
 
@@ -2422,6 +2744,86 @@ func newCLISyntaxRegistry(t *testing.T) *rules.Registry {
 
 func newCLITypesRegistry(t *testing.T) *rules.Registry {
 	return newCLITypesRegistryWithRuns(t, nil)
+}
+
+func newCLITypesFixRegistry(t *testing.T, replacement string) *rules.Registry {
+	t.Helper()
+	rule := cliTypesFixRule{
+		target:      "target",
+		replacement: replacement,
+		metadata: rules.Metadata{
+			ID:               "typed-fix",
+			Summary:          "replaces typed target calls",
+			Documentation:    "Replaces typed target calls with an admitted alternative.",
+			DefaultSeverity:  rules.SeverityWarn,
+			Presets:          []rules.Preset{rules.PresetCorrectness},
+			MinimumGoVersion: "1.22",
+			Requirement:      rules.RequireTypes,
+			NodeInterests:    []rules.NodeKind{rules.NodeCallExpr},
+			Categories:       []rules.Category{rules.CategoryCorrectness},
+			Fixes: []rules.FixMetadata{{
+				Name:        "rewrite",
+				Description: "replace the typed target call",
+				Safety:      rules.FixSafe,
+			}},
+			Examples: []rules.Example{{Incorrect: "target()", Correct: replacement + "()"}},
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return registry
+}
+
+func newCLIPackageStateFixRegistry(t *testing.T) *rules.Registry {
+	t.Helper()
+	registry, err := rules.NewRegistry(cliPackageStateFixRule{metadata: rules.Metadata{
+		ID:               "package-state-fix",
+		Summary:          "rewrites package state",
+		Documentation:    "Rewrites calls while the package gate is enabled.",
+		DefaultSeverity:  rules.SeverityWarn,
+		Presets:          []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion: "1.22",
+		Requirement:      rules.RequireTypes,
+		NodeInterests:    []rules.NodeKind{rules.NodeIdent, rules.NodeCallExpr},
+		Categories:       []rules.Category{rules.CategoryCorrectness},
+		Fixes: []rules.FixMetadata{{
+			Name:        "rewrite",
+			Description: "rewrite while the package gate is enabled",
+			Safety:      rules.FixSafe,
+		}},
+		Examples: []rules.Example{{Incorrect: "const Gate = true", Correct: "const Gate = false"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return registry
+}
+
+func newCLIPackageEnablingFixRegistry(t *testing.T) *rules.Registry {
+	t.Helper()
+	registry, err := rules.NewRegistry(cliPackageEnablingFixRule{metadata: rules.Metadata{
+		ID:               "package-enabling-fix",
+		Summary:          "enables package findings",
+		Documentation:    "Enables a package state that requires another source review.",
+		DefaultSeverity:  rules.SeverityWarn,
+		Presets:          []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion: "1.22",
+		Requirement:      rules.RequireTypes,
+		NodeInterests:    []rules.NodeKind{rules.NodeIdent, rules.NodeCallExpr},
+		Categories:       []rules.Category{rules.CategoryCorrectness},
+		Fixes: []rules.FixMetadata{{
+			Name:        "enable",
+			Description: "enable the package gate",
+			Safety:      rules.FixSafe,
+		}},
+		Examples: []rules.Example{{Incorrect: "const Gate = false", Correct: "const Gate = true"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return registry
 }
 
 func newCLITypesRegistryWithRuns(t *testing.T, runs *atomic.Int64) *rules.Registry {
