@@ -112,7 +112,10 @@ unused unless a different diagnostic selects them, making redundant waivers
 observable instead of silently treating every overlap as used.
 
 Reasons use `--` as an explicit separator. A non-empty reason is accepted by
-default and can be required by typed policy. Range ends never carry reasons.
+default; `lint.suppressions.require-reason = true` requires one for every direct
+scope and range start across syntax and package analysis. A missing reason
+invalidates the directive instead of suppressing its target. Range ends never
+carry reasons.
 Unknown rules, malformed syntax, missing required reasons, misplaced file
 directives, nested same-rule ranges, unmatched ends, and unclosed starts are
 source-ordered problems. Application reports unused directives; canonical

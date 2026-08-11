@@ -250,8 +250,8 @@ validated result digest but MUST NOT be presented as confirmed disk state.
 
 Suppressions MUST name exact rule IDs. The grammar MUST define line, next-line,
 range, and file ownership without allowing an unscoped silent disable-all.
-Configuration MAY require a non-empty reason. Unknown, malformed, unused, and
-expired suppressions SHOULD be independently diagnosable.
+`lint.suppressions.require-reason` MUST default to `false`. Unknown, malformed,
+unused, and expired suppressions SHOULD be independently diagnosable.
 
 Suppression ownership is based on physical token boundaries and source
 identity, not incidental output line numbers. Formatting MUST preserve the
@@ -282,8 +282,10 @@ ranges. When multiple same-rule directives match one diagnostic, the first
 source-ordered directive MUST own it. Application MUST preserve diagnostic
 order and MUST report every valid directive that owns no diagnostic as unused.
 
-`--` introduces a reason. When reason policy is enabled, starts and direct
-scopes MUST carry a non-empty reason. Range ends MUST NOT carry a reason.
+`--` introduces a reason. When `lint.suppressions.require-reason` is `true`,
+starts and direct scopes MUST carry a non-empty reason. A missing or empty
+reason MUST invalidate that directive so it cannot suppress a diagnostic.
+Range ends MUST NOT carry a reason.
 Unknown rules, malformed directives, missing reasons, misplaced file scopes,
 nested ranges, unmatched ends, and unclosed starts MUST be reported in source
 order. The parser MUST NOT accept a directive that omits a rule ID or disables

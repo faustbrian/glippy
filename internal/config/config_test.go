@@ -180,6 +180,26 @@ disabled-rule = "off"
 	}
 }
 
+func TestParseAppliesSuppressionReasonPolicy(t *testing.T) {
+	t.Parallel()
+
+	defaults := config.Defaults()
+	if defaults.Lint.Suppressions.RequireReason {
+		t.Fatal("Defaults() requires suppression reasons")
+	}
+	configured, err := config.Parse("project/.gox.toml", []byte(`version = 1
+
+[lint.suppressions]
+require-reason = true
+`), config.ParseOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configured.Lint.Suppressions.RequireReason {
+		t.Fatal("Parse() did not require suppression reasons")
+	}
+}
+
 func TestLoadUsesDefaultsOrSelectedConfiguration(t *testing.T) {
 	t.Parallel()
 

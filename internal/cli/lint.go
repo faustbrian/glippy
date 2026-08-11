@@ -493,8 +493,9 @@ func lintOptionsForSelection(
 	}
 	return lintTaskOptions{
 		analysis: analysis.RunOptions{
-			Preset:    loaded.Lint.Preset,
-			Overrides: loaded.Lint.Rules,
+			Preset:                   loaded.Lint.Preset,
+			Overrides:                loaded.Lint.Rules,
+			RequireSuppressionReason: loaded.Lint.Suppressions.RequireReason,
 		},
 		format: goxformat.Options{
 			Width:     loaded.Format.LineWidth,

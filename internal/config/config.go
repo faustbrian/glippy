@@ -62,8 +62,14 @@ type Format struct {
 
 // Lint contains the selected preset and explicit rule overrides.
 type Lint struct {
-	Preset Preset
-	Rules  map[string]Severity
+	Preset       Preset
+	Rules        map[string]Severity
+	Suppressions Suppressions
+}
+
+// Suppressions contains project policy for auditable lint waivers.
+type Suppressions struct {
+	RequireReason bool
 }
 
 // ParseOptions supplies registry state needed to validate rule identifiers.
@@ -103,8 +109,13 @@ type formatConfig struct {
 }
 
 type lintConfig struct {
-	Preset *string           `toml:"preset"`
-	Rules  map[string]string `toml:"rules"`
+	Preset       *string           `toml:"preset"`
+	Rules        map[string]string `toml:"rules"`
+	Suppressions suppressionConfig `toml:"suppressions"`
+}
+
+type suppressionConfig struct {
+	RequireReason *bool `toml:"require-reason"`
 }
 
 // Defaults returns an independent configuration containing built-in policy.
@@ -169,6 +180,9 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 			return Config{}, semanticError(path, "unknown lint preset %q", preset)
 		}
 		result.Lint.Preset = preset
+	}
+	if decoded.Lint.Suppressions.RequireReason != nil {
+		result.Lint.Suppressions.RequireReason = *decoded.Lint.Suppressions.RequireReason
 	}
 	knownRules := make(map[string]struct{}, len(options.KnownRules))
 	for _, rule := range options.KnownRules {

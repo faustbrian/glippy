@@ -26,9 +26,20 @@ tab-width = 8
 [lint]
 preset = "correctness"
 
+[lint.suppressions]
+require-reason = false
+
 [lint.rules]
 no-unexplained-suppression = "error"
 ```
+
+`lint.suppressions.require-reason` MUST be a boolean and MUST default to
+`false`. When it is `true`, every direct suppression and range start MUST carry
+a non-empty reason after `--`; a missing or empty reason MUST produce a finding,
+and the invalid directive MUST NOT suppress diagnostics. The policy MUST apply
+equally to syntax-only and package-aware lint, combined check, and syntax fix
+planning. Range ends remain reasonless because the matching start owns the
+waiver.
 
 Formatter configuration MUST remain limited to adoption-significant choices.
 Brace placement, individual whitespace rules, and alternative layout dialects

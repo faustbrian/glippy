@@ -343,3 +343,14 @@ patterns now work for combined checks, and focused SSA, type-error,
 invalid-source, reporter, and non-mutation coverage passes. Progress remains
 45% behind the existing Phase 2 naming, release, platform, and approved
 external-adoption gates.
+
+The typed configuration now exposes suppression reason policy through
+`lint.suppressions.require-reason`, defaulting to optional reasons. Enabling it
+invalidates direct suppressions and range starts without a non-empty reason,
+leaves their diagnostics visible, and reports the existing source-located
+`missing-reason` problem. One resolved configuration value now reaches
+syntax-only lint, combined check, syntax fix prevalidation, and the shared
+types/CFG/SSA package driver. Focused configuration, text, JSON, source-digest,
+and non-mutation fixtures cover every routed command. Structured suppression
+expiry remains deferred, and the incomplete Phase 2 gates keep progress at
+45%.
