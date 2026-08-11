@@ -247,6 +247,17 @@ observed. If cancellation follows an earlier replacement, the diagnostic lists
 the files already replaced. Reading an arbitrary standard-input stream cannot
 be interrupted until that stream's `Read` operation returns.
 
+Typed `lint` and combined `check` MAY use the persistent analysis cache only
+when the selected configuration enables it. One invocation MUST reuse one
+caller-owned store across the package run, apply the resolved bounded-pruning
+policy after every non-canceled run, and close the store before reporting.
+Configuration, cache-root, open, prune, and close failures MUST be visible tool
+failures; Gox MUST NOT present a cache-maintenance failure as cached success.
+Syntax-only commands and every formatter or fix path MUST remain independent of
+the persistent analysis cache. An invalid cache-root policy is an invalid
+invocation, cache filesystem failures use the filesystem category, and cache
+identity conflicts or invariant failures use the internal-error category.
+
 ## Exit Categories
 
 | Code | Category |

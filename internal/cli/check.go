@@ -201,23 +201,13 @@ func runCombinedPackageCheck(
 	registry *rules.Registry,
 	task lintPackageTask,
 ) int {
-	result, err := analysis.RunPackages(
-		ctx,
-		registry,
-		task.options.analysis,
-		analysis.PackageLoadOptions{
-			Dir:        task.root,
-			Patterns:   task.patterns,
-			Tests:      true,
-			ModuleMode: analysis.ModuleReadonly,
-		},
-	)
+	result, err := runPackageAnalysis(ctx, registry, task)
 	if err != nil {
 		return reportCombinedPackageCheck(
 			invocation,
 			stdout,
 			stderr,
-			exitCodeForError(ExitInternalError, err),
+			packageAnalysisErrorExitCode(err),
 			false,
 			packageCheckResult(result, nil),
 			nil,

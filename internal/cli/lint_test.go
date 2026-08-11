@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/faustbrian/gox/internal/analysis"
+	"github.com/faustbrian/gox/internal/cache"
 	"github.com/faustbrian/gox/internal/filesystem"
 	fixengine "github.com/faustbrian/gox/internal/fix"
 	goxreport "github.com/faustbrian/gox/internal/report"
@@ -26,6 +28,8 @@ type cliSyntaxRule struct {
 
 type cliTypesRule struct {
 	metadata rules.Metadata
+	runs     *atomic.Int64
+	cancel   context.CancelFunc
 }
 
 type cliControlFlowRule struct {
@@ -407,6 +411,12 @@ enabled = true
 func (r cliTypesRule) Metadata() rules.Metadata { return r.metadata }
 
 func (r cliTypesRule) RunTypes(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
+	if r.runs != nil {
+		r.runs.Add(1)
+	}
+	if r.cancel != nil {
+		r.cancel()
+	}
 	sourceRange, err := ctx.Range(node)
 	if err != nil {
 		return nil, err
@@ -743,6 +753,457 @@ func TestRunLintCheckRoutesTypedPackagePatternsToPackageAnalysis(t *testing.T) {
 	}
 	if !bytes.Equal(got, input) {
 		t.Fatalf("runLintCheck(typed inputs) mutated source: %q", got)
+	}
+}
+
+func TestRunPackageCommandsReuseConfiguredPersistentCache(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/cachedcli\n\ngo 1.26.0\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	input := []byte("package cachedcli\n\nfunc run() {\n\ttarget()\n}\n\nfunc target() {}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(configurationPath, []byte(`version = 1
+
+[cache]
+enabled = true
+max-entries = 64
+max-bytes = 1048576
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := filepath.Join(t.TempDir(), "analysis-cache")
+	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+	runs := new(atomic.Int64)
+	registry := newCLITypesRegistryWithRuns(t, runs)
+
+	var lintOutput bytes.Buffer
+	var lintError bytes.Buffer
+	if exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{configPath: configurationPath, paths: []string{path}},
+		&lintOutput,
+		&lintError,
+		registry,
+	); exitCode != ExitFindings || lintError.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(cold cache) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			lintOutput.String(),
+			lintError.String(),
+		)
+	}
+	coldRuns := runs.Load()
+	if coldRuns == 0 {
+		t.Fatal("cold package command did not execute the typed rule")
+	}
+
+	var checkOutput bytes.Buffer
+	var checkError bytes.Buffer
+	if exitCode := runCombinedCheck(
+		context.Background(),
+		checkInvocation{configPath: configurationPath, paths: []string{path}},
+		&checkOutput,
+		&checkError,
+		registry,
+	); exitCode != ExitFindings || checkError.Len() != 0 {
+		t.Fatalf(
+			"runCombinedCheck(warm cache) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			checkOutput.String(),
+			checkError.String(),
+		)
+	}
+	if runs.Load() != coldRuns {
+		t.Fatalf("warm package command reran typed rule %d times", runs.Load()-coldRuns)
+	}
+	if lintOutput.String() != checkOutput.String() {
+		t.Fatalf("cached command outputs differ: lint %q, check %q", lintOutput.String(), checkOutput.String())
+	}
+	if _, err := os.Stat(cacheRoot); err != nil {
+		t.Fatalf("inspect CLI-owned cache root: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("cached package commands mutated source: %q", got)
+	}
+}
+
+func TestResolvedCacheToolIdentityBindsDevelopmentBinary(t *testing.T) {
+	first, err := resolvedCacheToolIdentity("devel", strings.NewReader("first binary"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := resolvedCacheToolIdentity("devel", strings.NewReader("second binary"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second || !strings.HasPrefix(first, "devel-sha256:") ||
+		!strings.HasPrefix(second, "devel-sha256:") {
+		t.Fatalf("development cache identities = %q and %q", first, second)
+	}
+	release, err := resolvedCacheToolIdentity("v1.2.3", nil)
+	if err != nil || release != "v1.2.3" {
+		t.Fatalf("release cache identity = %q, %v", release, err)
+	}
+}
+
+func TestRunPackageCommandPrunesConfiguredPersistentCache(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/prunedcli\n\ngo 1.26.0\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(
+		path,
+		[]byte("package prunedcli\n\nfunc run() {\n\ttarget()\n}\n\nfunc target() {}\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(configurationPath, []byte(`version = 1
+
+[cache]
+enabled = true
+max-entries = 1
+max-bytes = 0
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := filepath.Join(t.TempDir(), "analysis-cache")
+	store, err := cache.Open(cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := byte(1); index <= 3; index++ {
+		key := cache.Key{index}
+		if err := store.Put(context.Background(), key, []byte{index}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{configPath: configurationPath, paths: []string{path}},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	); exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(prune cache) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	store, err = cache.Open(cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pruned, pruneErr := store.Prune(context.Background(), cache.PruneOptions{MaxEntries: 100})
+	closeErr := store.Close()
+	if pruneErr != nil {
+		t.Fatal(pruneErr)
+	}
+	if closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	if pruned.EntriesBefore != 1 || pruned.EntriesRemoved != 0 {
+		t.Fatalf("CLI cache prune result = %#v", pruned)
+	}
+}
+
+func TestRunPackageCommandSkipsCachePruningAfterCancellation(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/canceledcache\n\ngo 1.26.0\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(
+		path,
+		[]byte("package canceledcache\n\nfunc run() { target() }\nfunc target() {}\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(configurationPath, []byte(`version = 1
+
+[cache]
+enabled = true
+max-entries = 1
+max-bytes = 0
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := filepath.Join(t.TempDir(), "analysis-cache")
+	store, err := cache.Open(cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := byte(1); index <= 3; index++ {
+		if err := store.Put(context.Background(), cache.Key{index}, []byte{index}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+	ctx, cancel := context.WithCancel(context.Background())
+	registry := newCLITypesRegistryWithHooks(t, nil, cancel)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := runLintCheck(
+		ctx,
+		lintInvocation{configPath: configurationPath, paths: []string{path}},
+		&stdout,
+		&stderr,
+		registry,
+	); exitCode != ExitCanceled || stdout.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(canceled cache) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	store, err = cache.Open(cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pruned, pruneErr := store.Prune(context.Background(), cache.PruneOptions{MaxEntries: 100})
+	closeErr := store.Close()
+	if pruneErr != nil {
+		t.Fatal(pruneErr)
+	}
+	if closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	if pruned.EntriesBefore != 3 || pruned.EntriesRemoved != 0 {
+		t.Fatalf("canceled CLI cache was pruned: %#v", pruned)
+	}
+}
+
+func TestRunSyntaxCommandsRemainIndependentOfConfiguredPersistentCache(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	input := []byte("package syntaxcache\n\nfunc run() { target() }\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n[cache]\nenabled = true\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := filepath.Join(root, ".cache", "analysis")
+	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+	registry := newCLISyntaxRegistry(t)
+
+	for _, command := range []string{"lint", "check", "fix"} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		var exitCode int
+		switch command {
+		case "lint":
+			exitCode = runLintCheck(
+				context.Background(),
+				lintInvocation{configPath: configurationPath, paths: []string{path}},
+				&stdout,
+				&stderr,
+				registry,
+			)
+		case "check":
+			exitCode = runCombinedCheck(
+				context.Background(),
+				checkInvocation{configPath: configurationPath, paths: []string{path}},
+				&stdout,
+				&stderr,
+				registry,
+			)
+		case "fix":
+			exitCode = runLintFix(
+				context.Background(),
+				lintInvocation{configPath: configurationPath, fix: true, paths: []string{path}},
+				&stdout,
+				&stderr,
+				registry,
+			)
+		}
+		if exitCode != ExitFindings || stderr.Len() != 0 {
+			t.Fatalf(
+				"run syntax %s with cache configured = exit %d, stdout %q, stderr %q",
+				command,
+				exitCode,
+				stdout.String(),
+				stderr.String(),
+			)
+		}
+	}
+	if _, err := os.Lstat(cacheRoot); !os.IsNotExist(err) {
+		t.Fatalf("syntax command created cache root: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("syntax commands with cache configured mutated source: %q", got)
+	}
+}
+
+func TestRunPackageCommandRefusesCacheInsideProject(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/containedcache\n\ngo 1.26.0\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package containedcache\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n[cache]\nenabled = true\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := filepath.Join(root, ".cache", "analysis")
+	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+
+	registry := newCLITypesRegistry(t)
+	for _, command := range []string{"lint", "check"} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		var exitCode int
+		if command == "lint" {
+			exitCode = runLintCheck(
+				context.Background(),
+				lintInvocation{configPath: configurationPath, paths: []string{path}},
+				&stdout,
+				&stderr,
+				registry,
+			)
+		} else {
+			exitCode = runCombinedCheck(
+				context.Background(),
+				checkInvocation{configPath: configurationPath, paths: []string{path}},
+				&stdout,
+				&stderr,
+				registry,
+			)
+		}
+		if exitCode != ExitInvalidInvocation || stdout.Len() != 0 ||
+			!strings.Contains(stderr.String(), "analysis cache root must remain outside project root") {
+			t.Fatalf(
+				"run%sCheck(contained cache) = exit %d, stdout %q, stderr %q",
+				command,
+				exitCode,
+				stdout.String(),
+				stderr.String(),
+			)
+		}
+	}
+	if _, err := os.Lstat(cacheRoot); !os.IsNotExist(err) {
+		t.Fatalf("contained cache root was created: %v", err)
+	}
+}
+
+func TestRunPackageCommandReportsCacheOpenFailureAsFilesystemError(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/cacheopenfailure\n\ngo 1.26.0\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package cacheopenfailure\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n[cache]\nenabled = true\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(cacheRoot, []byte("occupied"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+
+	registry := newCLITypesRegistry(t)
+	for _, command := range []string{"lint", "check"} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		var exitCode int
+		if command == "lint" {
+			exitCode = runLintCheck(
+				context.Background(),
+				lintInvocation{configPath: configurationPath, paths: []string{path}},
+				&stdout,
+				&stderr,
+				registry,
+			)
+		} else {
+			exitCode = runCombinedCheck(
+				context.Background(),
+				checkInvocation{configPath: configurationPath, paths: []string{path}},
+				&stdout,
+				&stderr,
+				registry,
+			)
+		}
+		if exitCode != ExitFilesystemError || stdout.Len() != 0 ||
+			!strings.Contains(stderr.String(), "open analysis cache") {
+			t.Fatalf(
+				"run%sCheck(cache open failure) = exit %d, stdout %q, stderr %q",
+				command,
+				exitCode,
+				stdout.String(),
+				stderr.String(),
+			)
+		}
 	}
 }
 
@@ -1897,6 +2358,18 @@ func newCLISyntaxRegistry(t *testing.T) *rules.Registry {
 }
 
 func newCLITypesRegistry(t *testing.T) *rules.Registry {
+	return newCLITypesRegistryWithRuns(t, nil)
+}
+
+func newCLITypesRegistryWithRuns(t *testing.T, runs *atomic.Int64) *rules.Registry {
+	return newCLITypesRegistryWithHooks(t, runs, nil)
+}
+
+func newCLITypesRegistryWithHooks(
+	t *testing.T,
+	runs *atomic.Int64,
+	cancel context.CancelFunc,
+) *rules.Registry {
 	t.Helper()
 	registry, err := rules.NewRegistry(cliTypesRule{metadata: rules.Metadata{
 		ID:               "typed-call",
@@ -1909,7 +2382,7 @@ func newCLITypesRegistry(t *testing.T) *rules.Registry {
 		NodeInterests:    []rules.NodeKind{rules.NodeCallExpr},
 		Categories:       []rules.Category{rules.CategoryCorrectness},
 		Examples:         []rules.Example{{Incorrect: "target()", Correct: "reviewed()"}},
-	}})
+	}, runs: runs, cancel: cancel})
 	if err != nil {
 		t.Fatal(err)
 	}

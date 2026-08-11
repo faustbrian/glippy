@@ -26,6 +26,10 @@ const (
 	DefaultLineWidth = 100
 	// DefaultTabWidth is the formatter's default visual tab width.
 	DefaultTabWidth = 8
+	// DefaultCacheMaxEntries bounds retained persistent analysis results.
+	DefaultCacheMaxEntries = 4096
+	// DefaultCacheMaxBytes bounds retained persistent analysis storage.
+	DefaultCacheMaxBytes int64 = 512 << 20
 )
 
 // Preset identifies one coherent lint-rule selection.
@@ -53,6 +57,7 @@ type Config struct {
 	Version int
 	Format  Format
 	Lint    Lint
+	Cache   Cache
 }
 
 // Format contains formatter policy that materially affects adoption.
@@ -73,6 +78,13 @@ type Lint struct {
 type Suppressions struct {
 	RequireReason bool
 	ExpiryCutoff  string
+}
+
+// Cache contains the opt-in persistent analysis-cache lifecycle policy.
+type Cache struct {
+	Enabled    bool
+	MaxEntries int
+	MaxBytes   int64
 }
 
 // ParseOptions supplies registry state needed to validate rule identifiers.
@@ -105,6 +117,7 @@ type fileConfig struct {
 	Version *int         `toml:"version"`
 	Format  formatConfig `toml:"format"`
 	Lint    lintConfig   `toml:"lint"`
+	Cache   cacheConfig  `toml:"cache"`
 }
 
 type formatConfig struct {
@@ -124,6 +137,12 @@ type suppressionConfig struct {
 	ExpiryCutoff  *string `toml:"expiry-cutoff"`
 }
 
+type cacheConfig struct {
+	Enabled    *bool  `toml:"enabled"`
+	MaxEntries *int   `toml:"max-entries"`
+	MaxBytes   *int64 `toml:"max-bytes"`
+}
+
 // Defaults returns an independent configuration containing built-in policy.
 func Defaults() Config {
 	return Config{
@@ -136,6 +155,10 @@ func Defaults() Config {
 			Preset:      PresetCorrectness,
 			Rules:       make(map[string]Severity),
 			RuleOptions: make(map[string]rules.OptionSet),
+		},
+		Cache: Cache{
+			MaxEntries: DefaultCacheMaxEntries,
+			MaxBytes:   DefaultCacheMaxBytes,
 		},
 	}
 }
@@ -201,6 +224,27 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 			)
 		}
 		result.Lint.Suppressions.ExpiryCutoff = cutoff
+	}
+	if decoded.Cache.Enabled != nil {
+		result.Cache.Enabled = *decoded.Cache.Enabled
+	}
+	if decoded.Cache.MaxEntries != nil {
+		if *decoded.Cache.MaxEntries < 0 {
+			return Config{}, semanticError(path, "cache.max-entries must not be negative")
+		}
+		result.Cache.MaxEntries = *decoded.Cache.MaxEntries
+	}
+	if decoded.Cache.MaxBytes != nil {
+		if *decoded.Cache.MaxBytes < 0 {
+			return Config{}, semanticError(path, "cache.max-bytes must not be negative")
+		}
+		result.Cache.MaxBytes = *decoded.Cache.MaxBytes
+	}
+	if result.Cache.Enabled && result.Cache.MaxEntries == 0 && result.Cache.MaxBytes == 0 {
+		return Config{}, semanticError(
+			path,
+			"enabled cache requires a positive max-entries or max-bytes limit",
+		)
 	}
 	knownRules := make(map[string]struct{}, len(options.KnownRules))
 	for _, rule := range options.KnownRules {

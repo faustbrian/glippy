@@ -104,12 +104,30 @@ loaded-graph input.
 
 This proves cold population, independent-load hits, source invalidation,
 corruption-as-recomputation, and transactional restore for the implemented
-fact-bearing adapter and native-tier boundaries. The owned analyzer workload
-benchmark also proves zero analyzer executions on warm independent loads; its
+fact-bearing adapter and native-tier boundaries. Owned analyzer and native-tier
+workload benchmarks prove zero callbacks on warm independent loads; their
 timing remains directional because package loading dominates and the reference
-host is not isolated. Native-tier timing has not been benchmarked. This does
-not enable caching in the CLI, establish automatic pruning or stale-temporary
-cleanup, or support a product-wide warm-performance claim.
+host is not isolated.
+
+The CLI MAY enable this cache only through an explicit project configuration.
+An enabled invocation MUST own one store for the complete typed `lint` or
+`check` run, place it under `GOX_CACHE_DIR` or the platform user-cache
+directory, pass the resolved canonical configuration digest, and close the
+store before reporting. A versioned build MUST use its product version as tool
+identity; a `devel` build MUST bind the SHA-256 digest of its executable so two
+different local binaries cannot share results under one generic version. It
+MUST set explicit GOOS, GOARCH, and CGO selection, force `GOENV=off`, and bind
+those values into the cache identity. It MUST prune after every non-canceled
+run to the configured positive entry or encoded-byte limits. Syntax-only
+linting, formatting, and fixing MUST NOT open this store.
+Cache writes remain outside the selected source tree and MUST NOT be required
+for correctness. The configuration digest includes result-affecting formatter,
+lint, and suppression values; cache enablement and retention limits are
+lifecycle policy and MUST NOT invalidate otherwise compatible results. The CLI
+rejects a cache root whose currently resolvable path is inside the selected
+project before opening it. Closing the validation-to-open symlink race, stale
+temporary recovery, platform evidence for hard-link publication beyond the
+recorded filesystems, and a product-wide warm-performance claim remain open.
 
 Persistent object identity is the owning package path plus the canonical
 x/tools `objectpath`. It is proven across independent type checks for package

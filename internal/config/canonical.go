@@ -1,0 +1,56 @@
+package config
+
+import (
+	"encoding/binary"
+	"sort"
+)
+
+// CanonicalBytes returns the deterministic identity of one fully resolved
+// configuration. It excludes source spelling, comments, and cache lifecycle
+// policy while retaining every value that can affect formatting or analysis.
+func (c Config) CanonicalBytes() []byte {
+	encoded := []byte("gox-configuration-v1")
+	encoded = binary.AppendVarint(encoded, int64(c.Version))
+	encoded = binary.AppendVarint(encoded, int64(c.Format.LineWidth))
+	encoded = binary.AppendVarint(encoded, int64(c.Format.TabWidth))
+	encoded = appendCanonicalString(encoded, string(c.Lint.Preset))
+
+	ruleIDs := make([]string, 0, len(c.Lint.Rules))
+	for ruleID := range c.Lint.Rules {
+		ruleIDs = append(ruleIDs, ruleID)
+	}
+	sort.Strings(ruleIDs)
+	encoded = binary.AppendUvarint(encoded, uint64(len(ruleIDs)))
+	for _, ruleID := range ruleIDs {
+		encoded = appendCanonicalString(encoded, ruleID)
+		encoded = appendCanonicalString(encoded, string(c.Lint.Rules[ruleID]))
+	}
+
+	optionRuleIDs := make([]string, 0, len(c.Lint.RuleOptions))
+	for ruleID := range c.Lint.RuleOptions {
+		optionRuleIDs = append(optionRuleIDs, ruleID)
+	}
+	sort.Strings(optionRuleIDs)
+	encoded = binary.AppendUvarint(encoded, uint64(len(optionRuleIDs)))
+	for _, ruleID := range optionRuleIDs {
+		encoded = appendCanonicalString(encoded, ruleID)
+		encoded = appendCanonicalBytes(encoded, c.Lint.RuleOptions[ruleID].CanonicalBytes())
+	}
+
+	if c.Lint.Suppressions.RequireReason {
+		encoded = append(encoded, 1)
+	} else {
+		encoded = append(encoded, 0)
+	}
+	encoded = appendCanonicalString(encoded, c.Lint.Suppressions.ExpiryCutoff)
+	return encoded
+}
+
+func appendCanonicalString(encoded []byte, value string) []byte {
+	return appendCanonicalBytes(encoded, []byte(value))
+}
+
+func appendCanonicalBytes(encoded, value []byte) []byte {
+	encoded = binary.AppendUvarint(encoded, uint64(len(value)))
+	return append(encoded, value...)
+}

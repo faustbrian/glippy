@@ -415,10 +415,10 @@ source, module/workspace, overlay, dependency-export, fact, and formatter-mode
 inputs. Its rooted store bounds entries, verifies embedded key, length, and
 payload digest, treats corruption as a miss, repairs through recomputation, and
 uses create-if-absent hard-link publication so concurrent different values fail
-instead of silently replacing one another. The first analysis consumer is
-described below; formatter wiring, automatic eviction policy,
-platform evidence, and broader warm-cache benchmarks remain open. Progress
-stays 45% behind the Phase 2 gates.
+instead of silently replacing one another. The analysis consumers and typed CLI
+lifecycle are described below; formatter caching, stale-temporary recovery,
+broader platform evidence, and broader warm-cache benchmarks remain open.
+Progress stays 45% behind the Phase 2 gates.
 
 Persistent object facts now have process-independent identity through an owning
 package path and canonical x/tools `objectpath`. Package objects, named types,
@@ -447,18 +447,19 @@ and uncacheable-local-fact fallback are proven. A five-sample owned workload
 probe executes 42 analyzer packages per cold population and zero per warm
 independent load. Its 1.32-second cold and 478-millisecond warm medians are
 directional only because the host was not isolated and package loading still
-dominates allocations. The CLI does not enable this cache, and no product-wide
-latency threshold or automatic eviction-policy claim is made. Native-tier
-caching is described below. Phase 2 naming, release, platform-runtime, and
-approved external-adoption gates keep overall progress at 45%.
+dominates allocations. The typed CLI integration is described below, and no
+product-wide latency threshold is claimed. Native-tier caching is described
+below. Phase 2 naming, release, platform-runtime, and approved
+external-adoption gates keep overall progress at 45%.
 
 The cache store now supports explicit bounded pruning over canonical entries.
 It removes verified corruption before evicting the oldest publication times to
 caller-supplied entry and encoded-byte limits, with key-order ties. Unknown and
 temporary files remain untouched; cancellation, deleted roots, count and byte
 limits, deterministic ties, and concurrent equal publication across independent
-store handles are covered. No CLI policy invokes pruning, stale crash temporary
-files remain deferred, and progress stays 45% behind the Phase 2 gates.
+store handles are covered. The typed CLI policy invokes this pruning as
+described below; stale crash temporary files remain deferred, and progress stays
+45% behind the Phase 2 gates.
 
 Rule configuration now accepts strict per-rule boolean, integer, string, and
 string-list values under `lint.rule-options`. Canonical metadata rejects unknown
@@ -519,7 +520,26 @@ retaining package loading in both paths. Every warm sample executes zero native
 callbacks, proving reuse for node-scoped types, package-wide types, CFG, and SSA
 rules; the 112-150 millisecond warm medians are not consistently faster than
 the 118-125 millisecond cold medians on the small workload and non-isolated
-host, so no CI or product-wide performance threshold is claimed. The CLI still
-owns no cache lifecycle or pruning policy. The Phase 2 naming, release,
-platform-runtime, and approved external-adoption gates keep overall progress at
-45%.
+host, so no CI or product-wide performance threshold is claimed. The typed CLI
+lifecycle is described below. The Phase 2 naming, release, platform-runtime,
+and approved external-adoption gates keep overall progress at 45%.
+
+Typed `gox lint` and combined `gox check` may now opt into one invocation-owned
+persistent analysis store through strict versioned configuration. The CLI
+binds explicit GOOS, GOARCH, CGO, `GOENV=off`, tool, Go, source-language,
+formatter-mode, rule, and result-affecting canonical configuration identity;
+development binaries use their executable SHA-256 digest instead of sharing
+the generic `devel` display version;
+reuses one store for the complete package command; prunes canonical entries to
+configured count and encoded-byte limits after non-canceled runs; and closes
+the store before reporting. Cache enablement and retention limits do not cause
+cold result misses. Syntax-only linting, formatting, and lint fixing remain
+cache-independent. Cold lint followed by warm combined check produces the same
+diagnostics with zero additional typed callbacks, and CLI tests cover pruning,
+cancel-without-prune behavior, syntax-command independence, invalid limits,
+roots inside the project, and cache-open failure categories.
+The current source-language identity remains the documented Go 1.26 prototype
+policy. Cache-root validation resolves existing symlink ancestry before open,
+but the validation-to-open race, stale temporary recovery, and broader platform
+runtime evidence remain open. Progress stays 45% behind the Phase 2 naming,
+release, platform-runtime, and approved external-adoption gates.

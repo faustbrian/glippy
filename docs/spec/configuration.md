@@ -34,6 +34,11 @@ no-unexplained-suppression = "error"
 
 [lint.rule-options."no-unexplained-suppression"]
 require-ticket = true
+
+[cache]
+enabled = false
+max-entries = 4096
+max-bytes = 536870912
 ```
 
 `lint.rule-options` MUST use one rule-ID table per configured rule. The
@@ -73,6 +78,15 @@ Formatter configuration MUST remain limited to adoption-significant choices.
 Brace placement, individual whitespace rules, and alternative layout dialects
 MUST NOT be configurable.
 
+Persistent analysis caching MUST default to disabled until a project opts in
+with `cache.enabled = true`. `cache.max-entries` and `cache.max-bytes` MUST be
+non-negative integers; zero leaves that dimension unlimited, and an enabled
+cache MUST retain at least one positive limit. Defaults are 4,096 entries and
+512 MiB. These limits govern disposable storage rather than diagnostic or
+formatting behavior and MUST NOT contribute to cached-result identity.
+Syntax-only linting, formatting, and fix planning MUST NOT open or prune the
+typed analysis cache.
+
 ## Discovery And Precedence
 
 Without `--config`, Gox discovers one project configuration by walking upward
@@ -87,6 +101,13 @@ override when introduced, then explicit command-line options. Environment
 variables MUST NOT silently override formatter or lint policy; GOOS, GOARCH,
 build tags, toolchain, module/workspace state, and cgo selection are explicit
 analysis inputs and cache keys.
+
+`GOX_CACHE_DIR` MAY select the normalized absolute cache root when persistent
+analysis caching is enabled. It does not enable caching and MUST NOT override
+the configured retention limits. Without the variable, the CLI MUST use the
+platform user-cache directory beneath `gox/analysis`. The CLI rejects a root
+whose currently resolvable path is inside the selected project. The
+validation-to-open symlink race remains an explicit prototype limitation.
 
 Nested configuration or inheritance MAY be introduced only after a concrete
 multi-root journey demonstrates that typed path overrides are insufficient.

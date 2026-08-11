@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -72,6 +73,10 @@ func TestParseRequiresVersionAndUsesOptionalDefaults(t *testing.T) {
 			if got.Lint.Preset != config.PresetCorrectness || len(got.Lint.Rules) != 0 {
 				t.Fatalf("Parse() lint defaults = %#v, want correctness with no overrides", got.Lint)
 			}
+			if got.Cache.Enabled || got.Cache.MaxEntries != config.DefaultCacheMaxEntries ||
+				got.Cache.MaxBytes != config.DefaultCacheMaxBytes {
+				t.Fatalf("Parse() cache defaults = %#v", got.Cache)
+			}
 		})
 	}
 }
@@ -116,6 +121,21 @@ func TestParseRejectsInvalidSemanticValues(t *testing.T) {
 			input:     "version = 1\n[lint.rules]\nmissing-rule = \"warn\"\n",
 			wantError: "unknown lint rule \"missing-rule\"",
 		},
+		{
+			name:      "negative cache entries",
+			input:     "version = 1\n[cache]\nmax-entries = -1\n",
+			wantError: "cache.max-entries must not be negative",
+		},
+		{
+			name:      "negative cache bytes",
+			input:     "version = 1\n[cache]\nmax-bytes = -1\n",
+			wantError: "cache.max-bytes must not be negative",
+		},
+		{
+			name:      "enabled unbounded cache",
+			input:     "version = 1\n[cache]\nenabled = true\nmax-entries = 0\nmax-bytes = 0\n",
+			wantError: "enabled cache requires a positive max-entries or max-bytes limit",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -130,6 +150,52 @@ func TestParseRejectsInvalidSemanticValues(t *testing.T) {
 				t.Fatalf("Parse() error = %T %v, want path-aware *config.Error", err, err)
 			}
 		})
+	}
+}
+
+func TestCanonicalBytesIgnoreSourceOrderAndCacheLifecyclePolicy(t *testing.T) {
+	t.Parallel()
+
+	first, err := config.Parse("first.toml", []byte(`version = 1
+
+[cache]
+enabled = true
+max-entries = 32
+max-bytes = 1048576
+
+[lint.rules]
+z-rule = "warn"
+a-rule = "error"
+`), config.ParseOptions{KnownRules: []string{"a-rule", "z-rule"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := config.Parse("second.toml", []byte(`version = 1
+
+[lint.rules]
+a-rule = "error"
+z-rule = "warn"
+
+[cache]
+max-bytes = 1048576
+max-entries = 32
+enabled = true
+`), config.ParseOptions{KnownRules: []string{"z-rule", "a-rule"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first.CanonicalBytes(), second.CanonicalBytes()) {
+		t.Fatal("canonical configuration changed with source order")
+	}
+	second.Cache.Enabled = false
+	second.Cache.MaxEntries++
+	second.Cache.MaxBytes++
+	if !bytes.Equal(first.CanonicalBytes(), second.CanonicalBytes()) {
+		t.Fatal("cache lifecycle policy changed result configuration identity")
+	}
+	second.Format.LineWidth++
+	if bytes.Equal(first.CanonicalBytes(), second.CanonicalBytes()) {
+		t.Fatal("result-affecting configuration was omitted from identity")
 	}
 }
 

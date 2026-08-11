@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/faustbrian/gox/internal/analysis"
+	"github.com/faustbrian/gox/internal/cache"
 	"github.com/faustbrian/gox/internal/config"
 	"github.com/faustbrian/gox/internal/discovery"
 	"github.com/faustbrian/gox/internal/filesystem"
@@ -34,8 +35,10 @@ type lintInvocation struct {
 }
 
 type lintTaskOptions struct {
-	analysis analysis.RunOptions
-	format   goxformat.Options
+	analysis            analysis.RunOptions
+	format              goxformat.Options
+	cache               config.Cache
+	configurationDigest cache.Digest
 }
 
 type lintTask struct {
@@ -243,19 +246,9 @@ func runLintPackageCheck(
 	registry *rules.Registry,
 	task lintPackageTask,
 ) int {
-	result, err := analysis.RunPackages(
-		ctx,
-		registry,
-		task.options.analysis,
-		analysis.PackageLoadOptions{
-			Dir:        task.root,
-			Patterns:   task.patterns,
-			Tests:      true,
-			ModuleMode: analysis.ModuleReadonly,
-		},
-	)
+	result, err := runPackageAnalysis(ctx, registry, task)
 	if err != nil {
-		return reportLintPackageFailure(invocation, stdout, stderr, exitCodeForError(ExitInternalError, err), result, err)
+		return reportLintPackageFailure(invocation, stdout, stderr, packageAnalysisErrorExitCode(err), result, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return reportLintPackageFailure(invocation, stdout, stderr, ExitCanceled, result, err)
@@ -510,6 +503,8 @@ func lintOptionsForSelection(
 			TabWidth:  loaded.Format.TabWidth,
 			FitBudget: defaultFormatOptions.FitBudget,
 		},
+		cache:               loaded.Cache,
+		configurationDigest: cache.DigestOf(loaded.CanonicalBytes()),
 	}, ExitSuccess, nil
 }
 
