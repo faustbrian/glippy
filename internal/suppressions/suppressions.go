@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
 )
 
@@ -61,6 +62,22 @@ type ParseOptions struct {
 // Index is an immutable source-ordered suppression set.
 type Index struct {
 	directives []Directive
+	path       string
+	digest     source.Digest
+	size       int
+}
+
+// SuppressedDiagnostic binds one removed diagnostic to its owning directive.
+type SuppressedDiagnostic struct {
+	Diagnostic rules.Diagnostic
+	Directive  Directive
+}
+
+// Application is one deterministic suppression pass over ordered diagnostics.
+type Application struct {
+	Diagnostics []rules.Diagnostic
+	Suppressed  []SuppressedDiagnostic
+	Unused      []Directive
 }
 
 type parsedDirective struct {
@@ -196,23 +213,69 @@ func Parse(file *source.File, options ParseOptions) (Index, []Problem) {
 		}
 		return cmp.Compare(left.RuleID, right.RuleID)
 	})
-	return Index{directives: directives}, problems
+	return Index{
+		directives: directives,
+		path:       file.Path(),
+		digest:     file.Digest(),
+		size:       len(input),
+	}, problems
 }
 
 // Match returns the first source-ordered directive owning a diagnostic start.
-func (i Index) Match(ruleID string, diagnostic source.Range) (Directive, bool) {
-	if diagnostic.Start < 0 || diagnostic.End < diagnostic.Start {
+func (i Index) Match(diagnostic rules.Diagnostic) (Directive, bool) {
+	index, found := i.matchIndex(diagnostic)
+	if !found {
 		return Directive{}, false
 	}
-	for _, directive := range i.directives {
-		if directive.RuleID != ruleID {
+	return i.directives[index], true
+}
+
+// Apply removes matched diagnostics and reports used and unused directives.
+func (i Index) Apply(diagnostics []rules.Diagnostic) Application {
+	result := Application{
+		Diagnostics: make([]rules.Diagnostic, 0, len(diagnostics)),
+		Suppressed:  make([]SuppressedDiagnostic, 0),
+		Unused:      make([]Directive, 0, len(i.directives)),
+	}
+	used := make([]bool, len(i.directives))
+	for _, diagnostic := range diagnostics {
+		index, found := i.matchIndex(diagnostic)
+		if !found {
+			result.Diagnostics = append(result.Diagnostics, diagnostic)
 			continue
 		}
-		if diagnostic.Start >= directive.Target.Start && diagnostic.Start < directive.Target.End {
-			return directive, true
+		used[index] = true
+		result.Suppressed = append(result.Suppressed, SuppressedDiagnostic{
+			Diagnostic: diagnostic,
+			Directive:  i.directives[index],
+		})
+	}
+	for index, directive := range i.directives {
+		if !used[index] {
+			result.Unused = append(result.Unused, directive)
 		}
 	}
-	return Directive{}, false
+	return result
+}
+
+func (i Index) matchIndex(diagnostic rules.Diagnostic) (int, bool) {
+	if diagnostic.Path != i.path || diagnostic.Digest != i.digest {
+		return 0, false
+	}
+	if diagnostic.Range.Start < 0 || diagnostic.Range.End < diagnostic.Range.Start ||
+		diagnostic.Range.End > i.size {
+		return 0, false
+	}
+	for index, directive := range i.directives {
+		if directive.RuleID != diagnostic.RuleID {
+			continue
+		}
+		if diagnostic.Range.Start >= directive.Target.Start &&
+			diagnostic.Range.Start < directive.Target.End {
+			return index, true
+		}
+	}
+	return 0, false
 }
 
 func knownRuleSet(ruleIDs []string) (map[string]struct{}, *Problem) {

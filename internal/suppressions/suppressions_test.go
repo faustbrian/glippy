@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
 	"github.com/faustbrian/gox/internal/suppressions"
 )
@@ -59,7 +60,7 @@ func run() {
 	for _, test := range tests {
 		t.Run(test.rule+"/"+test.target, func(t *testing.T) {
 			t.Parallel()
-			match, found := index.Match(test.rule, rangeOf(input, test.target))
+			match, found := index.Match(diagnostic(file, test.rule, rangeOf(input, test.target)))
 			if found != test.suppressed {
 				t.Fatalf("Match() found = %v, want %v", found, test.suppressed)
 			}
@@ -132,7 +133,7 @@ func run() {}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Parse() problem kinds = %#v, want %#v", got, want)
 	}
-	if _, found := index.Match("nested-rule", rangeOf(input, "func run")); found {
+	if _, found := index.Match(diagnostic(file, "nested-rule", rangeOf(input, "func run"))); found {
 		t.Fatal("an unclosed suppression range must not suppress diagnostics")
 	}
 }
@@ -161,9 +162,87 @@ func TestParseAcceptsTabsAndCRLFAtDirectiveBoundaries(t *testing.T) {
 	if len(problems) != 0 {
 		t.Fatalf("Parse() problems = %#v", problems)
 	}
-	match, found := index.Match("next-rule", rangeOf(input, "nextTarget()"))
+	match, found := index.Match(diagnostic(file, "next-rule", rangeOf(input, "nextTarget()")))
 	if !found || match.Reason != "legacy call" || match.Scope != suppressions.ScopeNextLine {
 		t.Fatalf("Match() = %#v, %v", match, found)
+	}
+}
+
+func TestIndexDoesNotMatchAnotherSourceVersion(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\nfunc run() {\n\ttarget() //gox:ignore-line known-rule\n}\n"
+	file := loadFile(t, input)
+	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
+		KnownRules: []string{"known-rule"},
+	})
+	if len(problems) != 0 {
+		t.Fatalf("Parse() problems = %#v", problems)
+	}
+	other, err := source.Load("other.go", []byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found := index.Match(diagnostic(other, "known-rule", rangeOf(string(other.Bytes()), "target()"))); found {
+		t.Fatal("Match() accepted a range from another source identity")
+	}
+	stale, err := source.Load("sample.go", []byte(strings.Replace(input, "target", "targot", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found := index.Match(diagnostic(stale, "known-rule", rangeOf(string(stale.Bytes()), "targot()"))); found {
+		t.Fatal("Match() accepted a range from another source version")
+	}
+	invalid := diagnostic(file, "known-rule", source.Range{Start: 0, End: len(input) + 1})
+	if _, found := index.Match(invalid); found {
+		t.Fatal("Match() accepted an out-of-bounds diagnostic range")
+	}
+	if _, found := index.Match(diagnostic(file, "known-rule", rangeOf(input, "target()"))); !found {
+		t.Fatal("Match() rejected its own source identity")
+	}
+}
+
+func TestApplyFiltersDiagnosticsAndReportsUnusedDirectives(t *testing.T) {
+	t.Parallel()
+
+	input := `//gox:ignore-file used-rule -- broad waiver
+//gox:ignore-file used-rule -- redundant waiver
+//gox:ignore-file unused-rule -- no finding
+package sample
+
+func run() { target() }
+`
+	file := loadFile(t, input)
+	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
+		KnownRules: []string{"used-rule", "unused-rule", "visible-rule"},
+	})
+	if len(problems) != 0 {
+		t.Fatalf("Parse() problems = %#v", problems)
+	}
+	target := rangeOf(input, "target()")
+	other, err := source.Load("other.go", []byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	application := index.Apply([]rules.Diagnostic{
+		diagnostic(file, "used-rule", target),
+		diagnostic(file, "visible-rule", target),
+		diagnostic(other, "used-rule", target),
+	})
+	if len(application.Suppressed) != 1 ||
+		application.Suppressed[0].Directive.Reason != "broad waiver" {
+		t.Fatalf("Apply() suppressed = %#v", application.Suppressed)
+	}
+	if len(application.Diagnostics) != 2 ||
+		application.Diagnostics[0].RuleID != "visible-rule" ||
+		application.Diagnostics[1].Path != "other.go" {
+		t.Fatalf("Apply() diagnostics = %#v", application.Diagnostics)
+	}
+	if len(application.Unused) != 2 {
+		t.Fatalf("Apply() unused = %#v", application.Unused)
+	}
+	if got := []string{application.Unused[0].Reason, application.Unused[1].Reason}; !reflect.DeepEqual(got, []string{"redundant waiver", "no finding"}) {
+		t.Fatalf("Apply() unused reasons = %#v", got)
 	}
 }
 
@@ -208,6 +287,15 @@ func loadFile(t *testing.T, input string) *source.File {
 func rangeOf(input, target string) source.Range {
 	start := strings.Index(input, target)
 	return source.Range{Start: start, End: start + len(target)}
+}
+
+func diagnostic(file *source.File, ruleID string, sourceRange source.Range) rules.Diagnostic {
+	return rules.Diagnostic{
+		RuleID: ruleID,
+		Path:   file.Path(),
+		Digest: file.Digest(),
+		Range:  sourceRange,
+	}
 }
 
 func validRange(candidate source.Range, size int) bool {

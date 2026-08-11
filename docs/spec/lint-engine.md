@@ -65,6 +65,12 @@ package clause and MUST target the complete source file. The matcher MUST
 suppress a diagnostic only when its primary range start belongs to the target.
 Overlap by a larger enclosing range is insufficient.
 
+The matcher MUST require the normalized source path and exact source digest
+that produced the index, and MUST reject invalid or out-of-bounds diagnostic
+ranges. When multiple same-rule directives match one diagnostic, the first
+source-ordered directive MUST own it. Application MUST preserve diagnostic
+order and MUST report every valid directive that owns no diagnostic as unused.
+
 `--` introduces a reason. When reason policy is enabled, starts and direct
 scopes MUST carry a non-empty reason. Range ends MUST NOT carry a reason.
 Unknown rules, malformed directives, missing reasons, misplaced file scopes,

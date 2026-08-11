@@ -43,12 +43,18 @@ complete file and is valid only before the package clause. Diagnostic primary
 range starts determine ownership; a broad diagnostic does not consume a
 suppression merely because it overlaps a target.
 
+An index is bound to the normalized source path, exact source digest, and byte
+length that produced it. Application preserves diagnostic order and chooses
+the first source-ordered matching directive. Later overlapping directives stay
+unused unless a different diagnostic selects them, making redundant waivers
+observable instead of silently treating every overlap as used.
+
 Reasons use `--` as an explicit separator. A non-empty reason is accepted by
 default and can be required by typed policy. Range ends never carry reasons.
 Unknown rules, malformed syntax, missing required reasons, misplaced file
 directives, nested same-rule ranges, unmatched ends, and unclosed starts are
-source-ordered problems. Unused and expired-policy diagnostics remain deferred
-until suppression application and structured expiry inputs are designed.
+source-ordered problems. Application reports unused directives; canonical
+unused diagnostics and structured expiry inputs remain deferred.
 
 ## Alternatives Rejected
 
