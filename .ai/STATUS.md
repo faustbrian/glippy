@@ -236,3 +236,16 @@ Every mode retains the existing source-version, conflict, reparse, formatter,
 post-analysis, atomic-replacement, and reporting transaction. This closes the
 explicit fix-class selection item, while Phase 2 naming, release artifacts,
 and approved external adoption keep overall progress at 45%.
+
+The first typed prerequisite loader now creates one run-owned, canonically
+ordered `go/packages` graph for types, CFG, and SSA requests while rejecting
+cheap-tier use. It retains deterministic diagnostics and partial typed results
+across the populated package graph, with dependency syntax loaded only on
+explicit demand. It covers test variants, build tags, overlays, GOOS/GOARCH,
+and multi-module workspaces. Module resolution is read-only by default with an
+explicit vendor mode. Ordinary loads stay offline by disabling proxy and direct
+VCS resolution, checksum lookup, toolchain download, and ambient external
+package drivers. Explicit network opt-in uses only the caller-supplied Go
+environment. Typed rule execution, CFG/SSA construction, fact scheduling,
+caching, and CLI package-pattern integration remain open, so progress stays
+45%.

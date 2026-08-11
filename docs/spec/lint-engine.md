@@ -26,6 +26,35 @@ replace the direct pass only when representative benchmark evidence shows that
 its construction cost is amortized. Typed, CFG, and SSA values are run-owned
 and MUST NOT cross incompatible `go/packages` loads.
 
+The typed prerequisite loader MUST reject lexical and syntax-only requests. A
+typed request MUST identify a normalized absolute directory and one or more
+non-empty package patterns; overlay keys MUST be normalized absolute paths.
+Matched roots MUST be ordered by opaque package ID, duplicate roots MUST
+collapse only when they are the same loaded instance, and incompatible
+duplicate IDs MUST fail the run. Package and type diagnostics MUST be retained
+from every populated package in the requested graph and ordered by package ID,
+position, message, and upstream error kind. Package-local errors MUST NOT
+discard otherwise available typed roots.
+
+Package loading MUST delegate module and workspace interpretation to
+`go/packages` with explicit test, build-tag, module-mode, overlay, GOOS, and
+GOARCH inputs. Build tags MUST be validated, deduplicated, and ordered before
+the Go command boundary. Module mode MUST default to `readonly`; `vendor` is the
+only other admitted mode, and mutation-enabled module loading MUST be rejected.
+It MUST request typed syntax and type information for matched roots. It MUST
+NOT populate dependency syntax and type-info maps unless enabled rules require
+dependency or fact analysis. It MUST NOT construct CFG or SSA at this boundary.
+Every graph is run-owned; types from separate loads MUST NOT be mixed.
+
+Ordinary package loading MUST disable module proxies, private-module proxy
+bypass, direct version-control resolution, checksum-database access, automatic
+toolchain download, and ambient external package drivers. Network access MAY
+occur only when the caller explicitly opts in and supplies the intended Go
+environment. External `GOPACKAGESDRIVER` execution remains unsupported even
+with network access enabled. The standard Go command invoked by `go/packages`,
+including its selected cgo behavior, is the only subprocess boundary currently
+admitted; cache ownership remains the caller's responsibility.
+
 The default `correctness` preset is limited to incorrect, unsafe, ineffective,
 misleading, or highly suspicious behavior with measured signal. Suspicious,
 performance, complexity, style, and migration groups are opt-in until their

@@ -28,6 +28,29 @@ from roughly 28-30 KiB for inspector indexing to 456-1,896 bytes per traversal.
 The scheduler keeps the direct path at one rule because the measured median
 difference was 1.81 microseconds and does not justify a second execution path.
 
+Typed prerequisite loading uses one run-owned `go/packages` graph for the
+types, CFG, and SSA tiers. Requests require a normalized absolute working
+directory, at least one non-empty package pattern, and normalized absolute
+overlay paths. The loader requests typed root syntax, imports, module and embed
+metadata, export data, type sizes, and test-variant ownership. Dependency types
+needed to check the roots come from export data; dependency syntax and type-info
+maps are requested only for fact or dependency analysis. The loader returns the
+canonically ordered matched roots while retaining canonically ordered load and
+type diagnostics from every populated package in the requested graph.
+Package-local errors therefore preserve partial typed results instead of
+becoming an opaque load failure.
+
+Package selection delegates module and `go.work` semantics to the active Go
+toolchain and accepts explicit test inclusion, canonical build tags, overlays,
+GOOS, and GOARCH inputs. Module loading is read-only by default and supports an
+explicit vendor mode; arbitrary Go build flags and mutation-enabled module
+resolution are not part of this boundary. Ordinary loads disable proxy and
+direct VCS module resolution, checksum-database access, and automatic toolchain
+download. Network use requires an explicit request and a caller-owned
+environment. Ambient `GOPACKAGESDRIVER` execution is always disabled so this
+boundary remains tied to the standard Go command driver; support for external
+build-system drivers requires a separate security and identity contract.
+
 ## Alternatives Rejected
 
 - Custom Go parser/type checker: no evidenced missing standard capability and
@@ -49,6 +72,11 @@ share immutable state.
 
 Syntax dispatch visits uninterested nodes once to avoid indexing or repeated
 walks; a secondary index requires new representative benchmark evidence.
+
+CFG and SSA construction, analyzer fact scheduling, cache reuse, and integration
+with the file-owned lint driver remain separate tier-runner work. A types, CFG,
+or SSA request currently shares the same typed prerequisite graph but does not
+mean that the more expensive representation has already been constructed.
 
 ## Revisit Trigger
 
