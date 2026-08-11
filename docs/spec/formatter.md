@@ -75,8 +75,12 @@ after the operator MUST force the right-hand side onto the following line.
 
 Multi-selector chains share one layout group. When that group breaks, every
 selector dot remains on the preceding line and every following selector uses
-one continuation indentation level. A single selector remains atomic so a
-broken call argument list does not force an unrelated selector break.
+one continuation indentation level. A terminal call's argument list makes an
+independent layout decision: when the selector callee and opening delimiter
+fit, broken arguments MUST NOT force the callee to break. The opening delimiter
+still participates in the selector fit decision, and an empty terminal call
+counts both delimiters. A single selector remains atomic so a broken call
+argument list does not force an unrelated selector break.
 
 Broken comma-delimited calls, composite literals, parameter lists, result
 lists, type-argument lists, and corresponding grammar constructs MUST emit a

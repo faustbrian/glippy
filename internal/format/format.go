@@ -3450,18 +3450,42 @@ func (l *lowerer) aggregateType(keywordPosition token.Pos, keyword string, field
 }
 
 func (l *lowerer) call(call *ast.CallExpr) (doc.ID, error) {
-	if chain, ok, err := l.selectorChain(call); ok || err != nil {
+	arguments, err := l.callArguments(call)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	lookahead, err := l.callSelectorLookahead(call)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	if chain, ok, err := l.selectorChainWithGrouper(call.Fun, func(body doc.ID) doc.ID {
+		return l.arena.GroupWithIndependentTail(body, lookahead, arguments)
+	}); ok || err != nil {
 		return chain, err
 	}
 	function, err := l.expression(call.Fun)
 	if err != nil {
 		return doc.ID{}, err
 	}
-	arguments, err := l.callArguments(call)
+	return l.arena.Concat(function, arguments), nil
+}
+
+func (l *lowerer) callSelectorLookahead(call *ast.CallExpr) (doc.ID, error) {
+	leftEnd, leftEndFound := l.source.PhysicalOffset(call.Fun.End())
+	opening, openingFound := l.source.PhysicalOffset(call.Lparen)
+	closing, closingFound := l.source.PhysicalOffset(call.Rparen)
+	if !leftEndFound || !openingFound || !closingFound {
+		return doc.ID{}, errors.New("call has no physical delimiter boundary")
+	}
+	beforeOpening, err := l.inlineComments(l.commentsBetween(leftEnd, opening), true)
 	if err != nil {
 		return doc.ID{}, err
 	}
-	return l.arena.Concat(function, arguments), nil
+	delimiter := "("
+	if len(call.Args) == 0 && len(l.commentsBetween(opening+len("("), closing)) == 0 {
+		delimiter = "()"
+	}
+	return l.arena.Concat(beforeOpening, l.arena.Text(delimiter)), nil
 }
 
 type selectorChainPart struct {
@@ -3472,6 +3496,13 @@ type selectorChainPart struct {
 }
 
 func (l *lowerer) selectorChain(expression ast.Expr) (doc.ID, bool, error) {
+	return l.selectorChainWithGrouper(expression, l.arena.Group)
+}
+
+func (l *lowerer) selectorChainWithGrouper(
+	expression ast.Expr,
+	group func(doc.ID) doc.ID,
+) (doc.ID, bool, error) {
 	current := expression
 	parts := make([]selectorChainPart, 0, 4)
 	selectors := 0
@@ -3535,7 +3566,7 @@ func (l *lowerer) selectorChain(expression ast.Expr) (doc.ID, bool, error) {
 					continuation = append(continuation, suffix)
 				}
 			}
-			return l.arena.Group(l.arena.Concat(
+			return group(l.arena.Concat(
 				base,
 				l.arena.Indent(l.arena.Concat(continuation...)),
 			)), true, nil

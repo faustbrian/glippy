@@ -43,6 +43,14 @@ Broken comma lists emit required trailing commas through group-scoped
 conditional content. Index and slice delimiters do not inherit that rule
 without grammar-specific evidence.
 
+An adjacent construct may be attached as an independent tail when the leading
+construct must decide its layout without consuming the tail's complete flat
+form. An explicit non-rendering lookahead remains bounded by the same fit
+budget and MUST include punctuation that stays on the leading construct's
+first line. The tail makes its own group decisions and inherits one continuation
+indentation level when the leading construct breaks. Ordinary groups continue
+to measure their rendered continuation.
+
 ## Alternatives Rejected
 
 - `go/ast` plus `go/printer`: no adequate width model or concrete-gap

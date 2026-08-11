@@ -1599,6 +1599,43 @@ func TestFormatUsesDeterministicSelectorChainWidthBoundary(t *testing.T) {
 	}
 }
 
+func TestFormatKeepsSelectorCalleeFlatWhenArgumentsBreak(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package selector\nfunc run(){result:=l.arena.Concat(firstArgument,secondArgument);_=result}\n")
+	file, err := source.Load("selector_callee.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name  string
+		width int
+		want  string
+	}{
+		{
+			name:  "callee fits",
+			width: 48,
+			want:  "package selector\n\nfunc run() {\n\tresult := l.arena.Concat(\n\t\tfirstArgument,\n\t\tsecondArgument,\n\t)\n\t_ = result\n}\n",
+		},
+		{
+			name:  "callee and opening delimiter exceed width",
+			width: 32,
+			want:  "package selector\n\nfunc run() {\n\tresult := l.\n\t\tarena.\n\t\tConcat(\n\t\t\tfirstArgument,\n\t\t\tsecondArgument,\n\t\t)\n\t_ = result\n}\n",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := goxformat.File(file, goxformat.Options{Width: test.width, TabWidth: 8, FitBudget: 1_000})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != test.want {
+				t.Fatalf("File() =\n%s\nwant:\n%s", got, test.want)
+			}
+		})
+	}
+}
+
 func TestFormatUsesDeterministicDelimitedListWidthBoundaries(t *testing.T) {
 	t.Parallel()
 

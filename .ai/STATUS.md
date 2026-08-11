@@ -1,20 +1,21 @@
 # Gox Development Status
 
-- Progress: 20%
-- Current phase: Phase 1, formatter core prototype reopened
+- Progress: 45%
+- Current phase: Phase 2, production-usable formatter
 - Phase 0 completed: 2026-08-09
-- Phase 1 exit gate reopened: 2026-08-11
+- Phase 1 completed: 2026-08-11
 
 Phase 0 established the reviewed product contracts, shared-frontend and edit
 boundaries, initial hostile-valid corpus, bounded document renderer, controlled
 baseline harness, and working-name replacement requirement.
 
-The proven 20% foundation includes isolated immutable syntax views, physical
-token and trivia reconstruction, bounded document rendering, comment and
-directive ownership, normalized equivalence, golden and idempotency behavior,
-and invalid-source refusal. The hostile corpus passes at widths 20, 60, 100,
-and 120. Five 15-second fuzz campaigns completed 333,855 executions across the
-source, fragment, formatter, and document boundaries without a failure.
+The proven formatter foundation includes isolated immutable syntax views,
+physical token and trivia reconstruction, bounded document rendering, comment
+and directive ownership, normalized equivalence, golden and idempotency
+behavior, and invalid-source refusal. The hostile corpus passes at widths 20,
+60, 100, and 120. Five 15-second fuzz campaigns completed 333,855 executions
+across the source, fragment, formatter, and document boundaries without a
+failure.
 
 The product-wide gofmt incompatibility classes are recorded. Renderer execution
 is bounded at 100,000 nested groups and 20,000 sibling groups, and the formatter
@@ -43,12 +44,13 @@ fresh-process latency probes. All 100 recorded fresh processes satisfy the
 provisional 250 ms reference-host budget, but scheduler variance still blocks a
 stable CI threshold.
 
-Self-dogfood then validated all 32 discovered repository files but changed 30
-and exposed unacceptable control-flow keyword and receiver breaks plus
-selector-chain readability findings. The control-flow repair reduces stranded
-control keywords from 82 to zero in the original snapshot. The receiver repair
-reduces the 20 receiver-prefix breaks to zero in the next committed snapshot;
-193 selector-pattern targets remain open there. The Phase 1 readability claim
-is withdrawn until the remaining migration diff is classified and accepted.
-Complete platform-specific filesystem semantics, release artifacts, and
-external-repository adoption also remain open.
+Self-dogfood validates all 32 discovered repository files and changes 30. The
+control-flow repair reduces stranded control keywords from 82 to zero, and the
+receiver repair reduces 20 receiver-prefix breaks to zero. The selector repair
+separates terminal call arguments from callee fit decisions and reduces 193
+selector-pattern targets to two lines belonging to one intentionally broken,
+deeply indented indexed chain. The complete migration snapshot is classified,
+valid, and idempotent, restoring the Phase 1 exit gate. Existing safe
+filesystem, configuration, and CLI proof supports 45%. Complete
+platform-specific filesystem semantics, release artifacts, and
+external-repository adoption remain open before the 55% gate.

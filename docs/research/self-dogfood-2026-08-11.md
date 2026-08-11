@@ -42,13 +42,36 @@ later parameters therefore broke a short receiver that fit by itself.
 Treating a comment-free single receiver as an atomic receiver construct reduces
 the receiver-prefix count from 20 to zero. The same 32 files validate and the
 formatted snapshot is idempotent. The newer source snapshot contains 193
-selector-pattern review targets; selector readability remains open.
+selector-pattern review targets.
+
+## Selector Follow-Up
+
+The selector review traced 191 of those 193 lines to terminal calls whose
+selector callee fit but whose independently breakable argument list did not.
+The selector group measured the complete argument continuation and broke the
+callee before the argument group could select its own layout.
+
+A bounded document lookahead now measures the selector callee with the opening
+delimiter while attaching the argument list as an independent tail. An empty
+terminal call still counts both delimiters, and a broken callee gives its
+arguments the selector continuation indentation. Reformatting the same 32-file
+snapshot changes only `benchmarks/corpus_test.go` and
+`internal/format/format.go` relative to the receiver-fixed output, validates
+every file, and is idempotent. Selector-pattern targets fall from 193 to two;
+both lines are one intentionally broken, deeply indented
+`betweenConditionAndPost[len(...)-1].Range.End` chain that cannot fit flat.
+
+The final 30-file migration diff contains 5,893 insertions and 3,333 deletions.
+Review of that complete snapshot found no remaining unclassified control-prefix,
+receiver, or selector layout. The motivating hostile examples, comments,
+directives, exact-width boundaries, and canonical broken forms remain covered
+by the formatter and corpus suites.
 
 ## Gate Impact
 
-Successful parsing, equivalence, and idempotency did not establish acceptable
-human layout. The Phase 1 readability exit claim is therefore withdrawn and
-progress returns to the proven 20% source/trivia and document-renderer state.
-Phase 2 CLI capabilities remain implemented but cannot advance progress until
-the reopened formatter dogfood findings are resolved and the complete
-migration diff is reviewed.
+The three readability classes that invalidated the earlier Phase 1 claim now
+have root-cause fixes and complete snapshot classifications. With the current
+corpus, equivalence, idempotency, fuzz, bounded-rendering, and migration-review
+evidence, the Phase 1 formatter prototype exit gate is restored. Existing safe
+filesystem, configuration, and CLI proof supports the 45% Phase 2 milestone;
+production-usable formatter release requirements remain open.

@@ -9,6 +9,7 @@ func FuzzRenderDeterministic(f *testing.F) {
 	f.Add([]byte{0, 1, 4, 0}, uint8(80), uint8(8), uint16(1_000))
 	f.Add([]byte{0, 2, 0, 6, 5, 4}, uint8(20), uint8(4), uint16(32))
 	f.Add([]byte{0, 8, 9, 0, 11}, uint8(1), uint8(1), uint16(1))
+	f.Add([]byte{0, 12, 0, 6}, uint8(12), uint8(8), uint16(32))
 
 	f.Fuzz(func(t *testing.T, shape []byte, rawWidth, rawTabWidth uint8, rawBudget uint16) {
 		if len(shape) > 4<<10 {
@@ -17,7 +18,7 @@ func FuzzRenderDeterministic(f *testing.F) {
 		arena := NewArena()
 		documents := []ID{arena.Empty()}
 		for offset, operation := range shape {
-			switch operation % 12 {
+			switch operation % 13 {
 			case 0:
 				documents = append(documents, arena.Text(string(rune('a'+operation%26))))
 			case 1:
@@ -50,6 +51,12 @@ func FuzzRenderDeterministic(f *testing.F) {
 				documents = append(documents, arena.BreakParent())
 			case 11:
 				documents = append(documents, arena.SourceMarker(SourceMark{Offset: offset}))
+			case 12:
+				documents[len(documents)-1] = arena.GroupWithIndependentTail(
+					documents[len(documents)-1],
+					arena.Text("("),
+					arena.Text("()"),
+				)
 			}
 		}
 		root := arena.Concat(documents...)

@@ -32,6 +32,7 @@ const (
 	kindVerbatim
 	kindConcat
 	kindGroup
+	kindGroupWithIndependentTail
 	kindIndent
 	kindSoftLine
 	kindLine
@@ -53,6 +54,7 @@ type node struct {
 	children        []ID
 	first           ID
 	second          ID
+	third           ID
 	mark            SourceMark
 }
 
@@ -170,6 +172,26 @@ func (a *Arena) Group(body ID) ID {
 		flatWidth:   bodyNode.flatWidth,
 		flatKnown:   bodyNode.flatKnown,
 		forcesBreak: bodyNode.forcesBreak,
+	})
+}
+
+// GroupWithIndependentTail selects body layout using only body and lookahead,
+// then renders tail with an independent layout decision. A broken body gives
+// tail one continuation indentation level.
+func (a *Arena) GroupWithIndependentTail(body, lookahead, tail ID) ID {
+	if !a.valid(body) || !a.valid(lookahead) || !a.valid(tail) {
+		return a.append(node{kind: kindInvalid, forcesBreak: true})
+	}
+	bodyNode := a.nodes[body.index]
+	tailNode := a.nodes[tail.index]
+	return a.append(node{
+		kind:        kindGroupWithIndependentTail,
+		first:       body,
+		second:      lookahead,
+		third:       tail,
+		flatWidth:   saturatedWidthSum(bodyNode.flatWidth, tailNode.flatWidth),
+		flatKnown:   bodyNode.flatKnown && tailNode.flatKnown,
+		forcesBreak: bodyNode.forcesBreak || tailNode.forcesBreak || a.nodes[lookahead.index].forcesBreak,
 	})
 }
 
@@ -396,6 +418,28 @@ func (a *Arena) RenderWithMarkers(root ID, options Options) (RenderResult, error
 				}
 			}
 			stack = append(stack, command{id: value.first, indent: current.indent, mode: mode})
+		case kindGroupWithIndependentTail:
+			mode := modeFlat
+			bodyForcesBreak := a.nodes[value.first.index].forcesBreak || a.nodes[value.second.index].forcesBreak
+			if current.mode == modeBroken && bodyForcesBreak {
+				mode = modeBroken
+			} else if current.mode == modeBroken {
+				fitColumn := column
+				if pendingIndent >= 0 {
+					fitColumn = pendingIndent * options.TabWidth
+				}
+				first := command{id: value.first, indent: current.indent, mode: modeFlat}
+				lookahead := []command{{id: value.second, indent: current.indent, mode: modeFlat}}
+				if !a.fits(options.Width-fitColumn, options, lookahead, first) {
+					mode = modeBroken
+				}
+			}
+			tailIndent := current.indent
+			if mode == modeBroken {
+				tailIndent++
+			}
+			stack = append(stack, command{id: value.third, indent: tailIndent, mode: modeBroken})
+			stack = append(stack, command{id: value.first, indent: current.indent, mode: mode})
 		case kindIndent:
 			stack = append(stack, command{id: value.first, indent: current.indent + 1, mode: current.mode})
 		case kindSoftLine:
@@ -503,6 +547,22 @@ func (a *Arena) fits(remaining int, options Options, continuation []command, fir
 				mode = modeBroken
 			}
 			stack = append(stack, command{id: value.first, indent: current.indent, mode: mode})
+		case kindGroupWithIndependentTail:
+			if current.mode == modeFlat {
+				stack = append(stack, command{id: value.third, indent: current.indent, mode: modeFlat})
+				stack = append(stack, command{id: value.first, indent: current.indent, mode: modeFlat})
+				continue
+			}
+			bodyMode := modeFlat
+			if a.nodes[value.first.index].forcesBreak || a.nodes[value.second.index].forcesBreak {
+				bodyMode = modeBroken
+			}
+			tailIndent := current.indent
+			if bodyMode == modeBroken {
+				tailIndent++
+			}
+			stack = append(stack, command{id: value.third, indent: tailIndent, mode: modeBroken})
+			stack = append(stack, command{id: value.first, indent: current.indent, mode: bodyMode})
 		case kindIndent:
 			stack = append(stack, command{id: value.first, indent: current.indent + 1, mode: current.mode})
 		case kindSoftLine:

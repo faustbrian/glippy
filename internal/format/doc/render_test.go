@@ -46,6 +46,60 @@ func TestRenderCallUsesCanonicalFlatAndBrokenForms(t *testing.T) {
 	}
 }
 
+func TestRenderGroupWithIndependentTailSeparatesAdjacentLayoutDecisions(t *testing.T) {
+	t.Parallel()
+
+	arena := NewArena()
+	calleeBody := arena.Concat(
+		arena.Text("client."),
+		arena.Indent(arena.Concat(
+			arena.SoftLine(),
+			arena.Text("Call"),
+		)),
+	)
+	arguments := arena.Group(arena.Concat(
+		arena.Text("("),
+		arena.Indent(arena.Concat(
+			arena.SoftLine(),
+			arena.Text("firstArgument,"),
+			arena.Line(),
+			arena.Text("secondArgument"),
+			arena.IfBreak(arena.Text(","), arena.Empty()),
+		)),
+		arena.SoftLine(),
+		arena.Text(")"),
+	))
+	document := arena.GroupWithIndependentTail(calleeBody, arena.Text("("), arguments)
+
+	for _, test := range []struct {
+		name  string
+		width int
+		want  string
+	}{
+		{
+			name:  "callee and opening delimiter fit",
+			width: 12,
+			want:  "client.Call(\n\tfirstArgument,\n\tsecondArgument,\n)",
+		},
+		{
+			name:  "opening delimiter exceeds width",
+			width: 11,
+			want:  "client.\n\tCall(\n\t\tfirstArgument,\n\t\tsecondArgument,\n\t)",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := arena.Render(document, Options{Width: test.width, TabWidth: 8, FitBudget: 1_000})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Fatalf("Render() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestRenderBinaryChainBreaksAfterOperators(t *testing.T) {
 	t.Parallel()
 
