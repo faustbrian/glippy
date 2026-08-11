@@ -26,6 +26,12 @@ Selecting among multiple named fixes is driver policy and MUST NOT be inferred
 from edit order. Ordinary coordination MUST accept safe fixes only. Suggestion
 and unsafe fixes MUST require independent explicit authorization.
 
+The ordinary CLI driver selects a fix only when one diagnostic offers exactly
+one safe named alternative. It selects none when no safe fix exists and MUST
+fail the complete prevalidation pass when a diagnostic offers multiple safe
+alternatives. That ambiguity is a rule-contract error, not a deterministic
+first-choice policy.
+
 ## Edit Identity
 
 Every edit MUST identify one physical source file, exact source digest, and
@@ -77,6 +83,14 @@ replacement. A stale-source result MUST be reported as not written. Any other
 replacement error that cannot prove whether rename occurred MUST be reported
 as possibly written. Reporters MUST NOT collapse coordinated bytes, confirmed
 replacement, and possible replacement into one success state.
+
+Before the first CLI replacement, every selected source MUST load, parse, pass
+generated-file policy, and resolve through a non-symlink path inside its
+authorized root. After coordination and formatting, the same enabled syntax
+analysis MUST run against the final source. A validation failure rejects every
+otherwise accepted fix in that file and preserves the original bytes. A failure
+of the analysis engine itself retains its tool-failure or cancellation category;
+it MUST NOT be represented only as an actionable lint finding.
 
 Formatter normalization after fixes MUST NOT make a semantic rewrite appear to
 be formatter behavior. Fix provenance remains attached to the resulting

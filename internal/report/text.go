@@ -1,12 +1,14 @@
 package report
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"sort"
 	"strings"
 
 	"github.com/faustbrian/gox/internal/analysis"
+	fixengine "github.com/faustbrian/gox/internal/fix"
 	"github.com/faustbrian/gox/internal/source"
 )
 
@@ -14,6 +16,13 @@ import (
 type LintTextInput struct {
 	File   *source.File
 	Result analysis.Result
+}
+
+type LintFixTextInput struct {
+	File       *source.File
+	ResultFile *source.File
+	Result     analysis.Result
+	Outcome    LintFixOutcome
 }
 
 // RenderLintText renders ordered, source-free human diagnostics.
@@ -122,6 +131,75 @@ func RenderLintText(inputs []LintTextInput) ([]byte, error) {
 		}
 	}
 	return []byte(output.String()), nil
+}
+
+// RenderLintFixText renders remaining diagnostics and rejected-fix reasons.
+func RenderLintFixText(inputs []LintFixTextInput) ([]byte, error) {
+	ordered := slices.Clone(inputs)
+	sort.Slice(ordered, func(left, right int) bool { return ordered[left].Outcome.Path < ordered[right].Outcome.Path })
+	textInputs := make([]LintTextInput, 0, len(ordered))
+	for index, input := range ordered {
+		if input.File == nil {
+			return nil, fmt.Errorf("lint fix text input %d has no original source file", index)
+		}
+		if input.Outcome.Path != input.File.Path() || input.Outcome.SourceDigest != input.File.Digest() {
+			return nil, fmt.Errorf("lint fix text source identity does not match %q", input.Outcome.Path)
+		}
+		resultFile := input.ResultFile
+		if resultFile == nil {
+			resultFile = input.File
+		}
+		textInputs = append(textInputs, LintTextInput{File: resultFile, Result: input.Result})
+	}
+	base, err := RenderLintText(textInputs)
+	if err != nil {
+		return nil, err
+	}
+	var output strings.Builder
+	output.Write(base)
+	for _, input := range ordered {
+		rejected := slices.Clone(input.Outcome.Rejected)
+		sort.Slice(rejected, func(left, right int) bool {
+			return compareFixRejection(rejected[left], rejected[right]) < 0
+		})
+		for _, item := range rejected {
+			position, valid := physicalRangePosition(input.File, item.Range)
+			if !valid {
+				return nil, fmt.Errorf("%s: rejected fix has invalid physical range", input.Outcome.Path)
+			}
+			fmt.Fprintf(
+				&output,
+				"%s:%d:%d: rejected fix[%s/%s/%s]: %s\n",
+				input.Outcome.Path,
+				position.Line,
+				position.Column,
+				item.RuleID,
+				item.FixName,
+				item.Reason,
+				item.Message,
+			)
+		}
+	}
+	return []byte(output.String()), nil
+}
+
+func compareFixRejection(left, right fixengine.Rejection) int {
+	if order := cmp.Compare(left.Range.Start, right.Range.Start); order != 0 {
+		return order
+	}
+	if order := cmp.Compare(left.Range.End, right.Range.End); order != 0 {
+		return order
+	}
+	if order := cmp.Compare(left.RuleID, right.RuleID); order != 0 {
+		return order
+	}
+	if order := cmp.Compare(left.FixName, right.FixName); order != 0 {
+		return order
+	}
+	if order := cmp.Compare(left.Reason, right.Reason); order != 0 {
+		return order
+	}
+	return cmp.Compare(left.Message, right.Message)
 }
 
 func physicalRangePosition(file *source.File, sourceRange source.Range) (source.Position, bool) {

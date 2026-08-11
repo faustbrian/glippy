@@ -1,7 +1,7 @@
 # ADR 0011: Versioned Machine Reporting
 
-- Status: accepted for formatter and lint-check prototypes
-- Date: 2026-08-10
+- Status: accepted for formatter, lint-check, and lint-fix prototypes
+- Date: 2026-08-11
 
 ## Context And Evidence
 
@@ -70,11 +70,25 @@ files and diagnostics canonically, validates exact source identity and every
 range associated with rendered records including fix edits and suppression
 targets, and omits source excerpts and replacement text.
 
-The syntax-only lint check CLI now emits these text and JSON contracts for
-success, findings, invalid invocation, source/configuration/filesystem failure,
-and cancellation. Incomplete JSON retains every analysis result completed
-before the failure. Lint-fix file outcomes remain deferred. Existing version 1
-fields and the text diagnostic grammar will not be silently repurposed.
+The syntax-only lint check CLI emits these text and JSON contracts for success,
+findings, invalid invocation, source/configuration/filesystem failure, and
+cancellation. Incomplete JSON retains every analysis result completed before
+the failure.
+
+Lint fix results use mode `fix` and file statuses `pending`, `unchanged`,
+`fixed`, `conflict`, `failed`, and `possibly_fixed`. File records carry the
+original source digest and analyzed result digest. Applied and rejected fix
+records carry original-source rule ID, fix name, and byte range; rejections add
+a stable reason and message. They omit replacement text. Applied provenance is
+an in-memory coordination fact, while file status states whether disk
+replacement was confirmed. Incomplete cancellation and failure results retain
+pending files and every earlier confirmed or possible write. If JSON result
+construction, encoding, or output fails after a write, stderr names those
+paths. A stale replacement retains the original analyzed digest and adds a
+`stale-source` rejection for each coordinated fix.
+
+Existing version 1 fields and the text diagnostic grammar will not be silently
+repurposed.
 
 ## Alternatives Rejected
 
@@ -101,7 +115,6 @@ encoding failure cannot produce a partial document.
 
 ## Revisit Trigger
 
-Before lint-fix results stabilize, before relative-path, URI, or physical
-location policy changes, before source snippets or code-action edits are
-exposed, or when a validated consumer requires streaming, SARIF, GitHub
-annotations, or another schema.
+Before relative-path, URI, or physical-location policy changes, before source
+snippets or code-action edits are exposed, or when a validated consumer
+requires streaming, SARIF, GitHub annotations, or another schema.

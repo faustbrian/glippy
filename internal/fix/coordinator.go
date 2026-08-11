@@ -41,6 +41,7 @@ type Options struct {
 	AllowSuggestion bool
 	AllowUnsafe     bool
 	Format          goxformat.Options
+	Validate        func(*source.File) error
 }
 
 // Applied records one complete named fix included in the result.
@@ -127,6 +128,20 @@ func Coordinate(file *source.File, selections []Selection, options Options) (Res
 	formatted, err := goxformat.File(editedFile, options.Format)
 	if err != nil {
 		return rejectedTransaction(input, rejected, accepted, fmt.Sprintf("fixed source did not format: %v", err)), nil
+	}
+	formattedFile, err := source.Load(file.Path(), formatted)
+	if err != nil {
+		return rejectedTransaction(input, rejected, accepted, fmt.Sprintf("formatted fixed source did not parse: %v", err)), nil
+	}
+	if options.Validate != nil {
+		if err := options.Validate(formattedFile); err != nil {
+			return rejectedTransaction(
+				input,
+				rejected,
+				accepted,
+				fmt.Sprintf("formatted fixed source failed validation: %v", err),
+			), nil
+		}
 	}
 	applied := make([]Applied, len(accepted))
 	for index, prepared := range accepted {

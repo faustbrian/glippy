@@ -12,22 +12,42 @@ import (
 	"github.com/faustbrian/gox/internal/analysis"
 	"github.com/faustbrian/gox/internal/config"
 	"github.com/faustbrian/gox/internal/discovery"
+	"github.com/faustbrian/gox/internal/filesystem"
+	fixengine "github.com/faustbrian/gox/internal/fix"
+	goxformat "github.com/faustbrian/gox/internal/format"
 	goxreport "github.com/faustbrian/gox/internal/report"
 	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
 )
 
-const lintUsage = "gox: expected 'lint [--reporter=text|json] [--config=<path>] [path...]'\n"
+const lintUsage = "gox: expected 'lint [--fix] [--reporter=text|json] [--config=<path>] [path...]'\n"
 
 type lintInvocation struct {
 	configPath string
+	fix        bool
 	paths      []string
 	reporter   goxreport.Format
 }
 
+type lintTaskOptions struct {
+	analysis analysis.RunOptions
+	format   goxformat.Options
+}
+
 type lintTask struct {
 	file    discovery.File
-	options analysis.RunOptions
+	root    string
+	options lintTaskOptions
+}
+
+type lintFixExecution struct {
+	file       *source.File
+	resultFile *source.File
+	result     analysis.Result
+	outcome    goxreport.LintFixOutcome
+	selections []fixengine.Selection
+	task       lintTask
+	snapshot   *filesystem.Snapshot
 }
 
 func parseLintInvocation(arguments []string) (lintInvocation, bool) {
@@ -36,9 +56,13 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 	}
 	result := lintInvocation{reporter: goxreport.Text}
 	reporterSet := false
+	fixSet := false
 	for index := 1; index < len(arguments); index++ {
 		argument := arguments[index]
 		switch {
+		case argument == "--fix" && !fixSet:
+			result.fix = true
+			fixSet = true
 		case strings.HasPrefix(argument, "--reporter=") && !reporterSet:
 			reporter, valid := parseReporter(strings.TrimPrefix(argument, "--reporter="))
 			if !valid {
@@ -133,7 +157,7 @@ func runLintCheck(
 		if err != nil {
 			return reportLintFailure(invocation, stdout, stderr, ExitSourceError, results, err)
 		}
-		analyzed, err := analysis.Run(ctx, file, registry, task.options)
+		analyzed, err := analysis.Run(ctx, file, registry, task.options.analysis)
 		if err != nil {
 			return reportLintFailure(
 				invocation,
@@ -172,7 +196,7 @@ func prepareLintTasks(
 	registry *rules.Registry,
 ) ([]lintTask, int, error) {
 	selected := make(map[string]discovery.File)
-	optionsByConfiguration := make(map[string]analysis.RunOptions)
+	optionsByConfiguration := make(map[string]lintTaskOptions)
 	for _, input := range invocation.paths {
 		if err := ctx.Err(); err != nil {
 			return nil, ExitCanceled, err
@@ -222,7 +246,7 @@ func prepareLintTasks(
 			}
 			optionsByConfiguration[selection.Path] = options
 		}
-		tasks = append(tasks, lintTask{file: selected[path], options: options})
+		tasks = append(tasks, lintTask{file: selected[path], root: selection.Root, options: options})
 	}
 	return tasks, ExitSuccess, nil
 }
@@ -230,15 +254,247 @@ func prepareLintTasks(
 func lintOptionsForSelection(
 	selection config.Selection,
 	registry *rules.Registry,
-) (analysis.RunOptions, int, error) {
+) (lintTaskOptions, int, error) {
 	loaded, err := config.Load(selection, config.ParseOptions{KnownRules: registry.IDs()})
 	if err != nil {
-		return analysis.RunOptions{}, configurationErrorExitCode(err), err
+		return lintTaskOptions{}, configurationErrorExitCode(err), err
 	}
-	return analysis.RunOptions{
-		Preset:    loaded.Lint.Preset,
-		Overrides: loaded.Lint.Rules,
+	return lintTaskOptions{
+		analysis: analysis.RunOptions{
+			Preset:    loaded.Lint.Preset,
+			Overrides: loaded.Lint.Rules,
+		},
+		format: goxformat.Options{
+			Width:     loaded.Format.LineWidth,
+			TabWidth:  loaded.Format.TabWidth,
+			FitBudget: defaultFormatOptions.FitBudget,
+		},
 	}, ExitSuccess, nil
+}
+
+func runLintFix(
+	ctx context.Context,
+	invocation lintInvocation,
+	stdout, stderr io.Writer,
+	registry *rules.Registry,
+) int {
+	if ctx == nil {
+		return reportLintFixFailure(invocation, stdout, stderr, ExitInternalError, nil, errors.New("context is required"))
+	}
+	if registry == nil {
+		return reportLintFixFailure(invocation, stdout, stderr, ExitInternalError, nil, errors.New("rule registry is required"))
+	}
+	if err := ctx.Err(); err != nil {
+		return reportLintFixFailure(invocation, stdout, stderr, ExitCanceled, nil, err)
+	}
+	tasks, exitCode, err := prepareLintTasks(ctx, invocation, registry)
+	if err != nil {
+		return reportLintFixFailure(invocation, stdout, stderr, exitCode, nil, err)
+	}
+	executions, exitCode, err := prepareLintFixExecutions(ctx, tasks, registry)
+	if err != nil {
+		return reportLintFixFailure(invocation, stdout, stderr, exitCode, executions, err)
+	}
+
+	for index := range executions {
+		if err := ctx.Err(); err != nil {
+			return reportLintFixFailure(invocation, stdout, stderr, ExitCanceled, executions, err)
+		}
+		execution := &executions[index]
+		postResult := execution.result
+		postFile := execution.file
+		var postAnalysisErr error
+		options := fixengine.Options{Format: execution.task.options.format}
+		options.Validate = func(formatted *source.File) error {
+			analyzed, err := analysis.Run(ctx, formatted, registry, execution.task.options.analysis)
+			if err != nil {
+				postAnalysisErr = err
+				return err
+			}
+			postResult = analyzed
+			postFile = formatted
+			return nil
+		}
+		transaction, transactionErr := fixengine.CoordinateAndReplace(
+			execution.snapshot,
+			execution.selections,
+			options,
+		)
+		recordLintFixTransaction(execution, postResult, postFile, transaction, transactionErr)
+		if postAnalysisErr != nil {
+			return reportLintFixFailure(
+				invocation,
+				stdout,
+				stderr,
+				exitCodeForError(ExitInternalError, postAnalysisErr),
+				executions,
+				postAnalysisErr,
+			)
+		}
+		if transactionErr != nil {
+			if errors.Is(transactionErr, filesystem.ErrStale) {
+				continue
+			}
+			return reportLintFixFailure(
+				invocation,
+				stdout,
+				stderr,
+				ExitFilesystemError,
+				executions,
+				transactionErr,
+			)
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return reportLintFixFailure(invocation, stdout, stderr, ExitCanceled, executions, err)
+	}
+	exitCode = lintFixExitCode(executions)
+	if invocation.reporter == goxreport.JSON {
+		return reportLintFixJSON(stdout, stderr, exitCode, true, executions, nil)
+	}
+	inputs := make([]goxreport.LintFixTextInput, len(executions))
+	for index, execution := range executions {
+		inputs[index] = goxreport.LintFixTextInput{
+			File:       execution.file,
+			ResultFile: execution.resultFile,
+			Result:     execution.result,
+			Outcome:    execution.outcome,
+		}
+	}
+	output, err := goxreport.RenderLintFixText(inputs)
+	if err != nil {
+		return reportLintFixFailure(
+			invocation,
+			stdout,
+			stderr,
+			moreSevereExitCode(exitCode, ExitInternalError),
+			executions,
+			fmt.Errorf("render fix report: %w", err),
+		)
+	}
+	if len(output) > 0 {
+		if err := write(stdout, output); err != nil {
+			return reportLintFixFailure(
+				invocation,
+				stdout,
+				stderr,
+				moreSevereExitCode(exitCode, ExitFilesystemError),
+				executions,
+				fmt.Errorf("write standard output: %w", err),
+			)
+		}
+	}
+	return exitCode
+}
+
+func prepareLintFixExecutions(
+	ctx context.Context,
+	tasks []lintTask,
+	registry *rules.Registry,
+) ([]lintFixExecution, int, error) {
+	executions := make([]lintFixExecution, 0, len(tasks))
+	for _, task := range tasks {
+		if err := ctx.Err(); err != nil {
+			return executions, ExitCanceled, err
+		}
+		if task.file.TraversesSymlink {
+			return executions, ExitFilesystemError, fmt.Errorf("refusing to fix symlink %q", task.file.Path)
+		}
+		snapshot, err := filesystem.ReadWithin(task.root, task.file.Path)
+		if err != nil {
+			return executions, ExitFilesystemError, err
+		}
+		file, err := source.Load(snapshot.Path(), snapshot.Bytes())
+		if err != nil {
+			return executions, ExitSourceError, err
+		}
+		if file.Metadata().Generated {
+			return executions, ExitFilesystemError, fmt.Errorf("refusing to fix generated file %q", file.Path())
+		}
+		analyzed, err := analysis.Run(ctx, file, registry, task.options.analysis)
+		if err != nil {
+			return executions, exitCodeForError(ExitInternalError, err), err
+		}
+		selections, err := fixengine.SelectSafe(analyzed.Diagnostics)
+		if err != nil {
+			return executions, ExitInternalError, err
+		}
+		executions = append(executions, lintFixExecution{
+			file:       file,
+			resultFile: file,
+			result:     analyzed,
+			outcome: goxreport.LintFixOutcome{
+				Path:         file.Path(),
+				SourceDigest: file.Digest(),
+				Status:       goxreport.LintFilePending,
+			},
+			selections: selections,
+			task:       task,
+			snapshot:   snapshot,
+		})
+	}
+	return executions, ExitSuccess, nil
+}
+
+func recordLintFixTransaction(
+	execution *lintFixExecution,
+	postResult analysis.Result,
+	postFile *source.File,
+	transaction fixengine.Transaction,
+	transactionErr error,
+) {
+	execution.outcome.Applied = append([]fixengine.Applied(nil), transaction.Result.Applied...)
+	execution.outcome.Rejected = append([]fixengine.Rejection(nil), transaction.Result.Rejected...)
+	if errors.Is(transactionErr, filesystem.ErrStale) {
+		for _, applied := range transaction.Result.Applied {
+			execution.outcome.Rejected = append(execution.outcome.Rejected, fixengine.Rejection{
+				RuleID:  applied.RuleID,
+				FixName: applied.FixName,
+				Range:   applied.Range,
+				Reason:  fixengine.RejectionStaleSource,
+				Message: "source changed before atomic replacement",
+			})
+		}
+		execution.outcome.Status = goxreport.LintFileConflict
+		return
+	}
+	execution.result = postResult
+	execution.resultFile = postFile
+	execution.outcome.Status = lintFixFileStatus(transaction)
+}
+
+func lintFixFileStatus(transaction fixengine.Transaction) goxreport.LintFileStatus {
+	if transaction.Status == fixengine.WritePossiblyCompleted {
+		return goxreport.LintFilePossiblyFixed
+	}
+	if transaction.Status == fixengine.WriteCompleted {
+		return goxreport.LintFileFixed
+	}
+	for _, rejected := range transaction.Result.Rejected {
+		if rejected.Reason == fixengine.RejectionConflict {
+			return goxreport.LintFileConflict
+		}
+	}
+	return goxreport.LintFileUnchanged
+}
+
+func lintFixExitCode(executions []lintFixExecution) int {
+	exitCode := ExitSuccess
+	results := make([]analysis.Result, len(executions))
+	for index, execution := range executions {
+		results[index] = execution.result
+		if execution.outcome.Status == goxreport.LintFileConflict {
+			exitCode = moreSevereExitCode(exitCode, ExitConflict)
+		}
+		for _, rejected := range execution.outcome.Rejected {
+			if rejected.Reason == fixengine.RejectionConflict {
+				exitCode = moreSevereExitCode(exitCode, ExitConflict)
+			} else {
+				exitCode = moreSevereExitCode(exitCode, ExitFindings)
+			}
+		}
+	}
+	return moreSevereExitCode(exitCode, lintResultExitCode(results))
 }
 
 func lintResultExitCode(results []analysis.Result) int {
@@ -262,6 +518,34 @@ func reportLintFailure(
 		return reportLintJSON(stdout, stderr, "check", exitCode, false, results, err)
 	}
 	return report(stderr, exitCode, "gox lint: %v\n", err)
+}
+
+func reportLintFixFailure(
+	invocation lintInvocation,
+	stdout, stderr io.Writer,
+	exitCode int,
+	executions []lintFixExecution,
+	err error,
+) int {
+	if invocation.reporter == goxreport.JSON {
+		return reportLintFixJSON(stdout, stderr, exitCode, false, executions, err)
+	}
+	paths, possibly := completedLintFixPaths(executions)
+	if len(paths) == 0 {
+		return report(stderr, exitCode, "gox lint: %v\n", err)
+	}
+	heading := "files fixed before failure"
+	if possibly {
+		heading = "files fixed or possibly fixed before failure"
+	}
+	return report(
+		stderr,
+		exitCode,
+		"gox lint: %v\ngox lint: %s:\n%s\n",
+		err,
+		heading,
+		strings.Join(paths, "\n"),
+	)
 }
 
 func reportLintJSON(
@@ -310,4 +594,102 @@ func reportLintJSON(
 		)
 	}
 	return exitCode
+}
+
+func reportLintFixJSON(
+	stdout, stderr io.Writer,
+	exitCode int,
+	complete bool,
+	executions []lintFixExecution,
+	err error,
+) int {
+	results := make([]analysis.Result, len(executions))
+	outcomes := make([]goxreport.LintFixOutcome, len(executions))
+	for index, execution := range executions {
+		results[index] = execution.result
+		outcomes[index] = execution.outcome
+	}
+	errors_ := []goxreport.Error{}
+	if err != nil {
+		errors_ = append(errors_, goxreport.Error{Message: err.Error()})
+	}
+	result, buildErr := goxreport.NewLintFixResult(
+		exitCategory(exitCode),
+		exitCode,
+		complete,
+		results,
+		outcomes,
+		errors_,
+	)
+	if buildErr != nil {
+		return reportLintFixReportingFailure(
+			stderr,
+			moreSevereExitCode(exitCode, ExitInternalError),
+			"build fix JSON report",
+			buildErr,
+			executions,
+		)
+	}
+	encoded, encodeErr := goxreport.MarshalLintJSON(result)
+	if encodeErr != nil {
+		return reportLintFixReportingFailure(
+			stderr,
+			moreSevereExitCode(exitCode, ExitInternalError),
+			"encode fix JSON report",
+			encodeErr,
+			executions,
+		)
+	}
+	if writeErr := write(stdout, encoded); writeErr != nil {
+		return reportLintFixReportingFailure(
+			stderr,
+			moreSevereExitCode(exitCode, ExitFilesystemError),
+			"write fix JSON report",
+			writeErr,
+			executions,
+		)
+	}
+	return exitCode
+}
+
+func reportLintFixReportingFailure(
+	stderr io.Writer,
+	exitCode int,
+	action string,
+	err error,
+	executions []lintFixExecution,
+) int {
+	paths, possibly := completedLintFixPaths(executions)
+	if len(paths) == 0 {
+		return report(stderr, exitCode, "gox lint: %s: %v\n", action, err)
+	}
+	heading := "files fixed before reporting failure"
+	if possibly {
+		heading = "files fixed or possibly fixed before reporting failure"
+	}
+	return report(
+		stderr,
+		exitCode,
+		"gox lint: %s: %v\ngox lint: %s:\n%s\n",
+		action,
+		err,
+		heading,
+		strings.Join(paths, "\n"),
+	)
+}
+
+func completedLintFixPaths(executions []lintFixExecution) ([]string, bool) {
+	paths := make([]string, 0)
+	possibly := false
+	for _, execution := range executions {
+		switch execution.outcome.Status {
+		case goxreport.LintFileFixed:
+			paths = append(paths, execution.outcome.Path)
+		case goxreport.LintFilePossiblyFixed:
+			paths = append(paths, execution.outcome.Path)
+			possibly = true
+		}
+	}
+	sort.Strings(paths)
+	return paths, possibly
 }

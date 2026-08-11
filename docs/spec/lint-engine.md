@@ -43,6 +43,15 @@ classify visible diagnostics, suppression problems, and unused directives as
 findings while allowing fully suppressed diagnostics to succeed. No check path
 may invoke the fix coordinator or replace source bytes.
 
+The syntax-only fix driver MUST select no more than one safe named fix from each
+visible diagnostic. A diagnostic with multiple safe alternatives is an invalid
+rule contract, not permission to choose by registration or edit order. The
+driver MUST complete configuration, source, generated-file, and symlink
+prevalidation before replacement begins. For each source version it MUST run the
+shared coordinator, formatter, and syntax driver again before atomic
+replacement. Suggestion-only and unsafe diagnostics MUST remain visible and
+unchanged under ordinary `--fix`.
+
 ## Diagnostics
 
 A diagnostic MUST contain rule ID, resolved severity, stable message key and
@@ -68,6 +77,14 @@ exact source identity plus every primary, related, fix-edit, directive, and
 suppression-target range, and MUST NOT emit source excerpts or replacement
 text. Physical locations follow the source model and MUST NOT be adjusted by
 `//line` directives.
+
+Fix reporters MUST retain original-source identity for every applied or
+rejected fix and use the post-format source identity for remaining diagnostics.
+Text MUST render rejected rule, fix, reason, and original physical location.
+JSON MUST distinguish pending, unchanged, confirmed fixed, stale or overlapping
+conflict, failed, and possibly fixed files. A stale replacement MUST retain the
+original analysis result; a possible post-rename failure MAY retain the
+validated result digest but MUST NOT be presented as confirmed disk state.
 
 ## Suppressions
 

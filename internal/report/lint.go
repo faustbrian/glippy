@@ -1,6 +1,7 @@
 package report
 
 import (
+	"cmp"
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/faustbrian/gox/internal/analysis"
+	fixengine "github.com/faustbrian/gox/internal/fix"
 	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
 	"github.com/faustbrian/gox/internal/suppressions"
@@ -19,17 +21,56 @@ type LintSummary struct {
 	Suppressed          int  `json:"suppressed"`
 	SuppressionProblems int  `json:"suppression_problems"`
 	UnusedSuppressions  int  `json:"unused_suppressions"`
+	FixedFiles          int  `json:"fixed_files,omitempty"`
+	AppliedFixes        int  `json:"applied_fixes,omitempty"`
+	RejectedFixes       int  `json:"rejected_fixes,omitempty"`
 	Complete            bool `json:"complete"`
 }
 
 type LintFileStatus string
 
-const LintFileAnalyzed LintFileStatus = "analyzed"
+const (
+	LintFileAnalyzed      LintFileStatus = "analyzed"
+	LintFilePending       LintFileStatus = "pending"
+	LintFileUnchanged     LintFileStatus = "unchanged"
+	LintFileFixed         LintFileStatus = "fixed"
+	LintFileConflict      LintFileStatus = "conflict"
+	LintFileFailed        LintFileStatus = "failed"
+	LintFilePossiblyFixed LintFileStatus = "possibly_fixed"
+)
 
 type LintFile struct {
 	Path         string         `json:"path"`
 	SourceDigest string         `json:"source_digest"`
+	ResultDigest string         `json:"result_digest,omitempty"`
 	Status       LintFileStatus `json:"status"`
+}
+
+// LintFixOutcome binds one original source version to its fix transaction.
+type LintFixOutcome struct {
+	Path         string
+	SourceDigest source.Digest
+	Status       LintFileStatus
+	Applied      []fixengine.Applied
+	Rejected     []fixengine.Rejection
+}
+
+type LintAppliedFix struct {
+	RuleID       string    `json:"rule_id"`
+	FixName      string    `json:"fix_name"`
+	Path         string    `json:"path"`
+	SourceDigest string    `json:"source_digest"`
+	Range        ByteRange `json:"range"`
+}
+
+type LintRejectedFix struct {
+	RuleID       string                    `json:"rule_id"`
+	FixName      string                    `json:"fix_name"`
+	Path         string                    `json:"path"`
+	SourceDigest string                    `json:"source_digest"`
+	Range        ByteRange                 `json:"range"`
+	Reason       fixengine.RejectionReason `json:"reason"`
+	Message      string                    `json:"message"`
 }
 
 type ByteRange struct {
@@ -89,6 +130,8 @@ type LintResult struct {
 	Diagnostics         []LintDiagnostic     `json:"diagnostics"`
 	SuppressionProblems []SuppressionProblem `json:"suppression_problems"`
 	UnusedSuppressions  []UnusedSuppression  `json:"unused_suppressions"`
+	AppliedFixes        []LintAppliedFix     `json:"applied_fixes,omitempty"`
+	RejectedFixes       []LintRejectedFix    `json:"rejected_fixes,omitempty"`
 	Errors              []Error              `json:"errors"`
 }
 
@@ -177,6 +220,160 @@ func NewLintResult(
 		result.Summary.UnusedSuppressions += len(analyzed.UnusedSuppressions)
 	}
 	return result, nil
+}
+
+// NewLintFixResult validates and maps one ordered set of fix transactions.
+func NewLintFixResult(
+	category string,
+	exitCode int,
+	complete bool,
+	results []analysis.Result,
+	outcomes []LintFixOutcome,
+	errs []Error,
+) (LintResult, error) {
+	result, err := NewLintResult("fix", category, exitCode, complete, results, errs)
+	if err != nil {
+		return LintResult{}, err
+	}
+	ordered := slices.Clone(outcomes)
+	sort.Slice(ordered, func(left, right int) bool { return ordered[left].Path < ordered[right].Path })
+	if len(ordered) != len(result.Files) {
+		return LintResult{}, fmt.Errorf(
+			"lint fix outcomes contain %d files, want %d analysis results",
+			len(ordered),
+			len(result.Files),
+		)
+	}
+	result.AppliedFixes = make([]LintAppliedFix, 0)
+	result.RejectedFixes = make([]LintRejectedFix, 0)
+	for index, outcome := range ordered {
+		file := &result.Files[index]
+		if outcome.Path != file.Path {
+			return LintResult{}, fmt.Errorf(
+				"lint fix outcome %q does not match analysis result %q",
+				outcome.Path,
+				file.Path,
+			)
+		}
+		if outcome.SourceDigest == (source.Digest{}) {
+			return LintResult{}, fmt.Errorf("lint fix outcome %q has no source digest", outcome.Path)
+		}
+		if !validLintFixStatus(outcome.Status) {
+			return LintResult{}, fmt.Errorf("lint fix outcome %q has invalid status %q", outcome.Path, outcome.Status)
+		}
+		resultMatchesSource := file.SourceDigest == encodeDigest(outcome.SourceDigest)
+		switch outcome.Status {
+		case LintFileFixed, LintFilePossiblyFixed:
+			if resultMatchesSource {
+				return LintResult{}, fmt.Errorf(
+					"lint fix outcome %q status %q has an unchanged result digest",
+					outcome.Path,
+					outcome.Status,
+				)
+			}
+		default:
+			if !resultMatchesSource {
+				return LintResult{}, fmt.Errorf(
+					"lint fix outcome %q status %q has a changed result digest",
+					outcome.Path,
+					outcome.Status,
+				)
+			}
+		}
+		file.ResultDigest = file.SourceDigest
+		file.SourceDigest = encodeDigest(outcome.SourceDigest)
+		file.Status = outcome.Status
+		if outcome.Status == LintFileFixed {
+			result.Summary.FixedFiles++
+		}
+		for _, applied := range outcome.Applied {
+			if err := validateFixRecord(outcome.Path, applied.RuleID, applied.FixName, applied.Range); err != nil {
+				return LintResult{}, err
+			}
+			result.AppliedFixes = append(result.AppliedFixes, LintAppliedFix{
+				RuleID:       applied.RuleID,
+				FixName:      applied.FixName,
+				Path:         outcome.Path,
+				SourceDigest: encodeDigest(outcome.SourceDigest),
+				Range:        byteRange(applied.Range),
+			})
+		}
+		for _, rejected := range outcome.Rejected {
+			if err := validateFixRecord(outcome.Path, rejected.RuleID, rejected.FixName, rejected.Range); err != nil {
+				return LintResult{}, err
+			}
+			if rejected.Reason == "" || rejected.Message == "" {
+				return LintResult{}, fmt.Errorf("lint fix rejection %q/%q has no reason or message", rejected.RuleID, rejected.FixName)
+			}
+			result.RejectedFixes = append(result.RejectedFixes, LintRejectedFix{
+				RuleID:       rejected.RuleID,
+				FixName:      rejected.FixName,
+				Path:         outcome.Path,
+				SourceDigest: encodeDigest(outcome.SourceDigest),
+				Range:        byteRange(rejected.Range),
+				Reason:       rejected.Reason,
+				Message:      rejected.Message,
+			})
+		}
+	}
+	sort.Slice(result.AppliedFixes, func(left, right int) bool {
+		return compareAppliedFix(result.AppliedFixes[left], result.AppliedFixes[right]) < 0
+	})
+	sort.Slice(result.RejectedFixes, func(left, right int) bool {
+		return compareRejectedFix(result.RejectedFixes[left], result.RejectedFixes[right]) < 0
+	})
+	result.Summary.AppliedFixes = len(result.AppliedFixes)
+	result.Summary.RejectedFixes = len(result.RejectedFixes)
+	return result, nil
+}
+
+func validLintFixStatus(status LintFileStatus) bool {
+	switch status {
+	case LintFilePending, LintFileUnchanged, LintFileFixed, LintFileConflict,
+		LintFileFailed, LintFilePossiblyFixed:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateFixRecord(path, ruleID, fixName string, sourceRange source.Range) error {
+	if ruleID == "" || fixName == "" {
+		return fmt.Errorf("lint fix record %q has no rule ID or fix name", path)
+	}
+	if sourceRange.Start < 0 || sourceRange.End < sourceRange.Start {
+		return fmt.Errorf("lint fix record %q/%q has invalid range", ruleID, fixName)
+	}
+	return nil
+}
+
+func compareAppliedFix(left, right LintAppliedFix) int {
+	if order := cmp.Compare(left.Path, right.Path); order != 0 {
+		return order
+	}
+	if order := cmp.Compare(left.Range.Start, right.Range.Start); order != 0 {
+		return order
+	}
+	if order := cmp.Compare(left.Range.End, right.Range.End); order != 0 {
+		return order
+	}
+	if order := cmp.Compare(left.RuleID, right.RuleID); order != 0 {
+		return order
+	}
+	return cmp.Compare(left.FixName, right.FixName)
+}
+
+func compareRejectedFix(left, right LintRejectedFix) int {
+	if order := compareAppliedFix(
+		LintAppliedFix{Path: left.Path, Range: left.Range, RuleID: left.RuleID, FixName: left.FixName},
+		LintAppliedFix{Path: right.Path, Range: right.Range, RuleID: right.RuleID, FixName: right.FixName},
+	); order != 0 {
+		return order
+	}
+	if order := cmp.Compare(left.Reason, right.Reason); order != 0 {
+		return order
+	}
+	return cmp.Compare(left.Message, right.Message)
 }
 
 func lintDiagnostic(diagnostic rules.Diagnostic) LintDiagnostic {

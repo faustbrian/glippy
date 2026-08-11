@@ -2,6 +2,7 @@ package fix_test
 
 import (
 	"bytes"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -144,6 +145,52 @@ func TestCoordinateRollsBackEveryAcceptedFixWhenValidationFails(t *testing.T) {
 	}
 	if result.Rejected[0].Reason != fixengine.RejectionValidation {
 		t.Fatalf("rejection = %#v, want validation", result.Rejected[0])
+	}
+}
+
+func TestCoordinateRunsPostFormatValidationBeforeAcceptingFixes(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\nfunc run(){target()}\n"
+	file := loadSource(t, input)
+	options := fixOptions()
+	var validated []byte
+	options.Validate = func(formatted *source.File) error {
+		validated = formatted.Bytes()
+		return nil
+	}
+
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{
+		selection(file, "rename", "rewrite", rules.FixSafe, edit(input, "target", "primary")),
+	}, options)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Applied) != 1 || !bytes.Equal(validated, result.Bytes) {
+		t.Fatalf("Coordinate() result = %#v, validated = %q", result, validated)
+	}
+}
+
+func TestCoordinateRollsBackFixesRejectedByPostFormatValidation(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\nfunc run(){target()}\n"
+	file := loadSource(t, input)
+	options := fixOptions()
+	options.Validate = func(*source.File) error { return errors.New("analysis failed") }
+
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{
+		selection(file, "rename", "rewrite", rules.FixSafe, edit(input, "target", "primary")),
+	}, options)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(result.Bytes, file.Bytes()) || len(result.Applied) != 0 || len(result.Rejected) != 1 ||
+		result.Rejected[0].Reason != fixengine.RejectionValidation ||
+		!strings.Contains(result.Rejected[0].Message, "analysis failed") {
+		t.Fatalf("Coordinate() result = %#v", result)
 	}
 }
 

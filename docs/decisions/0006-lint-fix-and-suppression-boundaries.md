@@ -29,10 +29,12 @@ explicitly, reparses, formats, validates, and performs one atomic single-file
 replacement.
 
 The coordinator accepts explicit diagnostic and fix-name selections; choosing
-among alternative named fixes remains driver policy. Ordinary coordination
-accepts safe fixes only. Suggestion and unsafe selections require independent
-explicit options. Every selection is bound to the diagnostic path and source
-digest, and every edit boundary must be a valid UTF-8 byte boundary.
+among alternative named fixes remains driver policy. The ordinary CLI driver
+selects exactly one safe alternative per diagnostic and treats multiple safe
+alternatives as an invalid rule contract before writing. Suggestion and unsafe
+selections require independent explicit options. Every selection is bound to
+the diagnostic path and source digest, and every edit boundary must be a valid
+UTF-8 byte boundary.
 The coordinator refuses an invalid input file rather than treating fixes as a
 syntax-recovery mechanism.
 
@@ -48,6 +50,13 @@ permission-preserving same-directory atomic writer. A stale-source error proves
 that replacement did not occur. Any other replacement error is reported as
 possibly completed because directory-sync failure can follow a successful
 rename.
+
+The CLI prevalidates every selected configuration and source before its first
+replacement, refuses generated and symlink-traversing paths, and reruns the
+enabled syntax analysis after formatter normalization. Reporters retain the
+original source digest and coordinated fix provenance separately from the
+result digest and replacement status. Cancellation and reporting failures
+disclose confirmed or possibly completed replacements.
 
 The initial suppression grammar is line-comment-only and accepts exactly one
 rule ID per directive:

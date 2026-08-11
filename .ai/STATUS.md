@@ -86,9 +86,9 @@ selection, complete Go AST node interests, and one shared filtered syntax
 traversal. Syntax diagnostics carry exact source identity and physical ranges,
 resolve severity deterministically, reject undeclared or malformed fixes, sort
 independently of rule registration, and honor generated-file eligibility. No
-built-in rule, lint CLI, lint-pipeline suppression integration, fix coordinator,
-or lint reporter is implemented yet, so this later-phase foundation does not
-advance progress past the incomplete 45% Phase 2 gate.
+built-in rule has passed admission yet; the implemented lint and fix surfaces
+are proven with injected registries and do not advance progress past the
+incomplete 45% Phase 2 gate.
 
 The first suppression foundation now parses one exact rule per `//gox:`
 directive, assigns deterministic physical line, next-line, paired-range, and
@@ -97,8 +97,9 @@ unknown, misplaced, nested, unmatched, and unclosed directives in source order.
 The source-versioned application pass now filters ordered diagnostics, records
 their owning directives, and identifies unused waivers without accepting
 cross-file or stale ranges. The contract was refreshed against Oxc `f2125a8`.
-Canonical unused and expiry diagnostics, lint CLI/reporting, built-in rules,
-and lint-driver integration remain open, so progress remains 45%.
+Canonical expiry diagnostics and built-in rules remain open; the file driver
+and reporters now expose the implemented suppression outcomes. Progress remains
+45%.
 
 The first in-memory fix coordinator now refuses invalid input, validates exact
 source identity, fix safety, UTF-8 byte ranges, and replacement text; rejects
@@ -112,22 +113,24 @@ The single-file fix transaction now starts from the shared descriptor-validated
 snapshot, coordinates its exact source version, skips writes when no fix can
 apply or output is unchanged, and uses the permission-preserving same-directory
 atomic writer. It distinguishes confirmed stale refusal, completed replacement,
-and other failures that may have followed rename. Lint CLI selection and
-reporting remain open, so progress stays 45%.
+and other failures that may have followed rename. The ordinary lint fix driver
+and reporters now consume these transaction states. Progress stays 45%.
 
 The first file-owned lint driver now resolves preset and severity policy,
 records the maximum required tier, runs the shared syntax traversal once, and
 applies the exact-source suppression index. It keeps visible, suppressed,
 unused, and malformed-suppression outcomes distinct and refuses unsupported
 tiers instead of silently skipping them. Lint reporters, CLI modes, fix
-selection, and built-in rule admission remain open, so progress stays 45%.
+selection, and built-in rule admission were the next boundaries; reporters,
+syntax check, and ordinary safe-fix selection are now implemented. Typed tiers
+and built-in rule admission remain open, so progress stays 45%.
 
 The first versioned lint-check JSON result now validates exact per-file source
 identity, orders files and diagnostics canonically, and reports visible counts,
 suppressed counts, suppression problems, unused directives, rich diagnostic
 ranges, and named fix safety. It deliberately omits source snippets and edit
-replacement text. Text reporting, lint CLI modes, fix outcome reporting, and
-built-in rules remain open, so progress stays 45%.
+replacement text. The same envelope now carries fix outcomes; built-in rules
+remain open, so progress stays 45%.
 
 The first lint text renderer now binds each analysis result to its exact source
 version, maps physical byte offsets to CRLF-aware 1-based line and byte-column
@@ -135,8 +138,8 @@ locations without inheriting `//line` adjustments, and validates every primary,
 related, fix-edit, suppression-directive, and suppression-target range at UTF-8
 boundaries. It emits canonically ordered diagnostics with related locations,
 notes, help, and named fix safety while omitting source excerpts and replacement
-text. Lint CLI modes, fix outcome reporting, and built-in rules remain open, so
-progress stays 45%.
+text. Fix reporting now adds rejected-fix provenance while preserving those
+diagnostic contracts. Built-in rules remain open, so progress stays 45%.
 
 Canonical rule metadata now carries structured known limitations alongside
 existing prerequisites, typed options, fix safety, deprecation, and paired
@@ -154,6 +157,15 @@ contracts without mutation. Findings include visible diagnostics, suppression
 problems, and unused directives; source, configuration, filesystem,
 cancellation, and reporting failures preserve distinct exits and incomplete
 JSON. The production registry remains empty, while injected-registry tests prove
-configured rule severity and both reporters. Package patterns, typed loading,
-fix flags, fix outcome reporting, and built-in rule admission remain open, so
-progress stays 45%.
+configured rule severity and both reporters.
+
+The syntax-only `gox lint --fix` path now prevalidates the complete selection,
+automatically chooses exactly one safe fix per diagnostic, rejects ambiguous
+safe alternatives, generated files, symlink paths, stale source, and overlapping
+edits, and reruns formatter plus syntax analysis before each atomic single-file
+replacement. Text and versioned JSON reporting distinguish remaining
+diagnostics, rejected fixes, confirmed writes, pending work, stale conflicts,
+and possibly completed writes; cancellation and reporter failures disclose
+earlier replacements. Suggestion and unsafe selection, package patterns, typed
+loading, built-in rule admission, and dogfood signal measurement remain open,
+so progress stays 45%.

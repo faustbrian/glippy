@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/faustbrian/gox/internal/analysis"
+	fixengine "github.com/faustbrian/gox/internal/fix"
 	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
 	"github.com/faustbrian/gox/internal/suppressions"
@@ -239,6 +240,165 @@ func TestNewLintResultSortsSourcesAndDiagnostics(t *testing.T) {
 	}
 	if result.Diagnostics[0].RuleID != "earlier" || result.Diagnostics[1].RuleID != "later" {
 		t.Fatalf("NewLintResult() diagnostic order = %#v", result.Diagnostics)
+	}
+}
+
+func TestNewLintFixResultPreservesSourceVersionsAndFixOutcomes(t *testing.T) {
+	t.Parallel()
+
+	before, err := source.Load("/project/source.go", []byte("package sample\nfunc run(){target()}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := source.Load("/project/source.go", []byte("package sample\n\nfunc run() {\n\tprimary()\n}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := source.Range{Start: 26, End: 34}
+	result, err := NewLintFixResult(
+		"success",
+		0,
+		true,
+		[]analysis.Result{{Path: after.Path(), Digest: after.Digest()}},
+		[]LintFixOutcome{{
+			Path:         before.Path(),
+			SourceDigest: before.Digest(),
+			Status:       LintFileFixed,
+			Applied: []fixengine.Applied{{
+				RuleID:  "call-rule",
+				FixName: "rewrite",
+				Range:   target,
+			}},
+		}},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Mode != "fix" || result.Summary.Files != 1 || result.Summary.FixedFiles != 1 ||
+		result.Summary.AppliedFixes != 1 || result.Summary.RejectedFixes != 0 ||
+		len(result.Files) != 1 || result.Files[0].Status != LintFileFixed ||
+		result.Files[0].SourceDigest != digestString(before.Digest()) ||
+		result.Files[0].ResultDigest != digestString(after.Digest()) ||
+		len(result.AppliedFixes) != 1 || result.AppliedFixes[0].RuleID != "call-rule" ||
+		len(result.RejectedFixes) != 0 {
+		t.Fatalf("lint fix result = %#v", result)
+	}
+	encoded, err := MarshalLintJSON(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "primary") {
+		t.Fatalf("lint fix JSON exposed replacement text: %s", encoded)
+	}
+}
+
+func TestNewLintFixResultRejectsMismatchedOutcomes(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("/project/source.go", []byte("package sample\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := analysis.Result{Path: file.Path(), Digest: file.Digest()}
+	if _, err := NewLintFixResult(
+		"success",
+		0,
+		true,
+		[]analysis.Result{result},
+		[]LintFixOutcome{{
+			Path:         "/project/other.go",
+			SourceDigest: file.Digest(),
+			Status:       LintFileUnchanged,
+		}},
+		nil,
+	); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("NewLintFixResult() error = %v", err)
+	}
+}
+
+func TestNewLintFixResultRejectsDiskStatusDigestContradictions(t *testing.T) {
+	t.Parallel()
+
+	before, err := source.Load("/project/source.go", []byte("package sample\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := source.Load("/project/source.go", []byte("package changed\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name   string
+		result analysis.Result
+		status LintFileStatus
+	}{
+		{name: "unchanged with changed result", result: analysis.Result{Path: after.Path(), Digest: after.Digest()}, status: LintFileUnchanged},
+		{name: "fixed with unchanged result", result: analysis.Result{Path: before.Path(), Digest: before.Digest()}, status: LintFileFixed},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := NewLintFixResult(
+				"success",
+				0,
+				true,
+				[]analysis.Result{test.result},
+				[]LintFixOutcome{{
+					Path:         before.Path(),
+					SourceDigest: before.Digest(),
+					Status:       test.status,
+				}},
+				nil,
+			); err == nil || !strings.Contains(err.Error(), "digest") {
+				t.Fatalf("NewLintFixResult() error = %v, want digest contradiction", err)
+			}
+		})
+	}
+}
+
+func TestNewLintFixResultSortsRejectedFixesByCompleteIdentity(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("/project/source.go", []byte("package sample\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceRange := source.Range{Start: 0, End: len("package")}
+	result, err := NewLintFixResult(
+		"conflict",
+		4,
+		true,
+		[]analysis.Result{{Path: file.Path(), Digest: file.Digest()}},
+		[]LintFixOutcome{{
+			Path:         file.Path(),
+			SourceDigest: file.Digest(),
+			Status:       LintFileConflict,
+			Rejected: []fixengine.Rejection{
+				{
+					RuleID:  "call-rule",
+					FixName: "rewrite",
+					Range:   sourceRange,
+					Reason:  fixengine.RejectionValidation,
+					Message: "validation failed",
+				},
+				{
+					RuleID:  "call-rule",
+					FixName: "rewrite",
+					Range:   sourceRange,
+					Reason:  fixengine.RejectionConflict,
+					Message: "conflict found",
+				},
+			},
+		}},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RejectedFixes[0].Reason != fixengine.RejectionConflict ||
+		result.RejectedFixes[1].Reason != fixengine.RejectionValidation {
+		t.Fatalf("rejected fix order = %#v", result.RejectedFixes)
 	}
 }
 

@@ -4,18 +4,33 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"go/ast"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/faustbrian/gox/internal/analysis"
+	"github.com/faustbrian/gox/internal/filesystem"
+	fixengine "github.com/faustbrian/gox/internal/fix"
 	goxreport "github.com/faustbrian/gox/internal/report"
 	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/gox/internal/source"
 )
 
 type cliSyntaxRule struct {
 	metadata rules.Metadata
+}
+
+type cliFixRule struct {
+	metadata    rules.Metadata
+	target      string
+	replacement string
+}
+
+type cliPostFixFailureRule struct {
+	cliFixRule
 }
 
 type lintMutationContext struct {
@@ -25,10 +40,25 @@ type lintMutationContext struct {
 	mutate   func()
 }
 
+type lintDiskChangeContext struct {
+	context.Context
+	cancel context.CancelFunc
+	path   string
+	needle string
+}
+
 func (c *lintMutationContext) Err() error {
 	c.calls++
 	if c.calls == c.mutateAt {
 		c.mutate()
+	}
+	return c.Context.Err()
+}
+
+func (c *lintDiskChangeContext) Err() error {
+	input, err := os.ReadFile(c.path)
+	if err == nil && bytes.Contains(input, []byte(c.needle)) {
+		c.cancel()
 	}
 	return c.Context.Err()
 }
@@ -45,6 +75,45 @@ func (r cliSyntaxRule) RunSyntax(ctx *rules.Context, node ast.Node) ([]rules.Fin
 		Message:    "call requires review",
 		Range:      sourceRange,
 	}}, nil
+}
+
+func (r cliFixRule) Metadata() rules.Metadata { return r.metadata }
+
+func (r cliFixRule) RunSyntax(ctx *rules.Context, node ast.Node) ([]rules.Finding, error) {
+	call, ok := node.(*ast.CallExpr)
+	if !ok {
+		return nil, nil
+	}
+	identifier, ok := call.Fun.(*ast.Ident)
+	if !ok || identifier.Name != r.target {
+		return nil, nil
+	}
+	sourceRange, err := ctx.Range(call)
+	if err != nil {
+		return nil, err
+	}
+	fix := r.metadata.Fixes[0]
+	return []rules.Finding{{
+		MessageKey: "target-call",
+		Message:    "target call requires replacement",
+		Range:      sourceRange,
+		Fixes: []rules.Fix{{
+			Name:   fix.Name,
+			Safety: fix.Safety,
+			Edits:  []rules.Edit{{Range: sourceRange, NewText: r.replacement + "()"}},
+		}},
+	}}, nil
+}
+
+func (r cliPostFixFailureRule) RunSyntax(ctx *rules.Context, node ast.Node) ([]rules.Finding, error) {
+	call, ok := node.(*ast.CallExpr)
+	if ok {
+		identifier, isIdentifier := call.Fun.(*ast.Ident)
+		if isIdentifier && identifier.Name == r.replacement {
+			return nil, errors.New("post-fix analysis failed")
+		}
+	}
+	return r.cliFixRule.RunSyntax(ctx, node)
 }
 
 func TestRunLintCheckAnalyzesConfiguredSyntaxRulesWithoutMutation(t *testing.T) {
@@ -137,6 +206,12 @@ func TestRunLintUsesEmptyAdmissionGatedRegistry(t *testing.T) {
 		stdout.Len() != 0 || stderr.Len() != 0 {
 		t.Fatalf("Run(lint clean) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
 	}
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := Run([]string{"lint", "--fix", cleanPath}, failingReader{}, &stdout, &stderr); exitCode != ExitSuccess ||
+		stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("Run(lint --fix clean) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
 
 	suppressedPath := filepath.Join(root, "suppressed.go")
 	if err := os.WriteFile(
@@ -161,7 +236,7 @@ func TestRunLintInvalidJSONInvocationReturnsJSON(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	exitCode := Run(
-		[]string{"lint", "--fix", "--reporter=json", "source.go"},
+		[]string{"lint", "--unsafe-fix", "--reporter=json", "source.go"},
 		failingReader{},
 		&stdout,
 		&stderr,
@@ -354,7 +429,7 @@ func TestPrepareLintTasksBindsOneConfigurationSnapshotToEverySelectedFile(t *tes
 		t.Fatalf("prepareLintTasks() returned %d tasks, want 2", len(tasks))
 	}
 	for _, task := range tasks {
-		if got := task.options.Overrides["call-rule"]; got != rules.SeverityWarn {
+		if got := task.options.analysis.Overrides["call-rule"]; got != rules.SeverityWarn {
 			t.Fatalf("task %q severity = %q, want one bound warn snapshot", task.file.Path, got)
 		}
 	}
@@ -450,6 +525,522 @@ func TestRunLintCheckPreservesCancellationWhenJSONOutputFails(t *testing.T) {
 	}
 }
 
+func TestRunLintFixAppliesAndFormatsOneSafeFix(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){target()}\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLIFixRegistry(t, rules.FixSafe),
+	)
+
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("runLintFix() exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+	want := "package sample\n\nfunc run() {\n\tprimary()\n}\n"
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("runLintFix() source = %q, want %q", got, want)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o640 {
+		t.Fatalf("runLintFix() permissions = %o, want 640", info.Mode().Perm())
+	}
+}
+
+func TestRunLintFixLeavesSuggestionDiagnosticsUnchanged(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(){target()}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLIFixRegistry(t, rules.FixSuggestion),
+	)
+
+	if exitCode != ExitFindings || stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "warn[fix-rule]: target call requires replacement") ||
+		!strings.Contains(stdout.String(), "fix[suggestion]: rewrite") {
+		t.Fatalf("runLintFix() exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("runLintFix() changed suggestion-only source: %q", got)
+	}
+}
+
+func TestRunLintFixReportsConflictsInJSONWithoutWriting(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(){target()}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(
+		newCLIFixRule("first-fix", "first", rules.FixSafe),
+		newCLIFixRule("second-fix", "second", rules.FixSafe),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.JSON},
+		&stdout,
+		&stderr,
+		registry,
+	)
+
+	if exitCode != ExitConflict || stderr.Len() != 0 {
+		t.Fatalf("runLintFix() exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var result goxreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode lint fix JSON: %v; output = %q", err, stdout.String())
+	}
+	if result.Mode != "fix" || result.Outcome.ExitCode != ExitConflict || !result.Summary.Complete ||
+		result.Summary.RejectedFixes != 2 || len(result.Files) != 1 ||
+		result.Files[0].Status != goxreport.LintFileConflict || len(result.RejectedFixes) != 2 {
+		t.Fatalf("lint fix JSON = %#v", result)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("runLintFix() changed conflicting source: %q", got)
+	}
+}
+
+func TestRunLintFixReportsPostFormatAnalysisFailureAsInternalWithoutWriting(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(){target()}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rule := cliPostFixFailureRule{cliFixRule: newCLIFixRule("fix-rule", "primary", rules.FixSafe)}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.JSON},
+		&stdout,
+		&stderr,
+		registry,
+	)
+
+	if exitCode != ExitInternalError || stderr.Len() != 0 {
+		t.Fatalf("runLintFix() exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var result goxreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode failed lint fix JSON: %v; output = %q", err, stdout.String())
+	}
+	if result.Summary.Complete || result.Outcome.ExitCode != ExitInternalError ||
+		len(result.Errors) != 1 || !strings.Contains(result.Errors[0].Message, "post-fix analysis failed") {
+		t.Fatalf("failed lint fix JSON = %#v", result)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("runLintFix() changed source after analysis failure: %q", got)
+	}
+}
+
+func TestRunLintFixDisclosesCompletedWritesWhenTextReportingFails(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){target();other()}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(
+		newCLIFixRule("first-fix", "first", rules.FixSafe),
+		newCLIFixRule("second-fix", "second", rules.FixSafe),
+		newCLIFixRuleFor("independent-fix", "other", "independent", rules.FixSafe),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.Text},
+		failingWriter{},
+		&stderr,
+		registry,
+	)
+
+	if exitCode != ExitFilesystemError || !strings.Contains(stderr.String(), "files fixed before failure") ||
+		!strings.Contains(stderr.String(), path) {
+		t.Fatalf("runLintFix() exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "independent()") {
+		t.Fatalf("runLintFix() source = %q, want completed independent fix", got)
+	}
+}
+
+func TestRunLintFixDisclosesCompletedWritesWhenJSONReportingFails(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){target()}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.JSON},
+		failingWriter{},
+		&stderr,
+		newCLIFixRegistry(t, rules.FixSafe),
+	)
+
+	if exitCode != ExitFilesystemError ||
+		!strings.Contains(stderr.String(), "write fix JSON report") ||
+		!strings.Contains(stderr.String(), "files fixed before reporting failure") ||
+		!strings.Contains(stderr.String(), path) {
+		t.Fatalf("runLintFix() exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+}
+
+func TestRunLintFixJSONReportsConfirmedReplacement(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){target()}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.JSON},
+		&stdout,
+		&stderr,
+		newCLIFixRegistry(t, rules.FixSafe),
+	)
+
+	if exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf("runLintFix() exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var result goxreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode lint fix JSON: %v; output = %q", err, stdout.String())
+	}
+	if result.Mode != "fix" || result.Outcome.ExitCode != ExitSuccess || !result.Summary.Complete ||
+		result.Summary.FixedFiles != 1 || result.Summary.AppliedFixes != 1 ||
+		len(result.Files) != 1 || result.Files[0].Status != goxreport.LintFileFixed ||
+		result.Files[0].SourceDigest == result.Files[0].ResultDigest || len(result.AppliedFixes) != 1 {
+		t.Fatalf("lint fix JSON = %#v", result)
+	}
+}
+
+func TestRunLintFixPrevalidatesEverySourceBeforeWriting(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(root, "a.go")
+	firstInput := []byte("package sample\nfunc run(){target()}\n")
+	if err := os.WriteFile(firstPath, firstInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	generatedPath := filepath.Join(root, "z.go")
+	if err := os.WriteFile(
+		generatedPath,
+		[]byte("// Code generated by fixture. DO NOT EDIT.\npackage sample\nfunc generated(){target()}\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{generatedPath, firstPath}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLIFixRegistry(t, rules.FixSafe),
+	)
+
+	if exitCode != ExitFilesystemError || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "refusing to fix generated file") {
+		t.Fatalf("runLintFix() exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+	got, err := os.ReadFile(firstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, firstInput) {
+		t.Fatalf("runLintFix() wrote earlier source before complete prevalidation: %q", got)
+	}
+}
+
+func TestRunLintFixRefusesPathThroughSymlinkedDirectory(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	targetDirectory := t.TempDir()
+	target := filepath.Join(targetDirectory, "source.go")
+	input := []byte("package sample\nfunc run(){target()}\n")
+	if err := os.WriteFile(target, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "linked")
+	if err := os.Symlink(targetDirectory, link); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(link, "source.go")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLIFixRegistry(t, rules.FixSafe),
+	)
+
+	if exitCode != ExitFilesystemError || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "refusing to fix symlink") {
+		t.Fatalf("runLintFix() exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("runLintFix() changed file through symlinked directory: %q", got)
+	}
+}
+
+func TestRunLintFixCancellationReportsConfirmedWriteAndPendingFile(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(root, "a.go")
+	secondPath := filepath.Join(root, "b.go")
+	input := []byte("package sample\nfunc run(){target()}\n")
+	for _, path := range []string{firstPath, secondPath} {
+		if err := os.WriteFile(path, input, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base, cancel := context.WithCancel(context.Background())
+	ctx := &lintDiskChangeContext{
+		Context: base,
+		cancel:  cancel,
+		path:    firstPath,
+		needle:  "primary()",
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		ctx,
+		lintInvocation{fix: true, paths: []string{root}, reporter: goxreport.JSON},
+		&stdout,
+		&stderr,
+		newCLIFixRegistry(t, rules.FixSafe),
+	)
+
+	if exitCode != ExitCanceled || stderr.Len() != 0 {
+		t.Fatalf("runLintFix() exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var result goxreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode canceled lint fix JSON: %v; output = %q", err, stdout.String())
+	}
+	if result.Summary.Complete || len(result.Files) != 2 ||
+		result.Files[0].Status != goxreport.LintFileFixed ||
+		result.Files[1].Status != goxreport.LintFilePending {
+		t.Fatalf("canceled lint fix JSON = %#v", result)
+	}
+	first, err := os.ReadFile(firstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(secondPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(first, []byte("primary()")) || !bytes.Equal(second, input) {
+		t.Fatalf("canceled lint fix sources = first %q, second %q", first, second)
+	}
+}
+
+func TestRecordLintFixTransactionKeepsOriginalResultAfterStaleWrite(t *testing.T) {
+	t.Parallel()
+
+	before, err := source.Load("/project/source.go", []byte("package sample\nfunc run(){target()}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := source.Load("/project/source.go", []byte("package sample\n\nfunc run() {\n\tprimary()\n}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	execution := lintFixExecution{
+		file:       before,
+		resultFile: before,
+		result:     analysis.Result{Path: before.Path(), Digest: before.Digest()},
+		outcome: goxreport.LintFixOutcome{
+			Path:         before.Path(),
+			SourceDigest: before.Digest(),
+			Status:       goxreport.LintFilePending,
+		},
+	}
+	transaction := fixengine.Transaction{
+		Result: fixengine.Result{
+			Applied: []fixengine.Applied{{
+				RuleID:  "fix-rule",
+				FixName: "rewrite",
+				Range:   source.Range{Start: 26, End: 34},
+			}},
+		},
+		Status: fixengine.WriteNotPerformed,
+	}
+
+	recordLintFixTransaction(
+		&execution,
+		analysis.Result{Path: after.Path(), Digest: after.Digest()},
+		after,
+		transaction,
+		filesystem.ErrStale,
+	)
+
+	if execution.result.Digest != before.Digest() || execution.resultFile != before ||
+		execution.outcome.Status != goxreport.LintFileConflict || len(execution.outcome.Applied) != 1 ||
+		len(execution.outcome.Rejected) != 1 ||
+		execution.outcome.Rejected[0].Reason != fixengine.RejectionStaleSource ||
+		lintFixExitCode([]lintFixExecution{execution}) != ExitConflict {
+		t.Fatalf("stale lint fix execution = %#v", execution)
+	}
+}
+
+func TestLintFixFileStatusPreservesReplacementCertainty(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		transaction fixengine.Transaction
+		want        goxreport.LintFileStatus
+	}{
+		{name: "completed", transaction: fixengine.Transaction{Status: fixengine.WriteCompleted}, want: goxreport.LintFileFixed},
+		{name: "possible", transaction: fixengine.Transaction{Status: fixengine.WritePossiblyCompleted}, want: goxreport.LintFilePossiblyFixed},
+		{
+			name: "conflict",
+			transaction: fixengine.Transaction{Result: fixengine.Result{Rejected: []fixengine.Rejection{{
+				Reason: fixengine.RejectionConflict,
+			}}}},
+			want: goxreport.LintFileConflict,
+		},
+		{name: "unchanged", transaction: fixengine.Transaction{Status: fixengine.WriteNotPerformed}, want: goxreport.LintFileUnchanged},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := lintFixFileStatus(test.transaction); got != test.want {
+				t.Fatalf("lintFixFileStatus() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestReportLintFixJSONDisclosesCompletedWritesWhenResultConstructionFails(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("/project/source.go", []byte("package sample\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	executions := []lintFixExecution{{
+		file:       file,
+		resultFile: file,
+		result:     analysis.Result{Path: "/project/other.go", Digest: file.Digest()},
+		outcome: goxreport.LintFixOutcome{
+			Path:         file.Path(),
+			SourceDigest: file.Digest(),
+			Status:       goxreport.LintFileFixed,
+		},
+	}}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := reportLintFixJSON(&stdout, &stderr, ExitSuccess, true, executions, nil)
+
+	if exitCode != ExitInternalError || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "files fixed before reporting failure") ||
+		!strings.Contains(stderr.String(), file.Path()) {
+		t.Fatalf("reportLintFixJSON() exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
 func newCLISyntaxRegistry(t *testing.T) *rules.Registry {
 	t.Helper()
 	registry, err := rules.NewRegistry(cliSyntaxRule{metadata: rules.Metadata{
@@ -468,4 +1059,41 @@ func newCLISyntaxRegistry(t *testing.T) *rules.Registry {
 		t.Fatal(err)
 	}
 	return registry
+}
+
+func newCLIFixRegistry(t *testing.T, safety rules.FixSafety) *rules.Registry {
+	t.Helper()
+	registry, err := rules.NewRegistry(newCLIFixRule("fix-rule", "primary", safety))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return registry
+}
+
+func newCLIFixRule(ruleID, replacement string, safety rules.FixSafety) cliFixRule {
+	return newCLIFixRuleFor(ruleID, "target", replacement, safety)
+}
+
+func newCLIFixRuleFor(ruleID, target, replacement string, safety rules.FixSafety) cliFixRule {
+	return cliFixRule{
+		target:      target,
+		replacement: replacement,
+		metadata: rules.Metadata{
+			ID:               ruleID,
+			Summary:          "replaces target calls",
+			Documentation:    "Replaces target calls with an admitted alternative.",
+			DefaultSeverity:  rules.SeverityWarn,
+			Presets:          []rules.Preset{rules.PresetCorrectness},
+			MinimumGoVersion: "1.22",
+			Requirement:      rules.RequireSyntax,
+			NodeInterests:    []rules.NodeKind{rules.NodeCallExpr},
+			Categories:       []rules.Category{rules.CategoryCorrectness},
+			Fixes: []rules.FixMetadata{{
+				Name:        "rewrite",
+				Description: "replace the target call",
+				Safety:      safety,
+			}},
+			Examples: []rules.Example{{Incorrect: "target()", Correct: replacement + "()"}},
+		},
+	}
 }

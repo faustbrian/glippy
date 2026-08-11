@@ -81,11 +81,36 @@ unused suppressions exit with findings; suppressed diagnostics alone do not.
 Parse failures, invalid configuration, filesystem failures, cancellation, and
 reporting failures retain their common exit categories. JSON remains valid and
 incomplete for invalid invocations and failures. Package patterns such as
-`./...`, typed loading, and every fix flag remain rejected until their separate
-contracts are implemented.
+`./...`, typed loading, suggestion selection, and unsafe-fix flags remain
+rejected until their separate contracts are implemented.
 
 `lint` never writes unless a fix flag is present. Ordinary `--fix` applies safe
-fixes only. Suggestion and unsafe fixes require distinct explicit selections.
+fixes only. It automatically selects a diagnostic only when that diagnostic
+offers exactly one named safe fix; multiple safe alternatives violate the rule
+contract and fail before any write. Suggestion and unsafe fixes remain visible
+but require future distinct explicit selections.
+
+`lint --fix` prevalidates every selected configuration and source before its
+first write, refuses generated files and paths traversing symlinks, coordinates
+each source version independently, reparses and formatter-normalizes accepted
+edits, reruns syntax analysis over the final bytes, and then uses the shared
+atomic replacement boundary. Stale files and overlapping fixes are conflicts.
+One file's conflict does not silently select a winner or prevent independent
+file transactions from being attempted. Cancellation stops before the next
+replacement and reports earlier confirmed writes. A post-format analysis engine
+failure remains an internal or cancellation outcome and MUST NOT be downgraded
+to an ordinary rejected-fix finding.
+
+Successful text fix output contains only diagnostics and rejected-fix reasons
+left after coordination; a completely fixed invocation is silent. Lint-fix JSON
+uses file statuses `pending`, `unchanged`, `fixed`, `conflict`, `failed`, and
+`possibly_fixed`. Each file retains its original source digest and the analyzed
+result digest, while applied and rejected records retain original-source rule,
+fix, and range provenance without exposing replacement text. An applied record
+describes the validated in-memory coordination result; the file status controls
+whether replacement was confirmed, refused as stale, or may have completed.
+Stale replacement records also reject each coordinated fix with the stable
+`stale-source` reason so text consumers receive an actionable explanation.
 `check` combines formatting differences and enabled lint diagnostics over one
 immutable discovery snapshot and MUST never write.
 
@@ -218,6 +243,6 @@ may occur after rename, so the failing changed path is reported as possibly
 replaced rather than silently implying rollback.
 
 JSON reporting MUST preserve the same disclosure through ordered file statuses.
-If the JSON stream itself cannot be written after replacements, stderr MUST
-name every completed or possibly completed replacement, and the invocation
-MUST return the applicable failure category.
+If JSON construction, encoding, or stream output fails after replacements,
+stderr MUST name every completed or possibly completed replacement, and the
+invocation MUST return the applicable failure category.

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/faustbrian/gox/internal/analysis"
+	fixengine "github.com/faustbrian/gox/internal/fix"
 	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
 	"github.com/faustbrian/gox/internal/suppressions"
@@ -173,4 +174,82 @@ func TestRenderLintTextRejectsInvalidNestedRanges(t *testing.T) {
 			t.Fatalf("RenderLintText() suppression target error = %v", err)
 		}
 	})
+}
+
+func TestRenderLintFixTextReportsRejectedFixReasons(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\nfunc run(){target()}\n"
+	file, err := source.Load("/project/source.go", []byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := source.Range{Start: strings.Index(input, "target"), End: strings.Index(input, "target") + len("target")}
+	output, err := RenderLintFixText([]LintFixTextInput{{
+		File:   file,
+		Result: analysis.Result{Path: file.Path(), Digest: file.Digest()},
+		Outcome: LintFixOutcome{
+			Path:         file.Path(),
+			SourceDigest: file.Digest(),
+			Status:       LintFileConflict,
+			Rejected: []fixengine.Rejection{{
+				RuleID:  "call-rule",
+				FixName: "rewrite",
+				Range:   target,
+				Reason:  fixengine.RejectionConflict,
+				Message: "selected fix conflicts with another edit",
+			}},
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "/project/source.go:2:12: rejected fix[call-rule/rewrite/conflict]: selected fix conflicts with another edit\n"
+	if string(output) != want {
+		t.Fatalf("RenderLintFixText() = %q, want %q", output, want)
+	}
+}
+
+func TestRenderLintFixTextSortsRejectedFixesByCompleteIdentity(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\nfunc run(){target()}\n"
+	file, err := source.Load("/project/source.go", []byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := source.Range{Start: strings.Index(input, "target"), End: strings.Index(input, "target") + len("target")}
+	output, err := RenderLintFixText([]LintFixTextInput{{
+		File:   file,
+		Result: analysis.Result{Path: file.Path(), Digest: file.Digest()},
+		Outcome: LintFixOutcome{
+			Path:         file.Path(),
+			SourceDigest: file.Digest(),
+			Status:       LintFileConflict,
+			Rejected: []fixengine.Rejection{
+				{
+					RuleID:  "call-rule",
+					FixName: "rewrite",
+					Range:   target,
+					Reason:  fixengine.RejectionValidation,
+					Message: "validation failed",
+				},
+				{
+					RuleID:  "call-rule",
+					FixName: "rewrite",
+					Range:   target,
+					Reason:  fixengine.RejectionConflict,
+					Message: "conflict found",
+				},
+			},
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conflict := strings.Index(string(output), "/conflict]")
+	validation := strings.Index(string(output), "/validation]")
+	if conflict < 0 || validation < 0 || conflict > validation {
+		t.Fatalf("RenderLintFixText() rejection order = %q", output)
+	}
 }
