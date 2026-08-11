@@ -246,9 +246,8 @@ and multi-module workspaces. Module resolution is read-only by default with an
 explicit vendor mode. Ordinary loads stay offline by disabling proxy and direct
 VCS resolution, checksum lookup, toolchain download, and ambient external
 package drivers. Explicit network opt-in uses only the caller-supplied Go
-environment. Typed rule execution, CFG/SSA construction, fact scheduling,
-caching, and CLI package-pattern integration remain open, so progress stays
-45%.
+environment. The loader itself does not construct CFG or SSA, schedule facts,
+cache results, or integrate CLI package patterns.
 
 Typed package parsing now binds every selected or dependency AST to the exact
 post-overlay bytes supplied by `go/packages`. A canonical run-owned source
@@ -264,6 +263,16 @@ type-error state, and exact captured source; physical package positions reject
 cross-file and invalid ranges. Generated and ill-typed package eligibility is
 explicit per rule, invalid diagnostic-only sources are skipped, and ordinary
 package ownership prevents duplicate production-file diagnostics across test
-variants. Package-wide rules, dependency analysis, typed file-driver and CLI
-integration, suppressions, typed fixes, facts, CFG, SSA, and caching remain
-open, so progress stays 45%.
+variants. Package-wide rules, dependency analysis, CLI integration, typed fixes,
+facts, CFG, SSA, and caching remain open.
+
+The first suppression-aware typed package driver now resolves one maximum-tier
+plan, performs one typed load, runs syntax and types rules only at their declared
+tiers, combines their exact-source diagnostics, and applies suppressions once
+per selected physical root. It retains canonical load and type diagnostics,
+source-model problems, and valid partial file results; rejects unsupported
+lexical, CFG, and SSA rules before loading; and leaves every syntax-only caller
+on the existing path that cannot invoke `go/packages`. CLI
+package patterns, per-path configuration across package boundaries, typed
+fixing and post-fix reloads, package-wide rules, dependency analysis, facts,
+CFG, SSA, and caching remain open, so progress stays 45%.

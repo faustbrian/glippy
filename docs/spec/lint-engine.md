@@ -82,6 +82,22 @@ units MUST NOT be traversed. Every typed range endpoint MUST map through the
 package file set without logical `//line` adjustment to the callback's exact
 physical file, and cross-file or invalid byte ranges MUST fail the run.
 
+The suppression-aware package driver MUST resolve preset and severity policy
+once and MUST replace the loader requirement with the maximum enabled tier. It
+MUST require at least one types-tier rule; syntax-only work MUST remain on the
+file-owned driver and MUST NOT invoke `go/packages`. Until their runners exist,
+enabled lexical, CFG, or SSA rules MUST fail before package loading rather than
+being silently skipped from a mixed selection.
+
+For one successful typed load, the package driver MUST retain canonical package
+and type diagnostics plus source-model problems, run syntax and types rules only
+at their declared tiers, combine and order their diagnostics by exact source
+identity, and apply each physical file's suppression index once. Invalid
+diagnostic-only sources MUST remain represented by those distinct problem
+channels but MUST NOT produce an analyzed-file record. Package-local load or
+type errors MUST NOT discard valid file results when an enabled rule explicitly
+admits partial type information.
+
 Ordinary package loading MUST disable module proxies, private-module proxy
 bypass, direct version-control resolution, checksum-database access, automatic
 toolchain download, and ambient external package drivers. Network access MAY
@@ -100,9 +116,9 @@ The Phase 3 file driver MUST resolve the preset and overrides once, record the
 maximum enabled requirement, execute the shared syntax runner once, and apply
 the source-versioned suppression index before returning reporter-facing
 records. Unsuppressed diagnostics, suppressed diagnostics, unused directives,
-and suppression problems MUST remain distinct outcomes. Until another tier
-runner is implemented, the driver MUST reject every enabled non-syntax rule
-rather than skip it or construct a representation speculatively.
+and suppression problems MUST remain distinct outcomes. The file driver MUST
+reject every enabled non-syntax rule rather than skip it or construct a
+representation speculatively; typed work uses the separate package driver.
 
 The syntax-only CLI check MUST bind every discovered file to its selected typed
 configuration before analysis, process normalized file paths deterministically,
