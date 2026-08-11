@@ -100,6 +100,13 @@ func TestRegistryRejectsIncompleteOrInconsistentMetadata(t *testing.T) {
 			wantError: "types rule must declare node interests",
 		},
 		{
+			name: "control-flow rule with node interests",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.Requirement = rules.RequireControlFlow
+			},
+			wantError: "control flow rule must not declare node interests",
+		},
+		{
 			name: "syntax rule with type-error policy",
 			mutate: func(metadata *rules.Metadata) {
 				metadata.RunDespiteTypeErrors = true

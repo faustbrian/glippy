@@ -184,6 +184,9 @@ func validateMetadata(metadata Metadata) error {
 		len(metadata.NodeInterests) == 0 {
 		return fmt.Errorf("%s: %s rule must declare node interests", metadata.ID, metadata.Requirement)
 	}
+	if metadata.Requirement == RequireControlFlow && len(metadata.NodeInterests) != 0 {
+		return fmt.Errorf("%s: control flow rule must not declare node interests", metadata.ID)
+	}
 	if err := validateUnique(metadata.NodeInterests, validNodeKind, "node interest"); err != nil {
 		return fmt.Errorf("%s: %w", metadata.ID, err)
 	}

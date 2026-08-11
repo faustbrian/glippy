@@ -18,7 +18,8 @@ func TestRunPackagesCombinesSyntaxAndTypesBeforeSuppressing(t *testing.T) {
 	root := t.TempDir()
 	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
 	path := filepath.Join(root, "project.go")
-	writeTypesFixture(t, path, `package project
+	writeTypesFixture(t, path, `//gox:ignore-file cfg-function -- reviewed file
+package project
 
 //gox:ignore typed-call -- reviewed here
 func suppressed() { target() }
@@ -50,7 +51,17 @@ func target() {}
 			return []rules.Finding{{MessageKey: "typed-call", Message: "typed call", Range: range_}}, nil
 		},
 	}
-	registry, err := rules.NewRegistry(typed, syntax)
+	controlFlow := controlFlowRule{
+		metadata: controlFlowMetadata("cfg-function"),
+		run: func(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+			range_, err := ctx.Range(ctx.Function())
+			if err != nil {
+				return nil, err
+			}
+			return []rules.Finding{{MessageKey: "cfg-function", Message: "cfg function", Range: range_}}, nil
+		},
+	}
+	registry, err := rules.NewRegistry(typed, syntax, controlFlow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,10 +76,11 @@ func target() {}
 		t.Fatal(err)
 	}
 	wantSelection := []rules.Selection{
+		{ID: "cfg-function", Severity: rules.SeverityWarn, Requirement: rules.RequireControlFlow},
 		{ID: "syntax-call", Severity: rules.SeverityWarn, Requirement: rules.RequireSyntax},
 		{ID: "typed-call", Severity: rules.SeverityWarn, Requirement: rules.RequireTypes},
 	}
-	if result.Requirement != rules.RequireTypes || !reflect.DeepEqual(result.Selection, wantSelection) {
+	if result.Requirement != rules.RequireControlFlow || !reflect.DeepEqual(result.Selection, wantSelection) {
 		t.Fatalf("RunPackages() plan = %s, %#v", result.Requirement, result.Selection)
 	}
 	if len(result.LoadDiagnostics) != 0 || len(result.Files) != 1 {
@@ -79,7 +91,7 @@ func target() {}
 		t.Fatalf("RunPackages() sources = %#v, %t", captured, found)
 	}
 	fileResult := result.Files[0]
-	if fileResult.Path != path || fileResult.Requirement != rules.RequireTypes ||
+	if fileResult.Path != path || fileResult.Requirement != rules.RequireControlFlow ||
 		!reflect.DeepEqual(fileResult.Selection, wantSelection) {
 		t.Fatalf("RunPackages() file = %#v", fileResult)
 	}
@@ -89,8 +101,11 @@ func target() {}
 		fileResult.Diagnostics[2].RuleID != "typed-call" {
 		t.Fatalf("RunPackages() diagnostics = %#v", fileResult.Diagnostics)
 	}
-	if len(fileResult.Suppressed) != 1 ||
-		fileResult.Suppressed[0].Diagnostic.RuleID != "typed-call" ||
+	if len(fileResult.Suppressed) != 4 ||
+		fileResult.Suppressed[0].Diagnostic.RuleID != "cfg-function" ||
+		fileResult.Suppressed[1].Diagnostic.RuleID != "typed-call" ||
+		fileResult.Suppressed[2].Diagnostic.RuleID != "cfg-function" ||
+		fileResult.Suppressed[3].Diagnostic.RuleID != "cfg-function" ||
 		len(fileResult.UnusedSuppressions) != 0 || len(fileResult.SuppressionProblems) != 0 {
 		t.Fatalf("RunPackages() suppressions = %#v", fileResult)
 	}
@@ -114,7 +129,7 @@ func TestRunPackagesRequiresTypesBeforeLoading(t *testing.T) {
 		analysis.RunOptions{Preset: rules.PresetCorrectness},
 		analysis.PackageLoadOptions{},
 	)
-	if err == nil || !strings.Contains(err.Error(), "requires at least one types-tier rule") {
+	if err == nil || !strings.Contains(err.Error(), "requires at least one types-tier or CFG-tier rule") {
 		t.Fatalf("RunPackages() error = %v", err)
 	}
 }
@@ -161,24 +176,42 @@ func TestRunPackagesRetainsLoadErrorsAndValidPartialResults(t *testing.T) {
 	}
 }
 
-func TestRunPackagesRejectsUnimplementedExpensiveTiersBeforeLoading(t *testing.T) {
+func TestRunPackagesRunsControlFlowRulesBeforeSuppressing(t *testing.T) {
 	t.Parallel()
 
-	metadata := analysisMetadata("cfg-rule", rules.NodeFuncDecl, false)
-	metadata.Requirement = rules.RequireControlFlow
-	registry, err := rules.NewRegistry(metadataRuleAdapter{metadata: metadata})
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "project.go")
+	writeTypesFixture(t, path, "//gox:ignore-file cfg-rule -- reviewed file\npackage project\nfunc run() {}\n")
+	rule := controlFlowRule{
+		metadata: controlFlowMetadata("cfg-rule"),
+		run: func(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+			range_, err := ctx.Range(ctx.Function())
+			if err != nil {
+				return nil, err
+			}
+			return []rules.Finding{{MessageKey: "cfg", Message: "cfg", Range: range_}}, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = analysis.RunPackages(
+	result, err := analysis.RunPackages(
 		context.Background(),
 		registry,
 		analysis.RunOptions{Preset: rules.PresetCorrectness},
-		analysis.PackageLoadOptions{},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}},
 	)
-	if err == nil || !strings.Contains(err.Error(), "control flow rules are not implemented") {
-		t.Fatalf("RunPackages() error = %v", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Requirement != rules.RequireControlFlow || len(result.Files) != 1 ||
+		result.Files[0].Path != path || len(result.Files[0].Diagnostics) != 0 ||
+		len(result.Files[0].Suppressed) != 1 ||
+		result.Files[0].Suppressed[0].Diagnostic.RuleID != "cfg-rule" {
+		t.Fatalf("RunPackages() CFG result = %#v", result)
 	}
 }
 

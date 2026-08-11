@@ -27,6 +27,10 @@ type cliTypesRule struct {
 	metadata rules.Metadata
 }
 
+type cliControlFlowRule struct {
+	metadata rules.Metadata
+}
+
 type cliFixRule struct {
 	metadata    rules.Metadata
 	target      string
@@ -96,6 +100,20 @@ func (r cliTypesRule) RunTypes(ctx *rules.TypesContext, node ast.Node) ([]rules.
 	return []rules.Finding{{
 		MessageKey: "typed-call",
 		Message:    "typed call requires review",
+		Range:      sourceRange,
+	}}, nil
+}
+
+func (r cliControlFlowRule) Metadata() rules.Metadata { return r.metadata }
+
+func (r cliControlFlowRule) RunControlFlow(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+	sourceRange, err := ctx.Range(ctx.Function())
+	if err != nil {
+		return nil, err
+	}
+	return []rules.Finding{{
+		MessageKey: "cfg-function",
+		Message:    "function requires control-flow review",
 		Range:      sourceRange,
 	}}, nil
 }
@@ -397,6 +415,40 @@ func TestRunLintCheckRoutesTypedPackagePatternsToPackageAnalysis(t *testing.T) {
 	}
 	if !bytes.Equal(got, input) {
 		t.Fatalf("runLintCheck(typed inputs) mutated source: %q", got)
+	}
+}
+
+func TestRunLintCheckRoutesControlFlowRulesThroughPackageAnalysis(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	input := []byte("package project\nfunc run() {}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{paths: []string{path}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLIControlFlowRegistry(t),
+	)
+	want := path + ":2:1: warn[cfg-function]: function requires control-flow review\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf("runLintCheck(CFG) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("runLintCheck(CFG) mutated source: %q", got)
 	}
 }
 
@@ -1495,6 +1547,25 @@ func newCLITypesRegistry(t *testing.T) *rules.Registry {
 		NodeInterests:    []rules.NodeKind{rules.NodeCallExpr},
 		Categories:       []rules.Category{rules.CategoryCorrectness},
 		Examples:         []rules.Example{{Incorrect: "target()", Correct: "reviewed()"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return registry
+}
+
+func newCLIControlFlowRegistry(t *testing.T) *rules.Registry {
+	t.Helper()
+	registry, err := rules.NewRegistry(cliControlFlowRule{metadata: rules.Metadata{
+		ID:               "cfg-function",
+		Summary:          "reports functions",
+		Documentation:    "Reports functions that require control-flow review.",
+		DefaultSeverity:  rules.SeverityWarn,
+		Presets:          []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion: "1.22",
+		Requirement:      rules.RequireControlFlow,
+		Categories:       []rules.Category{rules.CategoryCorrectness},
+		Examples:         []rules.Example{{Incorrect: "func bad() {}", Correct: "func good() {}"}},
 	}})
 	if err != nil {
 		t.Fatal(err)

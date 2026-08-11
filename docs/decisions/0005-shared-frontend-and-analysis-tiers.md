@@ -57,29 +57,46 @@ the loader. Package positions map through the physical file set with `//line`
 adjustments disabled and are rejected when either endpoint belongs to another
 file or falls outside the captured bytes.
 
+Native CFG-tier rules do not declare node interests. The CFG runner visits
+every function declaration and nested function literal with a body once in
+canonical physical source order. It constructs one
+`golang.org/x/tools/go/cfg` graph per eligible function and shares that graph,
+body, typed package values, package file set, type-error state, and exact source
+with all eligible rules in rule-ID order. Reporter-visible diagnostics are
+sorted after execution, and rule admission rejects observable behavior that
+depends on the upstream graph's otherwise undefined block-slice order.
+
+The first no-return policy recognizes only calls whose type information
+resolves their identifier to the predeclared `panic`. It treats shadowed
+identifiers and calls such as `os.Exit` and `log.Fatal` as returning. This is
+deliberately less precise than the interprocedural facts in the upstream
+`ctrlflow` analyzer. The graph also does not claim short-circuit expression
+edges or complete abnormal panic flow; rules needing those contracts require
+SSA or a later reviewed control-flow extension.
+
 When tests are enabled, `go/packages` may expose one production file through
 both its ordinary package and an augmented test variant. Gox analyzes that
 physical source once and prefers the ordinary package as its type owner; a
 test-only source uses its test variant. This prevents duplicate diagnostics
 while preserving the ordinary package's production type context. Native typed
-execution is currently node-oriented and root-package-only; package-wide rules,
-dependency analysis, facts, CFG, and SSA require separate contracts.
+execution is currently root-package-only; package-wide rules, dependency
+analysis, facts, and SSA require separate contracts.
 
 Rules skip generated files unless their metadata opts in. Packages with type
-errors are also skipped by default; a types-tier rule may explicitly declare
-that partial type information satisfies its contract. Syntax-invalid or
-source-model-invalid files remain diagnostic-only and are never traversed.
+errors are also skipped by default; a types-tier or CFG-tier rule may explicitly
+declare that partial type information satisfies its contract. Syntax-invalid
+or source-model-invalid files remain diagnostic-only and are never traversed.
 
 The suppression-aware package driver is a separate entry point from the
 file-owned syntax driver. It resolves one rule selection, requires at least one
-types-tier rule, overwrites the loader requirement with that selection's
-maximum tier, and performs one typed load. Unsupported lexical, CFG, and SSA
-rules fail before that load rather than disappearing from a mixed selection. It
-then runs enabled syntax rules on the selected physical roots, runs typed rules
-over the same source identities, orders the combined diagnostics, and applies
-each file's suppression index once. Package/type diagnostics and source-model
-problems remain separate result channels. Syntax-only callers retain the
-existing file path and therefore never reach `go/packages`.
+types-tier or CFG-tier rule, overwrites the loader requirement with that
+selection's maximum tier, and performs one typed load. Unsupported lexical and
+SSA rules fail before that load rather than disappearing from a mixed
+selection. It then runs enabled syntax, types, and CFG rules over the selected
+physical roots, orders their combined diagnostics, and applies each file's
+suppression index once. Package/type diagnostics and source-model problems
+remain separate result channels. Syntax-only callers retain the existing file
+path and therefore never reach `go/packages`.
 
 Package selection delegates module and `go.work` semantics to the active Go
 toolchain and accepts explicit test inclusion, canonical build tags, overlays,
@@ -123,11 +140,11 @@ share immutable state.
 Syntax dispatch visits uninterested nodes once to avoid indexing or repeated
 walks; a secondary index requires new representative benchmark evidence.
 
-CFG and SSA construction, analyzer fact scheduling, cache reuse, package-wide
-typed rules, heterogeneous per-path package configuration, and typed fixes
-remain separate tier-runner work. A types, CFG, or SSA request currently shares
-the same typed prerequisite graph but does not mean that the more expensive
-representation has already been constructed.
+SSA construction, analyzer fact scheduling, cache reuse, package-wide typed
+rules, heterogeneous per-path package configuration, and typed fixes remain
+separate tier-runner work. A types-only request does not construct CFGs, and an
+SSA request currently shares the typed prerequisite graph without constructing
+SSA.
 
 The typed package AST and physical source model use separate parser file sets.
 The package parser preserves `go/packages`' existing AST object-resolution

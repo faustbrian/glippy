@@ -23,6 +23,27 @@ matching AST nodes together with the root package's shared `go/types.Package`,
 the exact immutable physical source captured during loading. The callback MUST
 NOT mutate shared typed values. Package-wide native rules are not yet admitted.
 
+Every native CFG-tier rule MUST NOT declare node interests. It MUST run once
+for every function declaration and function literal with a body in canonical
+physical file and function-position order. All eligible CFG rules for one
+function MUST receive the same graph, body, typed package values, package file
+set, type-error state, and exact immutable physical source. A CFG rule MUST NOT
+mutate those shared values.
+
+The CFG runner MUST construct `golang.org/x/tools/go/cfg` graphs only when at
+least one enabled CFG rule is eligible for the function's file and package. It
+MUST treat only a call resolved by `go/types` to the predeclared `panic` as
+non-returning. It MUST conservatively treat `os.Exit`, `log.Fatal`, shadowed
+`panic` identifiers, and every other call as potentially returning until a
+separate interprocedural no-return contract exists. This first CFG tier does
+not model short-circuit expression edges or abnormal panic flow and MUST NOT be
+presented as SSA-equivalent.
+
+The upstream CFG block slice has defined entry ownership but otherwise
+undefined order. A rule MUST NOT select or order diagnostics from raw block
+iteration order. Reporter-visible diagnostics MUST be canonically ordered by
+physical source identity and diagnostic fields after all rule callbacks.
+
 The scheduler MUST compute the maximum required representation across enabled
 rules and MUST NOT construct types, CFG, or SSA speculatively. Syntax rules
 MUST share one direct preorder AST traversal per file and receive only nodes
@@ -75,28 +96,28 @@ Dependency syntax MAY be loaded for later fact or dependency work but MUST NOT
 implicitly make dependencies lint targets.
 
 Generated files MUST be excluded unless a rule explicitly opts in. A package
-with type errors MUST be excluded for a rule unless that types-tier rule
-explicitly declares that it can operate on partial type information. Lexical
-and syntax rules MUST NOT declare that policy. Invalid diagnostic-only source
-units MUST NOT be traversed. Every typed range endpoint MUST map through the
-package file set without logical `//line` adjustment to the callback's exact
-physical file, and cross-file or invalid byte ranges MUST fail the run.
+with type errors MUST be excluded for a rule unless that types-tier or CFG-tier
+rule explicitly declares that it can operate on partial type information.
+Lexical and syntax rules MUST NOT declare that policy. Invalid diagnostic-only
+source units MUST NOT be traversed. Every typed range endpoint MUST map through
+the package file set without logical `//line` adjustment to the callback's
+exact physical file, and cross-file or invalid byte ranges MUST fail the run.
 
 The suppression-aware package driver MUST resolve preset and severity policy
 once and MUST replace the loader requirement with the maximum enabled tier. It
-MUST require at least one types-tier rule; syntax-only work MUST remain on the
-file-owned driver and MUST NOT invoke `go/packages`. Until their runners exist,
-enabled lexical, CFG, or SSA rules MUST fail before package loading rather than
-being silently skipped from a mixed selection.
+MUST require at least one types-tier or CFG-tier rule; syntax-only work MUST
+remain on the file-owned driver and MUST NOT invoke `go/packages`. Enabled
+lexical or SSA rules MUST fail before package loading rather than being
+silently skipped from a mixed selection.
 
 For one successful typed load, the package driver MUST retain canonical package
-and type diagnostics plus source-model problems, run syntax and types rules only
-at their declared tiers, combine and order their diagnostics by exact source
-identity, and apply each physical file's suppression index once. Invalid
-diagnostic-only sources MUST remain represented by those distinct problem
-channels but MUST NOT produce an analyzed-file record. Package-local load or
-type errors MUST NOT discard valid file results when an enabled rule explicitly
-admits partial type information.
+and type diagnostics plus source-model problems, run syntax, types, and CFG
+rules only at their declared tiers, combine and order their diagnostics by
+exact source identity, and apply each physical file's suppression index once.
+Invalid diagnostic-only sources MUST remain represented by those distinct
+problem channels but MUST NOT produce an analyzed-file record. Package-local
+load or type errors MUST NOT discard valid file results when an enabled rule
+explicitly admits partial type information.
 
 The package result MUST retain the load's immutable source index so a text
 reporter can map rule ranges without rereading the filesystem. The text reporter

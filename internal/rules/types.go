@@ -8,6 +8,7 @@ import (
 	"go/types"
 
 	"github.com/faustbrian/gox/internal/source"
+	"golang.org/x/tools/go/cfg"
 )
 
 // Requirement is the most expensive representation a rule requires.
@@ -165,6 +166,13 @@ type TypesRule interface {
 	RunTypes(*TypesContext, ast.Node) ([]Finding, error)
 }
 
+// ControlFlowRule runs once for each function declaration and function literal
+// through a graph shared with every enabled control-flow rule.
+type ControlFlowRule interface {
+	Rule
+	RunControlFlow(*ControlFlowContext) ([]Finding, error)
+}
+
 // Context is the immutable per-file syntax rule context.
 type Context struct {
 	file *source.File
@@ -183,6 +191,107 @@ type TypesContext struct {
 	package_  *types.Package
 	info      *types.Info
 	illTyped  bool
+}
+
+// ControlFlowContext binds one function graph to its shared typed package and
+// exact immutable physical source.
+type ControlFlowContext struct {
+	typesContext *TypesContext
+	function     ast.Node
+	body         *ast.BlockStmt
+	graph        *cfg.CFG
+}
+
+// NewControlFlowContext constructs one read-only control-flow rule context.
+func NewControlFlowContext(
+	typesContext *TypesContext,
+	function ast.Node,
+	body *ast.BlockStmt,
+	graph *cfg.CFG,
+) *ControlFlowContext {
+	return &ControlFlowContext{
+		typesContext: typesContext,
+		function:     function,
+		body:         body,
+		graph:        graph,
+	}
+}
+
+// Function returns the function declaration or literal that owns the graph.
+func (c *ControlFlowContext) Function() ast.Node {
+	if c == nil {
+		return nil
+	}
+	return c.function
+}
+
+// Body returns the function body used to construct the graph.
+func (c *ControlFlowContext) Body() *ast.BlockStmt {
+	if c == nil {
+		return nil
+	}
+	return c.body
+}
+
+// Graph returns the shared read-only control-flow graph for the function.
+func (c *ControlFlowContext) Graph() *cfg.CFG {
+	if c == nil {
+		return nil
+	}
+	return c.graph
+}
+
+// IllTyped reports whether package loading encountered type errors.
+func (c *ControlFlowContext) IllTyped() bool {
+	return c != nil && c.typesContext.IllTyped()
+}
+
+// File returns the exact immutable source version for the current package AST.
+func (c *ControlFlowContext) File() *source.File {
+	if c == nil {
+		return nil
+	}
+	return c.typesContext.File()
+}
+
+// PackageID returns the opaque go/packages identity for the current package.
+func (c *ControlFlowContext) PackageID() string {
+	if c == nil {
+		return ""
+	}
+	return c.typesContext.PackageID()
+}
+
+// Package returns the shared read-only go/types package.
+func (c *ControlFlowContext) Package() *types.Package {
+	if c == nil {
+		return nil
+	}
+	return c.typesContext.Package()
+}
+
+// Info returns the shared read-only type information for package AST nodes.
+func (c *ControlFlowContext) Info() *types.Info {
+	if c == nil {
+		return nil
+	}
+	return c.typesContext.Info()
+}
+
+// Range maps a package AST node to its current physical source range.
+func (c *ControlFlowContext) Range(node ast.Node) (source.Range, error) {
+	if c == nil || c.typesContext == nil {
+		return source.Range{}, fmt.Errorf("control-flow range requires a context")
+	}
+	return c.typesContext.Range(node)
+}
+
+// PositionRange maps package positions to the exact current physical source.
+func (c *ControlFlowContext) PositionRange(start, end token.Pos) (source.Range, error) {
+	if c == nil || c.typesContext == nil {
+		return source.Range{}, fmt.Errorf("control-flow range requires a context")
+	}
+	return c.typesContext.PositionRange(start, end)
 }
 
 // NewTypesContext constructs one read-only typed rule context.

@@ -78,18 +78,18 @@ accepts `--reporter=text|json` plus an optional explicit configuration path. It
 MUST resolve every input's project root and complete configuration before
 choosing an analysis path. When the maximum enabled tier is syntax, recursive
 patterns use deterministic physical-file discovery and MUST NOT invoke
-`go/packages`. When at least one enabled rule requires types, every input MUST
-resolve to one project root and configuration; the CLI converts files,
+`go/packages`. When at least one enabled rule requires types or CFG, every input
+MUST resolve to one project root and configuration; the CLI converts files,
 directories, and recursive patterns into one read-only package load with test
 variants enabled. Heterogeneous typed roots or configurations MUST fail as an
 invalid invocation until a per-path package configuration design is accepted.
 
 Both analysis paths run enabled syntax rules and never write source. The typed
-path additionally runs types-tier rules over the shared package result. Visible
-rule diagnostics, suppression problems, and unused suppressions exit with
-findings; suppressed diagnostics alone do not. Required package-list, parse,
-type, or source-model problems exit with source error even when valid partial
-file results remain reportable. A completed typed load with prerequisite
+path additionally runs types-tier and CFG-tier rules over the shared package
+result. Visible rule diagnostics, suppression problems, and unused suppressions
+exit with findings; suppressed diagnostics alone do not. Required package-list,
+parse, type, or source-model problems exit with source error even when valid
+partial file results remain reportable. A completed typed load with prerequisite
 problems remains a complete report rather than an internal tool failure. Invalid
 configuration, filesystem failures, cancellation, and reporting failures retain
 their common exit categories. JSON remains valid and incomplete for invalid

@@ -263,19 +263,19 @@ type-error state, and exact captured source; physical package positions reject
 cross-file and invalid ranges. Generated and ill-typed package eligibility is
 explicit per rule, invalid diagnostic-only sources are skipped, and ordinary
 package ownership prevents duplicate production-file diagnostics across test
-variants. Package-wide rules, dependency analysis, CLI integration, typed fixes,
-facts, CFG, SSA, and caching remain open.
+variants. Package-wide rules, dependency analysis, typed fixes, facts, SSA, and
+caching remain open.
 
 The first suppression-aware typed package driver now resolves one maximum-tier
-plan, performs one typed load, runs syntax and types rules only at their declared
-tiers, combines their exact-source diagnostics, and applies suppressions once
-per selected physical root. It retains canonical load and type diagnostics,
-source-model problems, and valid partial file results; rejects unsupported
-lexical, CFG, and SSA rules before loading; and leaves every syntax-only caller
-on the existing path that cannot invoke `go/packages`. CLI
+plan, performs one typed load, runs syntax, types, and CFG rules only at their
+declared tiers, combines their exact-source diagnostics, and applies
+suppressions once per selected physical root. It retains canonical load and
+type diagnostics, source-model problems, and valid partial file results;
+rejects unsupported lexical and SSA rules before loading; and leaves every
+syntax-only caller on the existing path that cannot invoke `go/packages`. CLI
 package patterns, per-path configuration across package boundaries, typed
 fixing and post-fix reloads, package-wide rules, dependency analysis, facts,
-CFG, SSA, and caching remain open, so progress stays 45%.
+SSA, and caching remain open, so progress stays 45%.
 
 Typed package reporting now retains the immutable load-owned source index for
 physical rule locations and exposes package/type diagnostics and source-model
@@ -292,5 +292,17 @@ input shares one project root and configuration. Typed text and JSON reporting
 preserve rule, prerequisite, and source-model channels; required package or
 source problems exit with source error while complete partial results remain
 reportable. Heterogeneous typed configuration and typed fixes fail before
-loading or mutation. No built-in typed rule, per-path package policy, CFG/SSA
-runner, fact scheduler, or typed cache exists yet, so progress stays 45%.
+loading or mutation. No built-in typed or CFG rule, per-path package policy,
+SSA runner, fact scheduler, or typed cache exists yet, so progress stays 45%.
+
+The first native CFG-tier runner now visits every selected function declaration
+and nested function literal once in physical source order, constructs one
+`x/tools/go/cfg` graph per eligible function, and shares it across CFG rules in
+rule-ID order with the load-owned type information and exact source identity.
+Generated-file and ill-typed eligibility match typed-rule policy, production
+files are not duplicated across test variants, cancellation is preserved, and
+syntax/types/CFG diagnostics are combined before suppression. The conservative
+no-return policy recognizes only the predeclared `panic`; interprocedural
+no-return facts, short-circuit edges, abnormal panic flow, SSA, and built-in CFG
+rules remain open. The incomplete Phase 2 naming, release, platform, and
+external-adoption gates keep overall progress at 45%.
