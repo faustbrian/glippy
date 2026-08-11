@@ -68,6 +68,17 @@ cannot report against an unowned test variant, ineligible generated file,
 dependency, or stale source version. This retains single-file diagnostic and
 fix semantics while admitting cross-file package reasoning.
 
+A package-wide native types rule may additionally declare dependency syntax in
+its canonical metadata. The scheduler then extends the shared load exactly once
+and supplies that rule with the complete transitive graph in sorted-import,
+dependency-first order. Dependency descriptors expose shared typed state and
+captured compiled files, but every such file is permanently non-target. Rules
+without the declaration receive an empty dependency view even when another
+native rule or an adapted fact graph caused the shared loader to populate the
+graph. The declaration is part of human `explain` output and persistent native
+cache snapshots, while dependency source digests and load selection remain
+part of the existing cache key.
+
 Native CFG-tier rules do not declare node interests. The CFG runner visits
 every function declaration and nested function literal with a body once in
 canonical physical source order. It constructs one
@@ -102,9 +113,9 @@ test-only source uses its test variant. This prevents duplicate diagnostics
 while preserving the ordinary package's production type context. The loader
 also removes the synthetic test-main package from the selected package set, so
 its generated Go-cache artifact cannot become a reporter-visible lint target.
-Native typed execution remains root-package-only; package-wide native rules do
-not implicitly analyze dependencies or turn dependency syntax into lint
-targets.
+Native diagnostics remain root-package-only. Package-wide native rules inspect
+dependencies only through the explicit metadata contract and cannot turn
+dependency syntax into lint targets.
 
 Suitable types-tier `go/analysis` analyzers may run package-wide over the same
 load-owned syntax and type state after all native types, CFG, and SSA consumers

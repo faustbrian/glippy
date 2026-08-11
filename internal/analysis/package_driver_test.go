@@ -620,6 +620,104 @@ func TestRunPackagesRunsPackageWideRulesBeforeSuppressing(t *testing.T) {
 	}
 }
 
+func TestRunPackagesLoadsDependencySyntaxOnlyForDeclaredNativeRules(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "dependency", "dependency.go"), "package dependency\nconst Value = 1\n")
+	writeTypesFixture(t, filepath.Join(root, "project.go"), "package project\nimport \"example.com/project/dependency\"\nconst Value = dependency.Value\n")
+
+	run := func(requiresDependencies bool, callerRequestsDependencies bool) int {
+		t.Helper()
+		metadata := packageMetadata("package-dependencies")
+		metadata.RequiresDependencySyntax = requiresDependencies
+		count := -1
+		registry, err := rules.NewRegistry(packageRule{metadata: metadata, run: func(ctx *rules.PackageContext) ([]rules.PackageFinding, error) {
+			count = len(ctx.Dependencies())
+			return nil, nil
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := analysis.RunPackages(
+			context.Background(),
+			registry,
+			analysis.RunOptions{Preset: rules.PresetCorrectness},
+			analysis.PackageLoadOptions{
+				Dir: root, Patterns: []string{"."}, LoadDependencySyntax: callerRequestsDependencies,
+			},
+		); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	if got := run(true, false); got != 1 {
+		t.Fatalf("declared dependency count = %d, want 1", got)
+	}
+	if got := run(false, true); got != 0 {
+		t.Fatalf("undeclared dependency count = %d, want 0", got)
+	}
+}
+
+func TestRunPackagesInvalidatesNativeCacheWhenDependencySyntaxChanges(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	dependencyPath := filepath.Join(root, "dependency", "dependency.go")
+	writeTypesFixture(t, dependencyPath, "package dependency\nconst Value = 1\n")
+	writeTypesFixture(t, filepath.Join(root, "project.go"), "package project\nimport \"example.com/project/dependency\"\nconst Value = dependency.Value\n")
+
+	metadata := packageMetadata("dependency-cache")
+	metadata.RequiresDependencySyntax = true
+	runs := 0
+	registry, err := rules.NewRegistry(packageRule{metadata: metadata, run: func(ctx *rules.PackageContext) ([]rules.PackageFinding, error) {
+		runs++
+		if len(ctx.Dependencies()) != 1 {
+			t.Fatalf("dependency count = %d, want 1", len(ctx.Dependencies()))
+		}
+		return nil, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := filepath.Join(t.TempDir(), "cache")
+	store, err := cache.Open(cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	run := func() {
+		t.Helper()
+		if _, err := analysis.RunPackages(
+			context.Background(),
+			registry,
+			analysis.RunOptions{
+				Preset: rules.PresetCorrectness,
+				Cache:  packageAnalyzerCacheOptions(store),
+			},
+			packageAnalyzerCacheLoadOptions(root),
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run()
+	run()
+	if runs != 1 {
+		t.Fatalf("callbacks after warm run = %d, want 1", runs)
+	}
+	writeTypesFixture(t, dependencyPath, "package dependency\nconst Value = 2\n")
+	run()
+	if runs != 2 {
+		t.Fatalf("callbacks after dependency change = %d, want 2", runs)
+	}
+}
+
 func TestRunPackagesRejectsExpiredSuppressions(t *testing.T) {
 	t.Parallel()
 

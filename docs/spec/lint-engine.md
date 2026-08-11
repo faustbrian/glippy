@@ -41,6 +41,19 @@ and fixes remain single-file under the ordinary finding contract. Package-wide
 rules receive the same immutable typed option snapshot and type-error policy as
 node-scoped types rules and MUST NOT mutate shared AST or type state.
 
+A package-wide types rule MAY declare that it requires dependency syntax. No
+other native execution shape MAY declare that requirement. When at least one
+enabled native package rule or adapted fact graph requires dependencies, the
+package driver MUST request dependency syntax and type information once from
+the shared load; caller-supplied loader preferences MUST NOT make dependency
+syntax speculative. A declaring native rule MUST receive the complete
+transitive dependency graph in deterministic dependency-first order. Each
+dependency descriptor MUST expose its shared package, type information, type
+sizes, file set, type-error state, and valid captured compiled files in
+physical-path order. Every dependency file MUST be a non-target, and a native
+rule that did not declare the requirement MUST receive no dependency
+descriptors even when another selected consumer caused the shared load.
+
 Every enabled native rule MUST receive the typed option values resolved from
 its own metadata and the selected configuration. A rule MUST NOT observe
 another rule's options or mutate string-list values retained by the run.
@@ -134,8 +147,8 @@ most once and MUST order node-scoped and package-wide rule, package, file, and
 diagnostic work deterministically. When test loading exposes a production file
 through both its ordinary package and an augmented test variant, the ordinary
 package MUST own that file's analysis; test-only files MUST retain their
-test-variant owner. Dependency syntax MAY be loaded for later fact or
-dependency work but MUST NOT implicitly make dependencies lint targets.
+test-variant owner. Dependency syntax MAY be loaded for declared fact or native
+package dependency work but MUST NOT implicitly make dependencies lint targets.
 
 Generated files MUST be excluded unless a rule explicitly opts in. A package
 with type errors MUST be excluded for a rule unless that types-tier or CFG-tier
@@ -505,8 +518,9 @@ compatibility diagnostic.
 Rule documentation and `explain` output MUST derive from the same immutable
 registry metadata and examples. Human `explain` output MUST include the rule
 ID, summary, full documentation, default severity, presets, minimum Go version,
-analysis tier, node interests, generated-file policy, type-error package policy,
-categories, deprecation and replacement metadata when present, named fix
+analysis tier, node interests, dependency-syntax policy, generated-file policy,
+type-error package policy, categories, deprecation and replacement metadata
+when present, named fix
 safety, typed configuration, known limitations, and every paired example. Empty
 fix, configuration, or known-limitation sets MUST remain explicit instead of
 disappearing from the documentation contract.

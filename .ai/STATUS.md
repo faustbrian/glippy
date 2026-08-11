@@ -615,3 +615,17 @@ refused.
 Persistent lint caching is intentionally bypassed for planning, reselection,
 and post-fix validation. The Phase 2 naming, release-platform, publication, and
 approved external-adoption gates remain open, so progress stays 45%.
+
+Native package-wide types rules may now declare dependency-syntax access in
+canonical metadata. The package scheduler requests dependency syntax only when
+an enabled native declaration or adapted fact graph requires it, and each
+declaring callback receives the complete transitive graph in deterministic
+dependency-first order. Dependency descriptors share load-owned package, type,
+size, position, and exact-source state, but every dependency file is a
+non-target; undeclared rules receive no dependency view even within the same
+shared load. Registry admission excludes node-scoped and non-types declarations,
+`gox explain` publishes the requirement, and native cache snapshots bind it
+while existing load identity binds dependency source changes. This closes the
+native dependency-analysis boundary. Built-in rule admission and the Phase 2
+naming, release-platform, publication, and approved external-adoption gates
+remain open, so progress stays 45%.

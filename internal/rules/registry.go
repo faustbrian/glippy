@@ -269,6 +269,9 @@ func validateMetadata(metadata Metadata, packageWide bool) error {
 	if packageWide && metadata.Requirement != RequireTypes {
 		return fmt.Errorf("%s: package-wide rule must require types", metadata.ID)
 	}
+	if metadata.RequiresDependencySyntax && (!packageWide || metadata.Requirement != RequireTypes) {
+		return fmt.Errorf("%s: dependency syntax requires a package-wide types rule", metadata.ID)
+	}
 	if metadata.Requirement == RequireSyntax && len(metadata.NodeInterests) == 0 {
 		return fmt.Errorf("%s: %s rule must declare node interests", metadata.ID, metadata.Requirement)
 	}

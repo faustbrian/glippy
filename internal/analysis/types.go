@@ -263,6 +263,7 @@ func runNativePackageRules(
 		owners[owned.file.path] = owned.package_.ID
 	}
 	diagnostics := make([]rules.Diagnostic, 0)
+	dependencyViews := make(map[*packages.Package][]rules.PackageDependency)
 	for _, active := range activeRules {
 		for _, pkg := range packages_ {
 			if err := ctx.Err(); err != nil {
@@ -292,6 +293,18 @@ func runNativePackageRules(
 			if targetCount == 0 {
 				continue
 			}
+			var dependencies []rules.PackageDependency
+			if active.metadata.RequiresDependencySyntax {
+				var found bool
+				dependencies, found = dependencyViews[pkg]
+				if !found {
+					dependencies, err = packageDependencies(pkg, sources)
+					if err != nil {
+						return nil, err
+					}
+					dependencyViews[pkg] = dependencies
+				}
+			}
 			ruleContext := rules.NewPackageContext(
 				pkg.Fset,
 				pkg.ID,
@@ -300,6 +313,7 @@ func runNativePackageRules(
 				pkg.TypesSizes,
 				pkg.IllTyped,
 				packageFiles,
+				dependencies,
 				active.options,
 			)
 			findings, err := active.rule.RunPackage(ruleContext)
@@ -331,6 +345,60 @@ func runNativePackageRules(
 		}
 	}
 	return diagnostics, nil
+}
+
+func packageDependencies(
+	root *packages.Package,
+	sources PackageSourceSet,
+) ([]rules.PackageDependency, error) {
+	state := make(map[*packages.Package]uint8)
+	result := make([]rules.PackageDependency, 0)
+	var visit func(*packages.Package) error
+	visit = func(pkg *packages.Package) error {
+		if pkg == nil {
+			return fmt.Errorf("typed package %q has a nil dependency", root.ID)
+		}
+		switch state[pkg] {
+		case 1:
+			return fmt.Errorf("native dependency graph contains an import cycle at %q", pkg.ID)
+		case 2:
+			return nil
+		}
+		state[pkg] = 1
+		imports := make([]string, 0, len(pkg.Imports))
+		for path := range pkg.Imports {
+			imports = append(imports, path)
+		}
+		sort.Strings(imports)
+		for _, path := range imports {
+			if err := visit(pkg.Imports[path]); err != nil {
+				return err
+			}
+		}
+		state[pkg] = 2
+		if pkg == root {
+			return nil
+		}
+		if pkg.Fset == nil || pkg.Types == nil || pkg.TypesInfo == nil || pkg.TypesSizes == nil {
+			return fmt.Errorf("typed dependency %q is missing required type information", pkg.ID)
+		}
+		files, err := packageSyntaxFiles(pkg, sources)
+		if err != nil {
+			return err
+		}
+		packageFiles := make([]rules.PackageFile, len(files))
+		for index, file := range files {
+			packageFiles[index] = rules.NewPackageFile(file.source, file.syntax, pkg.Fset, false)
+		}
+		result = append(result, rules.NewPackageDependency(
+			pkg.Fset, pkg.ID, pkg.Types, pkg.TypesInfo, pkg.TypesSizes, pkg.IllTyped, packageFiles,
+		))
+		return nil
+	}
+	if err := visit(root); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func packageSyntaxFiles(pkg *packages.Package, sources PackageSourceSet) ([]typedSyntaxFile, error) {

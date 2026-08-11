@@ -127,22 +127,23 @@ type Example struct {
 
 // Metadata is the canonical rule documentation and scheduling contract.
 type Metadata struct {
-	ID                   string
-	Summary              string
-	Documentation        string
-	DefaultSeverity      Severity
-	Presets              []Preset
-	MinimumGoVersion     string
-	Requirement          Requirement
-	NodeInterests        []NodeKind
-	RunOnGenerated       bool
-	RunDespiteTypeErrors bool
-	Categories           []Category
-	Fixes                []FixMetadata
-	Options              []OptionMetadata
-	Deprecation          *Deprecation
-	KnownLimitations     []string
-	Examples             []Example
+	ID                       string
+	Summary                  string
+	Documentation            string
+	DefaultSeverity          Severity
+	Presets                  []Preset
+	MinimumGoVersion         string
+	Requirement              Requirement
+	NodeInterests            []NodeKind
+	RequiresDependencySyntax bool
+	RunOnGenerated           bool
+	RunDespiteTypeErrors     bool
+	Categories               []Category
+	Fixes                    []FixMetadata
+	Options                  []OptionMetadata
+	Deprecation              *Deprecation
+	KnownLimitations         []string
+	Examples                 []Example
 }
 
 // Rule is the common metadata boundary implemented by every native rule.
@@ -228,6 +229,21 @@ type packageContextID struct{ marker byte }
 // PackageContext exposes one shared typed package and its canonical physical
 // source mapping to a package-wide native rule.
 type PackageContext struct {
+	fileSet      *token.FileSet
+	packageID    string
+	package_     *types.Package
+	info         *types.Info
+	sizes        types.Sizes
+	illTyped     bool
+	files        []PackageFile
+	dependencies []PackageDependency
+	options      OptionSet
+	contextID    *packageContextID
+}
+
+// PackageDependency is one immutable dependency package view exposed only to
+// package-wide rules that declare dependency syntax in canonical metadata.
+type PackageDependency struct {
 	fileSet   *token.FileSet
 	packageID string
 	package_  *types.Package
@@ -235,8 +251,6 @@ type PackageContext struct {
 	sizes     types.Sizes
 	illTyped  bool
 	files     []PackageFile
-	options   OptionSet
-	contextID *packageContextID
 }
 
 // PackageFinding binds one ordinary finding to the owned physical file it
@@ -265,6 +279,7 @@ func NewPackageContext(
 	sizes types.Sizes,
 	illTyped bool,
 	files []PackageFile,
+	dependencies []PackageDependency,
 	options OptionSet,
 ) *PackageContext {
 	contextID := &packageContextID{}
@@ -273,15 +288,37 @@ func NewPackageContext(
 		files[index].contextID = contextID
 	}
 	return &PackageContext{
-		fileSet:   fileSet,
-		packageID: packageID,
-		package_:  package_,
-		info:      info,
-		sizes:     sizes,
-		illTyped:  illTyped,
-		files:     files,
-		options:   options,
-		contextID: contextID,
+		fileSet:      fileSet,
+		packageID:    packageID,
+		package_:     package_,
+		info:         info,
+		sizes:        sizes,
+		illTyped:     illTyped,
+		files:        files,
+		dependencies: slices.Clone(dependencies),
+		options:      options,
+		contextID:    contextID,
+	}
+}
+
+// NewPackageDependency constructs one read-only dependency-package view.
+func NewPackageDependency(
+	fileSet *token.FileSet,
+	packageID string,
+	package_ *types.Package,
+	info *types.Info,
+	sizes types.Sizes,
+	illTyped bool,
+	files []PackageFile,
+) PackageDependency {
+	files = slices.Clone(files)
+	for index := range files {
+		files[index].target = false
+		files[index].contextID = nil
+	}
+	return PackageDependency{
+		fileSet: fileSet, packageID: packageID, package_: package_, info: info,
+		sizes: sizes, illTyped: illTyped, files: files,
 	}
 }
 
@@ -345,6 +382,37 @@ func (c *PackageContext) Files() []PackageFile {
 	}
 	return slices.Clone(c.files)
 }
+
+// Dependencies returns dependency packages in deterministic dependency-first
+// order. Rules without a declared dependency-syntax requirement receive none.
+func (c *PackageContext) Dependencies() []PackageDependency {
+	if c == nil {
+		return nil
+	}
+	return slices.Clone(c.dependencies)
+}
+
+// PackageID returns the opaque go/packages identity for this dependency.
+func (d PackageDependency) PackageID() string { return d.packageID }
+
+// Package returns the shared read-only go/types package for this dependency.
+func (d PackageDependency) Package() *types.Package { return d.package_ }
+
+// Info returns the shared read-only type information for dependency AST nodes.
+func (d PackageDependency) Info() *types.Info { return d.info }
+
+// Sizes returns the dependency's architecture-specific type sizes.
+func (d PackageDependency) Sizes() types.Sizes { return d.sizes }
+
+// FileSet returns the dependency's shared read-only position mapping.
+func (d PackageDependency) FileSet() *token.FileSet { return d.fileSet }
+
+// IllTyped reports whether dependency loading encountered type errors.
+func (d PackageDependency) IllTyped() bool { return d.illTyped }
+
+// Files returns independent, non-target dependency file descriptors in
+// canonical physical path order.
+func (d PackageDependency) Files() []PackageFile { return slices.Clone(d.files) }
 
 // OwnsTarget reports whether a descriptor came from this exact callback and is
 // eligible for reporter-visible output.

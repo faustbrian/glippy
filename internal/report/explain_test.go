@@ -80,6 +80,38 @@ func TestRenderRuleTextIncludesTypeErrorPolicy(t *testing.T) {
 	}
 }
 
+func TestRenderRuleTextIncludesDependencySyntaxPolicy(t *testing.T) {
+	t.Parallel()
+
+	registry, err := rules.NewRegistry(packageDocumentedRule{metadata: rules.Metadata{
+		ID:                       "dependency-rule",
+		Summary:                  "reports a dependency-aware defect",
+		Documentation:            "Inspects dependency syntax through the shared package graph.",
+		DefaultSeverity:          rules.SeverityWarn,
+		Presets:                  []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion:         "1.22",
+		Requirement:              rules.RequireTypes,
+		RequiresDependencySyntax: true,
+		Categories:               []rules.Category{rules.CategoryCorrectness},
+		Examples:                 []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, found := report.RenderRuleText(registry, "dependency-rule")
+	if !found || !strings.Contains(string(output), "dependency syntax: required\n") {
+		t.Fatalf("RenderRuleText() = %q, %t", output, found)
+	}
+}
+
+type packageDocumentedRule struct{ metadata rules.Metadata }
+
+func (r packageDocumentedRule) Metadata() rules.Metadata { return r.metadata }
+
+func (r packageDocumentedRule) RunPackage(*rules.PackageContext) ([]rules.PackageFinding, error) {
+	return nil, nil
+}
+
 func TestRenderRuleTextUsesCanonicalMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -129,6 +161,7 @@ func TestRenderRuleTextUsesCanonicalMetadata(t *testing.T) {
 		"minimum Go: 1.22\n" +
 		"analysis tier: syntax\n" +
 		"node interests: call-expr\n" +
+		"dependency syntax: not required\n" +
 		"generated files: excluded\n" +
 		"type-error packages: not applicable\n" +
 		"categories: correctness\n\n" +

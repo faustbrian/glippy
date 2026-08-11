@@ -21,6 +21,11 @@ func RenderRuleText(registry *rules.Registry, ruleID string) ([]byte, bool) {
 	fmt.Fprintf(&output, "minimum Go: %s\n", metadata.MinimumGoVersion)
 	fmt.Fprintf(&output, "analysis tier: %s\n", metadata.Requirement)
 	fmt.Fprintf(&output, "node interests: %s\n", joinNodeKinds(metadata.NodeInterests))
+	dependencyPolicy := "not required"
+	if metadata.RequiresDependencySyntax {
+		dependencyPolicy = "required"
+	}
+	fmt.Fprintf(&output, "dependency syntax: %s\n", dependencyPolicy)
 	generatedPolicy := "excluded"
 	if metadata.RunOnGenerated {
 		generatedPolicy = "included"

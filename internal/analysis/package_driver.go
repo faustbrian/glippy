@@ -73,9 +73,11 @@ func RunPackages(
 	if err != nil {
 		return result, err
 	}
-	if needsFacts {
-		loadOptions.LoadDependencySyntax = true
+	needsNativeDependencies, err := nativePackageRulesNeedDependencies(registry, selection)
+	if err != nil {
+		return result, err
 	}
+	loadOptions.LoadDependencySyntax = needsFacts || needsNativeDependencies
 	loadOptions = clonePackageLoadOptions(loadOptions)
 	cachePlan, err := preparePackageCachePlan(options.Cache, selection, loadOptions)
 	if err != nil {
@@ -174,6 +176,22 @@ func RunPackages(
 		return result, fmt.Errorf("package diagnostics reference an unselected package source")
 	}
 	return result, nil
+}
+
+func nativePackageRulesNeedDependencies(
+	registry *rules.Registry,
+	selection []rules.Selection,
+) (bool, error) {
+	for _, selected := range selection {
+		metadata, found := registry.Metadata(selected.ID)
+		if !found {
+			return false, fmt.Errorf("selected unknown rule %q", selected.ID)
+		}
+		if metadata.RequiresDependencySyntax {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func selectRequirement(selection []rules.Selection, requirement rules.Requirement) []rules.Selection {

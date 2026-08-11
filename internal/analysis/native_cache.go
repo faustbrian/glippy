@@ -26,16 +26,17 @@ type nativePackageCacheEntry struct {
 }
 
 type nativeRuleSnapshot struct {
-	ID                   string              `json:"id"`
-	Severity             rules.Severity      `json:"severity"`
-	Requirement          rules.Requirement   `json:"requirement"`
-	Execution            string              `json:"execution"`
-	NodeInterests        []rules.NodeKind    `json:"nodeInterests"`
-	RunOnGenerated       bool                `json:"runOnGenerated"`
-	RunDespiteTypeErrors bool                `json:"runDespiteTypeErrors"`
-	MinimumGoVersion     string              `json:"minimumGoVersion"`
-	Fixes                []nativeFixSnapshot `json:"fixes"`
-	OptionsDigest        string              `json:"optionsDigest"`
+	ID                       string              `json:"id"`
+	Severity                 rules.Severity      `json:"severity"`
+	Requirement              rules.Requirement   `json:"requirement"`
+	Execution                string              `json:"execution"`
+	NodeInterests            []rules.NodeKind    `json:"nodeInterests"`
+	RequiresDependencySyntax bool                `json:"requiresDependencySyntax"`
+	RunOnGenerated           bool                `json:"runOnGenerated"`
+	RunDespiteTypeErrors     bool                `json:"runDespiteTypeErrors"`
+	MinimumGoVersion         string              `json:"minimumGoVersion"`
+	Fixes                    []nativeFixSnapshot `json:"fixes"`
+	OptionsDigest            string              `json:"optionsDigest"`
 }
 
 type nativeFixSnapshot struct {
@@ -204,16 +205,17 @@ func nativeRuleSnapshots(
 		}
 		optionsDigest := cache.DigestOf(selected.Options.CanonicalBytes())
 		snapshots[index] = nativeRuleSnapshot{
-			ID:                   selected.ID,
-			Severity:             selected.Severity,
-			Requirement:          selected.Requirement,
-			Execution:            execution,
-			NodeInterests:        slices.Clone(metadata.NodeInterests),
-			RunOnGenerated:       metadata.RunOnGenerated,
-			RunDespiteTypeErrors: metadata.RunDespiteTypeErrors,
-			MinimumGoVersion:     metadata.MinimumGoVersion,
-			Fixes:                fixes,
-			OptionsDigest:        hex.EncodeToString(optionsDigest[:]),
+			ID:                       selected.ID,
+			Severity:                 selected.Severity,
+			Requirement:              selected.Requirement,
+			Execution:                execution,
+			NodeInterests:            slices.Clone(metadata.NodeInterests),
+			RequiresDependencySyntax: metadata.RequiresDependencySyntax,
+			RunOnGenerated:           metadata.RunOnGenerated,
+			RunDespiteTypeErrors:     metadata.RunDespiteTypeErrors,
+			MinimumGoVersion:         metadata.MinimumGoVersion,
+			Fixes:                    fixes,
+			OptionsDigest:            hex.EncodeToString(optionsDigest[:]),
 		}
 	}
 	return snapshots, nil

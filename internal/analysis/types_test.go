@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -116,6 +117,101 @@ func TestRunTypesRunsPackageRulesOncePerOwnedPackage(t *testing.T) {
 	if len(packageIDs) != 2 || packageIDs[0] != "example.com/project" ||
 		!strings.Contains(packageIDs[1], "[example.com/project.test]") {
 		t.Fatalf("RunTypes() package callbacks = %#v", packageIDs)
+	}
+}
+
+func TestRunTypesProvidesDeclaredDependenciesInDependencyFirstOrder(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "leaf", "leaf.go"), "package leaf\nconst Value = 1\n")
+	writeTypesFixture(t, filepath.Join(root, "middle", "middle.go"), "package middle\nimport \"example.com/project/leaf\"\nconst Value = leaf.Value\n")
+	writeTypesFixture(t, filepath.Join(root, "project.go"), "package project\nimport \"example.com/project/middle\"\nconst Value = middle.Value\n")
+
+	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes, LoadDependencySyntax: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	awareMetadata := packageMetadata("dependency-aware")
+	awareMetadata.RequiresDependencySyntax = true
+	var dependencyIDs []string
+	registry, err := rules.NewRegistry(
+		packageRule{metadata: awareMetadata, run: func(ctx *rules.PackageContext) ([]rules.PackageFinding, error) {
+			for _, dependency := range ctx.Dependencies() {
+				dependencyIDs = append(dependencyIDs, dependency.PackageID())
+				if dependency.Package() == nil || dependency.Info() == nil || dependency.Sizes() == nil ||
+					dependency.FileSet() == nil {
+					t.Fatalf("dependency context is incomplete: %#v", dependency)
+				}
+				for _, file := range dependency.Files() {
+					if file.Target() {
+						t.Fatalf("dependency file %q is a target", file.Source().Path())
+					}
+				}
+			}
+			return nil, nil
+		}},
+		packageRule{metadata: packageMetadata("dependency-blind"), run: func(ctx *rules.PackageContext) ([]rules.PackageFinding, error) {
+			if dependencies := ctx.Dependencies(); len(dependencies) != 0 {
+				t.Fatalf("dependency-blind rule received %#v", dependencies)
+			}
+			return nil, nil
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunTypes(context.Background(), loaded, registry, selection); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"example.com/project/leaf", "example.com/project/middle"}
+	if !reflect.DeepEqual(dependencyIDs, want) {
+		t.Fatalf("dependency order = %#v, want %#v", dependencyIDs, want)
+	}
+}
+
+func TestRunTypesRejectsFindingAgainstDependencyFile(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "dependency", "dependency.go"), "package dependency\nconst Value = 1\n")
+	writeTypesFixture(t, filepath.Join(root, "project.go"), "package project\nimport \"example.com/project/dependency\"\nconst Value = dependency.Value\n")
+	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes, LoadDependencySyntax: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := packageMetadata("dependency-finding")
+	metadata.RequiresDependencySyntax = true
+	registry, err := rules.NewRegistry(packageRule{metadata: metadata, run: func(ctx *rules.PackageContext) ([]rules.PackageFinding, error) {
+		file := ctx.Dependencies()[0].Files()[0]
+		range_, err := file.Range(file.Syntax().Name)
+		if err != nil {
+			return nil, err
+		}
+		return []rules.PackageFinding{{File: file, Finding: rules.Finding{
+			MessageKey: "dependency", Message: "dependency", Range: range_,
+		}}}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = analysis.RunTypes(context.Background(), loaded, registry, selection)
+	if err == nil || !strings.Contains(err.Error(), "requires an owned target file") {
+		t.Fatalf("RunTypes() dependency finding error = %v", err)
 	}
 }
 

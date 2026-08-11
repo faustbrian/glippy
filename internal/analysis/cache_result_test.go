@@ -19,10 +19,47 @@ import (
 
 type nativeCacheTestRule struct{ metadata rules.Metadata }
 
+type nativeCachePackageRule struct{ metadata rules.Metadata }
+
 func (r nativeCacheTestRule) Metadata() rules.Metadata { return r.metadata }
 
 func (nativeCacheTestRule) RunTypes(*rules.TypesContext, ast.Node) ([]rules.Finding, error) {
 	return nil, nil
+}
+
+func (r nativeCachePackageRule) Metadata() rules.Metadata { return r.metadata }
+
+func (nativeCachePackageRule) RunPackage(*rules.PackageContext) ([]rules.PackageFinding, error) {
+	return nil, nil
+}
+
+func TestNativeRuleSnapshotsBindDependencySyntaxRequirement(t *testing.T) {
+	t.Parallel()
+
+	metadata := rules.Metadata{
+		ID: "dependency-cache", Summary: "inspects dependency syntax",
+		Documentation:            "Full dependency-aware package rule documentation.",
+		DefaultSeverity:          rules.SeverityWarn,
+		Presets:                  []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion:         "1.22",
+		Requirement:              rules.RequireTypes,
+		RequiresDependencySyntax: true,
+		Categories:               []rules.Category{rules.CategoryCorrectness},
+		Examples:                 []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+	}
+	registry, err := rules.NewRegistry(nativeCachePackageRule{metadata: metadata})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshots, err := nativeRuleSnapshots(registry, []rules.Selection{{
+		ID: metadata.ID, Severity: rules.SeverityWarn, Requirement: rules.RequireTypes,
+	}}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshots) != 1 || !snapshots[0].RequiresDependencySyntax {
+		t.Fatalf("native rule snapshots = %#v", snapshots)
+	}
 }
 
 func TestPackageAnalyzerCacheEntryRestoresDiagnosticsAndFacts(t *testing.T) {
@@ -309,6 +346,9 @@ func TestRestoreNativePackageCacheEntryRejectsChangedPackageOwnership(t *testing
 	snapshots, err := nativeRuleSnapshots(registry, selection, nil, nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(snapshots) != 1 || snapshots[0].RequiresDependencySyntax {
+		t.Fatalf("native rule snapshots = %#v", snapshots)
 	}
 	file, found := loaded.Sources.Lookup(firstPath)
 	if !found {

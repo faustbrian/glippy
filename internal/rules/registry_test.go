@@ -53,6 +53,20 @@ func TestRegistryValidatesPackageWideRuleMetadata(t *testing.T) {
 		!strings.Contains(err.Error(), "package-wide rule must require types") {
 		t.Fatalf("NewRegistry() package-wide requirement error = %v", err)
 	}
+
+	dependencies := metadata
+	dependencies.RequiresDependencySyntax = true
+	if _, err := rules.NewRegistry(packageMetadataRule{metadata: dependencies}); err != nil {
+		t.Fatalf("NewRegistry() dependency-aware package metadata error = %v", err)
+	}
+
+	nodeScoped := validMetadata("node-scoped-dependencies")
+	nodeScoped.Requirement = rules.RequireTypes
+	nodeScoped.RequiresDependencySyntax = true
+	if _, err := rules.NewRegistry(metadataRule{metadata: nodeScoped}); err == nil ||
+		!strings.Contains(err.Error(), "dependency syntax requires a package-wide types rule") {
+		t.Fatalf("NewRegistry() node-scoped dependency syntax error = %v", err)
+	}
 }
 
 func TestRegistryValidatesAndOrdersNativeRuleMetadata(t *testing.T) {
