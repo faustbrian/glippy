@@ -407,3 +407,14 @@ prerequisite proves a no-return method fact across an intermediate type alias.
 Nil and foreign objects, undeclared types, and nondeterministic encodings fail
 closed. Persistent object identity and cache invalidation remain open, and the
 Phase 2 gates keep overall progress at 45%.
+
+The Phase 4 persistent-cache foundation now provides versioned canonical keys
+for toolchain, language, configuration, rule, build-selection, environment,
+source, module/workspace, overlay, dependency-export, fact, and formatter-mode
+inputs. Its rooted store bounds entries, verifies embedded key, length, and
+payload digest, treats corruption as a miss, repairs through recomputation, and
+uses create-if-absent hard-link publication so concurrent different values fail
+instead of silently replacing one another. No formatter or analysis consumer
+uses the store yet; stable persisted object identity, eviction, platform
+evidence, and warm-cache benchmarks remain open. Progress stays 45% behind the
+Phase 2 gates.
