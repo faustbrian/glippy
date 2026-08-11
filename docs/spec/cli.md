@@ -72,6 +72,18 @@ parse error is prohibited.
 The supported format-on-save setup and editor failure contract are documented
 in [`editor-integration.md`](../editor-integration.md).
 
+The Phase 3 syntax-only `lint` check accepts explicit files and directories,
+defaults to the current directory, and accepts `--reporter=text|json` plus an
+optional explicit configuration path. It discovers and sorts physical Go files,
+loads the selected preset and exact-rule overrides, runs the file-owned syntax
+driver, and never writes source. Visible diagnostics, suppression problems, and
+unused suppressions exit with findings; suppressed diagnostics alone do not.
+Parse failures, invalid configuration, filesystem failures, cancellation, and
+reporting failures retain their common exit categories. JSON remains valid and
+incomplete for invalid invocations and failures. Package patterns such as
+`./...`, typed loading, and every fix flag remain rejected until their separate
+contracts are implemented.
+
 `lint` never writes unless a fix flag is present. Ordinary `--fix` applies safe
 fixes only. Suggestion and unsafe fixes require distinct explicit selections.
 `check` combines formatting differences and enabled lint diagnostics over one

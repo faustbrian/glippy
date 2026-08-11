@@ -146,3 +146,14 @@ output failures without loading project state. The compiled registry is still
 empty because no built-in rule has passed its admission and dogfood-noise gate;
 the success path is proven with an injected validated registry. Progress stays
 45%.
+
+The first syntax-only `gox lint` check now discovers sorted physical files,
+resolves each selected configuration against the compiled registry, runs the
+shared file driver, and emits the same text or versioned JSON diagnostic
+contracts without mutation. Findings include visible diagnostics, suppression
+problems, and unused directives; source, configuration, filesystem,
+cancellation, and reporting failures preserve distinct exits and incomplete
+JSON. The production registry remains empty, while injected-registry tests prove
+configured rule severity and both reporters. Package patterns, typed loading,
+fix flags, fix outcome reporting, and built-in rule admission remain open, so
+progress stays 45%.

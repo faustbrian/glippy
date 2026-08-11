@@ -70,7 +70,10 @@ files and diagnostics canonically, validates exact source identity and every
 range associated with rendered records including fix edits and suppression
 targets, and omits source excerpts and replacement text.
 
-Lint-fix file outcomes and CLI integration remain deferred. Existing version 1
+The syntax-only lint check CLI now emits these text and JSON contracts for
+success, findings, invalid invocation, source/configuration/filesystem failure,
+and cancellation. Incomplete JSON retains every analysis result completed
+before the failure. Lint-fix file outcomes remain deferred. Existing version 1
 fields and the text diagnostic grammar will not be silently repurposed.
 
 ## Alternatives Rejected

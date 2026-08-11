@@ -36,6 +36,13 @@ and suppression problems MUST remain distinct outcomes. Until another tier
 runner is implemented, the driver MUST reject every enabled non-syntax rule
 rather than skip it or construct a representation speculatively.
 
+The syntax-only CLI check MUST bind every discovered file to its selected typed
+configuration before analysis, process normalized file paths deterministically,
+and retain completed results when reporting an incomplete JSON failure. It MUST
+classify visible diagnostics, suppression problems, and unused directives as
+findings while allowing fully suppressed diagnostics to succeed. No check path
+may invoke the fix coordinator or replace source bytes.
+
 ## Diagnostics
 
 A diagnostic MUST contain rule ID, resolved severity, stable message key and

@@ -81,6 +81,28 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 		}
 		return runExplain(ctx, arguments, stdout, stderr, registry)
 	}
+	if len(arguments) > 0 && arguments[0] == "lint" {
+		invocation, valid := parseLintInvocation(arguments)
+		if !valid {
+			if requestsLintJSONReporter(arguments) {
+				return reportLintJSON(
+					stdout,
+					stderr,
+					"invalid",
+					ExitInvalidInvocation,
+					false,
+					nil,
+					errors.New(strings.TrimSpace(lintUsage)),
+				)
+			}
+			return report(stderr, ExitInvalidInvocation, lintUsage)
+		}
+		registry, err := rules.NewRegistry()
+		if err != nil {
+			return report(stderr, ExitInternalError, "gox lint: initialize rule registry: %v\n", err)
+		}
+		return runLintCheck(ctx, invocation, stdout, stderr, registry)
+	}
 	invocation, valid := parseFormatInvocation(arguments)
 	if !valid {
 		if requestsJSONReporter(arguments) {

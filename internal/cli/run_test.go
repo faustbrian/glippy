@@ -1914,7 +1914,7 @@ func TestRunRejectsInvalidCompleteFileWithoutPartialOutput(t *testing.T) {
 func TestRunRejectsUnsupportedInvocation(t *testing.T) {
 	t.Parallel()
 
-	for _, arguments := range [][]string{nil, {"lint"}, {"lint", "--reporter=json"}} {
+	for _, arguments := range [][]string{nil, {"check"}, {"unknown"}} {
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
 

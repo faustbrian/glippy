@@ -25,6 +25,13 @@ Signal or caller cancellation stops scheduling and is observed before every
 filesystem replacement; exit code 130 distinguishes cancellation from an
 internal tool defect.
 
+The first syntax-only lint CLI reuses the same project/configuration and
+physical-file discovery boundary. It validates all selected configurations,
+sorts file tasks, then analyzes them sequentially through the shared file
+driver. Text and versioned JSON reporters consume the same results. This check
+surface never enters the fix coordinator; package patterns and typed loading
+remain deferred to the package-aware design.
+
 ## Alternatives Rejected
 
 - Default in-place `fmt`: unsafe and surprising for stdin/editor workflows.
