@@ -306,6 +306,14 @@ func (c *SSAContext) Info() *types.Info {
 	return c.typesContext.Info()
 }
 
+// FileSet returns the shared read-only package position mapping.
+func (c *SSAContext) FileSet() *token.FileSet {
+	if c == nil || c.typesContext == nil {
+		return nil
+	}
+	return c.typesContext.fileSet
+}
+
 // Range maps a package AST node to its current physical source range.
 func (c *SSAContext) Range(node ast.Node) (source.Range, error) {
 	if c == nil || c.typesContext == nil {
@@ -320,6 +328,14 @@ func (c *SSAContext) PositionRange(start, end token.Pos) (source.Range, error) {
 		return source.Range{}, fmt.Errorf("SSA range requires a context")
 	}
 	return c.typesContext.PositionRange(start, end)
+}
+
+// TokenRange maps a package position to the exact physical lexical token.
+func (c *SSAContext) TokenRange(position token.Pos) (source.Range, error) {
+	if c == nil || c.typesContext == nil {
+		return source.Range{}, fmt.Errorf("SSA token range requires a context")
+	}
+	return c.typesContext.TokenRange(position)
 }
 
 // NewControlFlowContext constructs one read-only control-flow rule context.
@@ -494,6 +510,22 @@ func (c *TypesContext) PositionRange(start, end token.Pos) (source.Range, error)
 	range_ := source.Range{Start: physicalStart.Offset, End: physicalEnd.Offset}
 	if _, valid := c.file.Slice(range_); !valid {
 		return source.Range{}, fmt.Errorf("typed positions map to an invalid physical range")
+	}
+	return range_, nil
+}
+
+// TokenRange maps a package position to the exact physical lexical token.
+func (c *TypesContext) TokenRange(position token.Pos) (source.Range, error) {
+	if c == nil || c.file == nil || c.fileSet == nil || !position.IsValid() {
+		return source.Range{}, fmt.Errorf("typed token range requires source and a package position")
+	}
+	physical := c.fileSet.PositionFor(position, false)
+	if physical.Filename != c.file.Path() {
+		return source.Range{}, fmt.Errorf("typed token position belongs to another source file")
+	}
+	range_, found := c.file.TokenRangeAtOffset(physical.Offset)
+	if !found {
+		return source.Range{}, fmt.Errorf("typed token position does not identify a physical token")
 	}
 	return range_, nil
 }

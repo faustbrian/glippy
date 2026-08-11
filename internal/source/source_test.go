@@ -147,6 +147,14 @@ func TestLoadBuildsALosslessPhysicalSourceLedger(t *testing.T) {
 	if !explicit || !inserted || rawLiteral == "" {
 		t.Fatalf("token ledger lost semicolon origin or raw literal: explicit=%t inserted=%t raw=%q", explicit, inserted, rawLiteral)
 	}
+	packageOffset := bytes.Index(input, []byte("package"))
+	packageRange, found := file.TokenRangeAtOffset(packageOffset)
+	if !found || packageRange != (source.Range{Start: packageOffset, End: packageOffset + len("package")}) {
+		t.Fatalf("TokenRangeAtOffset(package) = %#v, %v", packageRange, found)
+	}
+	if _, found := file.TokenRangeAtOffset(packageOffset + 1); found {
+		t.Fatal("TokenRangeAtOffset() accepted an offset inside a token")
+	}
 
 	wantDirectives := []source.DirectiveKind{source.DirectiveBuildConstraint, source.DirectiveGoGenerate}
 	gotDirectives := make([]source.DirectiveKind, 0, len(file.Directives()))

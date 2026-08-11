@@ -318,3 +318,16 @@ suppression after combined syntax/types/CFG/SSA analysis are proven. Ill-typed
 packages retain load diagnostics but cannot opt into SSA callbacks. Built-in
 SSA rules, facts, caching, package-wide rules, and typed fixes remain open, and
 the incomplete Phase 2 gates keep overall progress at 45%.
+
+The production registry now admits its first deep correctness rule,
+`nilness`, under the opt-in `suspicious` preset. It runs the current x/tools
+v0.48.0 nilness analyzer over Gox's already-shared SSA function rather than
+constructing another program, maps upstream point diagnostics to exact
+physical tokens, and fails closed if the analyzer prerequisite or diagnostic
+shape changes. Default Go 1.26.5 vet accepted the proving defect, while focused
+tests cover dereference, comparison, panic, conversion, negative, generated,
+type-error, suppression, severity, no-fix, lint, and explain behavior. Explicit
+non-mutating dogfood over 335 Gox and x/tools files produced no findings or
+tool failures. The rule remains opt-in because making SSA part of the default
+preset would currently regress standalone-file, combined-check, and fix-only
+planning. Overall progress remains 45% behind the existing Phase 2 gates.

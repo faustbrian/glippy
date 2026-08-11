@@ -214,6 +214,21 @@ func (f *File) Bytes() []byte { return bytes.Clone(f.bytes) }
 // Tokens returns the physical token ledger.
 func (f *File) Tokens() []Token { return slices.Clone(f.tokens) }
 
+// TokenRangeAtOffset returns the exact lexical token beginning at a physical
+// byte offset without exposing the immutable token ledger.
+func (f *File) TokenRangeAtOffset(offset int) (Range, bool) {
+	if f == nil {
+		return Range{}, false
+	}
+	index, found := slices.BinarySearchFunc(f.tokens, offset, func(item Token, target int) int {
+		return item.Range.Start - target
+	})
+	if !found {
+		return Range{}, false
+	}
+	return f.tokens[index].Range, true
+}
+
 // Pieces returns the ordered physical reconstruction ledger.
 func (f *File) Pieces() []Piece {
 	result := make([]Piece, len(f.pieces))

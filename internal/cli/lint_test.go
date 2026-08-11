@@ -80,6 +80,67 @@ func (c *lintDiskChangeContext) Err() error {
 	return c.Context.Err()
 }
 
+func TestRunExposesBuiltInNilnessThroughLintAndExplain(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/nilness\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sample.go")
+	input := []byte(`package sample
+func inspect(pointer *int) {
+	if pointer == nil {
+		_ = *pointer
+	}
+}
+`)
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".gox.toml"),
+		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"lint", path}, strings.NewReader(""), &stdout, &stderr)
+	want := path + ":4:7: warn[nilness]: nil dereference in load\n" +
+		"  help: run `gox explain nilness` for the rule contract and limitations\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf("Run(lint nilness) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("Run(lint nilness) mutated source: %q", got)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run([]string{"explain", "nilness"}, strings.NewReader(""), &stdout, &stderr)
+	for _, contract := range []string{
+		"nilness\n",
+		"analysis tier: SSA\n",
+		"generated files: excluded\n",
+		"type-error packages: excluded\n",
+		"fixes:\n  none\n",
+	} {
+		if !strings.Contains(stdout.String(), contract) {
+			t.Fatalf("Run(explain nilness) output does not contain %q:\n%s", contract, stdout.String())
+		}
+	}
+	if exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf("Run(explain nilness) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+}
+
 func (r cliSyntaxRule) Metadata() rules.Metadata { return r.metadata }
 
 func (r cliSyntaxRule) RunSyntax(ctx *rules.Context, node ast.Node) ([]rules.Finding, error) {
