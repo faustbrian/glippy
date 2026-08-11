@@ -292,6 +292,72 @@ func TestStorePrunesCorruptAndOldestEntriesWithinLimits(t *testing.T) {
 	}
 }
 
+func TestStorePruneRemovesOnlyCanonicalStaleTemporaryEntries(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	store, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	key, err := BuildKey(testKeyInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	staleName, err := temporaryName(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	freshName, err := temporaryName(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknownName := filepath.Join(entryShard(key), ".unknown.tmp")
+	if err := os.MkdirAll(filepath.Join(root, entryShard(key)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{staleName, freshName, unknownName} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("temporary"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cutoff := time.Unix(1_000, 0)
+	if err := store.root.Chtimes(staleName, cutoff.Add(-time.Second), cutoff.Add(-time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.root.Chtimes(freshName, cutoff, cutoff); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.root.Chtimes(unknownName, cutoff.Add(-time.Second), cutoff.Add(-time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := store.Prune(context.Background(), PruneOptions{
+		MaxEntries:           1,
+		StaleTemporaryBefore: cutoff,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TemporaryRemoved != 1 {
+		t.Fatalf("Prune() temporary result = %#v", result)
+	}
+	if _, err := os.Lstat(filepath.Join(root, staleName)); !os.IsNotExist(err) {
+		t.Fatalf("stale canonical temporary remains: %v", err)
+	}
+	for _, name := range []string{freshName, unknownName} {
+		if contents, err := os.ReadFile(filepath.Join(root, name)); err != nil ||
+			string(contents) != "temporary" {
+			t.Fatalf("preserved temporary %q = %q, %v", name, contents, err)
+		}
+	}
+}
+
 func TestStorePruneBreaksAgeTiesByCanonicalKey(t *testing.T) {
 	t.Parallel()
 

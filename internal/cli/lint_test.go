@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/faustbrian/gox/internal/analysis"
 	"github.com/faustbrian/gox/internal/cache"
@@ -932,6 +933,68 @@ max-bytes = 0
 	}
 	if pruned.EntriesBefore != 1 || pruned.EntriesRemoved != 0 {
 		t.Fatalf("CLI cache prune result = %#v", pruned)
+	}
+}
+
+func TestRunPackageCommandRemovesStaleCacheTemporaryEntries(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/staletemporary\n\ngo 1.26.0\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package staletemporary\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n[cache]\nenabled = true\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := filepath.Join(t.TempDir(), "analysis-cache")
+	key := cache.Key{1}
+	temporary := filepath.Join(
+		cacheRoot,
+		"v1",
+		key.String()[:2],
+		"."+key.String()+".0000000000000001.tmp",
+	)
+	if err := os.MkdirAll(filepath.Dir(temporary), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(temporary, []byte("abandoned"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stale := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(temporary, stale, stale); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{configPath: configurationPath, paths: []string{path}},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	); exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(stale cache temporary) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	if _, err := os.Lstat(temporary); !os.IsNotExist(err) {
+		t.Fatalf("stale cache temporary remains: %v", err)
 	}
 }
 

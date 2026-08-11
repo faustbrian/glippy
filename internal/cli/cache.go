@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/faustbrian/gox/internal/analysis"
 	"github.com/faustbrian/gox/internal/cache"
@@ -25,6 +26,7 @@ const (
 	cacheDirectoryEnvironment = "GOX_CACHE_DIR"
 	sourceGoVersion           = "1.26"
 	formatterCacheMode        = "gox-v1"
+	staleCacheTemporaryAge    = 24 * time.Hour
 )
 
 var (
@@ -125,8 +127,9 @@ func runPackageAnalysis(
 	var pruneErr error
 	if ctx.Err() == nil {
 		_, pruneErr = store.Prune(ctx, cache.PruneOptions{
-			MaxEntries: task.options.cache.MaxEntries,
-			MaxBytes:   task.options.cache.MaxBytes,
+			MaxEntries:           task.options.cache.MaxEntries,
+			MaxBytes:             task.options.cache.MaxBytes,
+			StaleTemporaryBefore: time.Now().Add(-staleCacheTemporaryAge),
 		})
 		if pruneErr != nil {
 			pruneErr = newPackageAnalysisError(

@@ -416,8 +416,8 @@ inputs. Its rooted store bounds entries, verifies embedded key, length, and
 payload digest, treats corruption as a miss, repairs through recomputation, and
 uses create-if-absent hard-link publication so concurrent different values fail
 instead of silently replacing one another. The analysis consumers and typed CLI
-lifecycle are described below; formatter caching, stale-temporary recovery,
-broader platform evidence, and broader warm-cache benchmarks remain open.
+lifecycle are described below; formatter caching, broader platform evidence,
+and broader warm-cache benchmarks remain open.
 Progress stays 45% behind the Phase 2 gates.
 
 Persistent object facts now have process-independent identity through an owning
@@ -455,11 +455,11 @@ external-adoption gates keep overall progress at 45%.
 The cache store now supports explicit bounded pruning over canonical entries.
 It removes verified corruption before evicting the oldest publication times to
 caller-supplied entry and encoded-byte limits, with key-order ties. Unknown and
-temporary files remain untouched; cancellation, deleted roots, count and byte
-limits, deterministic ties, and concurrent equal publication across independent
-store handles are covered. The typed CLI policy invokes this pruning as
-described below; stale crash temporary files remain deferred, and progress stays
-45% behind the Phase 2 gates.
+non-stale temporary files remain untouched; cancellation, deleted roots, count
+and byte limits, deterministic ties, and concurrent equal publication across
+independent store handles are covered. The typed CLI policy invokes this pruning
+and stale publication recovery as described below; progress stays 45% behind
+the Phase 2 gates.
 
 Rule configuration now accepts strict per-rule boolean, integer, string, and
 string-list values under `lint.rule-options`. Canonical metadata rejects unknown
@@ -532,14 +532,16 @@ development binaries use their executable SHA-256 digest instead of sharing
 the generic `devel` display version;
 reuses one store for the complete package command; prunes canonical entries to
 configured count and encoded-byte limits after non-canceled runs; and closes
-the store before reporting. Cache enablement and retention limits do not cause
-cold result misses. Syntax-only linting, formatting, and lint fixing remain
-cache-independent. Cold lint followed by warm combined check produces the same
-diagnostics with zero additional typed callbacks, and CLI tests cover pruning,
-cancel-without-prune behavior, syntax-command independence, invalid limits,
-roots inside the project, and cache-open failure categories.
+the store before reporting. The same pass removes only canonical publication
+temporaries strictly older than 24 hours while preserving newer and unknown
+files. Cache enablement and retention limits do not cause cold result misses.
+Syntax-only linting, formatting, and lint fixing remain cache-independent. Cold
+lint followed by warm combined check produces the same diagnostics with zero
+additional typed callbacks, and CLI tests cover pruning, stale-temporary
+recovery, cancel-without-prune behavior, syntax-command independence, invalid
+limits, roots inside the project, and cache-open failure categories.
 The current source-language identity remains the documented Go 1.26 prototype
 policy. Cache-root validation resolves existing symlink ancestry before open,
-but the validation-to-open race, stale temporary recovery, and broader platform
-runtime evidence remain open. Progress stays 45% behind the Phase 2 naming,
+but the validation-to-open race and broader platform runtime evidence remain
+open. Progress stays 45% behind the Phase 2 naming,
 release, platform-runtime, and approved external-adoption gates.

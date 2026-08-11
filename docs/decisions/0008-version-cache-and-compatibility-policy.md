@@ -95,12 +95,15 @@ compatible results.
 Cache-enabled loading makes GOOS, GOARCH, and CGO explicit and forces
 `GOENV=off`; it does not speculate about ambient Go environment files. After
 every non-canceled run, the CLI removes canonical corruption and prunes oldest
-entries to the configured count and encoded-byte limits. Formatting,
-syntax-only analysis, and fixing remain cache-independent. Cache failures are
-visible and cached state remains disposable and non-authoritative. The CLI
-rejects roots whose currently resolvable path is inside the project, while the
-validation-to-open symlink race remains deferred with stale-temporary recovery,
-broader platform evidence, and product-wide warm-run performance claims.
+entries to the configured count and encoded-byte limits. That pass also removes
+only canonical publication temporaries strictly older than 24 hours; newer and
+unrecognized files remain untouched. A writer suspended beyond the cutoff can
+fail visibly but cannot publish partial bytes. Formatting, syntax-only
+analysis, and fixing remain cache-independent. Cache failures are visible and
+cached state remains disposable and non-authoritative. The CLI rejects roots
+whose currently resolvable path is inside the project, while the
+validation-to-open symlink race remains deferred with broader platform evidence
+and product-wide warm-run performance claims.
 
 Formatter output changes are user-visible compatibility changes. They require
 construct-specific before/after documentation and updated corpus evidence.

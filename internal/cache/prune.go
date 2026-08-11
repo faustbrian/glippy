@@ -14,23 +14,26 @@ import (
 	"time"
 )
 
-// PruneOptions bounds retained canonical entries. A zero field leaves that
-// dimension unlimited; at least one positive limit is required.
+// PruneOptions bounds retained canonical entries and may remove publication
+// temporaries older than an explicit cutoff. A zero size field leaves that
+// dimension unlimited; at least one positive size limit is required.
 type PruneOptions struct {
-	MaxEntries int
-	MaxBytes   int64
+	MaxEntries           int
+	MaxBytes             int64
+	StaleTemporaryBefore time.Time
 }
 
 // PruneResult reports one best-effort snapshot of canonical cache entries.
 // Concurrent stores may change the root after it is scanned.
 type PruneResult struct {
-	EntriesBefore  int
-	BytesBefore    int64
-	EntriesRemoved int
-	BytesRemoved   int64
-	CorruptRemoved int
-	EntriesAfter   int
-	BytesAfter     int64
+	EntriesBefore    int
+	BytesBefore      int64
+	EntriesRemoved   int
+	BytesRemoved     int64
+	CorruptRemoved   int
+	TemporaryRemoved int
+	EntriesAfter     int
+	BytesAfter       int64
 }
 
 type pruneCandidate struct {
@@ -39,9 +42,10 @@ type pruneCandidate struct {
 	size     int64
 }
 
-// Prune removes canonical corrupt entries, then evicts the oldest valid
-// entries until both configured limits are satisfied. Publication time is
-// represented by file modification time; equal times are ordered by key.
+// Prune removes eligible stale publication temporaries and canonical corrupt
+// entries, then evicts the oldest valid entries until both configured limits
+// are satisfied. Publication time is represented by file modification time;
+// equal times are ordered by key.
 func (s *Store) Prune(
 	ctx context.Context,
 	options PruneOptions,
@@ -71,7 +75,7 @@ func (s *Store) Prune(
 		return result, err
 	}
 
-	candidates, err := s.pruneCandidates(ctx, &result)
+	candidates, err := s.pruneCandidates(ctx, options, &result)
 	if err != nil {
 		return result, err
 	}
@@ -114,6 +118,7 @@ func (s *Store) Prune(
 
 func (s *Store) pruneCandidates(
 	ctx context.Context,
+	options PruneOptions,
 	result *PruneResult,
 ) ([]pruneCandidate, error) {
 	shards, err := readCacheDirectory(s.root, entryVersion)
@@ -147,6 +152,18 @@ func (s *Store) pruneCandidates(
 				return nil, fmt.Errorf("inspect cache entry during prune: %w", err)
 			}
 			if !information.Mode().IsRegular() {
+				continue
+			}
+			if !options.StaleTemporaryBefore.IsZero() &&
+				information.ModTime().Before(options.StaleTemporaryBefore) &&
+				canonicalCacheTemporary(shard.Name(), entry.Name()) {
+				err := s.root.Remove(filepath.Join(shardName, entry.Name()))
+				if err != nil && !errors.Is(err, fs.ErrNotExist) {
+					return nil, fmt.Errorf("remove stale cache temporary during prune: %w", err)
+				}
+				if err == nil {
+					result.TemporaryRemoved++
+				}
 				continue
 			}
 			key, canonical := canonicalCacheEntryKey(shard.Name(), entry.Name())
@@ -184,6 +201,28 @@ func (s *Store) pruneCandidates(
 		}
 	}
 	return candidates, nil
+}
+
+func canonicalCacheTemporary(shard, name string) bool {
+	const suffix = ".tmp"
+	keyLength := hex.EncodedLen(len(Key{}))
+	randomLength := hex.EncodedLen(temporaryRandomSize)
+	if len(name) != 1+keyLength+1+randomLength+len(suffix) ||
+		!strings.HasPrefix(name, ".") || !strings.HasSuffix(name, suffix) {
+		return false
+	}
+	encoded := strings.TrimSuffix(strings.TrimPrefix(name, "."), suffix)
+	if encoded != strings.ToLower(encoded) || encoded[keyLength] != '.' {
+		return false
+	}
+	key := encoded[:keyLength]
+	random := encoded[keyLength+1:]
+	keyBytes, keyErr := hex.DecodeString(key)
+	randomBytes, randomErr := hex.DecodeString(random)
+	return keyErr == nil && len(keyBytes) == len(Key{}) &&
+		hex.EncodeToString(keyBytes) == key && strings.HasPrefix(key, shard) &&
+		randomErr == nil && len(randomBytes) == temporaryRandomSize &&
+		hex.EncodeToString(randomBytes) == random
 }
 
 func readCacheDirectory(root *os.Root, name string) ([]os.DirEntry, error) {

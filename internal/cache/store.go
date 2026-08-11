@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	entryMagic   = "GOXCACHE\x01"
-	entryVersion = "v1"
-	headerSize   = len(entryMagic) + sha256.Size + sha256.Size + 8
+	entryMagic          = "GOXCACHE\x01"
+	entryVersion        = "v1"
+	headerSize          = len(entryMagic) + sha256.Size + sha256.Size + 8
+	temporaryRandomSize = 8
 
 	// MaxEntrySize bounds one decoded cache value.
 	MaxEntrySize = 16 << 20
@@ -264,7 +265,7 @@ func entryName(key Key) string {
 }
 
 func temporaryName(key Key) (string, error) {
-	var suffix [8]byte
+	var suffix [temporaryRandomSize]byte
 	if _, err := rand.Read(suffix[:]); err != nil {
 		return "", fmt.Errorf("create cache temporary name: %w", err)
 	}

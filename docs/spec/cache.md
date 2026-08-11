@@ -66,10 +66,15 @@ entries first, then evict valid entries by oldest publication modification time
 with canonical key order as the tie-breaker until every supplied limit holds.
 Zero leaves one dimension unlimited; negative limits and a request with no
 positive limit MUST fail. Counts and byte totals cover only canonical entry
-files, including their storage headers. Unknown files, directories, and
-temporary publication files MUST remain untouched because another store or
-caller may own them. Concurrent pruning MAY turn a hit into a miss but MUST NOT
-produce invalid bytes or make cached state authoritative.
+files, including their storage headers. A caller MAY also supply an explicit
+stale-publication cutoff. Pruning then removes only regular files whose names
+match the complete Gox key-and-random-suffix temporary grammar and whose
+modification times are strictly older than that cutoff. Newer temporaries,
+malformed names, unknown files, and directories MUST remain untouched. A
+writer suspended beyond the cutoff can fail visibly if its temporary is
+removed; it cannot publish partial or incorrect bytes. Concurrent pruning MAY
+turn a hit into a miss but MUST NOT produce invalid bytes or make cached state
+authoritative.
 
 ## Current Boundary
 
@@ -125,9 +130,11 @@ for correctness. The configuration digest includes result-affecting formatter,
 lint, and suppression values; cache enablement and retention limits are
 lifecycle policy and MUST NOT invalidate otherwise compatible results. The CLI
 rejects a cache root whose currently resolvable path is inside the selected
-project before opening it. Closing the validation-to-open symlink race, stale
-temporary recovery, platform evidence for hard-link publication beyond the
-recorded filesystems, and a product-wide warm-performance claim remain open.
+project before opening it. The CLI removes canonical publication temporaries
+strictly older than 24 hours during the same non-canceled pruning pass; newer
+or unrecognized files remain untouched. Closing the validation-to-open symlink
+race, platform evidence for hard-link publication beyond the recorded
+filesystems, and a product-wide warm-performance claim remain open.
 
 Persistent object identity is the owning package path plus the canonical
 x/tools `objectpath`. It is proven across independent type checks for package
