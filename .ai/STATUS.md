@@ -470,3 +470,15 @@ analyzers still reject flags and unbound native options until an isolated flag
 instance contract is proven. Persistent analysis keys derive option digests,
 including resolved defaults, from those same snapshots rather than caller
 assertions. Progress remains 45% behind the Phase 2 gates.
+
+The `go/analysis` adapter now accepts flagged syntax and typed analyzer graphs
+only through a factory that proves distinct, contract-identical instances.
+Every boolean, signed-integer, or string flag maps one-to-one to a native typed
+rule option; prerequisite flags share the same bound typed graph, while
+independent syntax and package invocations receive fresh state. Admission and
+runtime checks reject shared admission graphs, reuse of those probes, topology
+or metadata drift, unbound or mistyped flags, string lists, nil instances, and
+factory panics. Detectable aliases between flag value stores are rejected
+instead of making binding order observable. The adapter also contains flag
+getter and setter panics and never mutates a shared analyzer flag set. Progress
+remains 45% behind the Phase 2 gates.

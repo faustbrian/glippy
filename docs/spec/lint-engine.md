@@ -312,10 +312,12 @@ a rule ID or disables all rules.
 ## `go/analysis` Interoperability
 
 Suitable analyzers MAY be adapted without replacing the native scheduler or
-metadata. The adapter accepts syntax-only and types-tier analyzers without
-analyzer flags. Syntax analyzers MUST NOT declare prerequisites, facts, or a
-result type. Types-tier analyzers MAY declare a prerequisite-result DAG,
-package facts, and object facts. Native
+metadata. A flagless syntax-only or types-tier analyzer MAY use one audited
+descriptor. An analyzer graph with flags MUST instead use a factory that
+returns a fresh graph for each syntax-file execution or typed invocation.
+Syntax analyzers MUST NOT declare prerequisites, facts, or a result type.
+Types-tier analyzers MAY declare a prerequisite-result DAG, package facts, and
+object facts. Native
 metadata MUST declare only the file node interest and either the syntax or
 types tier; it remains authoritative for rule identity, selection, severity,
 generated-file and type-error policy, documentation, and fix safety.
@@ -327,6 +329,26 @@ result map, and read access only to an independent copy of the adapted file's
 exact bytes. Analyzer AST or descriptor mutation MUST NOT affect native rules,
 other adapters, or a later run. An analyzer's own captured mutable state remains
 its responsibility.
+
+Every analyzer flag MUST map one-to-one to one native rule option, including
+flags owned by typed prerequisites. Boolean, signed-integer, and string flags
+MAY bind to native options of the same kind. String-list options, unsupported
+flag value kinds, duplicate bindings, unbound options, and unbound flags
+MUST be rejected. Distinct flags backed by the same detectable value storage
+MUST also be rejected because binding order would otherwise select the winning
+option. Resolved defaults and configured values MUST be applied to the fresh
+graph before any analyzer callback. The adapter MUST NOT mutate a shared
+analyzer flag set.
+
+The factory MUST return two distinct graphs with identical analyzer topology,
+documentation, URLs, result types, fact types, type-error policy, and flag
+schema during admission. Every runtime graph MUST match that recorded contract.
+A nil graph, reused admission graph, contract drift, factory panic, flag getter
+or setter panic, flag parse failure, or missing resolved value MUST fail
+explicitly. Typed execution MUST use one bound graph across its complete
+package and fact schedule so
+prerequisite identities and fact ownership remain coherent; independent typed
+invocations MUST receive independent graphs.
 
 A types-tier adapter MUST carry an explicit maintainer assertion that the
 analyzer was audited as read-only over shared package AST and type state. It
@@ -440,14 +462,9 @@ until an independently cancellable execution boundary is proven.
 Before registration, maintainers MUST audit that an analyzer does not depend on
 deprecated object resolution or behavior absent from this pass contract. Such
 an analyzer is not suitable and MUST NOT be registered. Declared or observed
-unsupported CFG, SSA, flag, cross-file related location, or multi-file fix
-behavior MUST be rejected with a clear
+unsupported CFG, SSA, analyzer flag value kind, cross-file related location, or
+multi-file fix behavior MUST be rejected with a clear
 compatibility diagnostic.
-
-The current adapter rejects analyzer flags and rejects native option metadata
-that has no analyzer flag binding. Analyzer flag support requires isolated
-per-run values; mutating a shared analyzer flag set is not an accepted
-configuration mechanism.
 
 Rule documentation and `explain` output MUST derive from the same immutable
 registry metadata and examples. Human `explain` output MUST include the rule

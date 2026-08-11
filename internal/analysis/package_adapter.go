@@ -197,11 +197,54 @@ func preparePackageAnalyzers(
 		if len(metadata.NodeInterests) != 1 || metadata.NodeInterests[0] != rules.NodeFile {
 			return nil, fmt.Errorf("selected package analyzer %q must declare only file interest", selected.ID)
 		}
+		adapted, err := adapted.forRun(selected.Options)
+		if err != nil {
+			return nil, fmt.Errorf("selected package analyzer %q: %w", selected.ID, err)
+		}
 		result = append(result, activePackageAnalyzer{
 			rule: adapted, metadata: metadata, severity: selected.Severity,
 		})
 	}
 	return result, nil
+}
+
+func (r *packageAnalyzerRule) forRun(options rules.OptionSet) (*packageAnalyzerRule, error) {
+	if r.factory == nil {
+		return r, nil
+	}
+	instance, err := callAnalyzerFactory(r.factory)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateAnalyzerFactoryInstance(
+		instance,
+		r.analyzer.Name,
+		r.contract,
+		r.admission,
+	); err != nil {
+		return nil, err
+	}
+	if err := bindAnalyzerFlags(
+		instance,
+		r.metadata,
+		r.bindings,
+		analyzerOptionSetLookup{options: options},
+	); err != nil {
+		return nil, err
+	}
+	plan := analyzerExecutionPlan(instance)
+	steps := make([]packageAnalyzerStep, len(plan))
+	for index, step := range plan {
+		steps[index] = packageAnalyzerStep{original: step, analyzer: *step}
+	}
+	snapshot := *instance
+	snapshot.Requires = nil
+	snapshot.FactTypes = nil
+	runtime := *r
+	runtime.analyzer = snapshot
+	runtime.steps = steps
+	runtime.factory = nil
+	return &runtime, nil
 }
 
 func packageAnalyzerOwnsEligibleFile(

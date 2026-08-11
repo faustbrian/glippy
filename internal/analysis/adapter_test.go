@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	goanalysis "golang.org/x/tools/go/analysis"
 	atomicanalyzer "golang.org/x/tools/go/analysis/passes/atomic"
@@ -29,6 +30,18 @@ import (
 type adapterFact struct{}
 
 func (*adapterFact) AFact() {}
+
+type panickingAdapterFlag struct{}
+
+func (*panickingAdapterFlag) String() string   { return "" }
+func (*panickingAdapterFlag) Set(string) error { return nil }
+func (*panickingAdapterFlag) Get() any         { panic("getter failed") }
+
+type panickingSetAdapterFlag struct{}
+
+func (*panickingSetAdapterFlag) String() string   { return "" }
+func (*panickingSetAdapterFlag) Set(string) error { panic("set failed") }
+func (*panickingSetAdapterFlag) Get() any         { return "" }
 
 type packageScopeFact struct {
 	Value string
@@ -157,6 +170,717 @@ func visible() { target() }
 		diagnostic.Fixes[0].Safety != rules.FixSuggestion ||
 		len(diagnostic.Fixes[0].Edits) != 1 || diagnostic.Fixes[0].Edits[0].NewText != "primary()" {
 		t.Fatalf("adapter diagnostic = %#v", diagnostic)
+	}
+}
+
+func TestAdaptAnalyzerFactoryBindsTypedOptionsToFreshSyntaxFlags(t *testing.T) {
+	t.Parallel()
+
+	factory := func() *goanalysis.Analyzer {
+		analyzer := &goanalysis.Analyzer{Name: "configured", Doc: "reports when enabled"}
+		enabled := analyzer.Flags.Bool("enabled", false, "enable reporting")
+		limit := analyzer.Flags.Int64("limit", 0, "required limit")
+		analyzer.Run = func(pass *goanalysis.Pass) (any, error) {
+			if *enabled && *limit == 12 {
+				pass.Reportf(pass.Files[0].Name.Pos(), "enabled")
+			}
+			return nil, nil
+		}
+		return analyzer
+	}
+	options := adapterOptions("configured-analyzer")
+	options.Metadata.Options = []rules.OptionMetadata{
+		{Name: "enabled", Summary: "enable reporting", Kind: rules.OptionBoolean, Required: true},
+		{Name: "limit", Summary: "required limit", Kind: rules.OptionInteger, Required: true},
+	}
+	options.FlagBindings = []analysis.AnalyzerFlagBinding{
+		{Option: "enabled", Analyzer: "configured", Flag: "enabled"},
+		{Option: "limit", Analyzer: "configured", Flag: "limit"},
+	}
+	adapted, err := analysis.AdaptAnalyzerFactory(factory, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load("configured.go", []byte("package configured\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(enabled bool) analysis.Result {
+		t.Helper()
+		result, err := analysis.Run(context.Background(), file, registry, analysis.RunOptions{
+			Preset: rules.PresetCorrectness,
+			RuleOptions: map[string]rules.OptionSet{
+				"configured-analyzer": rules.NewOptionSet(map[string]rules.OptionValue{
+					"enabled": rules.BooleanOption(enabled),
+					"limit":   rules.IntegerOption(12),
+				}),
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	if enabled := run(true); len(enabled.Diagnostics) != 1 {
+		t.Fatalf("enabled diagnostics = %#v", enabled.Diagnostics)
+	}
+	if disabled := run(false); len(disabled.Diagnostics) != 0 {
+		t.Fatalf("disabled diagnostics = %#v", disabled.Diagnostics)
+	}
+}
+
+func TestAdaptAnalyzerFactoryRejectsSharedAnalyzerInstances(t *testing.T) {
+	t.Parallel()
+
+	singleton := &goanalysis.Analyzer{
+		Name: "shared", Doc: "must not be reused",
+		Run: func(*goanalysis.Pass) (any, error) { return nil, nil },
+	}
+	singleton.Flags.Bool("enabled", false, "enable reporting")
+	options := adapterOptions("shared-analyzer")
+	options.Metadata.Options = []rules.OptionMetadata{{
+		Name: "enabled", Summary: "enable reporting", Kind: rules.OptionBoolean, Required: true,
+	}}
+	options.FlagBindings = []analysis.AnalyzerFlagBinding{{
+		Option: "enabled", Analyzer: "shared", Flag: "enabled",
+	}}
+	if _, err := analysis.AdaptAnalyzerFactory(func() *goanalysis.Analyzer {
+		return singleton
+	}, options); err == nil || !strings.Contains(err.Error(), "fresh analyzer graph") {
+		t.Fatalf("AdaptAnalyzerFactory() shared instance error = %v", err)
+	}
+}
+
+func TestAdaptAnalyzerFactoryContainsFactoryPanics(t *testing.T) {
+	t.Parallel()
+
+	if _, err := analysis.AdaptAnalyzerFactory(func() *goanalysis.Analyzer {
+		panic("factory failed")
+	}, adapterOptions("panicking-factory-analyzer")); err == nil ||
+		!strings.Contains(err.Error(), "factory panicked: factory failed") {
+		t.Fatalf("AdaptAnalyzerFactory() panic error = %v", err)
+	}
+}
+
+func TestAdaptAnalyzerFactoryRejectsUnstableAnalyzerContracts(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	factory := func() *goanalysis.Analyzer {
+		calls++
+		analyzer := &goanalysis.Analyzer{
+			Name: "unstable", Doc: "must return one contract",
+			Run: func(*goanalysis.Pass) (any, error) { return nil, nil },
+		}
+		if calls == 1 {
+			analyzer.Flags.Bool("enabled", false, "enable reporting")
+		}
+		return analyzer
+	}
+	options := adapterOptions("unstable-analyzer")
+	options.Metadata.Options = []rules.OptionMetadata{{
+		Name: "enabled", Summary: "enable reporting", Kind: rules.OptionBoolean, Required: true,
+	}}
+	options.FlagBindings = []analysis.AnalyzerFlagBinding{{
+		Option: "enabled", Analyzer: "unstable", Flag: "enabled",
+	}}
+	if _, err := analysis.AdaptAnalyzerFactory(factory, options); err == nil ||
+		!strings.Contains(err.Error(), "factory contract changed") {
+		t.Fatalf("AdaptAnalyzerFactory() unstable contract error = %v", err)
+	}
+}
+
+func TestAdaptAnalyzerFactoryRejectsRuntimeContractDrift(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	factory := func() *goanalysis.Analyzer {
+		calls++
+		doc := "stable documentation"
+		if calls >= 3 {
+			doc = "drifted documentation"
+		}
+		analyzer := &goanalysis.Analyzer{
+			Name: "runtimedrift", Doc: doc,
+			Run: func(*goanalysis.Pass) (any, error) { return nil, nil },
+		}
+		analyzer.Flags.Bool("enabled", false, "enable reporting")
+		return analyzer
+	}
+	options := adapterOptions("runtime-drift-analyzer")
+	options.Metadata.Options = []rules.OptionMetadata{{
+		Name: "enabled", Summary: "enable reporting", Kind: rules.OptionBoolean, Required: true,
+	}}
+	options.FlagBindings = []analysis.AnalyzerFlagBinding{{
+		Option: "enabled", Analyzer: "runtimedrift", Flag: "enabled",
+	}}
+	adapted, err := analysis.AdaptAnalyzerFactory(factory, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load("runtime.go", []byte("package runtime\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = analysis.Run(context.Background(), file, registry, analysis.RunOptions{
+		Preset: rules.PresetCorrectness,
+		RuleOptions: map[string]rules.OptionSet{
+			"runtime-drift-analyzer": rules.NewOptionSet(map[string]rules.OptionValue{
+				"enabled": rules.BooleanOption(true),
+			}),
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "factory contract changed") {
+		t.Fatalf("Run() runtime contract error = %v", err)
+	}
+}
+
+func TestAdaptAnalyzerFactoryRejectsReusedAdmissionGraphAtRuntime(t *testing.T) {
+	t.Parallel()
+
+	var first *goanalysis.Analyzer
+	calls := 0
+	factory := func() *goanalysis.Analyzer {
+		calls++
+		if calls >= 3 {
+			return first
+		}
+		analyzer := &goanalysis.Analyzer{
+			Name: "reusedadmission", Doc: "must remain run local",
+			Run: func(*goanalysis.Pass) (any, error) { return nil, nil },
+		}
+		analyzer.Flags.Bool("enabled", false, "enable reporting")
+		if first == nil {
+			first = analyzer
+		}
+		return analyzer
+	}
+	options := adapterOptions("reused-admission-analyzer")
+	options.Metadata.Options = []rules.OptionMetadata{{
+		Name: "enabled", Summary: "enable reporting", Kind: rules.OptionBoolean, Required: true,
+	}}
+	options.FlagBindings = []analysis.AnalyzerFlagBinding{{
+		Option: "enabled", Analyzer: "reusedadmission", Flag: "enabled",
+	}}
+	adapted, err := analysis.AdaptAnalyzerFactory(factory, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load("reused.go", []byte("package reused\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = analysis.Run(context.Background(), file, registry, analysis.RunOptions{
+		Preset: rules.PresetCorrectness,
+		RuleOptions: map[string]rules.OptionSet{
+			"reused-admission-analyzer": rules.NewOptionSet(map[string]rules.OptionValue{
+				"enabled": rules.BooleanOption(true),
+			}),
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "reused an admission analyzer") {
+		t.Fatalf("Run() reused admission error = %v", err)
+	}
+}
+
+func TestAdaptAnalyzerFactoryRejectsFlagKindMismatch(t *testing.T) {
+	t.Parallel()
+
+	factory := func() *goanalysis.Analyzer {
+		analyzer := &goanalysis.Analyzer{
+			Name: "kindmismatch", Doc: "has a boolean flag",
+			Run: func(*goanalysis.Pass) (any, error) { return nil, nil },
+		}
+		analyzer.Flags.Bool("limit", false, "not an integer")
+		return analyzer
+	}
+	options := adapterOptions("kind-mismatch-analyzer")
+	options.Metadata.Options = []rules.OptionMetadata{{
+		Name: "limit", Summary: "set a limit", Kind: rules.OptionInteger, Required: true,
+	}}
+	options.FlagBindings = []analysis.AnalyzerFlagBinding{{
+		Option: "limit", Analyzer: "kindmismatch", Flag: "limit",
+	}}
+	if _, err := analysis.AdaptAnalyzerFactory(factory, options); err == nil ||
+		!strings.Contains(err.Error(), "flag kind boolean; want integer") {
+		t.Fatalf("AdaptAnalyzerFactory() flag kind error = %v", err)
+	}
+}
+
+func TestAdaptAnalyzerFactoryRejectsAliasedFlagStorage(t *testing.T) {
+	t.Parallel()
+
+	factory := func() *goanalysis.Analyzer {
+		analyzer := &goanalysis.Analyzer{
+			Name: "aliasedflags", Doc: "shares flag storage",
+			Run: func(*goanalysis.Pass) (any, error) { return nil, nil },
+		}
+		var shared bool
+		analyzer.Flags.BoolVar(&shared, "first", false, "first option")
+		analyzer.Flags.BoolVar(&shared, "second", false, "second option")
+		return analyzer
+	}
+	options := adapterOptions("aliased-flags-analyzer")
+	options.Metadata.Options = []rules.OptionMetadata{
+		{Name: "first", Summary: "first option", Kind: rules.OptionBoolean, Required: true},
+		{Name: "second", Summary: "second option", Kind: rules.OptionBoolean, Required: true},
+	}
+	options.FlagBindings = []analysis.AnalyzerFlagBinding{
+		{Option: "first", Analyzer: "aliasedflags", Flag: "first"},
+		{Option: "second", Analyzer: "aliasedflags", Flag: "second"},
+	}
+	if _, err := analysis.AdaptAnalyzerFactory(factory, options); err == nil ||
+		!strings.Contains(err.Error(), "share value storage") {
+		t.Fatalf("AdaptAnalyzerFactory() aliased flag error = %v", err)
+	}
+}
+
+func TestAdaptAnalyzerFactoryContainsFlagGetterPanics(t *testing.T) {
+	t.Parallel()
+
+	factory := func() *goanalysis.Analyzer {
+		analyzer := &goanalysis.Analyzer{
+			Name: "panickingflag", Doc: "has a panicking flag getter",
+			Run: func(*goanalysis.Pass) (any, error) { return nil, nil },
+		}
+		analyzer.Flags.Var(&panickingAdapterFlag{}, "value", "panics while inspected")
+		return analyzer
+	}
+	options := adapterOptions("panicking-flag-analyzer")
+	options.Metadata.Options = []rules.OptionMetadata{{
+		Name: "value", Summary: "flag value", Kind: rules.OptionString, Required: true,
+	}}
+	options.FlagBindings = []analysis.AnalyzerFlagBinding{{
+		Option: "value", Analyzer: "panickingflag", Flag: "value",
+	}}
+	if _, err := analysis.AdaptAnalyzerFactory(factory, options); err == nil ||
+		!strings.Contains(err.Error(), "flag getter panicked: getter failed") {
+		t.Fatalf("AdaptAnalyzerFactory() flag getter panic error = %v", err)
+	}
+}
+
+func TestAdaptAnalyzerFactoryContainsFlagSetPanics(t *testing.T) {
+	t.Parallel()
+
+	factory := func() *goanalysis.Analyzer {
+		analyzer := &goanalysis.Analyzer{
+			Name: "panicsetflag", Doc: "has a panicking flag setter",
+			Run: func(*goanalysis.Pass) (any, error) { return nil, nil },
+		}
+		analyzer.Flags.Var(&panickingSetAdapterFlag{}, "value", "panics while bound")
+		return analyzer
+	}
+	options := adapterOptions("panicking-set-flag-analyzer")
+	options.Metadata.Options = []rules.OptionMetadata{{
+		Name: "value", Summary: "flag value", Kind: rules.OptionString, Required: true,
+	}}
+	options.FlagBindings = []analysis.AnalyzerFlagBinding{{
+		Option: "value", Analyzer: "panicsetflag", Flag: "value",
+	}}
+	adapted, err := analysis.AdaptAnalyzerFactory(factory, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load("panicset.go", []byte("package panicset\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = analysis.Run(context.Background(), file, registry, analysis.RunOptions{
+		Preset: rules.PresetCorrectness,
+		RuleOptions: map[string]rules.OptionSet{
+			"panicking-set-flag-analyzer": rules.NewOptionSet(map[string]rules.OptionValue{
+				"value": rules.StringOption("configured"),
+			}),
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "flag setter panicked: set failed") {
+		t.Fatalf("Run() flag setter panic error = %v", err)
+	}
+}
+
+func TestAdaptAnalyzerFactoryRejectsInvalidFlagBindings(t *testing.T) {
+	t.Parallel()
+
+	factory := func() *goanalysis.Analyzer {
+		analyzer := &goanalysis.Analyzer{
+			Name: "bindingvalidation", Doc: "validates bindings",
+			Run: func(*goanalysis.Pass) (any, error) { return nil, nil },
+		}
+		analyzer.Flags.Bool("enabled", false, "enable reporting")
+		analyzer.Flags.Bool("other", false, "another flag")
+		return analyzer
+	}
+	base := func() analysis.AnalyzerAdapterOptions {
+		options := adapterOptions("binding-validation-analyzer")
+		options.Metadata.Options = []rules.OptionMetadata{
+			{Name: "enabled", Summary: "enable reporting", Kind: rules.OptionBoolean, Required: true},
+			{Name: "alternate", Summary: "alternate behavior", Kind: rules.OptionBoolean, Required: true},
+		}
+		options.FlagBindings = []analysis.AnalyzerFlagBinding{
+			{Option: "enabled", Analyzer: "bindingvalidation", Flag: "enabled"},
+			{Option: "alternate", Analyzer: "bindingvalidation", Flag: "other"},
+		}
+		return options
+	}
+	tests := []struct {
+		name      string
+		mutate    func(*analysis.AnalyzerAdapterOptions)
+		wantError string
+	}{
+		{
+			name: "incomplete",
+			mutate: func(options *analysis.AnalyzerAdapterOptions) {
+				options.FlagBindings[0].Flag = ""
+			},
+			wantError: "flag binding 0 is incomplete",
+		},
+		{
+			name: "unknown option",
+			mutate: func(options *analysis.AnalyzerAdapterOptions) {
+				options.FlagBindings[0].Option = "missing"
+			},
+			wantError: "unknown option \"missing\"",
+		},
+		{
+			name: "unknown analyzer",
+			mutate: func(options *analysis.AnalyzerAdapterOptions) {
+				options.FlagBindings[0].Analyzer = "missing"
+			},
+			wantError: "unknown analyzer \"missing\"",
+		},
+		{
+			name: "unknown flag",
+			mutate: func(options *analysis.AnalyzerAdapterOptions) {
+				options.FlagBindings[0].Flag = "missing"
+			},
+			wantError: "has no flag \"missing\"",
+		},
+		{
+			name: "duplicate option",
+			mutate: func(options *analysis.AnalyzerAdapterOptions) {
+				options.FlagBindings[1].Option = "enabled"
+			},
+			wantError: "option \"enabled\" is bound more than once",
+		},
+		{
+			name: "duplicate flag",
+			mutate: func(options *analysis.AnalyzerAdapterOptions) {
+				options.FlagBindings[1].Flag = "enabled"
+			},
+			wantError: "flag \"bindingvalidation\".enabled is bound more than once",
+		},
+		{
+			name: "unbound option",
+			mutate: func(options *analysis.AnalyzerAdapterOptions) {
+				options.FlagBindings = options.FlagBindings[:1]
+			},
+			wantError: "native option \"alternate\" has no analyzer flag binding",
+		},
+		{
+			name: "unbound flag",
+			mutate: func(options *analysis.AnalyzerAdapterOptions) {
+				options.Metadata.Options = options.Metadata.Options[:1]
+				options.FlagBindings = options.FlagBindings[:1]
+			},
+			wantError: "flag \"bindingvalidation\".other has no native option binding",
+		},
+		{
+			name: "string list",
+			mutate: func(options *analysis.AnalyzerAdapterOptions) {
+				options.Metadata.Options[0].Kind = rules.OptionStrings
+			},
+			wantError: "string-list option \"enabled\" cannot bind",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			options := base()
+			test.mutate(&options)
+			if _, err := analysis.AdaptAnalyzerFactory(factory, options); err == nil ||
+				!strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("AdaptAnalyzerFactory() error = %v, want %q", err, test.wantError)
+			}
+		})
+	}
+}
+
+func TestAdaptAnalyzerFactoryBindsTypedOptionsToFreshPackageFlags(t *testing.T) {
+	t.Parallel()
+
+	factory := func() *goanalysis.Analyzer {
+		analyzer := &goanalysis.Analyzer{Name: "configuredpkg", Doc: "reports when enabled"}
+		enabled := analyzer.Flags.Bool("enabled", false, "enable reporting")
+		analyzer.Run = func(pass *goanalysis.Pass) (any, error) {
+			if *enabled {
+				pass.Reportf(pass.Files[0].Name.Pos(), "enabled")
+			}
+			return nil, nil
+		}
+		return analyzer
+	}
+	options := adapterOptions("configured-package-analyzer")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.Metadata.Options = []rules.OptionMetadata{{
+		Name: "enabled", Summary: "enable reporting", Kind: rules.OptionBoolean, Required: true,
+	}}
+	options.FlagBindings = []analysis.AnalyzerFlagBinding{{
+		Option: "enabled", Analyzer: "configuredpkg", Flag: "enabled",
+	}}
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzerFactory(factory, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/configuredpkg\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "configured.go"), "package configuredpkg\n")
+	run := func(enabled bool) analysis.PackageResult {
+		t.Helper()
+		result, err := analysis.RunPackages(
+			context.Background(),
+			registry,
+			analysis.RunOptions{
+				Preset: rules.PresetCorrectness,
+				RuleOptions: map[string]rules.OptionSet{
+					"configured-package-analyzer": rules.NewOptionSet(map[string]rules.OptionValue{
+						"enabled": rules.BooleanOption(enabled),
+					}),
+				},
+			},
+			analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	if enabled := run(true); len(enabled.Files) != 1 || len(enabled.Files[0].Diagnostics) != 1 {
+		t.Fatalf("enabled package result = %#v", enabled)
+	}
+	if disabled := run(false); len(disabled.Files) != 1 || len(disabled.Files[0].Diagnostics) != 0 {
+		t.Fatalf("disabled package result = %#v", disabled)
+	}
+}
+
+func TestAdaptAnalyzerFactoryBindsPrerequisiteFlagsInOnePackageGraph(t *testing.T) {
+	t.Parallel()
+
+	factory := func() *goanalysis.Analyzer {
+		prerequisite := &goanalysis.Analyzer{
+			Name: "configuredprerequisite", Doc: "returns whether reporting is enabled",
+			ResultType: reflect.TypeFor[bool](),
+		}
+		enabled := prerequisite.Flags.Bool("enabled", false, "enable reporting")
+		prerequisite.Run = func(*goanalysis.Pass) (any, error) { return *enabled, nil }
+		root := &goanalysis.Analyzer{
+			Name: "configuredroot", Doc: "reports prerequisite configuration",
+			Requires: []*goanalysis.Analyzer{prerequisite},
+		}
+		message := root.Flags.String("message", "default", "diagnostic message")
+		root.Run = func(pass *goanalysis.Pass) (any, error) {
+			if pass.ResultOf[prerequisite].(bool) {
+				pass.Report(goanalysis.Diagnostic{
+					Pos: pass.Files[0].Name.Pos(), Message: *message,
+				})
+			}
+			return nil, nil
+		}
+		return root
+	}
+	options := adapterOptions("configured-prerequisite-analyzer")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.Metadata.Options = []rules.OptionMetadata{
+		{Name: "enabled", Summary: "enable reporting", Kind: rules.OptionBoolean, Required: true},
+		{Name: "message", Summary: "diagnostic message", Kind: rules.OptionString, Required: true},
+	}
+	options.FlagBindings = []analysis.AnalyzerFlagBinding{
+		{Option: "enabled", Analyzer: "configuredprerequisite", Flag: "enabled"},
+		{Option: "message", Analyzer: "configuredroot", Flag: "message"},
+	}
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzerFactory(factory, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/configuredgraph\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "configured.go"), "package configuredgraph\n")
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Preset: rules.PresetCorrectness,
+			RuleOptions: map[string]rules.OptionSet{
+				"configured-prerequisite-analyzer": rules.NewOptionSet(map[string]rules.OptionValue{
+					"enabled": rules.BooleanOption(true),
+					"message": rules.StringOption("configured message"),
+				}),
+			},
+		},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 ||
+		result.Files[0].Diagnostics[0].Message != "configured message" {
+		t.Fatalf("configured prerequisite result = %#v", result)
+	}
+}
+
+func TestAdaptAnalyzerFactorySnapshotsOptionDefaults(t *testing.T) {
+	t.Parallel()
+
+	factory := func() *goanalysis.Analyzer {
+		analyzer := &goanalysis.Analyzer{Name: "defaulted", Doc: "reports when enabled"}
+		enabled := analyzer.Flags.Bool("enabled", false, "enable reporting")
+		analyzer.Run = func(pass *goanalysis.Pass) (any, error) {
+			if *enabled {
+				pass.Reportf(pass.Files[0].Name.Pos(), "enabled")
+			}
+			return nil, nil
+		}
+		return analyzer
+	}
+	defaultValue := rules.BooleanOption(false)
+	options := adapterOptions("defaulted-analyzer")
+	options.Metadata.Options = []rules.OptionMetadata{{
+		Name: "enabled", Summary: "enable reporting", Kind: rules.OptionBoolean,
+		Default: &defaultValue,
+	}}
+	options.FlagBindings = []analysis.AnalyzerFlagBinding{{
+		Option: "enabled", Analyzer: "defaulted", Flag: "enabled",
+	}}
+	adapted, err := analysis.AdaptAnalyzerFactory(factory, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaultValue = rules.BooleanOption(true)
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load("defaulted.go", []byte("package defaulted\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.Run(context.Background(), file, registry, analysis.RunOptions{
+		Preset: rules.PresetCorrectness,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("defaulted diagnostics = %#v", result.Diagnostics)
+	}
+}
+
+func TestAdaptAnalyzerFactoryIsolatesConcurrentSyntaxFlags(t *testing.T) {
+	t.Parallel()
+
+	entered := make(chan string, 2)
+	release := make(chan struct{})
+	factory := func() *goanalysis.Analyzer {
+		analyzer := &goanalysis.Analyzer{Name: "concurrentflags", Doc: "isolates flags"}
+		mode := analyzer.Flags.String("mode", "quiet", "select reporting mode")
+		analyzer.Run = func(pass *goanalysis.Pass) (any, error) {
+			entered <- *mode
+			<-release
+			if *mode == "report" {
+				pass.Reportf(pass.Files[0].Name.Pos(), "reported")
+			}
+			return nil, nil
+		}
+		return analyzer
+	}
+	options := adapterOptions("concurrent-flags-analyzer")
+	options.Metadata.Options = []rules.OptionMetadata{{
+		Name: "mode", Summary: "select reporting mode", Kind: rules.OptionString, Required: true,
+	}}
+	options.FlagBindings = []analysis.AnalyzerFlagBinding{{
+		Option: "mode", Analyzer: "concurrentflags", Flag: "mode",
+	}}
+	adapted, err := analysis.AdaptAnalyzerFactory(factory, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load("concurrent.go", []byte("package concurrent\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	type outcome struct {
+		mode   string
+		result analysis.Result
+		err    error
+	}
+	outcomes := make(chan outcome, 2)
+	for _, mode := range []string{"report", "quiet"} {
+		go func() {
+			result, err := analysis.Run(context.Background(), file, registry, analysis.RunOptions{
+				Preset: rules.PresetCorrectness,
+				RuleOptions: map[string]rules.OptionSet{
+					"concurrent-flags-analyzer": rules.NewOptionSet(map[string]rules.OptionValue{
+						"mode": rules.StringOption(mode),
+					}),
+				},
+			})
+			outcomes <- outcome{mode: mode, result: result, err: err}
+		}()
+	}
+	seen := map[string]bool{}
+	for range 2 {
+		select {
+		case mode := <-entered:
+			seen[mode] = true
+		case <-time.After(5 * time.Second):
+			close(release)
+			t.Fatal("concurrent analyzer runs did not both enter")
+		}
+	}
+	close(release)
+	if !seen["report"] || !seen["quiet"] {
+		t.Fatalf("concurrent flag values = %#v", seen)
+	}
+	for range 2 {
+		got := <-outcomes
+		if got.err != nil {
+			t.Fatal(got.err)
+		}
+		wantDiagnostics := 0
+		if got.mode == "report" {
+			wantDiagnostics = 1
+		}
+		if len(got.result.Diagnostics) != wantDiagnostics {
+			t.Fatalf("%s diagnostics = %#v", got.mode, got.result.Diagnostics)
+		}
 	}
 }
 
@@ -2173,7 +2897,7 @@ func TestAdaptAnalyzerRejectsUnsupportedAnalyzerContracts(t *testing.T) {
 				}}
 				return options
 			}(),
-			wantError: "options require analyzer flag bindings",
+			wantError: "native option \"enabled\" has no analyzer flag binding",
 		},
 		{
 			name:     "predeclared native fixes",

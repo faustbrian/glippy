@@ -25,6 +25,11 @@ type Registry struct {
 	entries map[string]registryEntry
 }
 
+// CloneMetadata returns an independent copy of rule metadata.
+func CloneMetadata(metadata Metadata) Metadata {
+	return cloneMetadata(metadata)
+}
+
 // NewRegistry validates and snapshots native rules.
 func NewRegistry(nativeRules ...Rule) (*Registry, error) {
 	entries := make(map[string]registryEntry, len(nativeRules))

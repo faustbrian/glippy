@@ -100,8 +100,10 @@ finish. Admission requires an explicit read-only audit because public Go APIs
 cannot cheaply clone `types.Info` while preserving AST-key identity. Native
 metadata continues to own selection, generated-file and type-error eligibility,
 and fix safety. Adapted package analyzers remain deterministic by package and
-rule ID, expose only captured compiled-source reads, and cannot use
-flags, cross-file related locations, or multi-file fixes. A
+rule ID, expose only captured compiled-source reads, and cannot use cross-file
+related locations or multi-file fixes. Flagged analyzers require a factory that
+returns fresh contract-identical graphs and exact one-to-one native option
+bindings; shared analyzer flag mutation remains prohibited. A
 deterministic prerequisite DAG may produce exact-type results once per package;
 shared prerequisites execute once, diagnostics from metadata-less prerequisites
 fail, and cancellation stops dependent analyzers.

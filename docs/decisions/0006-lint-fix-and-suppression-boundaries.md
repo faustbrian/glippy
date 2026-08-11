@@ -186,8 +186,10 @@ between not performed, completed, and possibly completed replacement.
 Imported syntax analyzers pay one isolated parse per analyzer and file. Typed
 adapters reuse package state, so their admission audit must exclude mutation
 that could affect a later adapter. Syntax adapters cannot use facts; neither
-tier can use flags, arbitrary cross-file reads, or preempt a callback that does
-not return.
+tier can use arbitrary cross-file reads or preempt a callback that does not
+return. Flagged analyzers require fresh factory-owned graphs, exact typed option
+bindings, and runtime contract validation; string-list and unsupported flag
+value kinds remain unavailable.
 
 ## Revisit Trigger
 

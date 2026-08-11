@@ -8,6 +8,7 @@ import (
 	"go/types"
 	"net/url"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -31,7 +32,18 @@ type AnalyzerFixMapping struct {
 type AnalyzerAdapterOptions struct {
 	Metadata        rules.Metadata
 	SuggestedFixes  []AnalyzerFixMapping
+	FlagBindings    []AnalyzerFlagBinding
 	ReadOnlyAudited bool
+}
+
+// AnalyzerFactory constructs one independent analyzer graph for a single run.
+type AnalyzerFactory func() *goanalysis.Analyzer
+
+// AnalyzerFlagBinding maps one native typed option to one analyzer flag.
+type AnalyzerFlagBinding struct {
+	Option   string
+	Analyzer string
+	Flag     string
 }
 
 type analyzerFix struct {
@@ -40,16 +52,24 @@ type analyzerFix struct {
 }
 
 type analyzerRule struct {
-	analyzer goanalysis.Analyzer
-	metadata rules.Metadata
-	fixes    map[string]analyzerFix
+	analyzer  goanalysis.Analyzer
+	metadata  rules.Metadata
+	fixes     map[string]analyzerFix
+	factory   AnalyzerFactory
+	bindings  []AnalyzerFlagBinding
+	contract  []analyzerContractStep
+	admission map[*goanalysis.Analyzer]struct{}
 }
 
 type packageAnalyzerRule struct {
-	analyzer goanalysis.Analyzer
-	metadata rules.Metadata
-	fixes    map[string]analyzerFix
-	steps    []packageAnalyzerStep
+	analyzer  goanalysis.Analyzer
+	metadata  rules.Metadata
+	fixes     map[string]analyzerFix
+	steps     []packageAnalyzerStep
+	factory   AnalyzerFactory
+	bindings  []AnalyzerFlagBinding
+	contract  []analyzerContractStep
+	admission map[*goanalysis.Analyzer]struct{}
 }
 
 type packageAnalyzerStep struct {
@@ -60,6 +80,229 @@ type packageAnalyzerStep struct {
 // AdaptAnalyzer wraps one suitable go/analysis analyzer as a native rule.
 func AdaptAnalyzer(
 	analyzer *goanalysis.Analyzer,
+	options AnalyzerAdapterOptions,
+) (rules.Rule, error) {
+	return adaptAnalyzer(analyzer, nil, nil, options)
+}
+
+// AdaptAnalyzerFactory wraps independently constructed analyzer graphs so
+// native options can be bound without mutating shared flag state.
+func AdaptAnalyzerFactory(
+	factory AnalyzerFactory,
+	options AnalyzerAdapterOptions,
+) (rules.Rule, error) {
+	if factory == nil {
+		return nil, fmt.Errorf("adapt go/analysis factory: nil factory")
+	}
+	analyzer, err := callAnalyzerFactory(factory)
+	if err != nil {
+		return nil, fmt.Errorf("adapt go/analysis factory: %w", err)
+	}
+	if analyzer == nil {
+		return nil, fmt.Errorf("adapt go/analysis factory: factory returned nil analyzer")
+	}
+	if err := goanalysis.Validate([]*goanalysis.Analyzer{analyzer}); err != nil {
+		return nil, fmt.Errorf("adapt go/analysis factory: validate analyzer graph: %w", err)
+	}
+	comparison, err := callAnalyzerFactory(factory)
+	if err != nil {
+		return nil, fmt.Errorf("adapt go/analysis factory: %w", err)
+	}
+	if comparison == nil {
+		return nil, fmt.Errorf("adapt go/analysis factory: factory returned nil analyzer")
+	}
+	if err := goanalysis.Validate([]*goanalysis.Analyzer{comparison}); err != nil {
+		return nil, fmt.Errorf("adapt go/analysis factory: validate comparison graph: %w", err)
+	}
+	if !freshAnalyzerGraphs(analyzer, comparison) {
+		return nil, fmt.Errorf("adapt go/analysis factory: factory must return a fresh analyzer graph")
+	}
+	contract, err := analyzerContract(analyzer)
+	if err != nil {
+		return nil, fmt.Errorf("adapt go/analysis factory: %w", err)
+	}
+	comparisonContract, err := analyzerContract(comparison)
+	if err != nil {
+		return nil, fmt.Errorf("adapt go/analysis factory: %w", err)
+	}
+	if !reflect.DeepEqual(contract, comparisonContract) {
+		return nil, fmt.Errorf("adapt go/analysis factory: factory contract changed between instances")
+	}
+	return adaptAnalyzer(
+		analyzer,
+		factory,
+		analyzerGraphIdentities(analyzer, comparison),
+		options,
+	)
+}
+
+func analyzerGraphIdentities(graphs ...*goanalysis.Analyzer) map[*goanalysis.Analyzer]struct{} {
+	result := make(map[*goanalysis.Analyzer]struct{})
+	for _, graph := range graphs {
+		for _, analyzer := range analyzerExecutionPlan(graph) {
+			result[analyzer] = struct{}{}
+		}
+	}
+	return result
+}
+
+func callAnalyzerFactory(factory AnalyzerFactory) (analyzer *goanalysis.Analyzer, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("factory panicked: %v", recovered)
+		}
+	}()
+	return factory(), nil
+}
+
+func freshAnalyzerGraphs(first, second *goanalysis.Analyzer) bool {
+	firstPlan := analyzerExecutionPlan(first)
+	secondPlan := analyzerExecutionPlan(second)
+	if len(firstPlan) != len(secondPlan) {
+		return false
+	}
+	for index := range firstPlan {
+		if firstPlan[index] == secondPlan[index] || firstPlan[index].Name != secondPlan[index].Name {
+			return false
+		}
+	}
+	return true
+}
+
+type analyzerContractStep struct {
+	Name             string
+	Doc              string
+	URL              string
+	RunDespiteErrors bool
+	ResultType       reflect.Type
+	Requires         []string
+	FactTypes        []reflect.Type
+	Flags            []analyzerFlagContract
+}
+
+type analyzerFlagContract struct {
+	Name       string
+	Default    string
+	Usage      string
+	ValueType  reflect.Type
+	GetterType reflect.Type
+}
+
+type analyzerFlagStorage struct {
+	type_   reflect.Type
+	pointer uintptr
+}
+
+func analyzerContract(root *goanalysis.Analyzer) ([]analyzerContractStep, error) {
+	plan := analyzerExecutionPlan(root)
+	result := make([]analyzerContractStep, len(plan))
+	for index, analyzer := range plan {
+		step := analyzerContractStep{
+			Name: analyzer.Name, Doc: analyzer.Doc, URL: analyzer.URL,
+			RunDespiteErrors: analyzer.RunDespiteErrors,
+		}
+		step.ResultType = analyzer.ResultType
+		step.Requires = make([]string, len(analyzer.Requires))
+		for requirementIndex, required := range analyzer.Requires {
+			step.Requires[requirementIndex] = required.Name
+		}
+		sort.Strings(step.Requires)
+		step.FactTypes = make([]reflect.Type, len(analyzer.FactTypes))
+		for factIndex, fact := range analyzer.FactTypes {
+			step.FactTypes[factIndex] = reflect.TypeOf(fact)
+		}
+		sort.Slice(step.FactTypes, func(left, right int) bool {
+			return reflectTypeSortKey(step.FactTypes[left]) < reflectTypeSortKey(step.FactTypes[right])
+		})
+		var contractErr error
+		analyzer.Flags.VisitAll(func(setting *flag.Flag) {
+			if contractErr != nil {
+				return
+			}
+			var getterType reflect.Type
+			if getter, ok := setting.Value.(flag.Getter); ok {
+				value, err := analyzerFlagGetterValue(getter)
+				if err != nil {
+					contractErr = fmt.Errorf(
+						"analyzer flag %q.%s: %w",
+						analyzer.Name,
+						setting.Name,
+						err,
+					)
+					return
+				}
+				getterType = reflect.TypeOf(value)
+			}
+			step.Flags = append(step.Flags, analyzerFlagContract{
+				Name: setting.Name, Default: setting.DefValue, Usage: setting.Usage,
+				ValueType: reflect.TypeOf(setting.Value), GetterType: getterType,
+			})
+		})
+		if contractErr != nil {
+			return nil, contractErr
+		}
+		result[index] = step
+	}
+	return result, nil
+}
+
+func analyzerFlagGetterValue(getter flag.Getter) (value any, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("flag getter panicked: %v", recovered)
+		}
+	}()
+	return getter.Get(), nil
+}
+
+func reflectTypeSortKey(type_ reflect.Type) string {
+	if type_ == nil {
+		return ""
+	}
+	for type_.Kind() == reflect.Pointer {
+		type_ = type_.Elem()
+	}
+	return type_.PkgPath() + "\x00" + type_.String()
+}
+
+func validateAnalyzerFactoryInstance(
+	instance *goanalysis.Analyzer,
+	name string,
+	contract []analyzerContractStep,
+	admission map[*goanalysis.Analyzer]struct{},
+) error {
+	if instance == nil {
+		return fmt.Errorf("go/analysis factory returned nil analyzer")
+	}
+	if instance.Name != name {
+		return fmt.Errorf(
+			"go/analysis factory returned analyzer %q; want %q",
+			instance.Name,
+			name,
+		)
+	}
+	if err := goanalysis.Validate([]*goanalysis.Analyzer{instance}); err != nil {
+		return fmt.Errorf("validate analyzer factory result: %w", err)
+	}
+	for _, analyzer := range analyzerExecutionPlan(instance) {
+		if _, reused := admission[analyzer]; reused {
+			return fmt.Errorf("go/analysis factory reused an admission analyzer %q", analyzer.Name)
+		}
+	}
+	instanceContract, err := analyzerContract(instance)
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(contract, instanceContract) {
+		return fmt.Errorf("go/analysis factory contract changed at runtime")
+	}
+	return nil
+}
+
+func adaptAnalyzer(
+	analyzer *goanalysis.Analyzer,
+	factory AnalyzerFactory,
+	admission map[*goanalysis.Analyzer]struct{},
 	options AnalyzerAdapterOptions,
 ) (rules.Rule, error) {
 	if analyzer == nil {
@@ -84,27 +327,27 @@ func AdaptAnalyzer(
 				step.Name,
 			)
 		}
-		hasFlags := false
-		step.Flags.VisitAll(func(*flag.Flag) { hasFlags = true })
-		if hasFlags {
+		hasFlags := analyzerHasFlags(step)
+		if hasFlags && factory == nil {
 			return nil, fmt.Errorf(
-				"adapt go/analysis %q: analyzer %q flags require native typed configuration",
+				"adapt go/analysis %q: analyzer %q flags require an isolated analyzer factory",
 				analyzer.Name,
 				step.Name,
 			)
 		}
 	}
-	if len(options.Metadata.Options) != 0 {
-		return nil, fmt.Errorf(
-			"adapt go/analysis %q: native options require analyzer flag bindings",
-			analyzer.Name,
-		)
+	if err := validateAnalyzerFlagBindings(analyzer, plan, options.Metadata, options.FlagBindings); err != nil {
+		return nil, err
 	}
 	if len(options.Metadata.Fixes) != 0 {
 		return nil, fmt.Errorf("adapt go/analysis %q: native fix metadata must come from suggested-fix mappings", analyzer.Name)
 	}
 
 	metadata := cloneAnalyzerMetadata(options.Metadata)
+	contract, err := analyzerContract(analyzer)
+	if err != nil {
+		return nil, fmt.Errorf("adapt go/analysis %q: %w", analyzer.Name, err)
+	}
 	fixes := make(map[string]analyzerFix, len(options.SuggestedFixes))
 	fixNames := make(map[string]struct{}, len(options.SuggestedFixes))
 	for index, mapping := range options.SuggestedFixes {
@@ -147,7 +390,15 @@ func AdaptAnalyzer(
 	var adapted rules.Rule
 	switch metadata.Requirement {
 	case rules.RequireSyntax:
-		adapted = &analyzerRule{analyzer: snapshot, metadata: metadata, fixes: fixes}
+		adapted = &analyzerRule{
+			analyzer:  snapshot,
+			metadata:  metadata,
+			fixes:     fixes,
+			factory:   factory,
+			bindings:  slices.Clone(options.FlagBindings),
+			contract:  contract,
+			admission: admission,
+		}
 	case rules.RequireTypes:
 		if !options.ReadOnlyAudited {
 			return nil, fmt.Errorf(
@@ -171,10 +422,14 @@ func AdaptAnalyzer(
 			steps[index] = packageAnalyzerStep{original: step, analyzer: *step}
 		}
 		adapted = &packageAnalyzerRule{
-			analyzer: snapshot,
-			metadata: metadata,
-			fixes:    fixes,
-			steps:    steps,
+			analyzer:  snapshot,
+			metadata:  metadata,
+			fixes:     fixes,
+			steps:     steps,
+			factory:   factory,
+			bindings:  slices.Clone(options.FlagBindings),
+			contract:  contract,
+			admission: admission,
 		}
 	default:
 		return nil, fmt.Errorf(
@@ -210,6 +465,261 @@ func analyzerExecutionPlan(root *goanalysis.Analyzer) []*goanalysis.Analyzer {
 	return plan
 }
 
+func analyzerHasFlags(analyzer *goanalysis.Analyzer) bool {
+	hasFlags := false
+	analyzer.Flags.VisitAll(func(*flag.Flag) { hasFlags = true })
+	return hasFlags
+}
+
+func validateAnalyzerFlagBindings(
+	root *goanalysis.Analyzer,
+	plan []*goanalysis.Analyzer,
+	metadata rules.Metadata,
+	bindings []AnalyzerFlagBinding,
+) error {
+	options := make(map[string]rules.OptionMetadata, len(metadata.Options))
+	for _, option := range metadata.Options {
+		options[option.Name] = option
+		if option.Kind == rules.OptionStrings {
+			return fmt.Errorf(
+				"adapt go/analysis %q: string-list option %q cannot bind to an analyzer flag",
+				root.Name,
+				option.Name,
+			)
+		}
+	}
+	analyzers := make(map[string]*goanalysis.Analyzer, len(plan))
+	storageOwners := make(map[analyzerFlagStorage]string)
+	for _, analyzer := range plan {
+		if _, duplicate := analyzers[analyzer.Name]; duplicate {
+			return fmt.Errorf("adapt go/analysis %q: duplicate analyzer name %q", root.Name, analyzer.Name)
+		}
+		analyzers[analyzer.Name] = analyzer
+		var storageErr error
+		analyzer.Flags.VisitAll(func(setting *flag.Flag) {
+			if storageErr != nil {
+				return
+			}
+			identity, found := analyzerFlagStorageIdentity(setting)
+			if !found {
+				return
+			}
+			current := analyzer.Name + "." + setting.Name
+			if owner, duplicate := storageOwners[identity]; duplicate {
+				storageErr = fmt.Errorf(
+					"adapt go/analysis %q: analyzer flags %q and %q share value storage",
+					root.Name,
+					owner,
+					current,
+				)
+				return
+			}
+			storageOwners[identity] = current
+		})
+		if storageErr != nil {
+			return storageErr
+		}
+	}
+	boundOptions := make(map[string]struct{}, len(bindings))
+	boundFlags := make(map[string]struct{}, len(bindings))
+	for index, binding := range bindings {
+		if strings.TrimSpace(binding.Option) == "" || strings.TrimSpace(binding.Analyzer) == "" ||
+			strings.TrimSpace(binding.Flag) == "" {
+			return fmt.Errorf("adapt go/analysis %q: flag binding %d is incomplete", root.Name, index)
+		}
+		option, found := options[binding.Option]
+		if !found {
+			return fmt.Errorf("adapt go/analysis %q: flag binding references unknown option %q", root.Name, binding.Option)
+		}
+		analyzer, found := analyzers[binding.Analyzer]
+		if !found {
+			return fmt.Errorf("adapt go/analysis %q: flag binding references unknown analyzer %q", root.Name, binding.Analyzer)
+		}
+		setting := analyzer.Flags.Lookup(binding.Flag)
+		if setting == nil {
+			return fmt.Errorf(
+				"adapt go/analysis %q: analyzer %q has no flag %q",
+				root.Name,
+				binding.Analyzer,
+				binding.Flag,
+			)
+		}
+		kind, supported, err := analyzerFlagKind(setting)
+		if err != nil {
+			return fmt.Errorf(
+				"adapt go/analysis %q: analyzer flag %q.%s: %w",
+				root.Name,
+				binding.Analyzer,
+				binding.Flag,
+				err,
+			)
+		}
+		if !supported {
+			return fmt.Errorf(
+				"adapt go/analysis %q: analyzer flag %q.%s has unsupported value type",
+				root.Name,
+				binding.Analyzer,
+				binding.Flag,
+			)
+		}
+		if kind != option.Kind {
+			return fmt.Errorf(
+				"adapt go/analysis %q: analyzer flag %q.%s has flag kind %s; want %s",
+				root.Name,
+				binding.Analyzer,
+				binding.Flag,
+				kind,
+				option.Kind,
+			)
+		}
+		if _, duplicate := boundOptions[binding.Option]; duplicate {
+			return fmt.Errorf("adapt go/analysis %q: option %q is bound more than once", root.Name, binding.Option)
+		}
+		flagID := binding.Analyzer + "\x00" + binding.Flag
+		if _, duplicate := boundFlags[flagID]; duplicate {
+			return fmt.Errorf(
+				"adapt go/analysis %q: analyzer flag %q.%s is bound more than once",
+				root.Name,
+				binding.Analyzer,
+				binding.Flag,
+			)
+		}
+		boundOptions[binding.Option] = struct{}{}
+		boundFlags[flagID] = struct{}{}
+	}
+	for _, option := range metadata.Options {
+		if _, found := boundOptions[option.Name]; !found {
+			return fmt.Errorf("adapt go/analysis %q: native option %q has no analyzer flag binding", root.Name, option.Name)
+		}
+	}
+	for _, analyzer := range plan {
+		var unbound string
+		analyzer.Flags.VisitAll(func(flag *flag.Flag) {
+			if _, found := boundFlags[analyzer.Name+"\x00"+flag.Name]; !found && unbound == "" {
+				unbound = flag.Name
+			}
+		})
+		if unbound != "" {
+			return fmt.Errorf(
+				"adapt go/analysis %q: analyzer flag %q.%s has no native option binding",
+				root.Name,
+				analyzer.Name,
+				unbound,
+			)
+		}
+	}
+	return nil
+}
+
+func analyzerFlagStorageIdentity(setting *flag.Flag) (analyzerFlagStorage, bool) {
+	value := reflect.ValueOf(setting.Value)
+	if !value.IsValid() || value.Kind() != reflect.Pointer || value.IsNil() {
+		return analyzerFlagStorage{}, false
+	}
+	return analyzerFlagStorage{type_: value.Type(), pointer: value.Pointer()}, true
+}
+
+func analyzerFlagKind(setting *flag.Flag) (rules.OptionKind, bool, error) {
+	getter, ok := setting.Value.(flag.Getter)
+	if !ok {
+		return "", false, nil
+	}
+	value, err := analyzerFlagGetterValue(getter)
+	if err != nil {
+		return "", false, err
+	}
+	switch value.(type) {
+	case bool:
+		return rules.OptionBoolean, true, nil
+	case int, int8, int16, int32, int64:
+		return rules.OptionInteger, true, nil
+	case string:
+		return rules.OptionString, true, nil
+	default:
+		return "", false, nil
+	}
+}
+
+func bindAnalyzerFlags(
+	root *goanalysis.Analyzer,
+	metadata rules.Metadata,
+	bindings []AnalyzerFlagBinding,
+	options analyzerOptionLookup,
+) error {
+	plan := analyzerExecutionPlan(root)
+	if err := validateAnalyzerFlagBindings(root, plan, metadata, bindings); err != nil {
+		return err
+	}
+	analyzers := make(map[string]*goanalysis.Analyzer, len(plan))
+	for _, analyzer := range plan {
+		analyzers[analyzer.Name] = analyzer
+	}
+	schema := make(map[string]rules.OptionMetadata, len(metadata.Options))
+	for _, option := range metadata.Options {
+		schema[option.Name] = option
+	}
+	for _, binding := range bindings {
+		option := schema[binding.Option]
+		var value string
+		var found bool
+		switch option.Kind {
+		case rules.OptionBoolean:
+			var configured bool
+			configured, found = options.BooleanOption(binding.Option)
+			value = fmt.Sprint(configured)
+		case rules.OptionInteger:
+			var configured int64
+			configured, found = options.IntegerOption(binding.Option)
+			value = fmt.Sprint(configured)
+		case rules.OptionString:
+			value, found = options.StringOption(binding.Option)
+		}
+		if !found {
+			return fmt.Errorf("adapt go/analysis %q: resolved option %q is missing", root.Name, binding.Option)
+		}
+		if err := setAnalyzerFlag(&analyzers[binding.Analyzer].Flags, binding.Flag, value); err != nil {
+			return fmt.Errorf(
+				"adapt go/analysis %q: bind option %q to flag %q.%s: %w",
+				root.Name,
+				binding.Option,
+				binding.Analyzer,
+				binding.Flag,
+				err,
+			)
+		}
+	}
+	return nil
+}
+
+func setAnalyzerFlag(flags *flag.FlagSet, name, value string) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("flag setter panicked: %v", recovered)
+		}
+	}()
+	return flags.Set(name, value)
+}
+
+type analyzerOptionLookup interface {
+	BooleanOption(string) (bool, bool)
+	IntegerOption(string) (int64, bool)
+	StringOption(string) (string, bool)
+}
+
+type analyzerOptionSetLookup struct{ options rules.OptionSet }
+
+func (l analyzerOptionSetLookup) BooleanOption(name string) (bool, bool) {
+	return l.options.Boolean(name)
+}
+
+func (l analyzerOptionSetLookup) IntegerOption(name string) (int64, bool) {
+	return l.options.Integer(name)
+}
+
+func (l analyzerOptionSetLookup) StringOption(name string) (string, bool) {
+	return l.options.String(name)
+}
+
 func (r *analyzerRule) Metadata() rules.Metadata { return cloneAnalyzerMetadata(r.metadata) }
 
 func (r *packageAnalyzerRule) Metadata() rules.Metadata {
@@ -222,6 +732,24 @@ func (r *analyzerRule) RunSyntaxFile(ctx *rules.Context) ([]rules.Finding, error
 	}
 	file := ctx.File()
 	analyzer := r.analyzer
+	if r.factory != nil {
+		instance, err := callAnalyzerFactory(r.factory)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateAnalyzerFactoryInstance(
+			instance,
+			r.analyzer.Name,
+			r.contract,
+			r.admission,
+		); err != nil {
+			return nil, err
+		}
+		if err := bindAnalyzerFlags(instance, r.metadata, r.bindings, ctx); err != nil {
+			return nil, err
+		}
+		analyzer = *instance
+	}
 	findings := make([]rules.Finding, 0)
 	err := file.ReadSyntaxView(func(fileSet *token.FileSet, syntax *ast.File) error {
 		tokenFile := fileSet.File(syntax.Pos())
@@ -388,19 +916,7 @@ func cloneAnalyzerDiagnostic(diagnostic goanalysis.Diagnostic) goanalysis.Diagno
 }
 
 func cloneAnalyzerMetadata(metadata rules.Metadata) rules.Metadata {
-	result := metadata
-	result.Presets = slices.Clone(metadata.Presets)
-	result.NodeInterests = slices.Clone(metadata.NodeInterests)
-	result.Categories = slices.Clone(metadata.Categories)
-	result.Fixes = slices.Clone(metadata.Fixes)
-	result.Options = slices.Clone(metadata.Options)
-	result.KnownLimitations = slices.Clone(metadata.KnownLimitations)
-	result.Examples = slices.Clone(metadata.Examples)
-	if metadata.Deprecation != nil {
-		deprecation := *metadata.Deprecation
-		result.Deprecation = &deprecation
-	}
-	return result
+	return rules.CloneMetadata(metadata)
 }
 
 var _ rules.SyntaxFileRule = (*analyzerRule)(nil)
