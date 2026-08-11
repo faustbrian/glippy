@@ -993,6 +993,24 @@ func TestFormatPreservesOperandAndListElementComments(t *testing.T) {
 	}
 }
 
+func TestFormatPreservesLineCommentsAfterBinaryOperators(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package comments\nfunc condition(first,second bool)bool{return first || // keep logical\nsecond}\nfunc total(first,second int)int{return 1+first+ // keep arithmetic\nsecond}\nfunc mixed(first,second int)int{return first+ // first line\n/* middle */ // second line\nsecond}\n")
+	file, err := source.Load("binary_line_comments.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nfunc condition(first, second bool) bool {\n\treturn first || // keep logical\n\t\tsecond\n}\n\nfunc total(first, second int) int {\n\treturn 1 +\n\t\tfirst + // keep arithmetic\n\t\tsecond\n}\n\nfunc mixed(first, second int) int {\n\treturn first + // first line\n\t\t/* middle */ // second line\n\t\tsecond\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatPreservesCallArgumentComments(t *testing.T) {
 	t.Parallel()
 

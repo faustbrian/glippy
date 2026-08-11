@@ -54,3 +54,12 @@ valid, and idempotent, restoring the Phase 1 exit gate. Existing safe
 filesystem, configuration, and CLI proof supports 45%. Complete
 platform-specific filesystem semantics, release artifacts, and
 external-repository adoption remain open before the 55% gate.
+
+An immutable external check of `go-libraries` at
+`a6f1c1f66a1b754e7384da0f6e97e0b3587c5f71` selected 5,051 files. It exposed
+two valid binary expressions with trailing line comments that previously
+aborted formatting. The corrected binary boundary completes the same snapshot
+with 4,816 formatting differences and no tool error. This is check-mode corpus
+evidence, not completed adoption: generated-file refusal prevented a full-tree
+write rehearsal, and the 4,816-file migration diff has not received human
+readability approval.

@@ -3683,6 +3683,7 @@ func (l *lowerer) binary(expression *ast.BinaryExpr) (doc.ID, error) {
 		}
 		items = append(items, lowered)
 	}
+	boundaries := make([]doc.ID, len(operators))
 	for index, operator := range operators {
 		operatorStart, found := l.source.PhysicalOffset(operator.OpPos)
 		if !found {
@@ -3703,17 +3704,55 @@ func (l *lowerer) binary(expression *ast.BinaryExpr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
+		hasRightLineComment := false
+		for _, comment := range rightComments {
+			hasRightLineComment = hasRightLineComment || strings.HasPrefix(comment.Raw, "//")
+		}
+		items[index] = l.arena.Concat(items[index], leftDocument, l.arena.Text(" "+operator.Op.String()))
+		if hasRightLineComment {
+			boundaries[index] = l.binaryLineCommentBoundary(
+				operatorStart+len(operatorRaw),
+				rightStart,
+				rightComments,
+			)
+			continue
+		}
 		rightDocument, err := l.inlineComments(rightComments, false)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		items[index] = l.arena.Concat(items[index], leftDocument, l.arena.Text(" "+operator.Op.String()))
-		items[index+1] = l.arena.Concat(rightDocument, items[index+1])
+		boundaries[index] = l.arena.Concat(l.arena.Line(), rightDocument)
+	}
+	continuation := make([]doc.ID, 0, len(boundaries)*2)
+	for index, boundary := range boundaries {
+		continuation = append(continuation, boundary, items[index+1])
 	}
 	return l.arena.Group(l.arena.Concat(
 		items[0],
-		l.arena.Indent(l.arena.Concat(l.arena.Line(), l.join(l.arena.Line(), items[1:]))),
+		l.arena.Indent(l.arena.Concat(continuation...)),
 	)), nil
+}
+
+func (l *lowerer) binaryLineCommentBoundary(
+	operatorEnd int,
+	rightStart int,
+	comments []source.Comment,
+) doc.ID {
+	parts := make([]doc.ID, 0, len(comments)*3+1)
+	boundary := operatorEnd
+	previousWasLineComment := false
+	for _, comment := range comments {
+		if !previousWasLineComment && l.samePhysicalLine(boundary, comment.Range.Start) {
+			parts = append(parts, l.arena.Text(" "))
+		} else {
+			parts = append(parts, l.commentGap(boundary, comment.Range.Start))
+		}
+		parts = append(parts, l.arena.Verbatim(comment.Raw))
+		boundary = comment.Range.End
+		previousWasLineComment = strings.HasPrefix(comment.Raw, "//")
+	}
+	parts = append(parts, l.commentGap(boundary, rightStart))
+	return l.arena.Concat(parts...)
 }
 
 func (l *lowerer) inlineComments(comments []source.Comment, leadingSpace bool) (doc.ID, error) {

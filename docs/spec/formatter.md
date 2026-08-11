@@ -51,6 +51,12 @@ operand. Unary expressions, increment/decrement statements, indexing, slicing,
 and other constructs without a grammar-safe broken form MUST remain atomic or
 use a separately proven layout.
 
+A line comment after a binary operator MUST remain after that operator and
+force the following operand onto the next continuation line. The comment MUST
+NOT move before the operator or cause the operator to begin a new line. When
+one boundary forces a same-precedence chain to break, every other breakable
+boundary in that chain uses the canonical broken form.
+
 An uncommented control-flow keyword MUST remain with its first operand or
 clause. Width pressure in `if` and condition-only `for` headers belongs to the
 condition's own groups. Range headers MAY break after `range`, and initialized
