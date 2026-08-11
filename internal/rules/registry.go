@@ -213,6 +213,11 @@ func validateMetadata(metadata Metadata) error {
 	if metadata.Deprecation != nil && strings.TrimSpace(metadata.Deprecation.Message) == "" {
 		return fmt.Errorf("%s: deprecation message is required", metadata.ID)
 	}
+	for _, limitation := range metadata.KnownLimitations {
+		if strings.TrimSpace(limitation) == "" {
+			return fmt.Errorf("%s: known limitations must not be empty", metadata.ID)
+		}
+	}
 	if len(metadata.Examples) == 0 {
 		return fmt.Errorf("%s: at least one example is required", metadata.ID)
 	}
@@ -298,6 +303,7 @@ func cloneMetadata(metadata Metadata) Metadata {
 	result.Categories = slices.Clone(metadata.Categories)
 	result.Fixes = slices.Clone(metadata.Fixes)
 	result.Options = slices.Clone(metadata.Options)
+	result.KnownLimitations = slices.Clone(metadata.KnownLimitations)
 	result.Examples = slices.Clone(metadata.Examples)
 	if metadata.Deprecation != nil {
 		copy := *metadata.Deprecation

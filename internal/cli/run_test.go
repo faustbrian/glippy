@@ -14,6 +14,7 @@ import (
 
 	"github.com/faustbrian/gox/internal/discovery"
 	"github.com/faustbrian/gox/internal/filesystem"
+	"github.com/faustbrian/gox/internal/rules"
 	goxversion "github.com/faustbrian/gox/internal/version"
 )
 
@@ -36,6 +37,12 @@ type shortWriter struct{}
 func (shortWriter) Write(value []byte) (int, error) {
 	return len(value) - 1, nil
 }
+
+type explainMetadataRule struct {
+	metadata rules.Metadata
+}
+
+func (r explainMetadataRule) Metadata() rules.Metadata { return r.metadata }
 
 type formatJSONReport struct {
 	SchemaVersion int    `json:"schema_version"`
@@ -85,6 +92,117 @@ func TestRunReportsResolvedVersion(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunExplainRendersRegisteredRuleMetadata(t *testing.T) {
+	t.Parallel()
+
+	registry, err := rules.NewRegistry(explainMetadataRule{metadata: rules.Metadata{
+		ID:               "explain-rule",
+		Summary:          "explains one rule",
+		Documentation:    "Canonical rule documentation.",
+		DefaultSeverity:  rules.SeverityWarn,
+		Presets:          []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion: "1.22",
+		Requirement:      rules.RequireSyntax,
+		NodeInterests:    []rules.NodeKind{rules.NodeCallExpr},
+		Categories:       []rules.Category{rules.CategoryCorrectness},
+		Examples: []rules.Example{{
+			Incorrect: "bad()",
+			Correct:   "good()",
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runExplain(
+		context.Background(),
+		[]string{"explain", "explain-rule"},
+		&stdout,
+		&stderr,
+		registry,
+	)
+
+	if exitCode != ExitSuccess {
+		t.Fatalf("runExplain() exit = %d, want %d", exitCode, ExitSuccess)
+	}
+	if !strings.HasPrefix(stdout.String(), "explain-rule\nexplains one rule\n") {
+		t.Fatalf("runExplain() stdout = %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("runExplain() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunExplainRejectsInvalidOrUnknownRules(t *testing.T) {
+	t.Parallel()
+
+	for _, arguments := range [][]string{
+		{"explain"},
+		{"explain", "first", "second"},
+	} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		exitCode := Run(arguments, failingReader{}, &stdout, &stderr)
+		if exitCode != ExitInvalidInvocation || stdout.Len() != 0 || stderr.String() != explainUsage {
+			t.Fatalf("Run(%q) = exit %d, stdout %q, stderr %q", arguments, exitCode, stdout.String(), stderr.String())
+		}
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"explain", "missing-rule"}, failingReader{}, &stdout, &stderr)
+	if exitCode != ExitInvalidInvocation || stdout.Len() != 0 ||
+		stderr.String() != "gox explain: unknown rule \"missing-rule\"\n" {
+		t.Fatalf("Run(explain missing) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunExplainHonorsCancellationAndOutputFailures(t *testing.T) {
+	t.Parallel()
+
+	registry, err := rules.NewRegistry(explainMetadataRule{metadata: rules.Metadata{
+		ID:               "explain-rule",
+		Summary:          "explains one rule",
+		Documentation:    "Canonical rule documentation.",
+		DefaultSeverity:  rules.SeverityWarn,
+		Presets:          []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion: "1.22",
+		Requirement:      rules.RequireSyntax,
+		NodeInterests:    []rules.NodeKind{rules.NodeCallExpr},
+		Categories:       []rules.Category{rules.CategoryCorrectness},
+		Examples:         []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var canceledOutput bytes.Buffer
+	var canceledError bytes.Buffer
+	if exitCode := runExplain(
+		ctx,
+		[]string{"explain", "explain-rule"},
+		&canceledOutput,
+		&canceledError,
+		registry,
+	); exitCode != ExitCanceled || canceledOutput.Len() != 0 {
+		t.Fatalf("runExplain(canceled) = exit %d, stdout %q", exitCode, canceledOutput.String())
+	}
+
+	var stderr bytes.Buffer
+	if exitCode := runExplain(
+		context.Background(),
+		[]string{"explain", "explain-rule"},
+		failingWriter{},
+		&stderr,
+		registry,
+	); exitCode != ExitFilesystemError || !strings.Contains(stderr.String(), "write standard output") {
+		t.Fatalf("runExplain(failing output) = exit %d, stderr %q", exitCode, stderr.String())
 	}
 }
 

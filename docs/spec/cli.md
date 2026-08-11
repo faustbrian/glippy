@@ -31,6 +31,14 @@ link-time release metadata, then a non-development Go module build version, and
 finally `devel`. The command MUST NOT read source or configuration files or
 modify the filesystem.
 
+`gox explain <rule>` MUST accept exactly one rule ID and render the complete
+human documentation derived from that rule's immutable compiled metadata. It
+MUST NOT discover project files or load configuration. Unknown rule IDs and
+invalid argument counts exit as invalid invocation without writing stdout.
+Cancellation and output failures retain the common exit categories. The
+initial compiled registry remains empty until a rule satisfies the admission
+gate, so no successful public rule ID exists yet.
+
 `fmt` without a write, check, or diff flag writes formatted content to stdout
 for one explicit file or stdin. Multiple filesystem inputs require `--write`,
 `--check`, or `--diff`. Those three modes are mutually exclusive. Standard input

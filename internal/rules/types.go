@@ -135,6 +135,7 @@ type Metadata struct {
 	Fixes            []FixMetadata
 	Options          []OptionMetadata
 	Deprecation      *Deprecation
+	KnownLimitations []string
 	Examples         []Example
 }
 

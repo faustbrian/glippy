@@ -137,3 +137,12 @@ boundaries. It emits canonically ordered diagnostics with related locations,
 notes, help, and named fix safety while omitting source excerpts and replacement
 text. Lint CLI modes, fix outcome reporting, and built-in rules remain open, so
 progress stays 45%.
+
+Canonical rule metadata now carries structured known limitations alongside
+existing prerequisites, typed options, fix safety, deprecation, and paired
+examples. The human rule renderer exposes that complete immutable contract, and
+`gox explain <rule>` now validates arguments, cancellation, unknown IDs, and
+output failures without loading project state. The compiled registry is still
+empty because no built-in rule has passed its admission and dogfood-noise gate;
+the success path is proven with an injected validated registry. Progress stays
+45%.

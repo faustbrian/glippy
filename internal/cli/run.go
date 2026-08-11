@@ -19,6 +19,7 @@ import (
 	"github.com/faustbrian/gox/internal/filesystem"
 	goxformat "github.com/faustbrian/gox/internal/format"
 	goxreport "github.com/faustbrian/gox/internal/report"
+	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
 	goxversion "github.com/faustbrian/gox/internal/version"
 )
@@ -41,6 +42,7 @@ var defaultFormatOptions = goxformat.Options{
 }
 
 const formatUsage = "gox: expected 'fmt [--write|--check|--diff] [--reporter=text|json] [--config=<path>] [--stdin-filepath=<path>] [--fragment=declaration|statement|expression] [path...]'\n"
+const explainUsage = "gox: expected 'explain <rule>'\n"
 const versionUsage = "gox: expected 'version'\n"
 
 const maximumFormatWorkers = 32
@@ -71,6 +73,13 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 	}
 	if len(arguments) > 0 && arguments[0] == "version" {
 		return runVersion(ctx, arguments, stdout, stderr)
+	}
+	if len(arguments) > 0 && arguments[0] == "explain" {
+		registry, err := rules.NewRegistry()
+		if err != nil {
+			return report(stderr, ExitInternalError, "gox explain: initialize rule registry: %v\n", err)
+		}
+		return runExplain(ctx, arguments, stdout, stderr, registry)
 	}
 	invocation, valid := parseFormatInvocation(arguments)
 	if !valid {
@@ -175,6 +184,37 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 	}
 	if err := write(stdout, formatted); err != nil {
 		return report(stderr, ExitFilesystemError, "gox fmt: write standard output: %v\n", err)
+	}
+	return ExitSuccess
+}
+
+func runExplain(
+	ctx context.Context,
+	arguments []string,
+	stdout, stderr io.Writer,
+	registry *rules.Registry,
+) int {
+	if len(arguments) != 2 {
+		return report(stderr, ExitInvalidInvocation, explainUsage)
+	}
+	if ctx == nil {
+		return report(stderr, ExitInternalError, "gox explain: context is required\n")
+	}
+	if registry == nil {
+		return report(stderr, ExitInternalError, "gox explain: rule registry is required\n")
+	}
+	if err := ctx.Err(); err != nil {
+		return report(stderr, ExitCanceled, "gox explain: %v\n", err)
+	}
+	output, found := goxreport.RenderRuleText(registry, arguments[1])
+	if !found {
+		return report(stderr, ExitInvalidInvocation, "gox explain: unknown rule %q\n", arguments[1])
+	}
+	if err := ctx.Err(); err != nil {
+		return report(stderr, ExitCanceled, "gox explain: %v\n", err)
+	}
+	if err := write(stdout, output); err != nil {
+		return report(stderr, ExitFilesystemError, "gox explain: write standard output: %v\n", err)
 	}
 	return ExitSuccess
 }

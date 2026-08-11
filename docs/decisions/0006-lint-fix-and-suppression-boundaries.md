@@ -20,10 +20,13 @@ ownership rather than ESLint-compatible breadth.
 ## Decision
 
 Native rule metadata controls scheduling, documentation, presets, generated
-files, and fix safety. Suppressions name exact rules and bind to physical token
-ownership. The fix coordinator source-versions every edit, rejects all
-conflicts explicitly, reparses, formats, validates, and performs one atomic
-single-file replacement.
+files, fix safety, typed configuration, paired examples, deprecation, and known
+limitations. The human `explain` renderer consumes an immutable metadata copy
+from the same registry and makes empty fix, configuration, and limitation sets
+explicit. Suppressions name exact rules and bind to physical token ownership.
+The fix coordinator source-versions every edit, rejects all conflicts
+explicitly, reparses, formats, validates, and performs one atomic single-file
+replacement.
 
 The coordinator accepts explicit diagnostic and fix-name selections; choosing
 among alternative named fixes remains driver policy. Ordinary coordination

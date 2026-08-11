@@ -35,6 +35,16 @@ func TestRegistryValidatesAndOrdersNativeRuleMetadata(t *testing.T) {
 	if _, found := registry.Lookup("a-first"); !found {
 		t.Fatal("Lookup() did not return the registered rule")
 	}
+	earlier.metadata.KnownLimitations[0] = "mutated caller metadata"
+	metadata, found := registry.Metadata("a-first")
+	if !found || metadata.KnownLimitations[0] != "does not inspect generated files" {
+		t.Fatalf("Metadata() known limitations = %#v", metadata.KnownLimitations)
+	}
+	metadata.KnownLimitations[0] = "mutated result metadata"
+	metadata, _ = registry.Metadata("a-first")
+	if metadata.KnownLimitations[0] != "does not inspect generated files" {
+		t.Fatalf("Metadata() returned mutable known limitations: %#v", metadata.KnownLimitations)
+	}
 
 	duplicate := metadataRule{metadata: validMetadata("a-first")}
 	if _, err := rules.NewRegistry(earlier, duplicate); err == nil ||
@@ -99,6 +109,13 @@ func TestRegistryRejectsIncompleteOrInconsistentMetadata(t *testing.T) {
 				metadata.Options = append(metadata.Options, metadata.Options[0])
 			},
 			wantError: "duplicate option name \"allow-comment\"",
+		},
+		{
+			name: "empty known limitation",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.KnownLimitations = []string{" "}
+			},
+			wantError: "known limitations must not be empty",
 		},
 	}
 
@@ -196,6 +213,7 @@ func validMetadata(id string) rules.Metadata {
 			Summary: "allow an explanatory comment",
 			Kind:    rules.OptionBoolean,
 		}},
+		KnownLimitations: []string{"does not inspect generated files"},
 		Examples: []rules.Example{{
 			Incorrect: "empty()",
 			Correct:   "work()",

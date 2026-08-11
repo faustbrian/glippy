@@ -14,7 +14,8 @@ here.
 Every rule MUST declare a stable ID, summary, full documentation, default
 severity, preset membership, minimum source version, required analysis tier,
 node interests where applicable, generated-file policy, diagnostic categories,
-fix availability and safety, typed options schema, and deprecation metadata.
+fix availability and safety, typed options schema, deprecation metadata, known
+limitations, and paired incorrect/correct examples.
 
 The scheduler MUST compute the maximum required representation across enabled
 rules and MUST NOT construct types, CFG, or SSA speculatively. Syntax rules
@@ -113,5 +114,11 @@ Analyzers that mutate shared AST state, depend on deprecated object resolution,
 or require unsupported multi-file edits MUST be isolated or rejected with a
 clear compatibility diagnostic.
 
-Rule documentation and `explain` output MUST derive from the same canonical
-metadata and examples.
+Rule documentation and `explain` output MUST derive from the same immutable
+registry metadata and examples. Human `explain` output MUST include the rule
+ID, summary, full documentation, default severity, presets, minimum Go version,
+analysis tier, node interests, generated-file policy, categories, deprecation
+and replacement metadata when present, named fix safety, typed configuration,
+known limitations, and every paired example. Empty fix, configuration, or
+known-limitation sets MUST remain explicit instead of disappearing from the
+documentation contract.
