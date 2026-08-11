@@ -496,6 +496,7 @@ func lintOptionsForSelection(
 			Preset:                   loaded.Lint.Preset,
 			Overrides:                loaded.Lint.Rules,
 			RequireSuppressionReason: loaded.Lint.Suppressions.RequireReason,
+			SuppressionExpiryCutoff:  loaded.Lint.Suppressions.ExpiryCutoff,
 		},
 		format: goxformat.Options{
 			Width:     loaded.Format.LineWidth,

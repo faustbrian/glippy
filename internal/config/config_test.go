@@ -187,16 +187,35 @@ func TestParseAppliesSuppressionReasonPolicy(t *testing.T) {
 	if defaults.Lint.Suppressions.RequireReason {
 		t.Fatal("Defaults() requires suppression reasons")
 	}
+	if defaults.Lint.Suppressions.ExpiryCutoff != "" {
+		t.Fatalf("Defaults() expiry cutoff = %q, want empty", defaults.Lint.Suppressions.ExpiryCutoff)
+	}
 	configured, err := config.Parse("project/.gox.toml", []byte(`version = 1
 
 [lint.suppressions]
 require-reason = true
+expiry-cutoff = "2026-08-11"
 `), config.ParseOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !configured.Lint.Suppressions.RequireReason {
 		t.Fatal("Parse() did not require suppression reasons")
+	}
+	if configured.Lint.Suppressions.ExpiryCutoff != "2026-08-11" {
+		t.Fatalf(
+			"Parse() expiry cutoff = %q, want 2026-08-11",
+			configured.Lint.Suppressions.ExpiryCutoff,
+		)
+	}
+
+	_, err = config.Parse("project/.gox.toml", []byte(`version = 1
+
+[lint.suppressions]
+expiry-cutoff = "2026-02-30"
+`), config.ParseOptions{})
+	if err == nil || !strings.Contains(err.Error(), "lint.suppressions.expiry-cutoff must be a valid YYYY-MM-DD date") {
+		t.Fatalf("Parse() invalid expiry cutoff error = %v", err)
 	}
 }
 

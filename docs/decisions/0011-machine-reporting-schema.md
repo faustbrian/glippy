@@ -58,9 +58,10 @@ surface must authorize edit payload disclosure later.
 Suppression syntax problems and unused directives remain separate ordered
 records so reporters cannot confuse malformed policy with rule findings.
 Suppressed diagnostic bodies are omitted by default and represented only by
-the summary count. The constructor rejects duplicate source paths and
-diagnostics whose path or digest does not match their file result. Source files
-and diagnostics are sorted canonically before encoding.
+the summary count. An unused directive with structured expiry metadata carries
+an optional `expires_on` calendar date. The constructor rejects duplicate
+source paths and diagnostics whose path or digest does not match their file
+result. Source files and diagnostics are sorted canonically before encoding.
 
 Typed lint results add optional `package_diagnostics` and `source_problems`
 arrays plus matching summary counts. Package diagnostics carry the opaque

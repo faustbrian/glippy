@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 
@@ -70,6 +71,7 @@ type Lint struct {
 // Suppressions contains project policy for auditable lint waivers.
 type Suppressions struct {
 	RequireReason bool
+	ExpiryCutoff  string
 }
 
 // ParseOptions supplies registry state needed to validate rule identifiers.
@@ -115,7 +117,8 @@ type lintConfig struct {
 }
 
 type suppressionConfig struct {
-	RequireReason *bool `toml:"require-reason"`
+	RequireReason *bool   `toml:"require-reason"`
+	ExpiryCutoff  *string `toml:"expiry-cutoff"`
 }
 
 // Defaults returns an independent configuration containing built-in policy.
@@ -183,6 +186,17 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 	}
 	if decoded.Lint.Suppressions.RequireReason != nil {
 		result.Lint.Suppressions.RequireReason = *decoded.Lint.Suppressions.RequireReason
+	}
+	if decoded.Lint.Suppressions.ExpiryCutoff != nil {
+		cutoff := *decoded.Lint.Suppressions.ExpiryCutoff
+		parsed, parseErr := time.Parse(time.DateOnly, cutoff)
+		if parseErr != nil || parsed.Format(time.DateOnly) != cutoff {
+			return Config{}, semanticError(
+				path,
+				"lint.suppressions.expiry-cutoff must be a valid YYYY-MM-DD date",
+			)
+		}
+		result.Lint.Suppressions.ExpiryCutoff = cutoff
 	}
 	knownRules := make(map[string]struct{}, len(options.KnownRules))
 	for _, rule := range options.KnownRules {

@@ -21,7 +21,7 @@ func run() {
 	//gox:ignore next-rule -- legacy call
 	nextTarget()
 	outsideNext()
-	//gox:ignore-start range-rule -- paired setup
+	//gox:ignore-start range-rule -- expires=2026-09-01 paired setup
 	rangeTarget()
 	//gox:ignore-end range-rule
 	outsideRange()
@@ -41,6 +41,10 @@ func run() {
 	directives[0].RuleID = "mutated"
 	if index.Directives()[0].RuleID == "mutated" {
 		t.Fatal("Directives() exposed mutable index state")
+	}
+	if directives := index.Directives(); directives[3].ExpiresOn != "2026-09-01" ||
+		directives[3].Reason != "paired setup" {
+		t.Fatalf("range expiry metadata = %#v", directives[3])
 	}
 
 	tests := []struct {
@@ -148,6 +152,13 @@ func TestParseRejectsDuplicateKnownRuleConfiguration(t *testing.T) {
 	if len(problems) != 1 || problems[0].Kind != suppressions.ProblemInvalidConfiguration {
 		t.Fatalf("Parse() problems = %#v", problems)
 	}
+	_, problems = suppressions.Parse(file, suppressions.ParseOptions{
+		KnownRules:   []string{"known-rule"},
+		ExpiryCutoff: "2026-02-30",
+	})
+	if len(problems) != 1 || problems[0].Kind != suppressions.ProblemInvalidConfiguration {
+		t.Fatalf("Parse() invalid cutoff problems = %#v", problems)
+	}
 }
 
 func TestParseAcceptsTabsAndCRLFAtDirectiveBoundaries(t *testing.T) {
@@ -165,6 +176,76 @@ func TestParseAcceptsTabsAndCRLFAtDirectiveBoundaries(t *testing.T) {
 	match, found := index.Match(diagnostic(file, "next-rule", rangeOf(input, "nextTarget()")))
 	if !found || match.Reason != "legacy call" || match.Scope != suppressions.ScopeNextLine {
 		t.Fatalf("Match() = %#v, %v", match, found)
+	}
+}
+
+func TestParseDiagnosesSuppressionsExpiredAtExplicitCutoff(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+func run() {
+	//gox:ignore active-rule -- expires=2026-08-12 temporary compatibility
+	activeTarget()
+	//gox:ignore expired-rule -- expires=2026-08-11 obsolete compatibility
+	expiredTarget()
+	//gox:ignore invalid-rule -- expires=2026-02-30 invalid date
+	invalidTarget()
+}
+`
+	file := loadFile(t, input)
+	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
+		KnownRules:   []string{"active-rule", "expired-rule", "invalid-rule"},
+		ExpiryCutoff: "2026-08-11",
+	})
+	want := []suppressions.ProblemKind{
+		suppressions.ProblemExpired,
+		suppressions.ProblemInvalidExpiry,
+	}
+	got := make([]suppressions.ProblemKind, len(problems))
+	for position, problem := range problems {
+		got[position] = problem.Kind
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Parse() problem kinds = %#v, want %#v", got, want)
+	}
+	active, found := index.Match(diagnostic(file, "active-rule", rangeOf(input, "activeTarget()")))
+	if !found || active.ExpiresOn != "2026-08-12" || active.Reason != "temporary compatibility" {
+		t.Fatalf("Match(active) = %#v, %v", active, found)
+	}
+	if _, found := index.Match(diagnostic(file, "expired-rule", rangeOf(input, "expiredTarget()"))); found {
+		t.Fatal("expired suppression hid its diagnostic")
+	}
+	if _, found := index.Match(diagnostic(file, "invalid-rule", rangeOf(input, "invalidTarget()"))); found {
+		t.Fatal("invalid suppression expiry hid its diagnostic")
+	}
+}
+
+func TestParseRetainsExpiryWithoutCutoffAndRequiresHumanReason(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+func run() {
+	//gox:ignore active-rule -- expires=2026-08-12 temporary compatibility
+	activeTarget()
+	//gox:ignore missing-rule -- expires=2026-08-12
+	missingTarget()
+}
+`
+	file := loadFile(t, input)
+	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
+		KnownRules: []string{"active-rule", "missing-rule"},
+	})
+	if len(problems) != 1 || problems[0].Kind != suppressions.ProblemMissingReason {
+		t.Fatalf("Parse() problems = %#v", problems)
+	}
+	active, found := index.Match(diagnostic(file, "active-rule", rangeOf(input, "activeTarget()")))
+	if !found || active.ExpiresOn != "2026-08-12" || active.Reason != "temporary compatibility" {
+		t.Fatalf("Match(active) = %#v, %v", active, found)
+	}
+	if _, found := index.Match(diagnostic(file, "missing-rule", rangeOf(input, "missingTarget()"))); found {
+		t.Fatal("expiry metadata without a human reason hid its diagnostic")
 	}
 }
 
@@ -248,6 +329,8 @@ func run() { target() }
 
 func FuzzParse(f *testing.F) {
 	f.Add([]byte("package sample\n//gox:ignore known-rule -- reason\nfunc run() {}\n"))
+	f.Add([]byte("package sample\n//gox:ignore known-rule -- expires=2026-08-11 temporary\nfunc run() {}\n"))
+	f.Add([]byte("package sample\n//gox:ignore known-rule -- expires=2026-02-30 invalid\nfunc run() {}\n"))
 	f.Add([]byte("//gox:ignore-file known-rule\r\npackage sample\r\n"))
 	f.Add([]byte("package sample\n//gox:ignore-start known-rule\n//gox:ignore-end known-rule\n"))
 	f.Fuzz(func(t *testing.T, input []byte) {
@@ -255,7 +338,10 @@ func FuzzParse(f *testing.F) {
 		if file == nil {
 			return
 		}
-		options := suppressions.ParseOptions{KnownRules: []string{"known-rule"}}
+		options := suppressions.ParseOptions{
+			KnownRules:   []string{"known-rule"},
+			ExpiryCutoff: "2026-08-11",
+		}
 		first, firstProblems := suppressions.Parse(file, options)
 		second, secondProblems := suppressions.Parse(file, options)
 		if !reflect.DeepEqual(first.Directives(), second.Directives()) ||

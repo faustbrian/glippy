@@ -230,6 +230,52 @@ func TestRunPackagesRunsControlFlowRulesBeforeSuppressing(t *testing.T) {
 	}
 }
 
+func TestRunPackagesRejectsExpiredSuppressions(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "project.go")
+	writeTypesFixture(
+		t,
+		path,
+		"//gox:ignore-file cfg-rule -- expires=2026-08-11 temporary waiver\npackage project\nfunc run() {}\n",
+	)
+	rule := controlFlowRule{
+		metadata: controlFlowMetadata("cfg-rule"),
+		run: func(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+			range_, err := ctx.Range(ctx.Function())
+			if err != nil {
+				return nil, err
+			}
+			return []rules.Finding{{MessageKey: "cfg", Message: "cfg", Range: range_}}, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Preset:                  rules.PresetCorrectness,
+			SuppressionExpiryCutoff: "2026-08-11",
+		},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || result.Files[0].Path != path ||
+		len(result.Files[0].Diagnostics) != 1 || len(result.Files[0].Suppressed) != 0 ||
+		len(result.Files[0].SuppressionProblems) != 1 ||
+		result.Files[0].SuppressionProblems[0].Kind != "expired" {
+		t.Fatalf("RunPackages() expired suppression result = %#v", result)
+	}
+}
+
 func TestRunPackagesRejectsUnimplementedCheapTiersBeforeLoading(t *testing.T) {
 	t.Parallel()
 

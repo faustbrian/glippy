@@ -251,7 +251,7 @@ validated result digest but MUST NOT be presented as confirmed disk state.
 Suppressions MUST name exact rule IDs. The grammar MUST define line, next-line,
 range, and file ownership without allowing an unscoped silent disable-all.
 `lint.suppressions.require-reason` MUST default to `false`. Unknown, malformed,
-unused, and expired suppressions SHOULD be independently diagnosable.
+unused, and expired suppressions MUST be independently diagnosable.
 
 Suppression ownership is based on physical token boundaries and source
 identity, not incidental output line numbers. Formatting MUST preserve the
@@ -286,10 +286,20 @@ order and MUST report every valid directive that owns no diagnostic as unused.
 starts and direct scopes MUST carry a non-empty reason. A missing or empty
 reason MUST invalidate that directive so it cannot suppress a diagnostic.
 Range ends MUST NOT carry a reason.
-Unknown rules, malformed directives, missing reasons, misplaced file scopes,
-nested ranges, unmatched ends, and unclosed starts MUST be reported in source
-order. The parser MUST NOT accept a directive that omits a rule ID or disables
-all rules.
+
+The first reason field MAY be `expires=YYYY-MM-DD`. The date MUST be a real
+calendar date, and text after that field remains the human reason. An invalid
+date MUST invalidate the directive. An expiry field without a human reason
+MUST be treated as a missing reason. When the optional, explicit
+`lint.suppressions.expiry-cutoff` is configured, an expiry on or before that
+cutoff MUST produce an `expired` problem and invalidate the directive. Gox MUST
+NOT consult the wall clock; omitting the cutoff validates and retains structured
+expiry metadata without deciding that a waiver has expired.
+
+Unknown rules, malformed directives, missing reasons, invalid or expired dates,
+misplaced file scopes, nested ranges, unmatched ends, and unclosed starts MUST
+be reported in source order. The parser MUST NOT accept a directive that omits
+a rule ID or disables all rules.
 
 ## `go/analysis` Interoperability
 

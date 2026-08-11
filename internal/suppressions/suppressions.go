@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"slices"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/faustbrian/gox/internal/rules"
@@ -30,6 +31,8 @@ const (
 	ProblemMalformed            ProblemKind = "malformed"
 	ProblemUnknownRule          ProblemKind = "unknown-rule"
 	ProblemMissingReason        ProblemKind = "missing-reason"
+	ProblemInvalidExpiry        ProblemKind = "invalid-expiry"
+	ProblemExpired              ProblemKind = "expired"
 	ProblemMisplacedFileScope   ProblemKind = "misplaced-file-scope"
 	ProblemUnmatchedRangeEnd    ProblemKind = "unmatched-range-end"
 	ProblemNestedRange          ProblemKind = "nested-range"
@@ -46,17 +49,19 @@ type Problem struct {
 
 // Directive is one validated exact-rule suppression.
 type Directive struct {
-	Scope  Scope
-	RuleID string
-	Range  source.Range
-	Target source.Range
-	Reason string
+	Scope     Scope
+	RuleID    string
+	Range     source.Range
+	Target    source.Range
+	Reason    string
+	ExpiresOn string
 }
 
-// ParseOptions supplies registry and reason policy.
+// ParseOptions supplies registry, reason, and deterministic expiry policy.
 type ParseOptions struct {
 	KnownRules    []string
 	RequireReason bool
+	ExpiryCutoff  string
 }
 
 // Index is an immutable source-ordered suppression set.
@@ -81,11 +86,12 @@ type Application struct {
 }
 
 type parsedDirective struct {
-	scope    Scope
-	rangeEnd bool
-	ruleID   string
-	reason   string
-	range_   source.Range
+	scope     Scope
+	rangeEnd  bool
+	ruleID    string
+	reason    string
+	expiresOn string
+	range_    source.Range
 }
 
 // Directives returns an independent source-ordered suppression snapshot.
@@ -98,6 +104,12 @@ func Parse(file *source.File, options ParseOptions) (Index, []Problem) {
 	known, configurationProblem := knownRuleSet(options.KnownRules)
 	if configurationProblem != nil {
 		return Index{}, []Problem{*configurationProblem}
+	}
+	if options.ExpiryCutoff != "" && !validDate(options.ExpiryCutoff) {
+		return Index{}, []Problem{{
+			Kind:    ProblemInvalidConfiguration,
+			Message: "suppression expiry cutoff must be a valid YYYY-MM-DD date",
+		}}
 	}
 	if file == nil {
 		return Index{}, []Problem{{
@@ -122,7 +134,12 @@ func Parse(file *source.File, options ParseOptions) (Index, []Problem) {
 		if candidate.Kind != source.DirectiveGoxSuppression {
 			continue
 		}
-		parsed, problem := parseDirective(candidate, known, options.RequireReason)
+		parsed, problem := parseDirective(
+			candidate,
+			known,
+			options.RequireReason,
+			options.ExpiryCutoff,
+		)
 		if problem != nil {
 			problems = append(problems, *problem)
 			continue
@@ -139,11 +156,12 @@ func Parse(file *source.File, options ParseOptions) (Index, []Problem) {
 				continue
 			}
 			directives = append(directives, Directive{
-				Scope:  ScopeRange,
-				RuleID: parsed.ruleID,
-				Range:  opened.range_,
-				Target: source.Range{Start: opened.range_.End, End: parsed.range_.Start},
-				Reason: opened.reason,
+				Scope:     ScopeRange,
+				RuleID:    parsed.ruleID,
+				Range:     opened.range_,
+				Target:    source.Range{Start: opened.range_.End, End: parsed.range_.Start},
+				Reason:    opened.reason,
+				ExpiresOn: opened.expiresOn,
 			})
 			delete(openRanges, parsed.ruleID)
 			continue
@@ -180,11 +198,12 @@ func Parse(file *source.File, options ParseOptions) (Index, []Problem) {
 			target = source.Range{Start: 0, End: len(input)}
 		}
 		directives = append(directives, Directive{
-			Scope:  parsed.scope,
-			RuleID: parsed.ruleID,
-			Range:  parsed.range_,
-			Target: target,
-			Reason: parsed.reason,
+			Scope:     parsed.scope,
+			RuleID:    parsed.ruleID,
+			Range:     parsed.range_,
+			Target:    target,
+			Reason:    parsed.reason,
+			ExpiresOn: parsed.expiresOn,
 		})
 	}
 
@@ -302,6 +321,7 @@ func parseDirective(
 	candidate source.Directive,
 	known map[string]struct{},
 	requireReason bool,
+	expiryCutoff string,
 ) (parsedDirective, *Problem) {
 	text := strings.TrimSpace(strings.TrimPrefix(candidate.Raw, "//gox:"))
 	separator := strings.IndexFunc(text, unicode.IsSpace)
@@ -333,7 +353,6 @@ func parseDirective(
 		return parsedDirective{}, malformed(candidate.Range, "suppression directive requires exactly one rule ID")
 	}
 	parsed.ruleID = fields[0]
-	parsed.reason = reason
 	if _, found := known[parsed.ruleID]; !found {
 		return parsedDirective{}, &Problem{
 			Kind:    ProblemUnknownRule,
@@ -347,14 +366,56 @@ func parseDirective(
 		}
 		return parsed, nil
 	}
-	if hasReason && reason == "" || requireReason && !hasReason {
+	parsed.reason = reason
+	if hasReason {
+		var expiryProblem *Problem
+		parsed.reason, parsed.expiresOn, expiryProblem = parseExpiryMetadata(reason, candidate.Range)
+		if expiryProblem != nil {
+			return parsedDirective{}, expiryProblem
+		}
+	}
+	if hasReason && parsed.reason == "" || requireReason && !hasReason {
 		return parsedDirective{}, &Problem{
 			Kind:    ProblemMissingReason,
 			Range:   candidate.Range,
 			Message: "suppression requires a non-empty reason",
 		}
 	}
+	if expiryCutoff != "" && parsed.expiresOn != "" && parsed.expiresOn <= expiryCutoff {
+		return parsedDirective{}, &Problem{
+			Kind:    ProblemExpired,
+			Range:   candidate.Range,
+			Message: "suppression expired on " + parsed.expiresOn,
+		}
+	}
 	return parsed, nil
+}
+
+func parseExpiryMetadata(reason string, sourceRange source.Range) (string, string, *Problem) {
+	separator := strings.IndexFunc(reason, unicode.IsSpace)
+	field := reason
+	remainder := ""
+	if separator >= 0 {
+		field = reason[:separator]
+		remainder = strings.TrimSpace(reason[separator:])
+	}
+	if !strings.HasPrefix(field, "expires=") {
+		return reason, "", nil
+	}
+	expiresOn := strings.TrimPrefix(field, "expires=")
+	if !validDate(expiresOn) {
+		return "", "", &Problem{
+			Kind:    ProblemInvalidExpiry,
+			Range:   sourceRange,
+			Message: "suppression expiry must be a valid YYYY-MM-DD date",
+		}
+	}
+	return remainder, expiresOn, nil
+}
+
+func validDate(value string) bool {
+	parsed, err := time.Parse(time.DateOnly, value)
+	return err == nil && parsed.Format(time.DateOnly) == value
 }
 
 func splitReason(rest string) (ruleID, reason string, found bool) {

@@ -15,6 +15,7 @@ type RunOptions struct {
 	Preset                   rules.Preset
 	Overrides                map[string]rules.Severity
 	RequireSuppressionReason bool
+	SuppressionExpiryCutoff  string
 }
 
 // Result is one reporter-ready syntax analysis result over one source version.
@@ -75,6 +76,7 @@ func Run(
 	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
 		KnownRules:    registry.IDs(),
 		RequireReason: options.RequireSuppressionReason,
+		ExpiryCutoff:  options.SuppressionExpiryCutoff,
 	})
 	diagnostics, err := RunSyntax(ctx, file, registry, selection)
 	if err != nil {

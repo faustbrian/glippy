@@ -58,11 +58,12 @@ func TestNewLintResultEmitsStableVersionedDiagnostics(t *testing.T) {
 				Message: "malformed suppression",
 			}},
 			UnusedSuppressions: []suppressions.Directive{{
-				Scope:  suppressions.ScopeNextLine,
-				RuleID: "call-rule",
-				Range:  source.Range{Start: 8, End: 20},
-				Target: source.Range{Start: 21, End: 35},
-				Reason: "legacy call",
+				Scope:     suppressions.ScopeNextLine,
+				RuleID:    "call-rule",
+				Range:     source.Range{Start: 8, End: 20},
+				Target:    source.Range{Start: 21, End: 35},
+				Reason:    "legacy call",
+				ExpiresOn: "2026-09-01",
 			}},
 		}},
 		nil,
@@ -157,7 +158,8 @@ func TestNewLintResultEmitsStableVersionedDiagnostics(t *testing.T) {
 		"        \"start\": 21,\n" +
 		"        \"end\": 35\n" +
 		"      },\n" +
-		"      \"reason\": \"legacy call\"\n" +
+		"      \"reason\": \"legacy call\",\n" +
+		"      \"expires_on\": \"2026-09-01\"\n" +
 		"    }\n" +
 		"  ],\n" +
 		"  \"errors\": []\n" +

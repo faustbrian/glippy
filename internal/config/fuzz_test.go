@@ -11,6 +11,8 @@ func FuzzParseDeterministic(f *testing.F) {
 	f.Add([]byte("version = 1\n"))
 	f.Add([]byte("version = 1\n[format]\nline-width = 88\ntab-width = 4\n"))
 	f.Add([]byte("version = 1\n[lint.rules]\nknown-rule = \"warn\"\n"))
+	f.Add([]byte("version = 1\n[lint.suppressions]\nexpiry-cutoff = \"2026-08-11\"\n"))
+	f.Add([]byte("version = 1\n[lint.suppressions]\nexpiry-cutoff = \"2026-02-30\"\n"))
 	f.Add([]byte("version = 1\nunknown = true\n"))
 	f.Add([]byte("version = [\n"))
 

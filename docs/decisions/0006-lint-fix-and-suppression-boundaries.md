@@ -116,10 +116,19 @@ default; `lint.suppressions.require-reason = true` requires one for every direct
 scope and range start across syntax and package analysis. A missing reason
 invalidates the directive instead of suppressing its target. Range ends never
 carry reasons.
-Unknown rules, malformed syntax, missing required reasons, misplaced file
-directives, nested same-rule ranges, unmatched ends, and unclosed starts are
-source-ordered problems. Application reports unused directives; canonical
-unused diagnostics and structured expiry inputs remain deferred.
+
+An optional leading `expires=YYYY-MM-DD` reason field records a structured
+calendar deadline. Invalid dates invalidate the directive. The optional typed
+`lint.suppressions.expiry-cutoff` supplies the deterministic evaluation date;
+an expiry on or before it is an `expired` problem and cannot suppress a
+diagnostic. Gox never reads the wall clock, so the same source and configuration
+remain reproducible. The human reason remains mandatory after expiry metadata
+when a separator is present.
+
+Unknown rules, malformed syntax, missing required reasons, invalid or expired
+dates, misplaced file directives, nested same-rule ranges, unmatched ends, and
+unclosed starts are source-ordered problems. Application reports unused
+directives and machine output retains their structured expiry date.
 
 ## Alternatives Rejected
 

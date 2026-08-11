@@ -200,13 +200,14 @@ func TestRunAppliesConfiguredSuppressionReasonPolicyToPackageAnalysis(t *testing
 	}
 	if err := os.WriteFile(
 		filepath.Join(root, ".gox.toml"),
-		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n[lint.suppressions]\nrequire-reason = true\n"),
+		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n[lint.suppressions]\nrequire-reason = true\nexpiry-cutoff = \"2026-08-11\"\n"),
 		0o600,
 	); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "sample.go")
 	input := []byte(`//gox:ignore-file nilness
+//gox:ignore-file nilness -- expires=2026-08-11 temporary compatibility
 package sample
 
 func inspect(pointer *int) {
@@ -232,7 +233,9 @@ func inspect(pointer *int) {
 				t.Fatalf("decode typed lint JSON: %v; output = %q", err, stdout.String())
 			}
 			if len(result.Diagnostics) != 1 || result.Diagnostics[0].RuleID != "nilness" ||
-				len(result.SuppressionProblems) != 1 || string(result.SuppressionProblems[0].Kind) != "missing-reason" {
+				len(result.SuppressionProblems) != 2 ||
+				string(result.SuppressionProblems[0].Kind) != "missing-reason" ||
+				string(result.SuppressionProblems[1].Kind) != "expired" {
 				t.Fatalf("Run(typed lint reasons) result = %#v", result)
 			}
 		} else {
@@ -241,7 +244,9 @@ func inspect(pointer *int) {
 				t.Fatalf("decode typed check JSON: %v; output = %q", err, stdout.String())
 			}
 			if len(result.Diagnostics) != 1 || result.Diagnostics[0].RuleID != "nilness" ||
-				len(result.SuppressionProblems) != 1 || string(result.SuppressionProblems[0].Kind) != "missing-reason" {
+				len(result.SuppressionProblems) != 2 ||
+				string(result.SuppressionProblems[0].Kind) != "missing-reason" ||
+				string(result.SuppressionProblems[1].Kind) != "expired" {
 				t.Fatalf("Run(typed check reasons) result = %#v", result)
 			}
 		}
@@ -251,6 +256,57 @@ func inspect(pointer *int) {
 		}
 		if !bytes.Equal(got, input) {
 			t.Fatalf("Run(%s typed reasons) mutated source: %q", command, got)
+		}
+	}
+}
+
+func TestRunAppliesConfiguredSuppressionExpiryCutoff(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/expiry\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".gox.toml"),
+		[]byte("version = 1\n[lint.suppressions]\nexpiry-cutoff = \"2026-08-11\"\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sample.go")
+	input := []byte(`//gox:ignore-file duplicate-condition -- expires=2026-08-11 temporary compatibility
+package sample
+
+func run(ready bool) {
+	if ready {
+	} else if ready {
+	}
+}
+`)
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, arguments := range [][]string{
+		{"lint", path},
+		{"check", path},
+		{"lint", "--fix", path},
+	} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		exitCode := Run(arguments, strings.NewReader(""), &stdout, &stderr)
+		if exitCode != ExitFindings || stderr.Len() != 0 ||
+			!strings.Contains(stdout.String(), "suppression[expired]: suppression expired on 2026-08-11") ||
+			!strings.Contains(stdout.String(), "duplicate-condition") {
+			t.Fatalf("Run(%q expiry) = exit %d, stdout %q, stderr %q", arguments, exitCode, stdout.String(), stderr.String())
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, input) {
+			t.Fatalf("Run(%q expiry) mutated source: %q", arguments, got)
 		}
 	}
 }

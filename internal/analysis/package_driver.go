@@ -137,6 +137,7 @@ func RunPackages(
 		index, problems := suppressions.Parse(file, suppressions.ParseOptions{
 			KnownRules:    registry.IDs(),
 			RequireReason: options.RequireSuppressionReason,
+			ExpiryCutoff:  options.SuppressionExpiryCutoff,
 		})
 		application := index.Apply(diagnostics)
 		result.Files = append(result.Files, Result{

@@ -120,6 +120,7 @@ type UnusedSuppression struct {
 	Range        ByteRange `json:"range"`
 	Target       ByteRange `json:"target"`
 	Reason       string    `json:"reason"`
+	ExpiresOn    string    `json:"expires_on,omitempty"`
 }
 
 type LintResult struct {
@@ -216,6 +217,7 @@ func NewLintResult(
 				Range:        byteRange(directive.Range),
 				Target:       byteRange(directive.Target),
 				Reason:       directive.Reason,
+				ExpiresOn:    directive.ExpiresOn,
 			})
 		}
 		result.Summary.Diagnostics += len(analyzed.Diagnostics)

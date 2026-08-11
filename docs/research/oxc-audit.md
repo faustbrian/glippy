@@ -40,6 +40,14 @@ optional `--` justification. Gox retains only the explicit separator and
 rejects disable-all, rule lists, and plugin-name equivalence; ADR 0006 records
 the exact physical-scope grammar.
 
+Expiry behavior was refreshed the same day against current Oxc commit
+[`e224f5f`](https://github.com/oxc-project/oxc/commit/e224f5f3852f7368f02d4f280e164878d64c4cd9).
+Oxlint's disable-directive and suppression sources still expose no structured
+expiry contract. Gox therefore uses its own explicit `expires=YYYY-MM-DD`
+metadata and configured cutoff. It does not infer the cutoff from the wall
+clock because that would make identical source and configuration produce
+date-dependent results.
+
 Lint reporting was refreshed against the same current commit. Oxlint's JSON
 formatter still buffers diagnostics, delegates their shape to Miette, and adds
 file, rule, thread, and elapsed-time counts without a schema version. It offers

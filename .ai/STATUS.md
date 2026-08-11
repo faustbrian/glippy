@@ -354,3 +354,14 @@ types/CFG/SSA package driver. Focused configuration, text, JSON, source-digest,
 and non-mutation fixtures cover every routed command. Structured suppression
 expiry remains deferred, and the incomplete Phase 2 gates keep progress at
 45%.
+
+Suppressions now accept an optional leading `expires=YYYY-MM-DD` reason field
+and retain the date as structured directive metadata. Invalid calendar dates
+and waivers expiring on or before the typed
+`lint.suppressions.expiry-cutoff` become source-located problems, cannot hide
+diagnostics, and are consistent across syntax and package analysis. The cutoff
+is an explicit reproducible configuration input; Gox never reads the wall
+clock. Text and versioned JSON surface expiry problems, while unused JSON
+records include `expires_on`. Current Oxlint source still has no structured
+expiry contract. The incomplete Phase 2 naming, release, platform, and approved
+external-adoption gates keep progress at 45%.

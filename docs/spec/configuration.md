@@ -41,6 +41,18 @@ equally to syntax-only and package-aware lint, combined check, and syntax fix
 planning. Range ends remain reasonless because the matching start owns the
 waiver.
 
+`lint.suppressions.expiry-cutoff` MAY be omitted. When present, it MUST be a
+quoted, valid `YYYY-MM-DD` calendar date. Gox MUST NOT read the wall clock to
+evaluate suppressions. Instead, a directive whose structured `expires` date is
+on or before the configured cutoff MUST be reported as expired and MUST NOT
+suppress diagnostics. This explicit input keeps local and CI results
+reproducible; advancing the cutoff is a project policy decision.
+
+```toml
+[lint.suppressions]
+expiry-cutoff = "2026-08-11"
+```
+
 Formatter configuration MUST remain limited to adoption-significant choices.
 Brace placement, individual whitespace rules, and alternative layout dialects
 MUST NOT be configurable.
