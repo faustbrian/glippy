@@ -34,16 +34,25 @@ The fix coordinator source-versions every edit, rejects all conflicts
 explicitly, reparses, formats, validates, and performs one atomic single-file
 replacement.
 
-The initial `go/analysis` adapter is syntax-only. It accepts analyzers without
-prerequisites, facts, result types, or flags and schedules them as native
-file-interest rules. Every run reparses an isolated AST with a matching file
-set, supplies a minimal package-name shell without type information, exposes
-only the adapted source through `ReadFile`, and uses a run-local analyzer
-descriptor. Native metadata remains authoritative. Diagnostics and edits must
-map to that one physical source. Panics, foreign positions, undeclared fixes,
-unexpected results, and invalid help URLs fail analysis instead of producing
-partial findings. Help links follow upstream category and relative-URL
-resolution.
+The `go/analysis` adapter accepts syntax-only and audited read-only types-tier
+analyzers without prerequisites, facts, result types, or flags. Syntax runs
+reparse an isolated AST with a matching file set, supply a minimal package-name
+shell without type information, expose only the adapted source through
+`ReadFile`, and use a run-local analyzer descriptor. Typed runs execute after
+all native types, CFG, and SSA consumers over the load-owned package AST, type
+information, sizes, module metadata, type errors when admitted, and exact
+compiled-source bytes. They are ordered by package and rule ID, preserve one
+physical owner across test variants, and exclude the synthetic test-main
+package from lint targets.
+
+Native metadata remains authoritative. A typed adapter requires an explicit
+read-only audit and cannot opt into type-error packages unless the upstream
+analyzer declares `RunDespiteErrors`. Diagnostics may target any captured file
+in their package, but related locations and fixes remain single-file. Panics,
+foreign positions, cross-file related locations or edits, undeclared fixes,
+unexpected results, invalid help URLs, and excessive module replacement chains
+fail analysis instead of producing partial findings. Help links follow upstream
+category and relative-URL resolution.
 
 Suggested fixes require exact message-to-native-metadata mappings and default
 to suggestion safety. A mapping can declare a safe fix only with an explicit
@@ -158,9 +167,10 @@ retain one reason and one usage record per waived rule.
 The coordinator retains validated bytes and provenance independently from disk
 status. Reporter and lint-driver integration must preserve the distinction
 between not performed, completed, and possibly completed replacement.
-Imported syntax analyzers pay one isolated parse per analyzer and file. They
-cannot use typed state, facts, prerequisites, flags, or cross-file reads in this
-phase, and a callback that does not return cannot be preempted.
+Imported syntax analyzers pay one isolated parse per analyzer and file. Typed
+adapters reuse package state, so their admission audit must exclude mutation
+that could affect a later adapter. Neither tier can use facts, prerequisites,
+flags, arbitrary cross-file reads, or preempt a callback that does not return.
 
 ## Revisit Trigger
 

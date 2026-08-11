@@ -93,8 +93,9 @@ The package parser boundary MUST capture the exact bytes supplied after overlay
 and build selection into the shared immutable source model. Each normalized
 absolute path MUST identify exactly one digest within a load; incompatible
 bytes for one path MUST fail the run. Captured paths and source-model problems
-MUST be canonical. Invalid inputs MUST remain available as diagnostic-only
-source units rather than being discarded.
+MUST be canonical. A synthetic test-main package and its Go-cache source MUST
+NOT become an analyzed file or a reporter target. Invalid selected inputs MUST
+remain available as diagnostic-only source units rather than being discarded.
 
 Typed diagnostics and edits MUST resolve package positions against this
 captured source index. A typed consumer MUST NOT reread a file after package
@@ -304,11 +305,11 @@ a rule ID or disables all rules.
 ## `go/analysis` Interoperability
 
 Suitable analyzers MAY be adapted without replacing the native scheduler or
-metadata. The initial adapter accepts syntax-only analyzers with no prerequisite
-analyzers, facts, result type, or analyzer flags. Native metadata MUST declare
-the syntax tier and only the file node interest; it remains authoritative for
-rule identity, selection, severity, generated-file policy, documentation, and
-fix safety.
+metadata. The adapter accepts syntax-only and types-tier analyzers with no
+prerequisite analyzers, facts, result type, or analyzer flags. Native metadata
+MUST declare only the file node interest and either the syntax or types tier;
+it remains authoritative for rule identity, selection, severity,
+generated-file and type-error policy, documentation, and fix safety.
 
 Each adapted file run MUST receive a fresh AST, its matching `token.FileSet`,
 and a run-local analyzer descriptor. The syntax-only pass MUST expose exactly
@@ -318,11 +319,35 @@ exact bytes. Analyzer AST or descriptor mutation MUST NOT affect native rules,
 other adapters, or a later run. An analyzer's own captured mutable state remains
 its responsibility.
 
-Imported diagnostics MUST map every primary, related, and edit position to the
-sole adapted source and enter the native deterministic ordering and suppression
-pipeline. Foreign or invalid positions, analyzer panics, undeclared suggested
-fixes, and unexpected non-nil results MUST fail the file analysis. Each
-suggested-fix message MUST have an explicit native name and description.
+A types-tier adapter MUST carry an explicit maintainer assertion that the
+analyzer was audited as read-only over shared package AST and type state. It
+MUST run only after native types, CFG, and SSA consumers have completed. The
+adapter MUST reject a native type-error opt-in when the upstream analyzer does
+not declare `RunDespiteErrors`. An eligible package run MUST receive the
+load-owned file set, compiled syntax, package and type information, type sizes,
+module metadata, and exact captured source bytes. Test variants MUST assign
+each physical source to one canonical package owner, and the synthetic test
+main MUST NOT become a lint target. The pass MUST expose no prerequisite
+results, facts, ignored files, other files, or reads outside captured compiled
+Go source. Module replacement traversal MUST be bounded.
+
+Typed adapted analyzers MUST run in deterministic package and rule-ID order.
+Generated-only and ill-typed packages MUST be skipped unless native metadata
+admits them. If `RunDespiteErrors` is active, the pass MUST receive the
+load-owned type errors. Cancellation MUST be checked immediately before and
+after each non-preemptible callback. An analyzer that mutates shared package
+state, blocks without returning, or depends on omitted pass fields is not
+suitable for this adapter even when its descriptor validates.
+
+Imported diagnostics MUST enter the native deterministic ordering and
+suppression pipeline. A syntax diagnostic MUST map every primary, related, and
+edit position to its sole adapted source. A package diagnostic MAY target any
+one captured compiled source, but every related location and suggested-fix edit
+for that diagnostic MUST remain in its primary file. Foreign or invalid
+positions, analyzer panics, undeclared suggested fixes, and unexpected non-nil
+results MUST fail analysis. Each suggested-fix message MUST have an explicit
+native name and description.
+
 Imported fixes default to suggestion safety; a safe classification MUST carry
 an explicit adapter audit assertion. Diagnostic help MUST resolve explicit,
 relative, and category-derived URLs according to the upstream `go/analysis`
@@ -330,14 +355,16 @@ driver contract; invalid analyzer or diagnostic URLs MUST fail analysis.
 
 The scheduler MUST check cancellation immediately before and after an adapted
 analyzer run and MUST discard findings when cancellation was observed. The
-`go/analysis` run callback has no context parameter, so the syntax adapter
-cannot preempt a callback that does not return; only bounded analyzers are
-suitable until an independently cancellable execution boundary is proven.
+`go/analysis` run callback has no context parameter, so the adapter cannot
+preempt a callback that does not return; only bounded analyzers are suitable
+until an independently cancellable execution boundary is proven.
+
 Before registration, maintainers MUST audit that an analyzer does not depend on
 deprecated object resolution or behavior absent from this pass contract. Such
 an analyzer is not suitable and MUST NOT be registered. Declared or observed
-unsupported typed, fact, prerequisite, flag, result, cross-file, or multi-file
-behavior MUST be rejected with a clear compatibility diagnostic.
+unsupported CFG, SSA, fact, prerequisite, flag, result, cross-file related
+location, or multi-file fix behavior MUST be rejected with a clear
+compatibility diagnostic.
 
 Rule documentation and `explain` output MUST derive from the same immutable
 registry metadata and examples. Human `explain` output MUST include the rule

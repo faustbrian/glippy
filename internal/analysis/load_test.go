@@ -230,7 +230,8 @@ func TestLoadPackagesLoadsDependencySyntaxOnlyWhenRequested(t *testing.T) {
 
 	root := t.TempDir()
 	writeLoadFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
-	writeLoadFixture(t, filepath.Join(root, "dep", "dep.go"), "package dep\nconst Value = 1\n")
+	dependencyPath := filepath.Join(root, "dep", "dep.go")
+	writeLoadFixture(t, dependencyPath, "package dep\nconst Value = 1\n")
 	writeLoadFixture(t, filepath.Join(root, "root", "root.go"), "package root\nimport \"example.com/project/dep\"\nconst Value = dep.Value\n")
 
 	load := func(dependencies bool) analysis.PackageLoadResult {
@@ -247,13 +248,21 @@ func TestLoadPackagesLoadsDependencySyntaxOnlyWhenRequested(t *testing.T) {
 		return result
 	}
 
-	shallow := load(false).Packages[0].Imports["example.com/project/dep"]
+	shallowResult := load(false)
+	shallow := shallowResult.Packages[0].Imports["example.com/project/dep"]
 	if shallow == nil || shallow.Types == nil || shallow.TypesInfo != nil || len(shallow.Syntax) != 0 {
 		t.Fatalf("default dependency = %#v", shallow)
 	}
-	deep := load(true).Packages[0].Imports["example.com/project/dep"]
+	if _, found := shallowResult.Sources.Lookup(dependencyPath); found {
+		t.Fatalf("default load captured dependency source %q", dependencyPath)
+	}
+	deepResult := load(true)
+	deep := deepResult.Packages[0].Imports["example.com/project/dep"]
 	if deep == nil || deep.Types == nil || len(deep.Syntax) == 0 {
 		t.Fatalf("requested dependency = %#v", deep)
+	}
+	if _, found := deepResult.Sources.Lookup(dependencyPath); !found {
+		t.Fatalf("dependency-aware load omitted source %q", dependencyPath)
 	}
 }
 

@@ -88,9 +88,21 @@ When tests are enabled, `go/packages` may expose one production file through
 both its ordinary package and an augmented test variant. Gox analyzes that
 physical source once and prefers the ordinary package as its type owner; a
 test-only source uses its test variant. This prevents duplicate diagnostics
-while preserving the ordinary package's production type context. Native typed
-execution is currently root-package-only; package-wide rules, dependency
-analysis, facts, and SSA require separate contracts.
+while preserving the ordinary package's production type context. The loader
+also removes the synthetic test-main package from the selected package set, so
+its generated Go-cache artifact cannot become a reporter-visible lint target.
+Native typed execution is currently root-package-only; native package-wide
+rules, dependency analysis, facts, and SSA require separate contracts.
+
+Suitable types-tier `go/analysis` analyzers may run package-wide over the same
+load-owned syntax and type state after all native types, CFG, and SSA consumers
+finish. Admission requires an explicit read-only audit because public Go APIs
+cannot cheaply clone `types.Info` while preserving AST-key identity. Native
+metadata continues to own selection, generated-file and type-error eligibility,
+and fix safety. Adapted package analyzers remain deterministic by package and
+rule ID, expose only captured compiled-source reads, and cannot use
+prerequisites, facts, result values, flags, cross-file related locations, or
+multi-file fixes.
 
 Rules skip generated files unless their metadata opts in. Packages with type
 errors are also skipped by default; a types-tier or CFG-tier rule may explicitly
@@ -150,10 +162,10 @@ share immutable state.
 Syntax dispatch visits uninterested nodes once to avoid indexing or repeated
 walks; a secondary index requires new representative benchmark evidence.
 
-Analyzer fact scheduling, cache reuse, package-wide typed rules, heterogeneous
-per-path package configuration, and typed fixes remain separate tier-runner
-work. Types-only requests do not construct CFG or SSA, and CFG-only requests do
-not construct SSA.
+Analyzer fact scheduling, cache reuse, native package-wide typed rules,
+heterogeneous per-path package configuration, and typed fix application remain
+separate tier-runner work. Types-only requests do not construct CFG or SSA, and
+CFG-only requests do not construct SSA.
 
 The typed package AST and physical source model use separate parser file sets.
 The package parser preserves `go/packages`' existing AST object-resolution

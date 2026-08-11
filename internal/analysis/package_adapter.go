@@ -1,0 +1,391 @@
+package analysis
+
+import (
+	"context"
+	"fmt"
+	"go/ast"
+	"go/token"
+	"go/types"
+	"path/filepath"
+	"slices"
+	"sort"
+
+	goanalysis "golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/packages"
+
+	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/gox/internal/source"
+)
+
+type activePackageAnalyzer struct {
+	rule     *packageAnalyzerRule
+	metadata rules.Metadata
+	severity rules.Severity
+}
+
+func partitionPackageAnalyzers(
+	registry *rules.Registry,
+	selection []rules.Selection,
+) ([]rules.Selection, []rules.Selection, error) {
+	native := make([]rules.Selection, 0, len(selection))
+	adapted := make([]rules.Selection, 0, len(selection))
+	for _, selected := range selection {
+		rule, found := registry.Lookup(selected.ID)
+		if !found {
+			return nil, nil, fmt.Errorf("selected unknown types rule %q", selected.ID)
+		}
+		if _, found := rule.(*packageAnalyzerRule); found {
+			adapted = append(adapted, selected)
+		} else {
+			native = append(native, selected)
+		}
+	}
+	return native, adapted, nil
+}
+
+func runPackageAnalyzers(
+	ctx context.Context,
+	loaded PackageLoadResult,
+	registry *rules.Registry,
+	selection []rules.Selection,
+) ([]rules.Diagnostic, error) {
+	if len(selection) == 0 {
+		return []rules.Diagnostic{}, nil
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("package analyzer execution requires a context")
+	}
+	if registry == nil {
+		return nil, fmt.Errorf("package analyzer execution requires a rule registry")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if loaded.Requirement < rules.RequireTypes {
+		return nil, fmt.Errorf("package analyzer execution requires a typed package load")
+	}
+	active, err := preparePackageAnalyzers(registry, selection)
+	if err != nil {
+		return nil, err
+	}
+	packages_, err := canonicalPackages(loaded.Packages)
+	if err != nil {
+		return nil, err
+	}
+	ownedFiles, err := canonicalTypedFiles(packages_, loaded.Sources)
+	if err != nil {
+		return nil, err
+	}
+	owners := make(map[string]string, len(ownedFiles))
+	for _, owned := range ownedFiles {
+		owners[owned.file.path] = owned.package_.ID
+	}
+
+	diagnostics := make([]rules.Diagnostic, 0)
+	for _, pkg := range packages_ {
+		files, err := packageSyntaxFiles(pkg, loaded.Sources)
+		if err != nil {
+			return nil, err
+		}
+		for _, analyzer := range active {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if pkg.IllTyped && !analyzer.metadata.RunDespiteTypeErrors {
+				continue
+			}
+			if !packageAnalyzerOwnsEligibleFile(pkg.ID, files, owners, analyzer.metadata) {
+				continue
+			}
+			produced, err := analyzer.rule.runPackage(pkg, files, owners, analyzer.severity)
+			if contextErr := ctx.Err(); contextErr != nil {
+				return nil, contextErr
+			}
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", analyzer.metadata.ID, err)
+			}
+			diagnostics = append(diagnostics, produced...)
+		}
+	}
+	return OrderDiagnostics(diagnostics), nil
+}
+
+func preparePackageAnalyzers(
+	registry *rules.Registry,
+	selection []rules.Selection,
+) ([]activePackageAnalyzer, error) {
+	ordered := slices.Clone(selection)
+	sort.Slice(ordered, func(left, right int) bool { return ordered[left].ID < ordered[right].ID })
+	result := make([]activePackageAnalyzer, 0, len(ordered))
+	previousID := ""
+	for _, selected := range ordered {
+		if selected.ID == previousID {
+			return nil, fmt.Errorf("selected package analyzer %q more than once", selected.ID)
+		}
+		previousID = selected.ID
+		if selected.Severity != rules.SeverityWarn && selected.Severity != rules.SeverityError {
+			return nil, fmt.Errorf(
+				"selected package analyzer %q has invalid severity %q",
+				selected.ID,
+				selected.Severity,
+			)
+		}
+		nativeRule, found := registry.Lookup(selected.ID)
+		if !found {
+			return nil, fmt.Errorf("selected unknown package analyzer %q", selected.ID)
+		}
+		metadata, _ := registry.Metadata(selected.ID)
+		if selected.Requirement != metadata.Requirement {
+			return nil, fmt.Errorf("selected package analyzer %q requirement does not match registry", selected.ID)
+		}
+		if metadata.Requirement != rules.RequireTypes {
+			return nil, fmt.Errorf(
+				"selected package analyzer %q requires %s; adapter requires types",
+				selected.ID,
+				metadata.Requirement,
+			)
+		}
+		adapted, found := nativeRule.(*packageAnalyzerRule)
+		if !found {
+			return nil, fmt.Errorf("selected rule %q is not a package analyzer", selected.ID)
+		}
+		if len(metadata.NodeInterests) != 1 || metadata.NodeInterests[0] != rules.NodeFile {
+			return nil, fmt.Errorf("selected package analyzer %q must declare only file interest", selected.ID)
+		}
+		result = append(result, activePackageAnalyzer{
+			rule: adapted, metadata: metadata, severity: selected.Severity,
+		})
+	}
+	return result, nil
+}
+
+func packageAnalyzerOwnsEligibleFile(
+	packageID string,
+	files []typedSyntaxFile,
+	owners map[string]string,
+	metadata rules.Metadata,
+) bool {
+	for _, file := range files {
+		if owners[file.path] != packageID {
+			continue
+		}
+		if file.source.Metadata().Generated && !metadata.RunOnGenerated {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func (r *packageAnalyzerRule) runPackage(
+	pkg *packages.Package,
+	files []typedSyntaxFile,
+	owners map[string]string,
+	severity rules.Severity,
+) ([]rules.Diagnostic, error) {
+	if pkg == nil || pkg.Fset == nil || pkg.Types == nil || pkg.TypesInfo == nil || pkg.TypesSizes == nil {
+		return nil, fmt.Errorf("adapted package is missing required type information")
+	}
+	module, err := packageAnalyzerModule(pkg.Module, 0)
+	if err != nil {
+		return nil, err
+	}
+	syntax := make([]*ast.File, len(files))
+	byPath := make(map[string]*source.File, len(files))
+	for index, file := range files {
+		syntax[index] = file.syntax
+		byPath[file.path] = file.source
+	}
+	analyzer := r.analyzer
+	upstream := make([]goanalysis.Diagnostic, 0)
+	pass := &goanalysis.Pass{
+		Analyzer:   &analyzer,
+		Fset:       pkg.Fset,
+		Files:      syntax,
+		Pkg:        pkg.Types,
+		TypesInfo:  pkg.TypesInfo,
+		TypesSizes: pkg.TypesSizes,
+		Module:     module,
+		Report: func(diagnostic goanalysis.Diagnostic) {
+			upstream = append(upstream, cloneAnalyzerDiagnostic(diagnostic))
+		},
+		ResultOf: make(map[*goanalysis.Analyzer]any),
+		ReadFile: func(filename string) ([]byte, error) {
+			path := filepath.Clean(filename)
+			if !filepath.IsAbs(path) || path != filename {
+				return nil, fmt.Errorf("read file %q: path is not normalized absolute", filename)
+			}
+			file, found := byPath[path]
+			if !found {
+				return nil, fmt.Errorf("read file %q: outside the adapted package source", filename)
+			}
+			return file.Bytes(), nil
+		},
+		ImportObjectFact:  func(types.Object, goanalysis.Fact) bool { return false },
+		ImportPackageFact: func(*types.Package, goanalysis.Fact) bool { return false },
+		ExportObjectFact: func(types.Object, goanalysis.Fact) {
+			panic("adapted analyzer attempted to export an undeclared object fact")
+		},
+		ExportPackageFact: func(goanalysis.Fact) {
+			panic("adapted analyzer attempted to export an undeclared package fact")
+		},
+		AllPackageFacts: func() []goanalysis.PackageFact { return nil },
+		AllObjectFacts:  func() []goanalysis.ObjectFact { return nil },
+	}
+	if analyzer.RunDespiteErrors {
+		pass.TypeErrors = slices.Clone(pkg.TypeErrors)
+	}
+	result, err := runAnalyzer(&analyzer, pass)
+	if err != nil {
+		return nil, err
+	}
+	if result != nil {
+		return nil, fmt.Errorf("analyzer returned an unexpected result")
+	}
+
+	diagnostics := make([]rules.Diagnostic, 0, len(upstream))
+	for _, diagnostic := range upstream {
+		file, finding, err := r.packageFinding(pkg.Fset, byPath, diagnostic)
+		if err != nil {
+			return nil, err
+		}
+		if owners[file.Path()] != pkg.ID {
+			continue
+		}
+		if file.Metadata().Generated && !r.metadata.RunOnGenerated {
+			continue
+		}
+		mapped, err := diagnosticForFinding(file, r.metadata, severity, finding)
+		if err != nil {
+			return nil, err
+		}
+		diagnostics = append(diagnostics, mapped)
+	}
+	return diagnostics, nil
+}
+
+func (r *packageAnalyzerRule) packageFinding(
+	fileSet *token.FileSet,
+	files map[string]*source.File,
+	diagnostic goanalysis.Diagnostic,
+) (*source.File, rules.Finding, error) {
+	file, primary, err := packageAnalyzerRange(fileSet, files, diagnostic.Pos, diagnostic.End)
+	if err != nil {
+		return nil, rules.Finding{}, fmt.Errorf("diagnostic range: %w", err)
+	}
+	messageKey := diagnostic.Category
+	if messageKey == "" {
+		messageKey = r.analyzer.Name
+	}
+	related := make([]rules.Related, len(diagnostic.Related))
+	for index, item := range diagnostic.Related {
+		relatedFile, sourceRange, err := packageAnalyzerRange(fileSet, files, item.Pos, item.End)
+		if err != nil {
+			return nil, rules.Finding{}, fmt.Errorf("related range %d: %w", index, err)
+		}
+		if relatedFile != file {
+			return nil, rules.Finding{}, fmt.Errorf("related range %d belongs to another source file", index)
+		}
+		related[index] = rules.Related{Range: sourceRange, Message: item.Message}
+	}
+	fixes := make([]rules.Fix, len(diagnostic.SuggestedFixes))
+	for fixIndex, suggested := range diagnostic.SuggestedFixes {
+		mapped, found := r.fixes[suggested.Message]
+		if !found {
+			return nil, rules.Finding{}, fmt.Errorf("undeclared suggested fix %q", suggested.Message)
+		}
+		edits := make([]rules.Edit, len(suggested.TextEdits))
+		for editIndex, edit := range suggested.TextEdits {
+			editFile, sourceRange, err := packageAnalyzerRange(fileSet, files, edit.Pos, edit.End)
+			if err != nil {
+				return nil, rules.Finding{}, fmt.Errorf(
+					"suggested fix %q edit %d: %w",
+					suggested.Message,
+					editIndex,
+					err,
+				)
+			}
+			if editFile != file {
+				return nil, rules.Finding{}, fmt.Errorf(
+					"suggested fix %q edit %d belongs to another source file",
+					suggested.Message,
+					editIndex,
+				)
+			}
+			edits[editIndex] = rules.Edit{Range: sourceRange, NewText: string(edit.NewText)}
+		}
+		fixes[fixIndex] = rules.Fix{Name: mapped.name, Safety: mapped.safety, Edits: edits}
+	}
+	help, err := analyzerDiagnosticURL(&r.analyzer, diagnostic)
+	if err != nil {
+		return nil, rules.Finding{}, err
+	}
+	return file, rules.Finding{
+		MessageKey: messageKey,
+		Message:    diagnostic.Message,
+		Range:      primary,
+		Related:    related,
+		Help:       help,
+		Fixes:      fixes,
+	}, nil
+}
+
+func packageAnalyzerRange(
+	fileSet *token.FileSet,
+	files map[string]*source.File,
+	start token.Pos,
+	end token.Pos,
+) (*source.File, source.Range, error) {
+	if fileSet == nil || !start.IsValid() {
+		return nil, source.Range{}, fmt.Errorf("position is invalid")
+	}
+	if !end.IsValid() {
+		end = start
+	}
+	physicalStart := fileSet.PositionFor(start, false)
+	physicalEnd := fileSet.PositionFor(end, false)
+	path := filepath.Clean(physicalStart.Filename)
+	if !filepath.IsAbs(path) || path != physicalStart.Filename || physicalEnd.Filename != path {
+		return nil, source.Range{}, fmt.Errorf("positions do not belong to one adapted package source")
+	}
+	file, found := files[path]
+	if !found {
+		return nil, source.Range{}, fmt.Errorf("position is outside the adapted package source")
+	}
+	range_ := source.Range{Start: physicalStart.Offset, End: physicalEnd.Offset}
+	if _, valid := file.Slice(range_); !valid {
+		return nil, source.Range{}, fmt.Errorf("positions map to an invalid physical range")
+	}
+	return file, range_, nil
+}
+
+func packageAnalyzerModule(module *packages.Module, depth int) (*goanalysis.Module, error) {
+	if module == nil {
+		return nil, nil
+	}
+	if depth >= 16 {
+		return nil, fmt.Errorf("adapted package module replacement chain exceeds 16 entries")
+	}
+	replacement, err := packageAnalyzerModule(module.Replace, depth+1)
+	if err != nil {
+		return nil, err
+	}
+	result := &goanalysis.Module{
+		Path:      module.Path,
+		Version:   module.Version,
+		Replace:   replacement,
+		Main:      module.Main,
+		Indirect:  module.Indirect,
+		Dir:       module.Dir,
+		GoMod:     module.GoMod,
+		GoVersion: module.GoVersion,
+	}
+	if module.Time != nil {
+		created := *module.Time
+		result.Time = &created
+	}
+	if module.Error != nil {
+		result.Error = &goanalysis.ModuleError{Err: module.Error.Err}
+	}
+	return result, nil
+}

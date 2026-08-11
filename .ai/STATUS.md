@@ -365,3 +365,16 @@ clock. Text and versioned JSON surface expiry problems, while unused JSON
 records include `expires_on`. Current Oxlint source still has no structured
 expiry contract. The incomplete Phase 2 naming, release, platform, and approved
 external-adoption gates keep progress at 45%.
+
+The `go/analysis` compatibility boundary now admits explicitly audited
+read-only types-tier analyzers over the existing package load. Adapted passes
+reuse load-owned AST, type information, sizes, module metadata, type errors
+when admitted, and exact captured source bytes after native types, CFG, and SSA
+consumers finish. Package and analyzer order is deterministic; physical files
+are owned once across test variants; synthetic test-main cache source is not a
+lint target; generated and ill-typed eligibility remains native metadata
+policy; and cross-file related locations or fixes fail closed. Prerequisites,
+facts,
+result values, analyzer flags, CFG/SSA adapter tiers, typed fix application,
+and mutable analyzers remain unsupported. The incomplete Phase 2 gates keep
+overall progress at 45%.

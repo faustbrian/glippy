@@ -5,11 +5,13 @@ import (
 	"errors"
 	"flag"
 	"go/ast"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	goanalysis "golang.org/x/tools/go/analysis"
+	testsanalyzer "golang.org/x/tools/go/analysis/passes/tests"
 
 	"github.com/faustbrian/gox/internal/analysis"
 	"github.com/faustbrian/gox/internal/rules"
@@ -128,6 +130,590 @@ func visible() { target() }
 		diagnostic.Fixes[0].Safety != rules.FixSuggestion ||
 		len(diagnostic.Fixes[0].Edits) != 1 || diagnostic.Fixes[0].Edits[0].NewText != "primary()" {
 		t.Fatalf("adapter diagnostic = %#v", diagnostic)
+	}
+}
+
+func TestAdaptAnalyzerRunsTypedPackagesOncePerOwnedSource(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "adapter.go"), "package adapter\n")
+	testPath := filepath.Join(root, "adapter_test.go")
+	input := `package adapter
+
+import "testing"
+
+func Testwrong(t *testing.T) {}
+`
+	writeTypesFixture(t, testPath, input)
+
+	options := adapterOptions("test-name")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(testsanalyzer.Analyzer, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir:        root,
+			Patterns:   []string{"."},
+			Tests:      true,
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diagnostics := make([]rules.Diagnostic, 0)
+	for _, file := range result.Files {
+		diagnostics = append(diagnostics, file.Diagnostics...)
+	}
+	if len(result.LoadDiagnostics) != 0 || len(result.SourceProblems) != 0 || len(diagnostics) != 1 {
+		t.Fatalf("RunPackages() = %#v", result)
+	}
+	diagnostic := diagnostics[0]
+	start := strings.Index(input, "Testwrong")
+	if diagnostic.RuleID != "test-name" || diagnostic.Path != testPath ||
+		diagnostic.Range != (source.Range{Start: start, End: start + len("Testwrong")}) ||
+		!strings.Contains(diagnostic.Message, "Testwrong has malformed name") {
+		t.Fatalf("typed adapter diagnostic = %#v", diagnostic)
+	}
+}
+
+func TestAdaptAnalyzerOwnsEachPhysicalTestVariantSourceOnce(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	paths := []string{
+		filepath.Join(root, "adapter.go"),
+		filepath.Join(root, "adapter_test.go"),
+		filepath.Join(root, "external_test.go"),
+	}
+	writeTypesFixture(t, paths[0], "package adapter\nconst Value = 1\n")
+	writeTypesFixture(t, paths[1], `package adapter
+
+import (
+	"os"
+	"testing"
+)
+
+func TestMain(m *testing.M) { os.Exit(m.Run()) }
+`)
+	writeTypesFixture(t, paths[2], `package adapter_test
+
+import (
+	"testing"
+
+	"example.com/adapter"
+)
+
+func TestValue(t *testing.T) {
+	if adapter.Value != 1 { t.Fatal(adapter.Value) }
+}
+`)
+	upstream := &goanalysis.Analyzer{
+		Name: "variantownership",
+		Doc:  "reports every package source",
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			for _, file := range pass.Files {
+				pass.ReportRangef(file.Name, "package source")
+			}
+			return nil, nil
+		},
+	}
+	options := adapterOptions("variant-ownership")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(upstream, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, Tests: true, ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotPaths := make([]string, 0, len(result.Files))
+	for _, file := range result.Files {
+		if len(file.Diagnostics) != 1 {
+			t.Fatalf("variant source diagnostics = %#v", result)
+		}
+		gotPaths = append(gotPaths, file.Path)
+	}
+	if !reflect.DeepEqual(gotPaths, paths) {
+		t.Fatalf("variant source paths = %#v, want %#v", gotPaths, paths)
+	}
+}
+
+func TestAdaptAnalyzerTypedPassUsesLoadOwnedPackageData(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "adapter.go")
+	writeTypesFixture(t, path, "package adapter\nconst Value = 1\n")
+	overlay := []byte("package adapter\nconst Value = 2\n")
+	upstream := &goanalysis.Analyzer{
+		Name: "typedpass",
+		Doc:  "checks the typed package pass",
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			if pass.Pkg == nil || pass.Pkg.Path() != "example.com/adapter" ||
+				pass.TypesInfo == nil || pass.TypesSizes == nil || len(pass.Files) != 1 ||
+				len(pass.ResultOf) != 0 || pass.Module == nil || pass.Module.Path != "example.com/adapter" ||
+				len(pass.TypeErrors) != 0 || len(pass.OtherFiles) != 0 || len(pass.IgnoredFiles) != 0 {
+				return nil, errors.New("typed adapter pass omitted or invented package data")
+			}
+			filename := pass.Fset.PositionFor(pass.Files[0].Pos(), false).Filename
+			contents, err := pass.ReadFile(filename)
+			if err != nil || string(contents) != string(overlay) {
+				return nil, errors.New("typed adapter pass did not expose overlay bytes")
+			}
+			contents[0] = 'X'
+			contents, err = pass.ReadFile(filename)
+			if err != nil || string(contents) != string(overlay) {
+				return nil, errors.New("typed adapter pass exposed mutable source bytes")
+			}
+			if _, err := pass.ReadFile(filepath.Join(root, "outside.go")); err == nil {
+				return nil, errors.New("typed adapter pass read an undeclared file")
+			}
+			pass.ReportRangef(pass.Files[0].Name, "typed package")
+			return nil, nil
+		},
+	}
+	options := adapterOptions("typed-pass")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(upstream, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+			Overlay: map[string][]byte{path: overlay},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("RunPackages() = %#v", result)
+	}
+	loadedSource, found := result.Sources.Lookup(path)
+	if !found || result.Files[0].Digest != loadedSource.Digest() ||
+		result.Files[0].Diagnostics[0].Digest != loadedSource.Digest() {
+		t.Fatalf("typed adapter source identity = %#v, found %t", result.Files[0], found)
+	}
+}
+
+func TestAdaptAnalyzerRunsTypedPackagesAfterNativeSSA(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "adapter.go"), "package adapter\nfunc run() {}\n")
+	order := make([]string, 0, 2)
+	native := ssaRule{
+		metadata: ssaMetadata("native-ssa"),
+		run: func(*rules.SSAContext) ([]rules.Finding, error) {
+			order = append(order, "native")
+			return nil, nil
+		},
+	}
+	upstream := &goanalysis.Analyzer{
+		Name: "afterssa",
+		Doc:  "records package adapter ordering",
+		Run: func(*goanalysis.Pass) (any, error) {
+			order = append(order, "adapted")
+			return nil, nil
+		},
+	}
+	options := adapterOptions("adapted-package")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(upstream, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted, native)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(order, []string{"native", "adapted"}) {
+		t.Fatalf("analysis order = %#v", order)
+	}
+}
+
+func TestAdaptAnalyzerRejectsCrossFilePackageDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "a.go"), "package adapter\nconst A = 1\n")
+	writeTypesFixture(t, filepath.Join(root, "b.go"), "package adapter\nconst B = 2\n")
+	upstream := &goanalysis.Analyzer{
+		Name: "crossfile",
+		Doc:  "reports cross-file related information",
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			files := make(map[string]*ast.File, len(pass.Files))
+			for _, file := range pass.Files {
+				files[pass.Fset.PositionFor(file.Pos(), false).Filename] = file
+			}
+			first := files[filepath.Join(root, "a.go")]
+			second := files[filepath.Join(root, "b.go")]
+			pass.Report(goanalysis.Diagnostic{
+				Pos: first.Name.Pos(), End: first.Name.End(), Message: "cross-file diagnostic",
+				Related: []goanalysis.RelatedInformation{{
+					Pos: second.Name.Pos(), End: second.Name.End(), Message: "other file",
+				}},
+			})
+			return nil, nil
+		},
+	}
+	options := adapterOptions("cross-file")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(upstream, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "related range 0 belongs to another source file") {
+		t.Fatalf("RunPackages() error = %v", err)
+	}
+}
+
+func TestAdaptAnalyzerRejectsCrossFilePackageFixes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "a.go"), "package adapter\nconst A = 1\n")
+	writeTypesFixture(t, filepath.Join(root, "b.go"), "package adapter\nconst B = 2\n")
+	upstream := &goanalysis.Analyzer{
+		Name: "crossfilefix",
+		Doc:  "offers a cross-file package fix",
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			files := make(map[string]*ast.File, len(pass.Files))
+			for _, file := range pass.Files {
+				files[pass.Fset.PositionFor(file.Pos(), false).Filename] = file
+			}
+			first := files[filepath.Join(root, "a.go")]
+			second := files[filepath.Join(root, "b.go")]
+			pass.Report(goanalysis.Diagnostic{
+				Pos: first.Name.Pos(), End: first.Name.End(), Message: "cross-file fix",
+				SuggestedFixes: []goanalysis.SuggestedFix{{
+					Message: "Replace other file",
+					TextEdits: []goanalysis.TextEdit{{
+						Pos: second.Name.Pos(), End: second.Name.End(), NewText: []byte("changed"),
+					}},
+				}},
+			})
+			return nil, nil
+		},
+	}
+	options := adapterOptions("cross-file-fix")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	options.SuggestedFixes = []analysis.AnalyzerFixMapping{{
+		Message: "Replace other file", Name: "replace-other", Description: "replace other file",
+	}}
+	adapted, err := analysis.AdaptAnalyzer(upstream, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "edit 0 belongs to another source file") {
+		t.Fatalf("RunPackages() error = %v", err)
+	}
+}
+
+func TestAdaptAnalyzerHonorsGeneratedPackagePolicy(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "generated.go"),
+		"// Code generated by test. DO NOT EDIT.\npackage adapter\n",
+	)
+	var skippedRuns, enabledRuns int
+	newAdapter := func(id string, runOnGenerated bool, runs *int) rules.Rule {
+		upstream := &goanalysis.Analyzer{
+			Name: strings.ReplaceAll(id, "-", ""),
+			Doc:  "records generated package scheduling",
+			Run: func(pass *goanalysis.Pass) (any, error) {
+				(*runs)++
+				pass.ReportRangef(pass.Files[0].Name, "generated package")
+				return nil, nil
+			},
+		}
+		options := adapterOptions(id)
+		options.Metadata.Requirement = rules.RequireTypes
+		options.Metadata.RunOnGenerated = runOnGenerated
+		options.ReadOnlyAudited = true
+		adapted, err := analysis.AdaptAnalyzer(upstream, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return adapted
+	}
+	registry, err := rules.NewRegistry(
+		newAdapter("generated-package-disabled", false, &skippedRuns),
+		newAdapter("generated-package-enabled", true, &enabledRuns),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skippedRuns != 0 || enabledRuns != 1 || len(result.Files) != 1 ||
+		len(result.Files[0].Diagnostics) != 1 ||
+		result.Files[0].Diagnostics[0].RuleID != "generated-package-enabled" {
+		t.Fatalf(
+			"generated package result = disabled %d, enabled %d, %#v",
+			skippedRuns,
+			enabledRuns,
+			result,
+		)
+	}
+}
+
+func TestAdaptAnalyzerHonorsTypedPackageErrorPolicy(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "adapter.go"), "package adapter\nvar Value = missing\n")
+	var skippedRuns, enabledRuns int
+	newAdapter := func(id string, runDespiteErrors bool, runs *int) rules.Rule {
+		upstream := &goanalysis.Analyzer{
+			Name:             strings.ReplaceAll(id, "-", ""),
+			Doc:              "records ill-typed package scheduling",
+			RunDespiteErrors: runDespiteErrors,
+			Run: func(pass *goanalysis.Pass) (any, error) {
+				(*runs)++
+				if len(pass.TypeErrors) == 0 {
+					return nil, errors.New("ill-typed adapter pass omitted type errors")
+				}
+				pass.ReportRangef(pass.Files[0].Name, "ill-typed package")
+				return nil, nil
+			},
+		}
+		options := adapterOptions(id)
+		options.Metadata.Requirement = rules.RequireTypes
+		options.Metadata.RunDespiteTypeErrors = runDespiteErrors
+		options.ReadOnlyAudited = true
+		adapted, err := analysis.AdaptAnalyzer(upstream, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return adapted
+	}
+	registry, err := rules.NewRegistry(
+		newAdapter("typed-errors-disabled", false, &skippedRuns),
+		newAdapter("typed-errors-enabled", true, &enabledRuns),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skippedRuns != 0 || enabledRuns != 1 || len(result.LoadDiagnostics) == 0 ||
+		len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 ||
+		result.Files[0].Diagnostics[0].RuleID != "typed-errors-enabled" {
+		t.Fatalf(
+			"ill-typed package result = disabled %d, enabled %d, %#v",
+			skippedRuns,
+			enabledRuns,
+			result,
+		)
+	}
+}
+
+func TestAdaptAnalyzerPreservesCancellationAfterTypedPackageRun(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "adapter.go"), "package adapter\n")
+	ctx, cancel := context.WithCancel(context.Background())
+	upstream := &goanalysis.Analyzer{
+		Name: "typedcancel",
+		Doc:  "cancels after typed package execution",
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			cancel()
+			pass.ReportRangef(pass.Files[0].Name, "diagnostic after cancellation")
+			return nil, nil
+		},
+	}
+	options := adapterOptions("typed-cancel")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(upstream, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = analysis.RunPackages(
+		ctx,
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("RunPackages() error = %v, want context cancellation", err)
+	}
+}
+
+func TestAdaptAnalyzerMapsTypedPackageSuggestedFixes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "adapter.go")
+	input := "package adapter\nconst Value = 1\n"
+	writeTypesFixture(t, path, input)
+	upstream := &goanalysis.Analyzer{
+		Name: "typedfix",
+		Doc:  "offers a same-file typed package fix",
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			declaration := pass.Files[0].Decls[0].(*ast.GenDecl)
+			value := declaration.Specs[0].(*ast.ValueSpec).Values[0]
+			pass.Report(goanalysis.Diagnostic{
+				Pos: value.Pos(), End: value.End(), Message: "replace the value",
+				SuggestedFixes: []goanalysis.SuggestedFix{{
+					Message: "Replace value",
+					TextEdits: []goanalysis.TextEdit{{
+						Pos: value.Pos(), End: value.End(), NewText: []byte("2"),
+					}},
+				}},
+			})
+			return nil, nil
+		},
+	}
+	options := adapterOptions("typed-fix")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	options.SuggestedFixes = []analysis.AnalyzerFixMapping{{
+		Message: "Replace value", Name: "replace-value", Description: "replace the value",
+		Safety: rules.FixSafe, Audited: true,
+	}}
+	adapted, err := analysis.AdaptAnalyzer(upstream, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("RunPackages() = %#v", result)
+	}
+	diagnostic := result.Files[0].Diagnostics[0]
+	start := strings.LastIndex(input, "1")
+	if diagnostic.Path != path || len(diagnostic.Fixes) != 1 ||
+		diagnostic.Fixes[0].Name != "replace-value" ||
+		diagnostic.Fixes[0].Safety != rules.FixSafe ||
+		len(diagnostic.Fixes[0].Edits) != 1 ||
+		diagnostic.Fixes[0].Edits[0] != (rules.Edit{
+			Range: source.Range{Start: start, End: start + 1}, NewText: "2",
+		}) {
+		t.Fatalf("typed package fix = %#v", diagnostic)
 	}
 }
 
@@ -525,14 +1111,38 @@ func TestAdaptAnalyzerRejectsUnsupportedAnalyzerContracts(t *testing.T) {
 			wantError: "invalid fix safety",
 		},
 		{
-			name:     "typed metadata",
+			name:     "typed metadata without read-only audit",
 			analyzer: &goanalysis.Analyzer{Name: "typed", Doc: "declares typed metadata", Run: validRun},
 			options: func() analysis.AnalyzerAdapterOptions {
 				options := adapterOptions("typed-analyzer")
 				options.Metadata.Requirement = rules.RequireTypes
 				return options
 			}(),
-			wantError: "syntax requirement and only file interest",
+			wantError: "read-only analyzer audit",
+		},
+		{
+			name: "typed metadata exceeds type-error contract",
+			analyzer: &goanalysis.Analyzer{
+				Name: "typederrors", Doc: "rejects type errors", Run: validRun,
+			},
+			options: func() analysis.AnalyzerAdapterOptions {
+				options := adapterOptions("typed-errors")
+				options.Metadata.Requirement = rules.RequireTypes
+				options.Metadata.RunDespiteTypeErrors = true
+				options.ReadOnlyAudited = true
+				return options
+			}(),
+			wantError: "type-error policy exceeds",
+		},
+		{
+			name:     "unsupported tier metadata",
+			analyzer: &goanalysis.Analyzer{Name: "ssa", Doc: "declares SSA metadata", Run: validRun},
+			options: func() analysis.AnalyzerAdapterOptions {
+				options := adapterOptions("ssa-analyzer")
+				options.Metadata.Requirement = rules.RequireSSA
+				return options
+			}(),
+			wantError: "syntax or types requirement",
 		},
 		{
 			name:     "node metadata",
@@ -542,7 +1152,7 @@ func TestAdaptAnalyzerRejectsUnsupportedAnalyzerContracts(t *testing.T) {
 				options.Metadata.NodeInterests = []rules.NodeKind{rules.NodeCallExpr}
 				return options
 			}(),
-			wantError: "syntax requirement and only file interest",
+			wantError: "only file interest",
 		},
 	}
 	for _, test := range tests {

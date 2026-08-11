@@ -28,8 +28,9 @@ type AnalyzerFixMapping struct {
 
 // AnalyzerAdapterOptions supplies the native product contract for an analyzer.
 type AnalyzerAdapterOptions struct {
-	Metadata       rules.Metadata
-	SuggestedFixes []AnalyzerFixMapping
+	Metadata        rules.Metadata
+	SuggestedFixes  []AnalyzerFixMapping
+	ReadOnlyAudited bool
 }
 
 type analyzerFix struct {
@@ -43,7 +44,13 @@ type analyzerRule struct {
 	fixes    map[string]analyzerFix
 }
 
-// AdaptAnalyzer wraps one syntax-only go/analysis analyzer as a native rule.
+type packageAnalyzerRule struct {
+	analyzer goanalysis.Analyzer
+	metadata rules.Metadata
+	fixes    map[string]analyzerFix
+}
+
+// AdaptAnalyzer wraps one suitable go/analysis analyzer as a native rule.
 func AdaptAnalyzer(
 	analyzer *goanalysis.Analyzer,
 	options AnalyzerAdapterOptions,
@@ -55,7 +62,7 @@ func AdaptAnalyzer(
 		return nil, fmt.Errorf("adapt go/analysis: %w", err)
 	}
 	if len(analyzer.Requires) != 0 {
-		return nil, fmt.Errorf("adapt go/analysis %q: prerequisite analyzers are not supported by the syntax tier", analyzer.Name)
+		return nil, fmt.Errorf("adapt go/analysis %q: prerequisite analyzers are not supported", analyzer.Name)
 	}
 	if len(analyzer.FactTypes) != 0 {
 		return nil, fmt.Errorf("adapt go/analysis %q: facts require the typed package scheduler", analyzer.Name)
@@ -106,21 +113,47 @@ func AdaptAnalyzer(
 	snapshot := *analyzer
 	snapshot.Requires = nil
 	snapshot.FactTypes = nil
-	adapted := &analyzerRule{analyzer: snapshot, metadata: metadata, fixes: fixes}
-	if _, err := rules.NewRegistry(adapted); err != nil {
-		return nil, fmt.Errorf("adapt go/analysis %q metadata: %w", analyzer.Name, err)
-	}
-	if metadata.Requirement != rules.RequireSyntax || len(metadata.NodeInterests) != 1 ||
-		metadata.NodeInterests[0] != rules.NodeFile {
+	if len(metadata.NodeInterests) != 1 || metadata.NodeInterests[0] != rules.NodeFile {
 		return nil, fmt.Errorf(
-			"adapt go/analysis %q: adapter metadata must declare the syntax requirement and only file interest",
+			"adapt go/analysis %q: adapter metadata must declare only file interest",
 			analyzer.Name,
 		)
+	}
+	var adapted rules.Rule
+	switch metadata.Requirement {
+	case rules.RequireSyntax:
+		adapted = &analyzerRule{analyzer: snapshot, metadata: metadata, fixes: fixes}
+	case rules.RequireTypes:
+		if !options.ReadOnlyAudited {
+			return nil, fmt.Errorf(
+				"adapt go/analysis %q: typed package execution requires a read-only analyzer audit",
+				analyzer.Name,
+			)
+		}
+		if metadata.RunDespiteTypeErrors && !analyzer.RunDespiteErrors {
+			return nil, fmt.Errorf(
+				"adapt go/analysis %q: native type-error policy exceeds the analyzer contract",
+				analyzer.Name,
+			)
+		}
+		adapted = &packageAnalyzerRule{analyzer: snapshot, metadata: metadata, fixes: fixes}
+	default:
+		return nil, fmt.Errorf(
+			"adapt go/analysis %q: adapter metadata must declare syntax or types requirement",
+			analyzer.Name,
+		)
+	}
+	if _, err := rules.NewRegistry(adapted); err != nil {
+		return nil, fmt.Errorf("adapt go/analysis %q metadata: %w", analyzer.Name, err)
 	}
 	return adapted, nil
 }
 
 func (r *analyzerRule) Metadata() rules.Metadata { return cloneAnalyzerMetadata(r.metadata) }
+
+func (r *packageAnalyzerRule) Metadata() rules.Metadata {
+	return cloneAnalyzerMetadata(r.metadata)
+}
 
 func (r *analyzerRule) RunSyntaxFile(file *source.File) ([]rules.Finding, error) {
 	if file == nil {

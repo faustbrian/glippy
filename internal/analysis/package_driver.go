@@ -87,9 +87,16 @@ func RunPackages(
 
 	syntaxSelection := selectRequirement(selection, rules.RequireSyntax)
 	typesSelection := selectRequirement(selection, rules.RequireTypes)
+	nativeTypesSelection, packageAnalyzerSelection, err := partitionPackageAnalyzers(
+		registry,
+		typesSelection,
+	)
+	if err != nil {
+		return result, err
+	}
 	controlFlowSelection := selectRequirement(selection, rules.RequireControlFlow)
 	ssaSelection := selectRequirement(selection, rules.RequireSSA)
-	typedDiagnostics, err := RunTypes(ctx, loaded, registry, typesSelection)
+	typedDiagnostics, err := RunTypes(ctx, loaded, registry, nativeTypesSelection)
 	if err != nil {
 		return result, err
 	}
@@ -115,6 +122,18 @@ func RunPackages(
 	ssaByPath := make(map[string][]rules.Diagnostic)
 	for _, diagnostic := range ssaDiagnostics {
 		ssaByPath[diagnostic.Path] = append(ssaByPath[diagnostic.Path], diagnostic)
+	}
+	packageAnalyzerDiagnostics, err := runPackageAnalyzers(
+		ctx,
+		loaded,
+		registry,
+		packageAnalyzerSelection,
+	)
+	if err != nil {
+		return result, err
+	}
+	for _, diagnostic := range packageAnalyzerDiagnostics {
+		typedByPath[diagnostic.Path] = append(typedByPath[diagnostic.Path], diagnostic)
 	}
 
 	for _, work := range files {

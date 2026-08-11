@@ -377,6 +377,18 @@ func canonicalPackages(loaded []*packages.Package) ([]*packages.Package, error) 
 		}
 		byID[pkg.ID] = pkg
 	}
+	testMainIDs := make(map[string]struct{})
+	for _, pkg := range byID {
+		if pkg.ForTest != "" {
+			testMainIDs[pkg.ForTest+".test"] = struct{}{}
+		}
+	}
+	for id := range testMainIDs {
+		pkg, found := byID[id]
+		if found && pkg.ID == pkg.PkgPath && pkg.Name == "main" && pkg.ForTest == "" {
+			delete(byID, id)
+		}
+	}
 	ids := make([]string, 0, len(byID))
 	for id := range byID {
 		ids = append(ids, id)
