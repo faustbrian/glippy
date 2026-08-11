@@ -218,6 +218,20 @@ focused fixtures and reviewed public fixes. This closes the first built-in rule
 admission item, while Phase 2 naming, release artifacts, and approved external
 adoption keep overall progress at 45%.
 
+The production registry now also admits `ineffective-break` as the second
+default correctness rule. It reports final unlabeled breaks in switch cases or
+select clauses directly inside `for` and `range` bodies, including one final
+conditional level, while excluding labeled breaks, breaks that skip later
+clause work, generated files, and explicitly out-of-scope nesting. Go 1.26.5
+vet accepted the proving defect. Current Staticcheck SA4011 source, two reviewed
+public fixes, red-green behavioral tests, public lint and explain paths, a
+100-loop cost probe, and 7,732-file non-mutating dogfood support admission. The
+dogfood sample produced no diagnostics or observed false positives; focused
+fixtures and public fixes retain the positive evidence. No fix is offered
+because removal, return, and a labeled loop exit have different semantics.
+Phase 2 naming, release artifacts, platform runtime, and approved external
+adoption keep overall progress at 45%.
+
 The combined `gox check` command now performs one sorted discovery and
 configuration pass, reads each file once, and runs formatting plus enabled
 syntax lint rules over the same immutable source version. Text and versioned

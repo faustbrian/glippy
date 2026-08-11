@@ -107,7 +107,7 @@ func TestDuplicateConditionExcludesGeneratedFiles(t *testing.T) {
 package sample
 func run(a bool) { if a {} else if a {} }
 `)
-	if len(result.Diagnostics) != 0 || len(result.Selection) != 1 {
+	if len(result.Diagnostics) != 0 || len(result.Selection) != 2 {
 		t.Fatalf("result = %#v, want selected rule with no generated-file diagnostic", result)
 	}
 }

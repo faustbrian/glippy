@@ -57,7 +57,7 @@ func NewRegistry(nativeRules ...Rule) (*Registry, error) {
 
 // NewDefaultRegistry constructs the canonical built-in rule registry.
 func NewDefaultRegistry() (*Registry, error) {
-	return NewRegistry(duplicateConditionRule{}, nilnessRule{})
+	return NewRegistry(duplicateConditionRule{}, ineffectiveBreakRule{}, nilnessRule{})
 }
 
 // IDs returns registered IDs in canonical order.

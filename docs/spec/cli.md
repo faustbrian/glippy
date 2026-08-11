@@ -37,7 +37,9 @@ MUST NOT discover project files or load configuration. Unknown rule IDs and
 invalid argument counts exit as invalid invocation without writing stdout.
 Cancellation and output failures retain the common exit categories. The
 compiled registry contains only rules that satisfy the admission gate. The
-first public rule ID is `duplicate-condition`.
+default correctness rules are `duplicate-condition` and
+`ineffective-break`; the deeper `nilness` rule remains in the opt-in
+`suspicious` preset.
 
 `fmt` without a write, check, or diff flag writes formatted content to stdout
 for one explicit file or stdin. Multiple filesystem inputs require `--write`,

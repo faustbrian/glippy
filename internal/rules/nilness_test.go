@@ -246,7 +246,8 @@ func TestNilnessIsOptInUntilEveryCommandSupportsTypedDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(correctness) != 1 || correctness[0].ID != "duplicate-condition" {
+	if len(correctness) != 2 || correctness[0].ID != "duplicate-condition" ||
+		correctness[1].ID != "ineffective-break" {
 		t.Fatalf("correctness selection = %#v", correctness)
 	}
 	suspicious, err := registry.Resolve(rules.PresetSuspicious, nil)

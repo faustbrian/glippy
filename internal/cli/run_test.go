@@ -147,6 +147,50 @@ func TestRunLintReportsBuiltInDuplicateCondition(t *testing.T) {
 	}
 }
 
+func TestRunLintReportsBuiltInIneffectiveBreak(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(done <-chan struct{}) {\nloop:\n\tfor {\n\t\tselect {\n\t\tcase <-done:\n\t\t\tbreak\n\t\tdefault:\n\t\t\tbreak loop\n\t\t}\n\t}\n}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"lint", "--reporter=json", path}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf("Run(lint) exit = %d, stderr = %q, output = %q", exitCode, stderr.String(), stdout.String())
+	}
+	var result goxreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode lint JSON: %v; output = %q", err, stdout.String())
+	}
+	if len(result.Diagnostics) != 1 {
+		t.Fatalf("Run(lint) diagnostics = %#v, want one ineffective break", result.Diagnostics)
+	}
+	diagnostic := result.Diagnostics[0]
+	position := bytes.Index(input, []byte("break\n"))
+	if diagnostic.RuleID != "ineffective-break" ||
+		diagnostic.Severity != rules.SeverityWarn ||
+		diagnostic.MessageKey != "ineffective-break" ||
+		diagnostic.Message != "unlabeled break exits only the enclosing switch or select" ||
+		diagnostic.Help != "label the surrounding loop and break to that label, or remove the ineffective break" ||
+		diagnostic.Range.Start != position || diagnostic.Range.End != position+len("break") ||
+		len(diagnostic.Related) != 0 || len(diagnostic.Fixes) != 0 {
+		t.Fatalf("Run(lint) diagnostic = %#v", diagnostic)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("Run(lint) mutated source: %q", got)
+	}
+}
+
 func TestRunLintFixLeavesBuiltInDuplicateConditionUnchanged(t *testing.T) {
 	t.Parallel()
 
@@ -778,6 +822,32 @@ func TestRunExplainDocumentsBuiltInDuplicateCondition(t *testing.T) {
 		"generated files: excluded\n",
 		"fixes:\n  none\n",
 		"Calls, channel receives, address operations",
+	} {
+		if !strings.Contains(stdout.String(), contract) {
+			t.Fatalf("Run(explain) output = %q, want %q", stdout.String(), contract)
+		}
+	}
+}
+
+func TestRunExplainDocumentsBuiltInIneffectiveBreak(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"explain", "ineffective-break"}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf("Run(explain) exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+	for _, contract := range []string{
+		"ineffective-break\n",
+		"default severity: warn\n",
+		"minimum Go: 1.26\n",
+		"analysis tier: syntax\n",
+		"generated files: excluded\n",
+		"fixes:\n  none\n",
+		"Type switches are not inspected",
 	} {
 		if !strings.Contains(stdout.String(), contract) {
 			t.Fatalf("Run(explain) output = %q, want %q", stdout.String(), contract)
