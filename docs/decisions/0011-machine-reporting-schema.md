@@ -1,6 +1,6 @@
 # ADR 0011: Versioned Machine Reporting
 
-- Status: accepted for formatter, lint-check, and lint-fix prototypes
+- Status: accepted for formatter, lint-check, lint-fix, and combined-check prototypes
 - Date: 2026-08-11
 
 ## Context And Evidence
@@ -74,6 +74,16 @@ The syntax-only lint check CLI emits these text and JSON contracts for success,
 findings, invalid invocation, source/configuration/filesystem failure, and
 cancellation. Incomplete JSON retains every analysis result completed before
 the failure.
+
+The combined `check` command uses command and mode `check` and runs formatter
+comparison plus lint analysis over one immutable source snapshot per file.
+Its summary adds `formatting_differences`; each ordered file carries the exact
+source digest and format status `unchanged` or `different`. Diagnostics,
+suppression problems, and unused suppressions reuse the lint schema. The
+constructor rejects missing, extra, or mismatched format outcomes so a machine
+consumer never receives formatting and lint records from different source
+versions. Incomplete failures retain completed file records, while text mode
+buffers all findings and emits none after a source or execution failure.
 
 Lint fix results use mode `fix` and file statuses `pending`, `unchanged`,
 `fixed`, `conflict`, `failed`, and `possibly_fixed`. File records carry the

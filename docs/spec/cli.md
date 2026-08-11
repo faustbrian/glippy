@@ -36,8 +36,8 @@ human documentation derived from that rule's immutable compiled metadata. It
 MUST NOT discover project files or load configuration. Unknown rule IDs and
 invalid argument counts exit as invalid invocation without writing stdout.
 Cancellation and output failures retain the common exit categories. The
-initial compiled registry remains empty until a rule satisfies the admission
-gate, so no successful public rule ID exists yet.
+compiled registry contains only rules that satisfy the admission gate. The
+first public rule ID is `duplicate-condition`.
 
 `fmt` without a write, check, or diff flag writes formatted content to stdout
 for one explicit file or stdin. Multiple filesystem inputs require `--write`,
@@ -111,8 +111,26 @@ describes the validated in-memory coordination result; the file status controls
 whether replacement was confirmed, refused as stale, or may have completed.
 Stale replacement records also reject each coordinated fix with the stable
 `stale-source` reason so text consumers receive an actionable explanation.
-`check` combines formatting differences and enabled lint diagnostics over one
-immutable discovery snapshot and MUST never write.
+`check` accepts explicit files and directories, defaults to the current
+directory, and accepts `--reporter=text|json` plus an optional explicit
+configuration path. It performs one sorted discovery and configuration pass,
+reads each selected file once, and runs formatting and lint analysis against
+the same immutable source version. It MUST never write source, permissions, or
+modification times.
+
+Text output is buffered until the complete selection succeeds. In normalized
+path order it emits `path: format differs` before any lint records for the same
+file. A source, configuration, discovery, analysis, or formatting failure MUST
+therefore emit no partial text findings. Successful clean checks are silent.
+
+Combined JSON uses command and mode `check`. Each ordered file record carries
+the normalized absolute path, source digest, and format status `unchanged` or
+`different`. Diagnostics and suppression records use the lint schema and MUST
+carry the same path and digest as their file record. The summary includes file,
+formatting-difference, visible diagnostic, suppressed diagnostic, suppression
+problem, and unused-suppression counts plus completeness. Incomplete JSON
+retains results completed before the failure. Invalid invocations requesting
+JSON MUST still receive this envelope.
 
 Formatting inputs are file-oriented. Typed lint patterns are package-oriented.
 The CLI MUST reject combinations whose file and package interpretations are
@@ -165,6 +183,11 @@ command-specific summary, exact source digests, and half-open physical byte
 ranges. It MUST NOT include original source snippets or fix replacement text by
 default. Suppression problems and unused directives remain distinct arrays;
 suppressed diagnostic bodies are represented only by a summary count.
+
+Combined-check JSON reuses the lint diagnostic and suppression arrays while
+adding `formatting_differences` to the summary and `format_status` to each file.
+The format outcome and lint result for a file MUST match the same normalized
+path and source digest or report construction fails as an internal invariant.
 
 Lint text reports physical 1-based line and UTF-8 byte-column locations as
 `path:line:column: severity[rule-id]: message`, followed by indented related

@@ -81,6 +81,17 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 		}
 		return runExplain(ctx, arguments, stdout, stderr, registry)
 	}
+	if len(arguments) > 0 && arguments[0] == "check" {
+		invocation, valid := parseCheckInvocation(arguments)
+		if !valid {
+			return reportInvalidCheckInvocation(arguments, stdout, stderr)
+		}
+		registry, err := rules.NewDefaultRegistry()
+		if err != nil {
+			return report(stderr, ExitInternalError, "gox check: initialize rule registry: %v\n", err)
+		}
+		return runCombinedCheck(ctx, invocation, stdout, stderr, registry)
+	}
 	if len(arguments) > 0 && arguments[0] == "lint" {
 		invocation, valid := parseLintInvocation(arguments)
 		if !valid {

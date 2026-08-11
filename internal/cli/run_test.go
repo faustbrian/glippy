@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -178,6 +179,387 @@ func TestRunLintFixLeavesBuiltInDuplicateConditionUnchanged(t *testing.T) {
 	}
 	if !bytes.Equal(got, input) {
 		t.Fatalf("Run(lint --fix) mutated source: %q", got)
+	}
+}
+
+func TestRunCombinedCheckReportsFormatAndLintFindingsWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(ready bool){if ready{}else if ready{}}\n")
+	if err := os.WriteFile(path, input, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"check", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf("Run(check) exit = %d, stderr = %q, stdout = %q", exitCode, stderr.String(), stdout.String())
+	}
+	first := strings.Index(string(input), "{if ready") + len("{if ")
+	repeated := strings.LastIndex(string(input), "ready")
+	lineStart := strings.IndexByte(string(input), '\n') + 1
+	want := fmt.Sprintf(
+		"%s: format differs\n%s:2:%d: warn[duplicate-condition]: condition occurs more than once in this if/else-if chain\n  related %s:2:%d: first occurrence of this condition\n  help: change the repeated condition or remove the unreachable branch\n",
+		path,
+		path,
+		repeated-lineStart+1,
+		path,
+		first-lineStart+1,
+	)
+	if stdout.String() != want {
+		t.Fatalf("Run(check) stdout = %q, want %q", stdout.String(), want)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) || after.Mode() != before.Mode() || !after.ModTime().Equal(before.ModTime()) {
+		t.Fatalf("Run(check) mutated source, mode, or modification time")
+	}
+}
+
+func TestRunCombinedCheckReportsVersionedJSONFromOneSourceSnapshot(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cleanPath := filepath.Join(root, "a.go")
+	if err := os.WriteFile(cleanPath, []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	changedPath := filepath.Join(root, "z.go")
+	input := []byte("package sample\nfunc run(ready bool){if ready{}else if ready{}}\n")
+	if err := os.WriteFile(changedPath, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"check", "--reporter=json", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf("Run(check JSON) exit = %d, stderr = %q, stdout = %q", exitCode, stderr.String(), stdout.String())
+	}
+	var result struct {
+		SchemaVersion int    `json:"schema_version"`
+		Command       string `json:"command"`
+		Mode          string `json:"mode"`
+		Outcome       struct {
+			Category string `json:"category"`
+			ExitCode int    `json:"exit_code"`
+		} `json:"outcome"`
+		Summary struct {
+			Files                 int  `json:"files"`
+			FormattingDifferences int  `json:"formatting_differences"`
+			Diagnostics           int  `json:"diagnostics"`
+			Complete              bool `json:"complete"`
+		} `json:"summary"`
+		Files []struct {
+			Path         string `json:"path"`
+			SourceDigest string `json:"source_digest"`
+			FormatStatus string `json:"format_status"`
+		} `json:"files"`
+		Diagnostics []goxreport.LintDiagnostic `json:"diagnostics"`
+		Errors      []goxreport.Error          `json:"errors"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode combined check JSON: %v; output = %q", err, stdout.String())
+	}
+	if result.SchemaVersion != 1 || result.Command != "check" || result.Mode != "check" ||
+		result.Outcome.Category != "findings" || result.Outcome.ExitCode != ExitFindings ||
+		result.Summary.Files != 2 || result.Summary.FormattingDifferences != 1 ||
+		result.Summary.Diagnostics != 1 || !result.Summary.Complete || len(result.Errors) != 0 {
+		t.Fatalf("Run(check JSON) envelope = %#v", result)
+	}
+	if len(result.Files) != 2 || result.Files[0].Path != cleanPath ||
+		result.Files[0].FormatStatus != "unchanged" || result.Files[0].SourceDigest == "" ||
+		result.Files[1].Path != changedPath || result.Files[1].FormatStatus != "different" ||
+		result.Files[1].SourceDigest == "" {
+		t.Fatalf("Run(check JSON) files = %#v", result.Files)
+	}
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].RuleID != "duplicate-condition" ||
+		result.Diagnostics[0].Path != changedPath || result.Diagnostics[0].SourceDigest != result.Files[1].SourceDigest {
+		t.Fatalf("Run(check JSON) diagnostics = %#v", result.Diagnostics)
+	}
+	got, err := os.ReadFile(changedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("Run(check JSON) mutated source: %q", got)
+	}
+}
+
+func TestRunCombinedCheckReturnsSuccessSilentlyForCleanSelection(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "source.go"), []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"check", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("Run(check clean) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunCombinedCheckOrdersTextFindingsByPath(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(root, "a.go")
+	secondPath := filepath.Join(root, "z.go")
+	for _, path := range []string{secondPath, firstPath} {
+		if err := os.WriteFile(path, []byte("package sample\nfunc run(){}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"check", root}, failingReader{}, &stdout, &stderr)
+
+	want := firstPath + ": format differs\n" + secondPath + ": format differs\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf("Run(check ordered) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunCombinedCheckSourceFailureDoesNotEmitPartialText(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(root, "a.go")
+	firstInput := []byte("package sample\nfunc run(){}\n")
+	if err := os.WriteFile(firstPath, firstInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	brokenPath := filepath.Join(root, "z.go")
+	brokenInput := []byte("package sample\nfunc broken(\n")
+	if err := os.WriteFile(brokenPath, brokenInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"check", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSourceError || stdout.Len() != 0 || !strings.Contains(stderr.String(), brokenPath) {
+		t.Fatalf("Run(check broken) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+	for path, input := range map[string][]byte{firstPath: firstInput, brokenPath: brokenInput} {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, input) {
+			t.Fatalf("Run(check broken) mutated %s", path)
+		}
+	}
+}
+
+func TestRunCombinedCheckSourceFailureReportsIncompleteJSON(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(root, "a.go")
+	if err := os.WriteFile(firstPath, []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	brokenPath := filepath.Join(root, "z.go")
+	if err := os.WriteFile(brokenPath, []byte("package sample\nfunc broken(\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"check", "--reporter=json", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSourceError || stderr.Len() != 0 {
+		t.Fatalf("Run(check broken JSON) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+	var result goxreport.CheckResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode check failure JSON: %v; output = %q", err, stdout.String())
+	}
+	if result.Outcome.ExitCode != ExitSourceError || result.Outcome.Category != "source_error" ||
+		result.Summary.Complete || result.Summary.Files != 1 || len(result.Files) != 1 ||
+		result.Files[0].Path != firstPath || len(result.Errors) != 1 ||
+		!strings.Contains(result.Errors[0].Message, brokenPath) {
+		t.Fatalf("Run(check broken JSON) result = %#v", result)
+	}
+}
+
+func TestRunCombinedCheckInvalidJSONInvocationReturnsJSON(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"check", "--write", "--reporter=json"}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitInvalidInvocation || stderr.Len() != 0 {
+		t.Fatalf("Run(check invalid JSON) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+	var result goxreport.CheckResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode invalid check JSON: %v; output = %q", err, stdout.String())
+	}
+	if result.Command != "check" || result.Outcome.ExitCode != ExitInvalidInvocation ||
+		result.Outcome.Category != "invalid_invocation" || result.Summary.Complete ||
+		len(result.Files) != 0 || len(result.Errors) != 1 {
+		t.Fatalf("Run(check invalid JSON) result = %#v", result)
+	}
+}
+
+func TestRunCombinedCheckHonorsLintAndFormatConfiguration(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configuration := "version = 1\n[format]\nline-width = 30\n[lint.rules]\nduplicate-condition = \"off\"\n"
+	if err := os.WriteFile(filepath.Join(root, ".gox.toml"), []byte(configuration), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	widthPath := filepath.Join(root, "width.go")
+	widthInput := []byte("package sample\n\nfunc run() {\n\tif firstCondition && secondCondition && thirdCondition {\n\t\twork()\n\t}\n}\n")
+	if err := os.WriteFile(widthPath, widthInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	duplicatePath := filepath.Join(root, "duplicate.go")
+	duplicateInput := []byte("package sample\n\nfunc d(x bool) {\n\tif x {} else if x {}\n}\n")
+	if err := os.WriteFile(duplicatePath, duplicateInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"check", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitFindings || stdout.String() != widthPath+": format differs\n" || stderr.Len() != 0 {
+		t.Fatalf("Run(check configured) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunCombinedCheckReportsOutputFailure(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "source.go"), []byte("package sample\nfunc run(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"check", root}, failingReader{}, failingWriter{}, &stderr)
+
+	if exitCode != ExitFilesystemError || !strings.Contains(stderr.String(), "write standard output") {
+		t.Fatalf("Run(check output failure) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+}
+
+func TestRunCombinedCheckReportsJSONOutputFailure(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "source.go"), []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"check", "--reporter=json", root}, failingReader{}, failingWriter{}, &stderr)
+
+	if exitCode != ExitFilesystemError || !strings.Contains(stderr.String(), "write JSON report") {
+		t.Fatalf("Run(check JSON output failure) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+}
+
+func TestRunCombinedCheckReportsPreCanceledJSONInvocation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := RunContext(ctx, []string{"check", "--reporter=json"}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitCanceled || stderr.Len() != 0 {
+		t.Fatalf("RunContext(check JSON) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+	var result goxreport.CheckResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode canceled check JSON: %v; output = %q", err, stdout.String())
+	}
+	if result.Outcome.Category != "canceled" || result.Outcome.ExitCode != ExitCanceled ||
+		result.Summary.Complete || len(result.Files) != 0 || len(result.Errors) != 1 {
+		t.Fatalf("RunContext(check JSON) result = %#v", result)
+	}
+}
+
+func TestParseCheckInvocationDefaultsToCurrentDirectory(t *testing.T) {
+	t.Parallel()
+
+	invocation, valid := parseCheckInvocation([]string{"check"})
+
+	if !valid || len(invocation.paths) != 1 || invocation.paths[0] != "." ||
+		invocation.reporter != goxreport.Text {
+		t.Fatalf("parseCheckInvocation(check) = %#v, %t", invocation, valid)
+	}
+}
+
+func TestRunCombinedCheckRejectsInvalidTextInvocationWithCheckUsage(t *testing.T) {
+	t.Parallel()
+
+	for _, arguments := range [][]string{{"check", "--write"}, {"check", "./..."}} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+
+		exitCode := Run(arguments, failingReader{}, &stdout, &stderr)
+
+		if exitCode != ExitInvalidInvocation || stdout.Len() != 0 || stderr.String() != checkUsage {
+			t.Fatalf("Run(%q) = exit %d, stdout %q, stderr %q", arguments, exitCode, stdout.String(), stderr.String())
+		}
 	}
 }
 
@@ -2026,7 +2408,7 @@ func TestRunRejectsInvalidCompleteFileWithoutPartialOutput(t *testing.T) {
 func TestRunRejectsUnsupportedInvocation(t *testing.T) {
 	t.Parallel()
 
-	for _, arguments := range [][]string{nil, {"check"}, {"unknown"}} {
+	for _, arguments := range [][]string{nil, {"unknown"}} {
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
 

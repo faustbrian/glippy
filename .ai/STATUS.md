@@ -217,3 +217,13 @@ diagnostics or observed false positives; positive recall evidence remains the
 focused fixtures and reviewed public fixes. This closes the first built-in rule
 admission item, while Phase 2 naming, release artifacts, and approved external
 adoption keep overall progress at 45%.
+
+The combined `gox check` command now performs one sorted discovery and
+configuration pass, reads each file once, and runs formatting plus enabled
+syntax lint rules over the same immutable source version. Text and versioned
+JSON reporters order formatting differences, diagnostics, and suppression
+records deterministically; incomplete JSON retains completed results while
+text failures emit no partial findings. Clean, finding, configuration, source,
+cancellation, and output-failure paths are non-mutating. This completes the
+combined non-writing CI surface, while Phase 2 naming, release artifacts, and
+approved external adoption keep overall progress at 45%.
