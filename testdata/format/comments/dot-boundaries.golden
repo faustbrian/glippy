@@ -21,10 +21,9 @@ func classify(value any) {
 	default:
 		work()
 	}
-	switch
-		value.
-			// after type switch dot line
-			(type) {
+	switch value.
+		// after type switch dot line
+		(type) {
 	default:
 		work()
 	}

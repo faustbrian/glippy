@@ -1217,7 +1217,7 @@ func TestFormatDoesNotMistakeNestedSemicolonsForClassicForClause(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "package control\n\nfunc run(ready bool) {\n\tfor\n\t\tfunc() bool {\n\t\t\twork()\n\t\t\treturn ready\n\t\t}() {\n\t\tbreak\n\t}\n}\n"
+	want := "package control\n\nfunc run(ready bool) {\n\tfor func() bool {\n\t\twork()\n\t\treturn ready\n\t}() {\n\t\tbreak\n\t}\n}\n"
 	if string(got) != want {
 		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
 	}
@@ -1253,7 +1253,7 @@ func TestFormatBreaksControlFlowHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "package control\n\nfunc loop() {\n\tfor index := startingIndex;\n\t\tindex < collectionLength;\n\t\tindex++ {\n\t\twork()\n\t}\n}\n\nfunc iterate() {\n\tfor\n\t\tindex, value := range\n\t\tvaluesWithAnExtremelyLongName {\n\t\t_, _ = index, value\n\t}\n}\n\nfunc choose(inputValue int) {\n\tswitch currentValue := inputValue;\n\t\tcurrentValue {\n\tcase FirstVeryLongValue,\n\t\tSecondVeryLongValue,\n\t\tThirdVeryLongValue:\n\t\twork()\n\t}\n}\n\nfunc classify(inputValue any) {\n\tswitch prepared := inputValue;\n\t\tcurrent := prepared.(type) {\n\tcase string:\n\t\t_ = current\n\t}\n}\n\nfunc communicate() {\n\tselect {\n\tcase\n\t\treceivedValue :=\n\t\t\t<-incomingValuesChannel:\n\t\t_ = receivedValue\n\tcase\n\t\toutgoingValuesChannelWithLongName <-\n\t\t\tvalue:\n\t\treturn\n\t}\n}\n"
+	want := "package control\n\nfunc loop() {\n\tfor index := startingIndex;\n\t\tindex < collectionLength;\n\t\tindex++ {\n\t\twork()\n\t}\n}\n\nfunc iterate() {\n\tfor index, value := range\n\t\tvaluesWithAnExtremelyLongName {\n\t\t_, _ = index, value\n\t}\n}\n\nfunc choose(inputValue int) {\n\tswitch currentValue := inputValue;\n\t\tcurrentValue {\n\tcase FirstVeryLongValue,\n\t\tSecondVeryLongValue,\n\t\tThirdVeryLongValue:\n\t\twork()\n\t}\n}\n\nfunc classify(inputValue any) {\n\tswitch prepared := inputValue;\n\t\tcurrent := prepared.(type) {\n\tcase string:\n\t\t_ = current\n\t}\n}\n\nfunc communicate() {\n\tselect {\n\tcase receivedValue :=\n\t\t<-incomingValuesChannel:\n\t\t_ = receivedValue\n\tcase outgoingValuesChannelWithLongName <-\n\t\tvalue:\n\t\treturn\n\t}\n}\n"
 	if string(got) != want {
 		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
 	}
@@ -1336,28 +1336,28 @@ func TestFormatUsesDeterministicControlFlowHeaderWidthBoundaries(t *testing.T) {
 			input:  "package boundary\nfunc choose(){if conditionWithLongName{work()}}\n",
 			width:  34,
 			flat:   "package boundary\n\nfunc choose() {\n\tif conditionWithLongName {\n\t\twork()\n\t}\n}\n",
-			broken: "package boundary\n\nfunc choose() {\n\tif\n\t\tconditionWithLongName {\n\t\twork()\n\t}\n}\n",
+			broken: "package boundary\n\nfunc choose() {\n\tif conditionWithLongName {\n\t\twork()\n\t}\n}\n",
 		},
 		{
 			name:   "for condition",
 			input:  "package boundary\nfunc loop(){for conditionWithLongName{work()}}\n",
 			width:  35,
 			flat:   "package boundary\n\nfunc loop() {\n\tfor conditionWithLongName {\n\t\twork()\n\t}\n}\n",
-			broken: "package boundary\n\nfunc loop() {\n\tfor\n\t\tconditionWithLongName {\n\t\twork()\n\t}\n}\n",
+			broken: "package boundary\n\nfunc loop() {\n\tfor conditionWithLongName {\n\t\twork()\n\t}\n}\n",
 		},
 		{
 			name:   "switch tag",
 			input:  "package boundary\nfunc choose(){switch subjectWithLongName{default:work()}}\n",
 			width:  36,
 			flat:   "package boundary\n\nfunc choose() {\n\tswitch subjectWithLongName {\n\tdefault:\n\t\twork()\n\t}\n}\n",
-			broken: "package boundary\n\nfunc choose() {\n\tswitch\n\t\tsubjectWithLongName {\n\tdefault:\n\t\twork()\n\t}\n}\n",
+			broken: "package boundary\n\nfunc choose() {\n\tswitch subjectWithLongName {\n\tdefault:\n\t\twork()\n\t}\n}\n",
 		},
 		{
 			name:   "type switch guard",
 			input:  "package boundary\nfunc classify(inputValue any){switch current:=inputValue.(type){case string:_=current}}\n",
 			width:  45,
 			flat:   "package boundary\n\nfunc classify(inputValue any) {\n\tswitch current := inputValue.(type) {\n\tcase string:\n\t\t_ = current\n\t}\n}\n",
-			broken: "package boundary\n\nfunc classify(inputValue any) {\n\tswitch\n\t\tcurrent := inputValue.(type) {\n\tcase string:\n\t\t_ = current\n\t}\n}\n",
+			broken: "package boundary\n\nfunc classify(inputValue any) {\n\tswitch current := inputValue.(type) {\n\tcase string:\n\t\t_ = current\n\t}\n}\n",
 		},
 		{
 			name:   "classic for",
@@ -1392,28 +1392,28 @@ func TestFormatUsesDeterministicControlFlowHeaderWidthBoundaries(t *testing.T) {
 			input:  "package boundary\nfunc iterate(){for index,value:=range valuesWithLongName{_,_=index,value}}\n",
 			width:  54,
 			flat:   "package boundary\n\nfunc iterate() {\n\tfor index, value := range valuesWithLongName {\n\t\t_, _ = index, value\n\t}\n}\n",
-			broken: "package boundary\n\nfunc iterate() {\n\tfor\n\t\tindex, value := range\n\t\tvaluesWithLongName {\n\t\t_, _ = index, value\n\t}\n}\n",
+			broken: "package boundary\n\nfunc iterate() {\n\tfor index, value := range\n\t\tvaluesWithLongName {\n\t\t_, _ = index, value\n\t}\n}\n",
 		},
 		{
 			name:   "bare range for",
 			input:  "package boundary\nfunc iterate(){for range valuesWithLongName{work()}}\n",
 			width:  38,
 			flat:   "package boundary\n\nfunc iterate() {\n\tfor range valuesWithLongName {\n\t\twork()\n\t}\n}\n",
-			broken: "package boundary\n\nfunc iterate() {\n\tfor\n\t\trange\n\t\tvaluesWithLongName {\n\t\twork()\n\t}\n}\n",
+			broken: "package boundary\n\nfunc iterate() {\n\tfor range\n\t\tvaluesWithLongName {\n\t\twork()\n\t}\n}\n",
 		},
 		{
 			name:   "single declaration range for",
 			input:  "package boundary\nfunc iterate(){for indexWithLongName:=range valuesWithLongName{_=indexWithLongName}}\n",
 			width:  59,
 			flat:   "package boundary\n\nfunc iterate() {\n\tfor indexWithLongName := range valuesWithLongName {\n\t\t_ = indexWithLongName\n\t}\n}\n",
-			broken: "package boundary\n\nfunc iterate() {\n\tfor\n\t\tindexWithLongName := range\n\t\tvaluesWithLongName {\n\t\t_ = indexWithLongName\n\t}\n}\n",
+			broken: "package boundary\n\nfunc iterate() {\n\tfor indexWithLongName := range\n\t\tvaluesWithLongName {\n\t\t_ = indexWithLongName\n\t}\n}\n",
 		},
 		{
 			name:   "single assignment range for",
 			input:  "package boundary\nfunc iterate(){for indexWithLongName=range valuesWithLongName{_=indexWithLongName}}\n",
 			width:  58,
 			flat:   "package boundary\n\nfunc iterate() {\n\tfor indexWithLongName = range valuesWithLongName {\n\t\t_ = indexWithLongName\n\t}\n}\n",
-			broken: "package boundary\n\nfunc iterate() {\n\tfor\n\t\tindexWithLongName = range\n\t\tvaluesWithLongName {\n\t\t_ = indexWithLongName\n\t}\n}\n",
+			broken: "package boundary\n\nfunc iterate() {\n\tfor indexWithLongName = range\n\t\tvaluesWithLongName {\n\t\t_ = indexWithLongName\n\t}\n}\n",
 		},
 		{
 			name:   "switch initializer",
@@ -1466,6 +1466,24 @@ func TestFormatUsesDeterministicControlFlowHeaderWidthBoundaries(t *testing.T) {
 	}
 }
 
+func TestFormatBreaksInsideControlFlowOperandBeforeKeywordBoundary(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package control\nfunc choose(){if firstCondition&&secondCondition&&thirdCondition{work()}}\n")
+	file, err := source.Load("control_flow_operand.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 36, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package control\n\nfunc choose() {\n\tif firstCondition &&\n\t\tsecondCondition &&\n\t\tthirdCondition {\n\t\twork()\n\t}\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatUsesDeterministicCommunicationWidthBoundaries(t *testing.T) {
 	t.Parallel()
 
@@ -1488,21 +1506,21 @@ func TestFormatUsesDeterministicCommunicationWidthBoundaries(t *testing.T) {
 			input:  "package boundary\nfunc receive(){select{case receivedValue:=<-incomingValuesChannel:_=receivedValue}}\n",
 			width:  54,
 			flat:   "package boundary\n\nfunc receive() {\n\tselect {\n\tcase receivedValue := <-incomingValuesChannel:\n\t\t_ = receivedValue\n\t}\n}\n",
-			broken: "package boundary\n\nfunc receive() {\n\tselect {\n\tcase\n\t\treceivedValue :=\n\t\t\t<-incomingValuesChannel:\n\t\t_ = receivedValue\n\t}\n}\n",
+			broken: "package boundary\n\nfunc receive() {\n\tselect {\n\tcase receivedValue :=\n\t\t<-incomingValuesChannel:\n\t\t_ = receivedValue\n\t}\n}\n",
 		},
 		{
 			name:   "select send",
 			input:  "package boundary\nfunc sendCase(){select{case outgoingValuesChannel<-valueWithLongName:return}}\n",
 			width:  56,
 			flat:   "package boundary\n\nfunc sendCase() {\n\tselect {\n\tcase outgoingValuesChannel <- valueWithLongName:\n\t\treturn\n\t}\n}\n",
-			broken: "package boundary\n\nfunc sendCase() {\n\tselect {\n\tcase\n\t\toutgoingValuesChannel <-\n\t\t\tvalueWithLongName:\n\t\treturn\n\t}\n}\n",
+			broken: "package boundary\n\nfunc sendCase() {\n\tselect {\n\tcase outgoingValuesChannel <-\n\t\tvalueWithLongName:\n\t\treturn\n\t}\n}\n",
 		},
 		{
 			name:   "select receive expression",
 			input:  "package boundary\nfunc wait(){select{case <-incomingValuesChannel:return}}\n",
 			width:  37,
 			flat:   "package boundary\n\nfunc wait() {\n\tselect {\n\tcase <-incomingValuesChannel:\n\t\treturn\n\t}\n}\n",
-			broken: "package boundary\n\nfunc wait() {\n\tselect {\n\tcase\n\t\t<-incomingValuesChannel:\n\t\treturn\n\t}\n}\n",
+			broken: "package boundary\n\nfunc wait() {\n\tselect {\n\tcase <-incomingValuesChannel:\n\t\treturn\n\t}\n}\n",
 		},
 	}
 	for _, test := range tests {

@@ -51,6 +51,13 @@ operand. Unary expressions, increment/decrement statements, indexing, slicing,
 and other constructs without a grammar-safe broken form MUST remain atomic or
 use a separately proven layout.
 
+An uncommented control-flow keyword MUST remain with its first operand or
+clause. Width pressure in `if` and condition-only `for` headers belongs to the
+condition's own groups. Range headers MAY break after `range`, and initialized
+`if` or switch headers MAY break after their grammar semicolon, but the
+formatter MUST NOT strand `if`, `for`, `switch`, or `case` on a line solely to
+meet width. An otherwise atomic header MAY remain over width.
+
 Ordinary assignments MUST keep the assignment operator and the first
 right-hand expression on the same line. Width pressure inside the right-hand
 expression belongs to that expression's canonical groups, so a broken call

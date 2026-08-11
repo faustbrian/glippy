@@ -13,8 +13,7 @@ func iterate(values []int) {
 		values {
 		work()
 	}
-	for
-		index :=
+	for index :=
 		// before range line
 		range
 		values {
@@ -23,10 +22,16 @@ func iterate(values []int) {
 	for index /* after key */, /* before value */ value /* before assign */ := range values {
 		_, _ = index, value
 	}
-	for
-		index,
-			// before value line
-			value := range
+	for index,
+		// before value line
+		value := range
+		values {
+		_, _ = index, value
+	}
+	for index,
+		// before value line combined
+		value := range
+		// before iterable line combined
 		values {
 		_, _ = index, value
 	}

@@ -1714,12 +1714,12 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 				l.arena.Text(" {"),
 			)
 		} else {
-			header = l.arena.Group(l.arena.Concat(
-				l.arena.Text("for"),
-				l.arena.Indent(l.arena.Concat(l.arena.Line(), condition)),
+			header = l.arena.Concat(
+				l.arena.Text("for "),
+				condition,
 				trailingDocument,
 				l.arena.Text(" {"),
-			))
+			)
 		}
 		return l.arena.Concat(header, tail), nil
 	}
@@ -1888,7 +1888,7 @@ func (l *lowerer) rangeStatement(statement *ast.RangeStmt) (doc.ID, error) {
 	} else if len(leadingIterable) > 0 {
 		header = l.arena.Concat(
 			l.arena.Text("for "),
-			clauseDocument,
+			l.arena.Indent(clauseDocument),
 			l.arena.Indent(l.arena.Concat(
 				l.arena.HardLine(),
 				l.boundaryCommentsDocument(leadingIterable, iterableStart),
@@ -1899,9 +1899,8 @@ func (l *lowerer) rangeStatement(statement *ast.RangeStmt) (doc.ID, error) {
 		)
 	} else {
 		header = l.arena.Group(l.arena.Concat(
-			l.arena.Text("for"),
+			l.arena.Text("for "),
 			l.arena.Indent(l.arena.Concat(
-				l.arena.Line(),
 				clauseDocument,
 				l.arena.Line(),
 				iterable,
@@ -1951,11 +1950,11 @@ func (l *lowerer) rangeAssignment(statement *ast.RangeStmt) (doc.ID, int, int, e
 			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
 		}
 		if hasLineComment {
-			parts = append(parts, l.arena.Indent(l.arena.Concat(
+			parts = append(parts, l.arena.Concat(
 				l.arena.HardLine(),
 				l.boundaryCommentsDocument(beforeValue, valueStart),
 				value,
-			)))
+			))
 		} else {
 			beforeValueDocument, err := l.inlineComments(beforeValue, true)
 			if err != nil {
@@ -2125,8 +2124,10 @@ func (l *lowerer) switchHeader(
 				l.boundaryCommentsDocument(leading, subjectStart),
 				subjectDocument,
 			)))
-		} else {
+		} else if initializer != nil {
 			parts = append(parts, l.arena.Indent(l.arena.Concat(l.arena.Line(), subjectDocument)))
+		} else {
+			parts = append(parts, l.arena.Text(" "), subjectDocument)
 		}
 		parts = append(parts, trailingDocument, l.arena.Text(" {"))
 		if len(leading) > 0 || len(between) > 0 {
@@ -2404,15 +2405,11 @@ func (l *lowerer) communicationClauseHeader(clause *ast.CommClause, colon int) (
 			communication,
 		)))
 	} else {
-		leadingDocument, err := l.inlineComments(leading, false)
+		leadingDocument, err := l.inlineComments(leading, true)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, l.arena.Indent(l.arena.Concat(
-			l.arena.Line(),
-			leadingDocument,
-			communication,
-		)))
+		parts = append(parts, leadingDocument, l.arena.Text(" "), communication)
 	}
 	trailingDocument, err := l.inlineComments(l.commentsBetween(communicationEnd, colon), true)
 	if err != nil {
@@ -2610,7 +2607,8 @@ func (l *lowerer) ifStatement(statement *ast.IfStmt) (doc.ID, error) {
 			)
 		} else {
 			parts = append(parts,
-				l.arena.Indent(l.arena.Concat(l.arena.Line(), condition)),
+				l.arena.Text(" "),
+				condition,
 				trailingDocument,
 				l.arena.Text(" {"),
 			)
