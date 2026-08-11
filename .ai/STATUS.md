@@ -559,3 +559,14 @@ policy. Cache-root validation resolves existing symlink ancestry before open,
 but the validation-to-open race and broader platform runtime evidence remain
 open. Progress stays 45% behind the Phase 2 naming,
 release, platform-runtime, and approved external-adoption gates.
+
+Cache-root admission now resolves one immutable prospective target, validates
+that target outside the selected project before creating directories, and
+opens every resolved component through pinned rooted handles with identity
+checks. A deterministic symlink-swap regression proves that changing the
+caller-supplied link after validation cannot redirect cache writes into the
+project, while rejected roots create nothing. This closes the
+validation-to-open race in the current Darwin runtime evidence. Linux and
+Windows runtime evidence for this path remains open, and the Phase 2 naming,
+release, platform-runtime, and approved external-adoption gates keep overall
+progress at 45%.

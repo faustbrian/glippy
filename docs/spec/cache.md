@@ -128,13 +128,16 @@ linting, formatting, and fixing MUST NOT open this store.
 Cache writes remain outside the selected source tree and MUST NOT be required
 for correctness. The configuration digest includes result-affecting formatter,
 lint, and suppression values; cache enablement and retention limits are
-lifecycle policy and MUST NOT invalidate otherwise compatible results. The CLI
-rejects a cache root whose currently resolvable path is inside the selected
-project before opening it. The CLI removes canonical publication temporaries
-strictly older than 24 hours during the same non-canceled pruning pass; newer
-or unrecognized files remain untouched. Closing the validation-to-open symlink
-race, platform evidence for hard-link publication beyond the recorded
-filesystems, and a product-wide warm-performance claim remain open.
+lifecycle policy and MUST NOT invalidate otherwise compatible results. The
+store resolves the prospective root once, validates that immutable target
+against the selected project before creating directories, and opens every
+resolved component through pinned rooted handles without following a mutable
+symlink. A later change to the user-supplied symlink therefore cannot redirect
+the validated store into the project. The CLI removes canonical publication
+temporaries strictly older than 24 hours during the same non-canceled pruning
+pass; newer or unrecognized files remain untouched. Platform evidence for
+hard-link publication beyond the recorded filesystems and a product-wide
+warm-performance claim remain open.
 
 Persistent object identity is the owning package path plus the canonical
 x/tools `objectpath`. It is proven across independent type checks for package

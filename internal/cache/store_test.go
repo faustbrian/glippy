@@ -575,6 +575,68 @@ func TestStoreRejectsInvalidOrCanceledRequests(t *testing.T) {
 	}
 }
 
+func TestOpenValidatedPinsResolvedRootBeforeValidationReturns(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unprivileged Windows symlink creation is not portable")
+	}
+
+	external := t.TempDir()
+	project := t.TempDir()
+	link := filepath.Join(t.TempDir(), "cache")
+	if err := os.Symlink(external, link); err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := filepath.Join(link, "analysis")
+	store, err := OpenValidated(cacheRoot, func(resolved string) error {
+		resolvedExternal, err := filepath.EvalSymlinks(external)
+		if err != nil {
+			return err
+		}
+		want := filepath.Join(resolvedExternal, "analysis")
+		if resolved != want {
+			t.Fatalf("validated root = %q, want %q", resolved, want)
+		}
+		if err := os.Remove(link); err != nil {
+			return err
+		}
+		return os.Symlink(project, link)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	key, err := BuildKey(testKeyInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(context.Background(), key, []byte("pinned")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(external, "analysis", entryName(key))); err != nil {
+		t.Fatalf("inspect pinned cache entry: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(project, "analysis")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("mutable symlink target received cache data: %v", err)
+	}
+}
+
+func TestOpenValidatedRejectsBeforeCreatingRoot(t *testing.T) {
+	parent := t.TempDir()
+	cacheRoot := filepath.Join(parent, "cache", "analysis")
+	want := errors.New("rejected cache root")
+	store, err := OpenValidated(cacheRoot, func(string) error { return want })
+	if store != nil || !errors.Is(err, want) {
+		t.Fatalf("OpenValidated() = %#v, %v", store, err)
+	}
+	if _, err := os.Lstat(filepath.Join(parent, "cache")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("rejected cache root was created: %v", err)
+	}
+}
+
 func TestStoreRefusesAnEscapingShardSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unprivileged Windows symlink creation is not portable")

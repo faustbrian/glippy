@@ -105,9 +105,10 @@ analysis inputs and cache keys.
 `GOX_CACHE_DIR` MAY select the normalized absolute cache root when persistent
 analysis caching is enabled. It does not enable caching and MUST NOT override
 the configured retention limits. Without the variable, the CLI MUST use the
-platform user-cache directory beneath `gox/analysis`. The CLI rejects a root
-whose currently resolvable path is inside the selected project. The
-validation-to-open symlink race remains an explicit prototype limitation.
+platform user-cache directory beneath `gox/analysis`. The store resolves and
+validates the prospective target outside the selected project before creation,
+then opens each resolved path component through pinned rooted handles so a
+later symlink change cannot redirect cache operations into the project.
 
 Nested configuration or inheritance MAY be introduced only after a concrete
 multi-root journey demonstrates that typed path overrides are insufficient.

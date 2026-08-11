@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -46,13 +47,26 @@ type Store struct {
 
 // Open creates or opens one normalized absolute cache root.
 func Open(path string) (*Store, error) {
+	return OpenValidated(path, nil)
+}
+
+// OpenValidated resolves a cache root, validates that immutable target, and
+// then opens or creates it without following mutable path components. The
+// validator runs before any directory is created.
+func OpenValidated(path string, validate func(string) error) (*Store, error) {
 	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return nil, fmt.Errorf("cache root %q is not normalized absolute", path)
 	}
-	if err := os.MkdirAll(path, 0o700); err != nil {
-		return nil, fmt.Errorf("create cache root: %w", err)
+	resolved, err := resolveProspectivePath(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve cache root: %w", err)
 	}
-	root, err := os.OpenRoot(path)
+	if validate != nil {
+		if err := validate(resolved); err != nil {
+			return nil, err
+		}
+	}
+	root, err := openRootNoFollow(resolved)
 	if err != nil {
 		return nil, fmt.Errorf("open cache root: %w", err)
 	}
@@ -61,6 +75,83 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("create cache version directory: %w", err)
 	}
 	return &Store{root: root}, nil
+}
+
+func resolveProspectivePath(path string) (string, error) {
+	suffix := make([]string, 0)
+	for {
+		resolved, err := filepath.EvalSymlinks(path)
+		if err == nil {
+			for index := len(suffix) - 1; index >= 0; index-- {
+				resolved = filepath.Join(resolved, suffix[index])
+			}
+			return filepath.Clean(resolved), nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return "", err
+		}
+		suffix = append(suffix, filepath.Base(path))
+		path = parent
+	}
+}
+
+func openRootNoFollow(path string) (*os.Root, error) {
+	volume := filepath.VolumeName(path)
+	anchor := volume + string(filepath.Separator)
+	relative, err := filepath.Rel(anchor, path)
+	if err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(anchor)
+	if err != nil {
+		return nil, err
+	}
+	if relative == "." {
+		return root, nil
+	}
+	for _, component := range strings.Split(relative, string(filepath.Separator)) {
+		information, statErr := root.Lstat(component)
+		if errors.Is(statErr, fs.ErrNotExist) {
+			if mkdirErr := root.Mkdir(component, 0o700); mkdirErr != nil &&
+				!errors.Is(mkdirErr, fs.ErrExist) {
+				_ = root.Close()
+				return nil, mkdirErr
+			}
+			information, statErr = root.Lstat(component)
+		}
+		if statErr != nil {
+			_ = root.Close()
+			return nil, statErr
+		}
+		if information.Mode()&os.ModeSymlink != 0 || !information.IsDir() {
+			_ = root.Close()
+			return nil, fmt.Errorf("cache root component %q is not a directory", component)
+		}
+		next, openErr := root.OpenRoot(component)
+		if openErr != nil {
+			_ = root.Close()
+			return nil, openErr
+		}
+		opened, statErr := next.Stat(".")
+		if statErr != nil || !os.SameFile(information, opened) {
+			_ = next.Close()
+			_ = root.Close()
+			if statErr != nil {
+				return nil, statErr
+			}
+			return nil, fmt.Errorf("cache root component %q changed while opening", component)
+		}
+		if closeErr := root.Close(); closeErr != nil {
+			_ = next.Close()
+			return nil, closeErr
+		}
+		root = next
+	}
+	return root, nil
 }
 
 // Close releases the rooted cache handle.

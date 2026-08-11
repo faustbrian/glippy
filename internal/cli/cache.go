@@ -94,9 +94,6 @@ func runPackageAnalysis(
 	if err != nil {
 		return analysis.PackageResult{}, err
 	}
-	if err := requireExternalCacheRoot(root, task.root); err != nil {
-		return analysis.PackageResult{}, err
-	}
 	toolIdentity, err := currentCacheToolIdentity()
 	if err != nil {
 		return analysis.PackageResult{}, newPackageAnalysisError(
@@ -105,8 +102,14 @@ func runPackageAnalysis(
 			err,
 		)
 	}
-	store, err := cache.Open(root)
+	store, err := cache.OpenValidated(root, func(resolved string) error {
+		return requireExternalCacheRoot(resolved, task.root)
+	})
 	if err != nil {
+		var classified *packageAnalysisError
+		if errors.As(err, &classified) {
+			return analysis.PackageResult{}, err
+		}
 		return analysis.PackageResult{}, newPackageAnalysisError(
 			ExitFilesystemError,
 			"open analysis cache: %w",
@@ -271,14 +274,6 @@ func packageCacheEnvironment(cgoEnabled bool) []string {
 }
 
 func requireExternalCacheRoot(root, projectRoot string) error {
-	resolvedRoot, err := resolveProspectivePath(root)
-	if err != nil {
-		return newPackageAnalysisError(
-			ExitFilesystemError,
-			"resolve analysis cache root: %w",
-			err,
-		)
-	}
 	resolvedProject, err := filepath.EvalSymlinks(projectRoot)
 	if err != nil {
 		return newPackageAnalysisError(
@@ -287,7 +282,7 @@ func requireExternalCacheRoot(root, projectRoot string) error {
 			err,
 		)
 	}
-	inside, err := pathWithin(resolvedProject, resolvedRoot)
+	inside, err := pathWithin(resolvedProject, root)
 	if err != nil {
 		return newPackageAnalysisError(ExitFilesystemError, "%w", err)
 	}
@@ -299,28 +294,6 @@ func requireExternalCacheRoot(root, projectRoot string) error {
 		)
 	}
 	return nil
-}
-
-func resolveProspectivePath(path string) (string, error) {
-	suffix := make([]string, 0)
-	for {
-		resolved, err := filepath.EvalSymlinks(path)
-		if err == nil {
-			for index := len(suffix) - 1; index >= 0; index-- {
-				resolved = filepath.Join(resolved, suffix[index])
-			}
-			return filepath.Clean(resolved), nil
-		}
-		if !os.IsNotExist(err) {
-			return "", err
-		}
-		parent := filepath.Dir(path)
-		if parent == path {
-			return "", err
-		}
-		suffix = append(suffix, filepath.Base(path))
-		path = parent
-	}
 }
 
 func pathWithin(root, candidate string) (bool, error) {

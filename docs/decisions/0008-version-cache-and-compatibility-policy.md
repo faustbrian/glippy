@@ -100,10 +100,12 @@ only canonical publication temporaries strictly older than 24 hours; newer and
 unrecognized files remain untouched. A writer suspended beyond the cutoff can
 fail visibly but cannot publish partial bytes. Formatting, syntax-only
 analysis, and fixing remain cache-independent. Cache failures are visible and
-cached state remains disposable and non-authoritative. The CLI rejects roots
-whose currently resolvable path is inside the project, while the
-validation-to-open symlink race remains deferred with broader platform evidence
-and product-wide warm-run performance claims.
+cached state remains disposable and non-authoritative. The store resolves the
+prospective root once, validates that immutable target against the project
+before creation, and walks its resolved components through pinned rooted
+handles with identity checks. Changing the original symlink after validation
+cannot redirect the opened store into the project. Broader platform evidence
+and product-wide warm-run performance claims remain deferred.
 
 Formatter output changes are user-visible compatibility changes. They require
 construct-specific before/after documentation and updated corpus evidence.
