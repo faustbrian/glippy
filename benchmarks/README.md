@@ -10,6 +10,7 @@ blocks, generics, calls, and boolean expressions.
 ```sh
 go test ./...
 go test ./benchmarks -run '^$' -bench 'Benchmark(Scan|Parse|GoFormat|ASTInspect|InspectorBuildAndFilter|TypeCheck)$' -benchmem -count=5
+GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkSyntaxRuleTraversalStrategies$' -benchmem -benchtime=500ms -count=7
 go test ./benchmarks -run '^$' -bench '^BenchmarkPackagesLoadSyntax(Cold|Warm)BuildCache$' -benchmem -benchtime=1x -count=3
 GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkGoxFormatManyClassicLoops$' -benchmem -benchtime=10x -count=3
 go test ./internal/format/doc -run '^$' -bench '^BenchmarkRenderAdversarial(Nesting|Siblings)$' -benchmem -benchtime=3x -count=5
@@ -56,6 +57,70 @@ No timing budget is set from this run. A stable benchmark runner and larger
 representative workloads are prerequisites for regression thresholds. Future
 records must continue to keep cold and warm package-loading results separate
 and include peak resident memory outside the Go benchmark allocation metric.
+
+## Syntax Traversal Strategy Probe
+
+The 2026-08-11 Phase 3 probe compares three schedulers over the owned hostile
+AST and identical no-op rules distributed across calls, binary expressions, and
+function declarations:
+
+- one direct `ast.Inspect` pass with node-interest dispatch;
+- one `ast/inspector` index plus one union-filter query; and
+- one complete `ast.Inspect` pass per rule.
+
+Parsing and rule construction occur before the timer. Each measured operation
+reconstructs the strategy's dispatch state and invokes the same number of rule
+callbacks. Seven 500-millisecond samples ran with Go 1.26.5,
+`GOMAXPROCS=1`, and `darwin/arm64` on an Apple M4 Max. Timing varied materially
+under host contention; allocation results were exact within every row.
+
+| Rules | Strategy | Median | Observed range | Bytes/op | Allocs/op |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1 | direct shared pass | 7.66 us | 4.11-20.7 us | 456 | 5 |
+| 1 | inspector union query | 63.5 us | 43.6-138 us | 28,672 | 8 |
+| 1 | naive per-rule walks | 5.85 us | 3.07-15.2 us | 56 | 2 |
+| 3 | direct shared pass | 7.07 us | 6.09-10.1 us | 504 | 7 |
+| 3 | inspector union query | 56.5 us | 43.6-214 us | 28,768 | 11 |
+| 3 | naive per-rule walks | 43.1 us | 16.9-53.8 us | 152 | 4 |
+| 5 | direct shared pass | 34.0 us | 28.2-46.7 us | 600 | 9 |
+| 5 | inspector union query | 135 us | 61.0-225 us | 28,864 | 13 |
+| 5 | naive per-rule walks | 50.3 us | 35.4-138 us | 248 | 6 |
+| 10 | direct shared pass | 16.4 us | 3.89-40.2 us | 936 | 13 |
+| 10 | inspector union query | 39.5 us | 27.1-55.6 us | 29,200 | 17 |
+| 10 | naive per-rule walks | 85.1 us | 30.0-149 us | 488 | 11 |
+| 25 | direct shared pass | 14.6 us | 7.45-23.4 us | 1,896 | 17 |
+| 25 | inspector union query | 28.7 us | 10.4-114 us | 30,160 | 21 |
+| 25 | naive per-rule walks | 381 us | 154-619 us | 1,208 | 26 |
+
+Raw timing samples, in nanoseconds per operation, are retained here because the
+host contention makes the dispersion material:
+
+```text
+1/direct       5178 6086 7658 4108 20728 12630 17331
+1/inspector   43591 101282 131155 138217 53817 63547 52026
+1/naive       14594 15160 13318 5290 3068 5845 3194
+3/direct       6900 6093 7849 9770 6717 7068 10137
+3/inspector  214123 47212 56516 45020 43634 86263 76669
+3/naive       50891 39112 16859 53759 43094 25613 44932
+5/direct      38416 28217 43327 46680 31783 29892 33950
+5/inspector  224792 200937 224688 134764 96725 70249 60977
+5/naive       50311 50163 73389 138358 35412 113728 50258
+10/direct     39336 40196 7760 3893 15470 16380 17271
+10/inspector  27067 28155 55611 49113 55431 39515 36548
+10/naive      85066 149455 59410 30049 62228 102941 93676
+25/direct     10721 7454 23375 18923 16868 11085 14596
+25/inspector  12070 28681 18540 36794 10443 71526 113965
+25/naive     540681 579542 618585 314789 204202 381080 154482
+```
+
+The direct shared pass is the selected Phase 3 scheduler. A single naive walk
+had a 1.81-microsecond lower median at one rule, but direct dispatch had lower
+medians from three through 25 rules and keeps one scheduling path as the
+catalog grows. Gox
+performs one union dispatch, so an inspector index has no repeated query over
+which to amortize its roughly 28-30 KiB construction cost. The high timing
+variance prevents a CI latency threshold; the allocation result and scaling
+direction are the architectural evidence.
 
 ## Formatter Prototype Scaling Probe
 

@@ -72,9 +72,14 @@ physical diagnostics require deduplication. A custom concurrent-safe
 `SkipObjectResolution`.
 
 `ast/inspector` pays one full indexing traversal and becomes favorable only
-after roughly five filtered traversals according to its current documentation.
-The scheduler should choose it based on enabled syntax-rule count rather than
-unconditionally.
+when repeated filtered queries amortize that index. Gox performs one union
+node-interest dispatch, so the Phase 3 benchmark compared direct shared
+`ast.Inspect`, one inspector union query, and naive per-rule walks at 1, 3, 5,
+10, and 25 rules. One naive walk had a 1.81-microsecond lower median at one
+rule; direct dispatch had lower medians from three through 25 rules and used
+456-1,896 bytes per operation versus 28,672-30,160 for inspector indexing. Gox
+keeps one direct shared traversal path until a representative workload with
+repeated queries or a material one-rule regression provides contrary evidence.
 
 ## `go/analysis` Boundary
 

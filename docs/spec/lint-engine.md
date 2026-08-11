@@ -19,9 +19,12 @@ limitations, and paired incorrect/correct examples.
 
 The scheduler MUST compute the maximum required representation across enabled
 rules and MUST NOT construct types, CFG, or SSA speculatively. Syntax rules
-SHOULD share filtered traversal when its construction cost is amortized by the
-enabled node interests. Typed, CFG, and SSA values are run-owned and MUST NOT
-cross incompatible `go/packages` loads.
+MUST share one direct preorder AST traversal per file and receive only nodes
+matching their declared interests. The initial scheduler MUST NOT build a
+secondary inspector index for its single union dispatch; a secondary index MAY
+replace the direct pass only when representative benchmark evidence shows that
+its construction cost is amortized. Typed, CFG, and SSA values are run-owned
+and MUST NOT cross incompatible `go/packages` loads.
 
 The default `correctness` preset is limited to incorrect, unsafe, ineffective,
 misleading, or highly suspicious behavior with measured signal. Suspicious,

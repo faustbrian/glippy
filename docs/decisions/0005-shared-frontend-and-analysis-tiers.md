@@ -19,6 +19,15 @@ directive bytes, and a source digest. Expensive analysis is selected through
 lexical, syntax, types, CFG, and SSA tiers. One scheduler owns loading and
 reuses representations within a run.
 
+Syntax node-interest rules use one direct preorder AST traversal and dispatch
+matching nodes to enabled rules. The scheduler does not build an
+`ast/inspector` index for this single union query. The recorded 1, 3, 5, 10,
+and 25-rule benchmark found one naive walk with a lower median at one rule and
+the direct pass with lower medians from three through 25 rules. Direct dispatch reduced allocation
+from roughly 28-30 KiB for inspector indexing to 456-1,896 bytes per traversal.
+The scheduler keeps the direct path at one rule because the measured median
+difference was 1.81 microseconds and does not justify a second execution path.
+
 ## Alternatives Rejected
 
 - Custom Go parser/type checker: no evidenced missing standard capability and
@@ -28,6 +37,8 @@ reuses representations within a run.
 - Always load types/CFG/SSA: violates editor latency and rule-cost boundaries.
 - Independent rule loaders: duplicate work and permit incompatible type
   identities.
+- An inspector index for one union query: pays a full indexing traversal and
+  roughly 28-30 KiB without a repeated filtered query to amortize it.
 
 ## Consequences
 
@@ -35,6 +46,9 @@ Lexing occurs twice through public APIs. Physical positions are distinct from
 logical reported positions. Typed loading may invoke Go tooling and requires
 explicit environment/cache inputs. Arbitrary analyzers cannot automatically
 share immutable state.
+
+Syntax dispatch visits uninterested nodes once to avoid indexing or repeated
+walks; a secondary index requires new representative benchmark evidence.
 
 ## Revisit Trigger
 

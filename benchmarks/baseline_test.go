@@ -21,6 +21,7 @@ import (
 
 	"github.com/faustbrian/gox/internal/cli"
 	goxformat "github.com/faustbrian/gox/internal/format"
+	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
 	"golang.org/x/tools/go/ast/inspector"
 	"golang.org/x/tools/go/packages"
@@ -145,6 +146,132 @@ func BenchmarkInspectorBuildAndFilter(b *testing.B) {
 			b.Fatal("empty filtered traversal")
 		}
 	}
+}
+
+func BenchmarkSyntaxRuleTraversalStrategies(b *testing.B) {
+	file := parseWorkload(b)
+	for _, ruleCount := range []int{1, 3, 5, 10, 25} {
+		ruleSet := benchmarkSyntaxRules(ruleCount)
+		wantVisits := runNaiveSyntaxRules(file, ruleSet)
+		b.Run(strconv.Itoa(ruleCount), func(b *testing.B) {
+			b.Run("direct", func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					if visits := runDirectSyntaxRules(file, ruleSet); visits != wantVisits {
+						b.Fatalf("direct visits = %d, want %d", visits, wantVisits)
+					}
+				}
+				b.ReportMetric(float64(wantVisits), "callbacks/op")
+			})
+			b.Run("inspector", func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					if visits := runInspectorSyntaxRules(file, ruleSet); visits != wantVisits {
+						b.Fatalf("inspector visits = %d, want %d", visits, wantVisits)
+					}
+				}
+				b.ReportMetric(float64(wantVisits), "callbacks/op")
+			})
+			b.Run("naive", func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					if visits := runNaiveSyntaxRules(file, ruleSet); visits != wantVisits {
+						b.Fatalf("naive visits = %d, want %d", visits, wantVisits)
+					}
+				}
+				b.ReportMetric(float64(wantVisits), "callbacks/op")
+			})
+		})
+	}
+}
+
+func runDirectSyntaxRules(file *ast.File, ruleSet []benchmarkSyntaxRule) int {
+	dispatch := make(map[rules.NodeKind][]benchmarkSyntaxRule, 3)
+	for _, rule := range ruleSet {
+		dispatch[rule.interest] = append(dispatch[rule.interest], rule)
+	}
+	visits := 0
+	ast.Inspect(file, func(node ast.Node) bool {
+		interest, found := rules.KindOf(node)
+		if !found {
+			return true
+		}
+		for _, rule := range dispatch[interest] {
+			visits += rule.run(node)
+		}
+		return true
+	})
+	return visits
+}
+
+var benchmarkSyntaxInterests = []rules.NodeKind{
+	rules.NodeCallExpr,
+	rules.NodeBinaryExpr,
+	rules.NodeFuncDecl,
+}
+
+type benchmarkSyntaxRule struct {
+	interest rules.NodeKind
+	run      func(ast.Node) int
+}
+
+func benchmarkSyntaxRules(count int) []benchmarkSyntaxRule {
+	rules := make([]benchmarkSyntaxRule, count)
+	for index := range rules {
+		rules[index] = benchmarkSyntaxRule{
+			interest: benchmarkSyntaxInterests[index%len(benchmarkSyntaxInterests)],
+			run:      func(ast.Node) int { return 1 },
+		}
+	}
+	return rules
+}
+
+func runInspectorSyntaxRules(file *ast.File, ruleSet []benchmarkSyntaxRule) int {
+	dispatch := make(map[rules.NodeKind][]benchmarkSyntaxRule, 3)
+	for _, rule := range ruleSet {
+		dispatch[rule.interest] = append(dispatch[rule.interest], rule)
+	}
+	filter := make([]ast.Node, 0, len(dispatch))
+	for _, interest := range benchmarkSyntaxInterests {
+		if len(dispatch[interest]) == 0 {
+			continue
+		}
+		prototype, found := rules.NodePrototype(interest)
+		if !found {
+			panic("benchmark syntax interest has no prototype")
+		}
+		filter = append(filter, prototype)
+	}
+	visits := 0
+	inspect := inspector.New([]*ast.File{file})
+	inspect.Preorder(filter, func(node ast.Node) {
+		interest, found := rules.KindOf(node)
+		if !found {
+			panic("unexpected filtered syntax node")
+		}
+		for _, rule := range dispatch[interest] {
+			visits += rule.run(node)
+		}
+	})
+	return visits
+}
+
+func runNaiveSyntaxRules(file *ast.File, ruleSet []benchmarkSyntaxRule) int {
+	visits := 0
+	for _, rule := range ruleSet {
+		ast.Inspect(file, func(node ast.Node) bool {
+			if benchmarkSyntaxNodeMatches(rule.interest, node) {
+				visits += rule.run(node)
+			}
+			return true
+		})
+	}
+	return visits
+}
+
+func benchmarkSyntaxNodeMatches(interest rules.NodeKind, node ast.Node) bool {
+	kind, matches := rules.KindOf(node)
+	return matches && kind == interest
 }
 
 func BenchmarkTypeCheck(b *testing.B) {

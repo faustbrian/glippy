@@ -11,8 +11,6 @@ import (
 	"sort"
 	"strings"
 
-	"golang.org/x/tools/go/ast/inspector"
-
 	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
 )
@@ -29,7 +27,7 @@ type activeSyntaxFileRule struct {
 	severity rules.Severity
 }
 
-// RunSyntax executes selected syntax rules through one filtered AST traversal.
+// RunSyntax executes selected syntax rules through one shared AST traversal.
 func RunSyntax(
 	ctx context.Context,
 	file *source.File,
@@ -53,7 +51,6 @@ func RunSyntax(
 		return ordered[left].ID < ordered[right].ID
 	})
 	dispatch := make(map[rules.NodeKind][]activeSyntaxRule)
-	interests := make(map[rules.NodeKind]struct{})
 	fileRules := make([]activeSyntaxFileRule, 0)
 	previousID := ""
 	for _, selected := range ordered {
@@ -114,7 +111,6 @@ func RunSyntax(
 		}
 		for _, interest := range metadata.NodeInterests {
 			dispatch[interest] = append(dispatch[interest], active)
-			interests[interest] = struct{}{}
 		}
 	}
 	if len(dispatch) == 0 && len(fileRules) == 0 {
@@ -123,58 +119,44 @@ func RunSyntax(
 
 	diagnostics := make([]rules.Diagnostic, 0)
 	if len(dispatch) > 0 {
-		orderedInterests := make([]rules.NodeKind, 0, len(interests))
-		for interest := range interests {
-			orderedInterests = append(orderedInterests, interest)
-		}
-		sort.Slice(orderedInterests, func(left, right int) bool {
-			return orderedInterests[left] < orderedInterests[right]
-		})
-		filter := make([]ast.Node, 0, len(orderedInterests))
-		for _, interest := range orderedInterests {
-			prototype, found := rules.NodePrototype(interest)
-			if !found {
-				return nil, fmt.Errorf("node interest %q has no syntax prototype", interest)
-			}
-			filter = append(filter, prototype)
-		}
-
 		ruleContext := rules.NewContext(file)
 		err := file.ReadSyntax(func(syntax *ast.File) error {
-			sharedInspector := inspector.New([]*ast.File{syntax})
 			var runErr error
-			sharedInspector.Preorder(filter, func(node ast.Node) {
+			ast.Inspect(syntax, func(node ast.Node) bool {
 				if runErr != nil {
-					return
+					return false
+				}
+				if node == nil {
+					return true
 				}
 				if err := ctx.Err(); err != nil {
 					runErr = err
-					return
+					return false
 				}
 				kind, found := rules.KindOf(node)
 				if !found {
-					runErr = fmt.Errorf("filtered syntax node %T has no stable kind", node)
-					return
+					return true
 				}
 				for _, active := range dispatch[kind] {
 					findings, err := active.rule.RunSyntax(ruleContext, node)
 					if contextErr := ctx.Err(); contextErr != nil {
 						runErr = contextErr
-						return
+						return false
 					}
 					if err != nil {
 						runErr = fmt.Errorf("%s: %w", active.metadata.ID, err)
-						return
+						return false
 					}
 					for _, finding := range findings {
 						diagnostic, err := diagnosticForFinding(file, active.metadata, active.severity, finding)
 						if err != nil {
 							runErr = fmt.Errorf("%s: %w", active.metadata.ID, err)
-							return
+							return false
 						}
 						diagnostics = append(diagnostics, diagnostic)
 					}
 				}
+				return true
 			})
 			return runErr
 		})

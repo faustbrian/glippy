@@ -184,3 +184,14 @@ non-preemptible upstream callback. Analyzer suitability requires a maintainer
 audit for assumptions that cannot be inferred from a function value. Typed
 adapter support and analyzer prerequisite scheduling remain Phase 4 work, so
 progress remains 45%.
+
+The syntax scheduler benchmark now compares one direct shared AST pass, one
+`ast/inspector` index plus union query, and naive per-rule walks across 1, 3, 5,
+10, and 25 rules. One naive walk had a 1.81-microsecond lower median at one
+rule; direct dispatch had lower medians from three through 25 rules and allocated
+456-1,896 bytes per operation. Inspector indexing allocated roughly 28-30 KiB.
+The production scheduler uses one direct shared pass without changing
+diagnostic ordering or rule-interest semantics; the small one-rule result does
+not justify a second execution path. This closes the Phase 3
+traversal-strategy benchmark item but does not advance the incomplete 45%
+Phase 2 gate.
