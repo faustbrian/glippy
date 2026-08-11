@@ -61,6 +61,9 @@ Standard-input fragments use an explicit fragment kind and the wrapper/mapping
 contract in [`fragments.md`](fragments.md). Fragment kind inference after a
 parse error is prohibited.
 
+The supported format-on-save setup and editor failure contract are documented
+in [`editor-integration.md`](../editor-integration.md).
+
 `lint` never writes unless a fix flag is present. Ordinary `--fix` applies safe
 fixes only. Suggestion and unsafe fixes require distinct explicit selections.
 `check` combines formatting differences and enabled lint diagnostics over one

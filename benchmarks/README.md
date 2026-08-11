@@ -15,6 +15,13 @@ GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkGoxFormatManyClass
 go test ./internal/format/doc -run '^$' -bench '^BenchmarkRenderAdversarial(Nesting|Siblings)$' -benchmem -benchtime=3x -count=5
 go test ./internal/format/doc -run '^TestRenderBoundsAdversarialDepthAndBreadthAllocations$' -count=1
 go test ./internal/format/doc -run '^$' -fuzz '^FuzzRenderDeterministic$' -fuzztime=30s -timeout=45s
+
+(
+  task_cache=$(mktemp -d "${TMPDIR:-/tmp}/gox-editor-benchmark.XXXXXX")
+  trap 'find "$task_cache" -mindepth 1 -delete; rmdir "$task_cache"' EXIT HUP INT TERM
+  GOWORK=off GOCACHE="$task_cache" go test ./benchmarks -run '^$' -bench '^BenchmarkGoxEditorStdin$' -benchmem -benchtime=10x -count=5
+)
+./benchmarks/editor-latency.sh
 ```
 
 The first command is a functional check. Benchmark setup that is not part of
@@ -94,3 +101,36 @@ most two allocations and 20,000 sibling groups in at most 64 allocations. A
 45-second process timeout. Together with the iterative renderer and fixed
 per-group fit budget, this closes the Phase 1 bounded-execution proof; release
 scale still needs peak-memory and stable-runner budgets.
+
+## Editor Latency Probe
+
+The Phase 2 editor probe formats the 879-byte owned hostile workload through
+the complete standard-input CLI path. `BenchmarkGoxEditorStdin` includes
+configuration resolution, input reading, source loading, formatting,
+validation, and a discarded stdout write while excluding process startup.
+`editor-latency.sh` builds the current binary with a disposable Go build cache
+and uses Hyperfine to measure 20 fresh processes after five warmups. The script
+can be invoked outside the repository because its build runs from the resolved
+repository root. It requires `hyperfine` and removes its temporary binary and
+build cache on every exit path.
+
+Recorded 2026-08-11 on the same non-isolated Apple M4 Max, macOS 27.0
+(26A5388g), Go 1.26.5, `darwin/arm64`:
+
+| Boundary | Samples | Time or mean | Observed range | Bytes/op | Allocs/op |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| In-process CLI, first campaign | 5 x 10 operations | 1.040 ms median | 0.873-1.254 ms | about 1,052,000 | 5,542-5,544 |
+| In-process CLI, contention rerun | 5 x 10 operations | 7.086 ms median | 1.500-12.690 ms | 1,051,781-1,052,764 | 5,542-5,545 |
+| Fresh process, campaign 1 | 20 | 41.1 ms mean | 6.4-104.8 ms | n/a | n/a |
+| Fresh process, campaign 2 | 20 | 4.6 ms mean | 3.9-7.7 ms | n/a | n/a |
+| Fresh process, campaign 3 | 20 | 15.9 ms mean | 6.4-39.1 ms | n/a | n/a |
+| Fresh process, campaign 4 | 20 | 11.5 ms mean | 5.1-32.0 ms | n/a | n/a |
+| Fresh process, outside-repository campaign | 20 | 49.8 ms mean | 5.4-151.2 ms | n/a | n/a |
+
+The provisional local adoption budget is 250 ms for every measured fresh
+process on this reference workload after the binary has been built. All 100
+recorded invocations satisfy that budget. This budget is an editor-usability
+gate for the reference host, not a stable CI threshold or a cross-platform
+performance claim. The 38.8-fold spread between the fastest and slowest fresh
+processes, and the contention-sensitive in-process timings, require an isolated
+runner and broader file-size corpus before a regression threshold can be set.

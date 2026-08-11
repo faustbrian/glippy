@@ -10,6 +10,7 @@ import (
 	"go/scanner"
 	"go/token"
 	"go/types"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/faustbrian/gox/internal/cli"
 	goxformat "github.com/faustbrian/gox/internal/format"
 	"github.com/faustbrian/gox/internal/source"
 	"golang.org/x/tools/go/ast/inspector"
@@ -85,6 +87,26 @@ func BenchmarkGoxFormatManyClassicLoops(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func BenchmarkGoxEditorStdin(b *testing.B) {
+	path, err := filepath.Abs("testdata/workload/hostile.go")
+	if err != nil {
+		b.Fatal(err)
+	}
+	arguments := []string{"fmt", "--stdin-filepath=" + path}
+	if exitCode := cli.Run(arguments, bytes.NewReader(workload), io.Discard, io.Discard); exitCode != cli.ExitSuccess {
+		b.Fatalf("editor workload exit code = %d, want %d", exitCode, cli.ExitSuccess)
+	}
+	b.ReportAllocs()
+	b.SetBytes(int64(len(workload)))
+	b.ResetTimer()
+
+	for b.Loop() {
+		if exitCode := cli.Run(arguments, bytes.NewReader(workload), io.Discard, io.Discard); exitCode != cli.ExitSuccess {
+			b.Fatalf("editor workload exit code = %d, want %d", exitCode, cli.ExitSuccess)
+		}
 	}
 }
 

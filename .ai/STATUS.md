@@ -38,7 +38,10 @@ conflicts, and reporting failures. The required version command now reports
 explicit release metadata, a versioned Go installation, or a deterministic
 development fallback without loading project state. A text-only `fmt --diff`
 mode now renders deterministic, bounded, three-context unified differences in
-path order without mutating source. Complete platform-specific
-filesystem semantics, editor workflows, release artifacts, and real-repository
-adoption remain open. Progress therefore remains at the Phase 1 exit gate of
-35%.
+path order without mutating source. The standard-input editor path now has
+current Conform.nvim and Helix format-on-save guidance plus in-process and
+fresh-process latency probes. All 100 recorded fresh processes satisfy the
+provisional 250 ms reference-host budget, but scheduler variance still blocks a
+stable CI threshold. Complete platform-specific filesystem semantics, release
+artifacts, and real-repository adoption remain open. Progress therefore remains
+at the Phase 1 exit gate of 35%.
