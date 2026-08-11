@@ -177,8 +177,12 @@ func validateMetadata(metadata Metadata) error {
 	if metadata.Requirement < RequireLexical || metadata.Requirement > RequireSSA {
 		return fmt.Errorf("%s: invalid analysis requirement %d", metadata.ID, metadata.Requirement)
 	}
-	if metadata.Requirement == RequireSyntax && len(metadata.NodeInterests) == 0 {
-		return fmt.Errorf("%s: syntax rule must declare node interests", metadata.ID)
+	if metadata.RunDespiteTypeErrors && metadata.Requirement < RequireTypes {
+		return fmt.Errorf("%s: cheap-tier rule cannot opt into type-error packages", metadata.ID)
+	}
+	if (metadata.Requirement == RequireSyntax || metadata.Requirement == RequireTypes) &&
+		len(metadata.NodeInterests) == 0 {
+		return fmt.Errorf("%s: %s rule must declare node interests", metadata.ID, metadata.Requirement)
 	}
 	if err := validateUnique(metadata.NodeInterests, validNodeKind, "node interest"); err != nil {
 		return fmt.Errorf("%s: %w", metadata.ID, err)

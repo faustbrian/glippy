@@ -26,6 +26,14 @@ func RenderRuleText(registry *rules.Registry, ruleID string) ([]byte, bool) {
 		generatedPolicy = "included"
 	}
 	fmt.Fprintf(&output, "generated files: %s\n", generatedPolicy)
+	typeErrorPolicy := "not applicable"
+	if metadata.Requirement >= rules.RequireTypes {
+		typeErrorPolicy = "excluded"
+		if metadata.RunDespiteTypeErrors {
+			typeErrorPolicy = "included"
+		}
+	}
+	fmt.Fprintf(&output, "type-error packages: %s\n", typeErrorPolicy)
 	fmt.Fprintf(&output, "categories: %s\n", joinCategories(metadata.Categories))
 	if metadata.Deprecation != nil {
 		fmt.Fprintf(&output, "deprecated since %s: %s\n", metadata.Deprecation.Since, metadata.Deprecation.Message)

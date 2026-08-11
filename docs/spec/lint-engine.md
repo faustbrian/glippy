@@ -17,6 +17,12 @@ node interests where applicable, generated-file policy, diagnostic categories,
 fix availability and safety, typed options schema, deprecation metadata, known
 limitations, and paired incorrect/correct examples.
 
+Every native types-tier rule MUST declare node interests. It MUST receive only
+matching AST nodes together with the root package's shared `go/types.Package`,
+`types.Info`, opaque package ID, package file set, package type-error state, and
+the exact immutable physical source captured during loading. The callback MUST
+NOT mutate shared typed values. Package-wide native rules are not yet admitted.
+
 The scheduler MUST compute the maximum required representation across enabled
 rules and MUST NOT construct types, CFG, or SSA speculatively. Syntax rules
 MUST share one direct preorder AST traversal per file and receive only nodes
@@ -59,6 +65,22 @@ loading and treat the new bytes as the analyzed source version. The package AST
 MAY use its own parser file set, but its parser mode MUST preserve the upstream
 AST object-resolution compatibility expected by suitable `go/analysis`
 analyzers.
+
+The native types runner MUST traverse each selected physical root source at
+most once and MUST order rule, package, file, and diagnostic work
+deterministically. When test loading exposes a production file through both its
+ordinary package and an augmented test variant, the ordinary package MUST own
+that file's analysis; test-only files MUST retain their test-variant owner.
+Dependency syntax MAY be loaded for later fact or dependency work but MUST NOT
+implicitly make dependencies lint targets.
+
+Generated files MUST be excluded unless a rule explicitly opts in. A package
+with type errors MUST be excluded for a rule unless that types-tier rule
+explicitly declares that it can operate on partial type information. Lexical
+and syntax rules MUST NOT declare that policy. Invalid diagnostic-only source
+units MUST NOT be traversed. Every typed range endpoint MUST map through the
+package file set without logical `//line` adjustment to the callback's exact
+physical file, and cross-file or invalid byte ranges MUST fail the run.
 
 Ordinary package loading MUST disable module proxies, private-module proxy
 bypass, direct version-control resolution, checksum-database access, automatic
@@ -216,8 +238,8 @@ behavior MUST be rejected with a clear compatibility diagnostic.
 Rule documentation and `explain` output MUST derive from the same immutable
 registry metadata and examples. Human `explain` output MUST include the rule
 ID, summary, full documentation, default severity, presets, minimum Go version,
-analysis tier, node interests, generated-file policy, categories, deprecation
-and replacement metadata when present, named fix safety, typed configuration,
-known limitations, and every paired example. Empty fix, configuration, or
-known-limitation sets MUST remain explicit instead of disappearing from the
-documentation contract.
+analysis tier, node interests, generated-file policy, type-error package policy,
+categories, deprecation and replacement metadata when present, named fix
+safety, typed configuration, known limitations, and every paired example. Empty
+fix, configuration, or known-limitation sets MUST remain explicit instead of
+disappearing from the documentation contract.

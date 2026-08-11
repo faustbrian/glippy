@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"go/types"
 
 	"github.com/faustbrian/gox/internal/source"
 )
@@ -122,21 +123,22 @@ type Example struct {
 
 // Metadata is the canonical rule documentation and scheduling contract.
 type Metadata struct {
-	ID               string
-	Summary          string
-	Documentation    string
-	DefaultSeverity  Severity
-	Presets          []Preset
-	MinimumGoVersion string
-	Requirement      Requirement
-	NodeInterests    []NodeKind
-	RunOnGenerated   bool
-	Categories       []Category
-	Fixes            []FixMetadata
-	Options          []OptionMetadata
-	Deprecation      *Deprecation
-	KnownLimitations []string
-	Examples         []Example
+	ID                   string
+	Summary              string
+	Documentation        string
+	DefaultSeverity      Severity
+	Presets              []Preset
+	MinimumGoVersion     string
+	Requirement          Requirement
+	NodeInterests        []NodeKind
+	RunOnGenerated       bool
+	RunDespiteTypeErrors bool
+	Categories           []Category
+	Fixes                []FixMetadata
+	Options              []OptionMetadata
+	Deprecation          *Deprecation
+	KnownLimitations     []string
+	Examples             []Example
 }
 
 // Rule is the common metadata boundary implemented by every native rule.
@@ -156,6 +158,13 @@ type SyntaxFileRule interface {
 	RunSyntaxFile(*source.File) ([]Finding, error)
 }
 
+// TypesRule receives package AST nodes with shared type information and exact
+// physical source identity.
+type TypesRule interface {
+	Rule
+	RunTypes(*TypesContext, ast.Node) ([]Finding, error)
+}
+
 // Context is the immutable per-file syntax rule context.
 type Context struct {
 	file *source.File
@@ -164,6 +173,100 @@ type Context struct {
 // NewContext creates an immutable per-file rule context.
 func NewContext(file *source.File) *Context {
 	return &Context{file: file}
+}
+
+// TypesContext binds one package AST to its exact immutable physical source.
+type TypesContext struct {
+	file      *source.File
+	fileSet   *token.FileSet
+	packageID string
+	package_  *types.Package
+	info      *types.Info
+	illTyped  bool
+}
+
+// NewTypesContext constructs one read-only typed rule context.
+func NewTypesContext(
+	file *source.File,
+	fileSet *token.FileSet,
+	packageID string,
+	package_ *types.Package,
+	info *types.Info,
+	illTyped bool,
+) *TypesContext {
+	return &TypesContext{
+		file:      file,
+		fileSet:   fileSet,
+		packageID: packageID,
+		package_:  package_,
+		info:      info,
+		illTyped:  illTyped,
+	}
+}
+
+// IllTyped reports whether package loading encountered type errors.
+func (c *TypesContext) IllTyped() bool {
+	return c != nil && c.illTyped
+}
+
+// File returns the exact immutable source version for the current package AST.
+func (c *TypesContext) File() *source.File {
+	if c == nil {
+		return nil
+	}
+	return c.file
+}
+
+// PackageID returns the opaque go/packages identity for the current package.
+func (c *TypesContext) PackageID() string {
+	if c == nil {
+		return ""
+	}
+	return c.packageID
+}
+
+// Package returns the shared read-only go/types package.
+func (c *TypesContext) Package() *types.Package {
+	if c == nil {
+		return nil
+	}
+	return c.package_
+}
+
+// Info returns the shared read-only type information for package AST nodes.
+func (c *TypesContext) Info() *types.Info {
+	if c == nil {
+		return nil
+	}
+	return c.info
+}
+
+// Range maps a package AST node to its current physical source range.
+func (c *TypesContext) Range(node ast.Node) (source.Range, error) {
+	if node == nil {
+		return source.Range{}, fmt.Errorf("typed range requires a syntax node")
+	}
+	return c.PositionRange(node.Pos(), node.End())
+}
+
+// PositionRange maps package positions to the exact current physical source.
+func (c *TypesContext) PositionRange(start, end token.Pos) (source.Range, error) {
+	if c == nil || c.file == nil || c.fileSet == nil {
+		return source.Range{}, fmt.Errorf("typed range requires source and package positions")
+	}
+	if !start.IsValid() || !end.IsValid() {
+		return source.Range{}, fmt.Errorf("typed range positions are invalid")
+	}
+	physicalStart := c.fileSet.PositionFor(start, false)
+	physicalEnd := c.fileSet.PositionFor(end, false)
+	if physicalStart.Filename != c.file.Path() || physicalEnd.Filename != c.file.Path() {
+		return source.Range{}, fmt.Errorf("typed range positions belong to another source file")
+	}
+	range_ := source.Range{Start: physicalStart.Offset, End: physicalEnd.Offset}
+	if _, valid := c.file.Slice(range_); !valid {
+		return source.Range{}, fmt.Errorf("typed positions map to an invalid physical range")
+	}
+	return range_, nil
 }
 
 // Range maps an isolated syntax node to its exact physical byte range.

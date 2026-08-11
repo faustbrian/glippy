@@ -49,6 +49,27 @@ remain available as diagnostic-only source units. Typed consumers therefore
 map package positions and edits to the bytes that were actually type-checked;
 they do not reread a path after loading and guess that it is unchanged.
 
+Native types-tier rules declare AST node interests and share one direct
+preorder traversal per selected physical file. Each callback receives the
+owning root package's `go/types.Package`, `types.Info`, opaque package ID,
+package file set, type-error state, and the exact immutable source captured by
+the loader. Package positions map through the physical file set with `//line`
+adjustments disabled and are rejected when either endpoint belongs to another
+file or falls outside the captured bytes.
+
+When tests are enabled, `go/packages` may expose one production file through
+both its ordinary package and an augmented test variant. Gox analyzes that
+physical source once and prefers the ordinary package as its type owner; a
+test-only source uses its test variant. This prevents duplicate diagnostics
+while preserving the ordinary package's production type context. Native typed
+execution is currently node-oriented and root-package-only; package-wide rules,
+dependency analysis, facts, CFG, and SSA require separate contracts.
+
+Rules skip generated files unless their metadata opts in. Packages with type
+errors are also skipped by default; a types-tier rule may explicitly declare
+that partial type information satisfies its contract. Syntax-invalid or
+source-model-invalid files remain diagnostic-only and are never traversed.
+
 Package selection delegates module and `go.work` semantics to the active Go
 toolchain and accepts explicit test inclusion, canonical build tags, overlays,
 GOOS, and GOARCH inputs. Module loading is read-only by default and supports an
@@ -82,10 +103,11 @@ share immutable state.
 Syntax dispatch visits uninterested nodes once to avoid indexing or repeated
 walks; a secondary index requires new representative benchmark evidence.
 
-CFG and SSA construction, analyzer fact scheduling, cache reuse, and integration
-with the file-owned lint driver remain separate tier-runner work. A types, CFG,
-or SSA request currently shares the same typed prerequisite graph but does not
-mean that the more expensive representation has already been constructed.
+CFG and SSA construction, analyzer fact scheduling, cache reuse, package-wide
+typed rules, and integration with the file-owned lint driver remain separate
+tier-runner work. A types, CFG, or SSA request currently shares the same typed
+prerequisite graph but does not mean that the more expensive representation has
+already been constructed.
 
 The typed package AST and physical source model use separate parser file sets.
 The package parser preserves `go/packages`' existing AST object-resolution

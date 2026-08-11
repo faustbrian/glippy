@@ -55,6 +55,31 @@ func TestRenderRuleTextKeepsEmptyContractsAndDeprecationVisible(t *testing.T) {
 
 func (r documentedRule) Metadata() rules.Metadata { return r.metadata }
 
+func TestRenderRuleTextIncludesTypeErrorPolicy(t *testing.T) {
+	t.Parallel()
+
+	registry, err := rules.NewRegistry(documentedRule{metadata: rules.Metadata{
+		ID:                   "typed-rule",
+		Summary:              "reports a typed defect",
+		Documentation:        "Runs when partial type information is sufficient.",
+		DefaultSeverity:      rules.SeverityWarn,
+		Presets:              []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion:     "1.22",
+		Requirement:          rules.RequireTypes,
+		NodeInterests:        []rules.NodeKind{rules.NodeCallExpr},
+		RunDespiteTypeErrors: true,
+		Categories:           []rules.Category{rules.CategoryCorrectness},
+		Examples:             []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, found := report.RenderRuleText(registry, "typed-rule")
+	if !found || !strings.Contains(string(output), "type-error packages: included\n") {
+		t.Fatalf("RenderRuleText() = %q, %t", output, found)
+	}
+}
+
 func TestRenderRuleTextUsesCanonicalMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -104,6 +129,7 @@ func TestRenderRuleTextUsesCanonicalMetadata(t *testing.T) {
 		"analysis tier: syntax\n" +
 		"node interests: call-expr\n" +
 		"generated files: excluded\n" +
+		"type-error packages: not applicable\n" +
 		"categories: correctness\n\n" +
 		"fixes:\n" +
 		"  rewrite [safe]: replace the ignored call\n\n" +

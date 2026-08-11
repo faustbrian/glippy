@@ -92,6 +92,21 @@ func TestRegistryRejectsIncompleteOrInconsistentMetadata(t *testing.T) {
 			wantError: "syntax rule must declare node interests",
 		},
 		{
+			name: "types rule without node interests",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.Requirement = rules.RequireTypes
+				metadata.NodeInterests = nil
+			},
+			wantError: "types rule must declare node interests",
+		},
+		{
+			name: "syntax rule with type-error policy",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.RunDespiteTypeErrors = true
+			},
+			wantError: "cheap-tier rule cannot opt into type-error packages",
+		},
+		{
 			name:      "missing behavioral examples",
 			mutate:    func(metadata *rules.Metadata) { metadata.Examples = nil },
 			wantError: "at least one example is required",

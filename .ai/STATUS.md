@@ -255,5 +255,15 @@ post-overlay bytes supplied by `go/packages`. A canonical run-owned source
 index retains immutable digests, tokens, trivia, directives, and diagnostic-only
 invalid files; duplicate package variants share one source identity, and
 incompatible bytes for the same path fail instead of racing a later filesystem
-read. Typed diagnostics and edit mapping are not implemented yet, so the
-overall capability gate remains 45%.
+read.
+
+The first native types-tier runner now dispatches declared AST node interests
+through one shared traversal per selected physical root file. Rules receive the
+owning package's shared type package and info, opaque package identity,
+type-error state, and exact captured source; physical package positions reject
+cross-file and invalid ranges. Generated and ill-typed package eligibility is
+explicit per rule, invalid diagnostic-only sources are skipped, and ordinary
+package ownership prevents duplicate production-file diagnostics across test
+variants. Package-wide rules, dependency analysis, typed file-driver and CLI
+integration, suppressions, typed fixes, facts, CFG, SSA, and caching remain
+open, so progress stays 45%.
