@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/faustbrian/gox/internal/config"
+	goxdiff "github.com/faustbrian/gox/internal/diff"
 	"github.com/faustbrian/gox/internal/discovery"
 	"github.com/faustbrian/gox/internal/filesystem"
 	goxformat "github.com/faustbrian/gox/internal/format"
@@ -39,7 +40,7 @@ var defaultFormatOptions = goxformat.Options{
 	FitBudget: 1_000,
 }
 
-const formatUsage = "gox: expected 'fmt [--write|--check] [--reporter=text|json] [--config=<path>] [--stdin-filepath=<path>] [--fragment=declaration|statement|expression] [path...]'\n"
+const formatUsage = "gox: expected 'fmt [--write|--check|--diff] [--reporter=text|json] [--config=<path>] [--stdin-filepath=<path>] [--fragment=declaration|statement|expression] [path...]'\n"
 const versionUsage = "gox: expected 'version'\n"
 
 const maximumFormatWorkers = 32
@@ -51,6 +52,7 @@ type formatInvocation struct {
 	paths         []string
 	reporter      goxreport.Format
 	check         bool
+	diff          bool
 	write         bool
 }
 
@@ -123,6 +125,12 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 		if invocation.write {
 			return runFormatWriteReported(ctx, invocation, stdout, stderr, replaceFormatSnapshot)
 		}
+		if invocation.diff {
+			if invocation.reporter == goxreport.JSON {
+				return reportInvalidFormatInvocation(invocation, stdout, stderr)
+			}
+			return runFormatDiff(ctx, invocation, stdout, stderr)
+		}
 		if invocation.check {
 			return runFormatCheck(ctx, invocation, stdout, stderr)
 		}
@@ -134,7 +142,7 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 		}
 		return runFormatFile(ctx, invocation, stdout, stderr)
 	}
-	if invocation.check || invocation.write {
+	if invocation.check || invocation.diff || invocation.write {
 		return reportInvalidFormatInvocation(invocation, stdout, stderr)
 	}
 	if invocation.reporter == goxreport.JSON {
@@ -207,6 +215,8 @@ func formatInvocationMode(invocation formatInvocation) string {
 	switch {
 	case invocation.check:
 		return "check"
+	case invocation.diff:
+		return "diff"
 	case invocation.write:
 		return "write"
 	default:
@@ -228,23 +238,37 @@ func requestsJSONReporter(arguments []string) bool {
 }
 
 func invalidFormatInvocationMode(arguments []string) string {
-	check := false
-	write := false
+	check, diff, write := false, false, false
 	for _, argument := range arguments[1:] {
 		switch argument {
 		case "--check":
 			check = true
 		case "--write":
 			write = true
+		case "--diff":
+			diff = true
 		}
 	}
-	if check == write {
+	if boolCount(check, diff, write) != 1 {
 		return "invalid"
 	}
 	if check {
 		return "check"
 	}
+	if diff {
+		return "diff"
+	}
 	return "write"
+}
+
+func boolCount(values ...bool) int {
+	count := 0
+	for _, value := range values {
+		if value {
+			count++
+		}
+	}
+	return count
 }
 
 type formatTask struct {
@@ -445,6 +469,60 @@ func runFormatCheck(
 		return report(stderr, ExitFilesystemError, "gox fmt: write standard output: %v\n", err)
 	}
 	return ExitFindings
+}
+
+type preparedFormatDiff struct {
+	path      string
+	input     []byte
+	formatted []byte
+}
+
+func runFormatDiff(ctx context.Context, invocation formatInvocation, stdout, stderr io.Writer) int {
+	tasks, exitCode, err := prepareFormatTasks(ctx, invocation)
+	if err != nil {
+		return report(stderr, exitCode, "gox fmt: %v\n", err)
+	}
+	prepared, err := mapFormatTasks(ctx, tasks, formatWorkerLimit(len(tasks)), func(ctx context.Context, task formatTask) (preparedFormatDiff, error) {
+		input, err := os.ReadFile(task.file.Path)
+		if err != nil {
+			return preparedFormatDiff{}, newFormatTaskError(ExitFilesystemError, "read %q: %w", task.file.Path, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return preparedFormatDiff{}, err
+		}
+		formatted, exitCode, err := formatStandardInput(input, task.file.Path, 0, task.options)
+		if err != nil {
+			return preparedFormatDiff{}, &formatTaskError{exitCode: exitCode, err: err}
+		}
+		return preparedFormatDiff{path: task.file.Path, input: input, formatted: formatted}, nil
+	})
+	if err != nil {
+		return reportFormatTaskError(stderr, err)
+	}
+	var output strings.Builder
+	changed := false
+	for _, item := range prepared {
+		if err := ctx.Err(); err != nil {
+			return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
+		}
+		difference := goxdiff.Unified(item.path+".orig", item.path, item.input, item.formatted)
+		if difference != "" {
+			changed = true
+			output.WriteString(difference)
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
+	}
+	if output.Len() > 0 {
+		if err := write(stdout, []byte(output.String())); err != nil {
+			return report(stderr, ExitFilesystemError, "gox fmt: write standard output: %v\n", err)
+		}
+	}
+	if changed {
+		return ExitFindings
+	}
+	return ExitSuccess
 }
 
 func prepareFormatTasks(ctx context.Context, invocation formatInvocation) ([]formatTask, int, error) {
@@ -905,6 +983,8 @@ func parseFormatInvocation(arguments []string) (formatInvocation, bool) {
 			}
 		case argument == "--check" && !result.check:
 			result.check = true
+		case argument == "--diff" && !result.diff:
+			result.diff = true
 		case argument == "--write" && !result.write:
 			result.write = true
 		case argument == "--config" && result.configPath == "" &&
@@ -920,7 +1000,7 @@ func parseFormatInvocation(arguments []string) (formatInvocation, bool) {
 			return formatInvocation{}, false
 		}
 	}
-	if result.check && result.write {
+	if boolCount(result.check, result.diff, result.write) > 1 {
 		return formatInvocation{}, false
 	}
 	return result, true

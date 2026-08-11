@@ -24,6 +24,7 @@ deferred status is an explicit gate, not silent approval.
 | Generated, vendor, and testdata behavior | ADR 0007 and configuration draft |
 | Cache inputs and invalidation | ADR 0008; implementation deferred to Phase 4 |
 | Machine diagnostics | ADR 0011; formatter schema accepted, lint and fix fields deferred to Phase 3 |
+| Formatter diff output | ADR 0012; bounded text-only unified differences |
 | Editor architecture | Open: stdin/stdout is the prototype boundary; ADR required before Phase 5 integration |
 | Extension mechanism | `go/analysis` adapter only; no dynamic plugin API initially |
 | Formatter and rule compatibility | ADR 0008 |

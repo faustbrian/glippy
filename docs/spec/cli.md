@@ -17,6 +17,7 @@ The binary name is written as `gox` while ADR 0001 remains provisional.
 gox fmt [paths...]
 gox fmt --write [paths...]
 gox fmt --check [paths...]
+gox fmt --diff [paths...]
 gox lint [paths...]
 gox lint --fix [paths...]
 gox check [paths...]
@@ -30,16 +31,25 @@ link-time release metadata, then a non-development Go module build version, and
 finally `devel`. The command MUST NOT read source or configuration files or
 modify the filesystem.
 
-`fmt` without a write or check flag writes formatted content to stdout for one
-explicit file or stdin. Multiple filesystem inputs require `--write` or
-`--check`. `--write` and `--check` are mutually exclusive. Standard input MAY
-use `--stdin-filepath` for language version and configuration context but MUST
-NOT make that path writable.
+`fmt` without a write, check, or diff flag writes formatted content to stdout
+for one explicit file or stdin. Multiple filesystem inputs require `--write`,
+`--check`, or `--diff`. Those three modes are mutually exclusive. Standard input
+MAY use `--stdin-filepath` for language version and configuration context but
+MUST NOT make that path writable.
+
+`fmt --diff` is path-based and non-writing. It MUST emit three-context-line
+unified differences for changed files in normalized path order, omit unchanged
+files, and use the normalized source path plus `.orig` as the old label and the
+source path as the new label. Labels containing tabs or line breaks MUST be
+quoted. A changed selection exits with findings; an already formatted selection
+exits successfully without output. Matching MUST remain bounded: Gox uses
+unique patience anchors, a capped LCS for remaining regions, and a complete
+delete-and-insert region when a work ceiling is reached.
 
 Path-based check and write modes MUST accept `--reporter=text|json`; text MUST
 remain the default. JSON MUST NOT be accepted when stdout contains formatted
-source. A valid JSON request MUST receive JSON even when the remaining
-invocation is invalid.
+source or unified differences. A valid JSON request MUST receive JSON even when
+the remaining invocation is invalid.
 
 Successful text-mode `fmt --write` is silent; JSON mode emits its result
 envelope. Write mode validates every selected configuration, source file, and
@@ -67,6 +77,10 @@ work MUST feed canonical outcome records that are sorted by normalized path,
 physical byte range, rule ID, severity, and stable message key before any
 reporter renders them. Text and versioned JSON reporters MUST derive their exit
 category from the same aggregate result.
+
+Diff construction MUST follow normalized task order after formatting completes.
+It MUST finish the complete ordered difference before the first stdout write so
+a later source or formatting failure cannot leave a partial patch.
 
 Schema version 1 JSON has this deterministic envelope:
 
@@ -133,9 +147,10 @@ participating in aggregate finding severity.
 
 ## Filesystem Boundary
 
-Check and stdout modes MUST NOT change tracked or untracked files, metadata, or
-cache state required for correctness. Write mode MUST validate every selected
-file before replacing any file in that file's transaction. Replacement MUST
+Check, diff, and stdout modes MUST NOT change tracked or untracked files,
+metadata, or cache state required for correctness. Write mode MUST validate
+every selected file before replacing any file in that file's transaction.
+Replacement MUST
 use a same-directory temporary file, preserve permissions, verify the source
 identity/version, and use atomic rename where the platform supports it.
 

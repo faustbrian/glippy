@@ -1041,6 +1041,8 @@ func TestRunRejectsInvalidWriteModeCombinations(t *testing.T) {
 	tests := [][]string{
 		{"fmt", "--write"},
 		{"fmt", "--write", "--check", path},
+		{"fmt", "--write", "--diff", path},
+		{"fmt", "--check", "--diff", path},
 		{"fmt", "--write", "--fragment=statement", path},
 		{"fmt", "--write", "--stdin-filepath=source.go", path},
 	}
@@ -1155,6 +1157,174 @@ func TestRunCheckReportsDifferencesWithoutMutation(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunDiffReportsUnifiedDifferenceWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(){}\n")
+	if err := os.WriteFile(path, input, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--diff", path}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitFindings {
+		t.Fatalf("Run() exit code = %d, want %d; stderr = %q", exitCode, ExitFindings, stderr.String())
+	}
+	want := "--- " + path + ".orig\n" +
+		"+++ " + path + "\n" +
+		"@@ -1,2 +1,3 @@\n" +
+		" package sample\n" +
+		"-func run(){}\n" +
+		"+\n" +
+		"+func run() {}\n"
+	if stdout.String() != want {
+		t.Fatalf("Run() stdout = %q, want %q", stdout.String(), want)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("Run() mutated diff-mode file: %q", got)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunDiffReportsChangedFilesInPathOrder(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(root, "a.go")
+	if err := os.WriteFile(firstPath, []byte("package sample\nfunc first(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unchangedPath := filepath.Join(root, "m.go")
+	if err := os.WriteFile(unchangedPath, []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lastPath := filepath.Join(root, "z.go")
+	if err := os.WriteFile(lastPath, []byte("package sample\nfunc last(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--diff", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitFindings {
+		t.Fatalf("Run() exit code = %d, want %d; stderr = %q", exitCode, ExitFindings, stderr.String())
+	}
+	firstHeader := "--- " + firstPath + ".orig\n"
+	lastHeader := "--- " + lastPath + ".orig\n"
+	firstIndex := strings.Index(stdout.String(), firstHeader)
+	lastIndex := strings.Index(stdout.String(), lastHeader)
+	if firstIndex < 0 || lastIndex <= firstIndex {
+		t.Fatalf("Run() stdout = %q, want changed files in path order", stdout.String())
+	}
+	if strings.Contains(stdout.String(), unchangedPath) {
+		t.Fatalf("Run() stdout = %q, want unchanged file omitted", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunDiffReturnsSuccessWithoutOutputForFormattedSelection(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "source.go"), []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--diff", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSuccess {
+		t.Fatalf("Run() exit code = %d, want %d; stderr = %q", exitCode, ExitSuccess, stderr.String())
+	}
+	if stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("Run() stdout = %q, stderr = %q, want both empty", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunDiffReportsSourceFailureWithoutPartialOutput(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	validPath := filepath.Join(root, "a.go")
+	validInput := []byte("package sample\nfunc run(){}\n")
+	if err := os.WriteFile(validPath, validInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "z.go"), []byte("package sample\nfunc broken(\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--diff", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSourceError {
+		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitSourceError)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run() stdout = %q, want no partial difference", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "z.go") {
+		t.Fatalf("Run() stderr = %q, want source failure", stderr.String())
+	}
+	got, err := os.ReadFile(validPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, validInput) {
+		t.Fatalf("Run() mutated valid file before source failure: %q", got)
+	}
+}
+
+func TestRunDiffReportsStandardOutputFailure(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--diff", path}, failingReader{}, failingWriter{}, &stderr)
+
+	if exitCode != ExitFilesystemError {
+		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitFilesystemError)
+	}
+	if !strings.Contains(stderr.String(), "write standard output") {
+		t.Fatalf("Run() stderr = %q, want output failure", stderr.String())
 	}
 }
 
@@ -1655,6 +1825,7 @@ func TestRunReportsInvalidJSONInvocationAsJSON(t *testing.T) {
 		{arguments: []string{"fmt", "--reporter=json", "source.go"}, mode: "stdout"},
 		{arguments: []string{"fmt", "--reporter", "json", "--unsupported"}, mode: "invalid"},
 		{arguments: []string{"fmt", "--check", "--reporter=json", "--unsupported"}, mode: "check"},
+		{arguments: []string{"fmt", "--diff", "--reporter=json", "source.go"}, mode: "diff"},
 		{arguments: []string{"fmt", "--write", "--reporter=json", "--unsupported"}, mode: "write"},
 		{arguments: []string{"fmt", "--check", "--write", "--reporter=json"}, mode: "invalid"},
 	}

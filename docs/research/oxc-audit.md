@@ -26,6 +26,11 @@ version through the CLI parser. Gox retains its contracted `version`
 subcommand, gives explicit release metadata the same authority, and defines Go
 module and `devel` fallbacks for other builds.
 
+Diff behavior was refreshed against the same current commit. Oxfmt exposes
+`--check` and `--list-different`, but no unified source-diff mode. Gox retains
+its path-listing check output and deliberately adds a bounded, Go-familiar
+unified `--diff` surface; ADR 0012 records the resource and stdout boundaries.
+
 ## Formatter Findings
 
 Oxfmt separates language parsing and lowering, a language-neutral document IR,
