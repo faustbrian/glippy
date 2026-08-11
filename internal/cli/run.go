@@ -75,7 +75,7 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 		return runVersion(ctx, arguments, stdout, stderr)
 	}
 	if len(arguments) > 0 && arguments[0] == "explain" {
-		registry, err := rules.NewRegistry()
+		registry, err := rules.NewDefaultRegistry()
 		if err != nil {
 			return report(stderr, ExitInternalError, "gox explain: initialize rule registry: %v\n", err)
 		}
@@ -97,7 +97,7 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 			}
 			return report(stderr, ExitInvalidInvocation, lintUsage)
 		}
-		registry, err := rules.NewRegistry()
+		registry, err := rules.NewDefaultRegistry()
 		if err != nil {
 			return report(stderr, ExitInternalError, "gox lint: initialize rule registry: %v\n", err)
 		}

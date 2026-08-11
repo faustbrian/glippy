@@ -283,6 +283,26 @@ func (f *File) RawToken(position token.Pos) (string, bool) {
 	return f.tokens[index].Raw, true
 }
 
+// PreviousSignificantToken returns the lexical token immediately before a
+// parsed position, ignoring comments and inserted semicolons.
+func (f *File) PreviousSignificantToken(position token.Pos) (Token, bool) {
+	if f == nil || !position.IsValid() || f.tokenFile == nil {
+		return Token{}, false
+	}
+	offset := f.tokenFile.Offset(position)
+	index := sort.Search(len(f.tokens), func(index int) bool {
+		return f.tokens[index].Range.Start >= offset
+	})
+	for index--; index >= 0; index-- {
+		item := f.tokens[index]
+		if item.Kind == token.COMMENT || item.Semicolon == SemicolonInserted {
+			continue
+		}
+		return item, true
+	}
+	return Token{}, false
+}
+
 // PhysicalOffset maps a parsed position to the exact source byte offset.
 func (f *File) PhysicalOffset(position token.Pos) (int, bool) {
 	if !position.IsValid() || f.tokenFile == nil {

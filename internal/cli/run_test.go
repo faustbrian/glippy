@@ -14,6 +14,7 @@ import (
 
 	"github.com/faustbrian/gox/internal/discovery"
 	"github.com/faustbrian/gox/internal/filesystem"
+	goxreport "github.com/faustbrian/gox/internal/report"
 	"github.com/faustbrian/gox/internal/rules"
 	goxversion "github.com/faustbrian/gox/internal/version"
 )
@@ -92,6 +93,117 @@ func TestRunReportsResolvedVersion(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunLintReportsBuiltInDuplicateCondition(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc classify(first, second bool) int {\n\tif first && second {\n\t\treturn 1\n\t} else if first {\n\t\treturn 2\n\t} else if first && second {\n\t\treturn 3\n\t}\n\treturn 0\n}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"lint", "--reporter=json", path}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf("Run(lint) exit = %d, stderr = %q, output = %q", exitCode, stderr.String(), stdout.String())
+	}
+	var result goxreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode lint JSON: %v; output = %q", err, stdout.String())
+	}
+	if len(result.Diagnostics) != 1 {
+		t.Fatalf("Run(lint) diagnostics = %#v, want one duplicate condition", result.Diagnostics)
+	}
+	diagnostic := result.Diagnostics[0]
+	if diagnostic.RuleID != "duplicate-condition" ||
+		diagnostic.Severity != rules.SeverityWarn ||
+		diagnostic.MessageKey != "duplicate-condition" ||
+		diagnostic.Message != "condition occurs more than once in this if/else-if chain" ||
+		diagnostic.Help != "change the repeated condition or remove the unreachable branch" ||
+		len(diagnostic.Related) != 1 || len(diagnostic.Fixes) != 0 {
+		t.Fatalf("Run(lint) diagnostic = %#v", diagnostic)
+	}
+	first := strings.Index(string(input), "first && second")
+	repeated := strings.LastIndex(string(input), "first && second")
+	if diagnostic.Range.Start != repeated || diagnostic.Range.End != repeated+len("first && second") ||
+		diagnostic.Related[0].Range.Start != first ||
+		diagnostic.Related[0].Range.End != first+len("first && second") ||
+		diagnostic.Related[0].Message != "first occurrence of this condition" {
+		t.Fatalf("Run(lint) ranges = %#v, related = %#v", diagnostic.Range, diagnostic.Related)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("Run(lint) mutated source: %q", got)
+	}
+}
+
+func TestRunLintFixLeavesBuiltInDuplicateConditionUnchanged(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(ready bool) { if ready {} else if ready {} }\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"lint", "--fix", "--reporter=json", path}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf("Run(lint --fix) exit = %d, stderr = %q, output = %q", exitCode, stderr.String(), stdout.String())
+	}
+	var result goxreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode lint fix JSON: %v; output = %q", err, stdout.String())
+	}
+	if result.Mode != "fix" || len(result.Diagnostics) != 1 ||
+		len(result.AppliedFixes) != 0 || len(result.RejectedFixes) != 0 ||
+		len(result.Files) != 1 || result.Files[0].Status != goxreport.LintFileUnchanged {
+		t.Fatalf("Run(lint --fix) result = %#v", result)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("Run(lint --fix) mutated source: %q", got)
+	}
+}
+
+func TestRunExplainDocumentsBuiltInDuplicateCondition(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"explain", "duplicate-condition"}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf("Run(explain) exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+	for _, contract := range []string{
+		"duplicate-condition\n",
+		"default severity: warn\n",
+		"minimum Go: 1.26\n",
+		"analysis tier: syntax\n",
+		"generated files: excluded\n",
+		"fixes:\n  none\n",
+		"Calls, channel receives, address operations",
+	} {
+		if !strings.Contains(stdout.String(), contract) {
+			t.Fatalf("Run(explain) output = %q, want %q", stdout.String(), contract)
+		}
 	}
 }
 

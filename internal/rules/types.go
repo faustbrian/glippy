@@ -251,3 +251,12 @@ func (c *Context) PositionRange(start, end token.Pos) (source.Range, error) {
 	}
 	return result, nil
 }
+
+// PreviousSignificantToken returns the lexical token before a parsed position,
+// ignoring comments and automatically inserted semicolons.
+func (c *Context) PreviousSignificantToken(position token.Pos) (source.Token, bool) {
+	if c == nil || c.file == nil {
+		return source.Token{}, false
+	}
+	return c.file.PreviousSignificantToken(position)
+}

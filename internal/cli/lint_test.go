@@ -192,7 +192,7 @@ func TestRunLintCheckEmitsVersionedJSON(t *testing.T) {
 	}
 }
 
-func TestRunLintUsesEmptyAdmissionGatedRegistry(t *testing.T) {
+func TestRunLintUsesDefaultRegistryForCleanAndSuppressionOutcomes(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()

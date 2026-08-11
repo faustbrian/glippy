@@ -203,3 +203,17 @@ diagnostic ordering or rule-interest semantics; the small one-rule result does
 not justify a second execution path. This closes the Phase 3
 traversal-strategy benchmark item but does not advance the incomplete 45%
 Phase 2 gate.
+
+The production registry now admits its first built-in correctness rule,
+`duplicate-condition`. It reports each distinct repeated side-effect-free
+condition once per `if`/`else if` chain with the first occurrence as related
+context, excludes chains with initializers or conservatively effectful
+conditions, excludes generated files, honors suppressions and severity
+overrides, and offers no fix.
+Current Staticcheck source, two public defect fixes, focused behavioral tests,
+the public lint and explain paths, a 100-chain cost probe, and 7,466-file
+non-mutating dogfood support the admission. The dogfood sample produced no
+diagnostics or observed false positives; positive recall evidence remains the
+focused fixtures and reviewed public fixes. This closes the first built-in rule
+admission item, while Phase 2 naming, release artifacts, and approved external
+adoption keep overall progress at 45%.
