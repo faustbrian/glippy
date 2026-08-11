@@ -23,6 +23,10 @@ type cliSyntaxRule struct {
 	metadata rules.Metadata
 }
 
+type cliTypesRule struct {
+	metadata rules.Metadata
+}
+
 type cliFixRule struct {
 	metadata    rules.Metadata
 	target      string
@@ -78,6 +82,20 @@ func (r cliSyntaxRule) RunSyntax(ctx *rules.Context, node ast.Node) ([]rules.Fin
 	return []rules.Finding{{
 		MessageKey: "call",
 		Message:    "call requires review",
+		Range:      sourceRange,
+	}}, nil
+}
+
+func (r cliTypesRule) Metadata() rules.Metadata { return r.metadata }
+
+func (r cliTypesRule) RunTypes(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
+	sourceRange, err := ctx.Range(node)
+	if err != nil {
+		return nil, err
+	}
+	return []rules.Finding{{
+		MessageKey: "typed-call",
+		Message:    "typed call requires review",
 		Range:      sourceRange,
 	}}, nil
 }
@@ -178,6 +196,52 @@ func TestRunLintCheckAnalyzesConfiguredSyntaxRulesWithoutMutation(t *testing.T) 
 	}
 }
 
+func TestRunLintCheckUsesOneConfigurationSnapshotForTierAndExecution(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){target()}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n[lint.rules]\ncall-rule = \"error\"\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	ctx := &lintMutationContext{
+		Context:  context.Background(),
+		mutateAt: 3,
+		mutate: func() {
+			if err := os.WriteFile(
+				configurationPath,
+				[]byte("version = 1\n[lint.rules]\ncall-rule = \"off\"\n"),
+				0o600,
+			); err != nil {
+				t.Error(err)
+			}
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintCheck(
+		ctx,
+		lintInvocation{configPath: configurationPath, paths: []string{path}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLISyntaxRegistry(t),
+	)
+
+	want := path + ":2:12: error[call-rule]: call requires review\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf("runLintCheck(config snapshot) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
 func TestRunLintCheckEmitsVersionedJSON(t *testing.T) {
 	t.Parallel()
 
@@ -271,45 +335,212 @@ func TestRunLintInvalidJSONInvocationReturnsJSON(t *testing.T) {
 	}
 }
 
-func TestRunLintRejectsPackagePatternsAsInvalidInvocations(t *testing.T) {
+func TestRunLintPackagePatternKeepsSyntaxOnlyRulesOffPackageLoading(t *testing.T) {
 	t.Parallel()
 
-	for _, test := range []struct {
-		name      string
-		arguments []string
-		json      bool
-	}{
-		{name: "text", arguments: []string{"lint", "./..."}},
-		{name: "json", arguments: []string{"lint", "--reporter=json", "./..."}, json: true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			var stdout bytes.Buffer
-			var stderr bytes.Buffer
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	input := []byte("package project\nimport _ \"example.invalid/missing\"\nfunc run(ready bool) { if ready {} else if ready {} }\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
 
-			exitCode := Run(test.arguments, failingReader{}, &stdout, &stderr)
+	exitCode := Run(
+		[]string{"lint", filepath.Join(root, "...")},
+		failingReader{},
+		&stdout,
+		&stderr,
+	)
 
-			if exitCode != ExitInvalidInvocation {
-				t.Fatalf("Run(%q) exit = %d, want %d", test.arguments, exitCode, ExitInvalidInvocation)
-			}
-			if !test.json {
-				if stdout.Len() != 0 || stderr.String() != lintUsage {
-					t.Fatalf("Run(%q) stdout = %q, stderr = %q", test.arguments, stdout.String(), stderr.String())
-				}
-				return
-			}
-			if stderr.Len() != 0 {
-				t.Fatalf("Run(%q) stderr = %q, want empty", test.arguments, stderr.String())
-			}
-			var result goxreport.LintResult
-			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
-				t.Fatalf("decode invalid lint JSON: %v; output = %q", err, stdout.String())
-			}
-			if result.Mode != "invalid" || result.Outcome.ExitCode != ExitInvalidInvocation ||
-				result.Summary.Complete {
-				t.Fatalf("invalid lint JSON = %#v", result)
-			}
-		})
+	if exitCode != ExitFindings || stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "warn[duplicate-condition]") ||
+		strings.Contains(stdout.String(), "package[") {
+		t.Fatalf("Run(lint package pattern) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunLintCheckRoutesTypedPackagePatternsToPackageAnalysis(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	input := []byte("package project\nfunc run() { target() }\nfunc target() {}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := path + ":2:14: warn[typed-call]: typed call requires review\n"
+	for _, input := range []string{path, root, filepath.Join(root, "...")} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		exitCode := runLintCheck(
+			context.Background(),
+			lintInvocation{paths: []string{input}, reporter: goxreport.Text},
+			&stdout,
+			&stderr,
+			newCLITypesRegistry(t),
+		)
+		if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+			t.Fatalf("runLintCheck(typed input %q) = exit %d, stdout %q, stderr %q", input, exitCode, stdout.String(), stderr.String())
+		}
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("runLintCheck(typed inputs) mutated source: %q", got)
+	}
+}
+
+func TestRunLintCheckReportsTypedPrerequisiteFailuresAsSourceErrors(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "source.go"),
+		[]byte("package project\nfunc run() { _ = missing; target() }\nfunc target() {}\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	registry := newCLITypesRegistry(t)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{paths: []string{filepath.Join(root, "...")}, reporter: goxreport.JSON},
+		&stdout,
+		&stderr,
+		registry,
+	)
+
+	if exitCode != ExitSourceError || stderr.Len() != 0 {
+		t.Fatalf("runLintCheck(typed error) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+	var result goxreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode typed lint JSON: %v; output = %q", err, stdout.String())
+	}
+	if result.Outcome.ExitCode != ExitSourceError || result.Outcome.Category != "source_error" ||
+		!result.Summary.Complete || result.Summary.PackageDiagnostics == 0 ||
+		len(result.PackageDiagnostics) == 0 || len(result.Errors) != 0 {
+		t.Fatalf("typed source-error JSON = %#v", result)
+	}
+}
+
+func TestRunLintCheckReportsTypedSourceModelFailuresAsSourceErrors(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "source.go"),
+		[]byte("package project\nfunc broken( {\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	registry := newCLITypesRegistry(t)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{paths: []string{filepath.Join(root, "...")}, reporter: goxreport.JSON},
+		&stdout,
+		&stderr,
+		registry,
+	)
+
+	if exitCode != ExitSourceError || stderr.Len() != 0 {
+		t.Fatalf("runLintCheck(typed source problem) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+	var result goxreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode typed source-problem JSON: %v; output = %q", err, stdout.String())
+	}
+	if result.Outcome.ExitCode != ExitSourceError || !result.Summary.Complete ||
+		result.Summary.SourceProblems == 0 || len(result.SourceProblems) == 0 ||
+		result.SourceProblems[0].Path != filepath.Join(root, "source.go") {
+		t.Fatalf("typed source-problem JSON = %#v", result)
+	}
+}
+
+func TestRunLintCheckRejectsHeterogeneousTypedPackageRoots(t *testing.T) {
+	t.Parallel()
+
+	paths := make([]string, 0, 2)
+	for _, module := range []string{"one", "two"} {
+		root := t.TempDir()
+		if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/"+module+"\n\ngo 1.26.0\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "source.go"), []byte("package "+module+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, filepath.Join(root, "..."))
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{paths: paths, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+
+	if exitCode != ExitInvalidInvocation || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "one project root and configuration") {
+		t.Fatalf("runLintCheck(heterogeneous roots) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunLintFixRejectsTypedPackageAnalysisBeforeMutation(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	input := []byte("package project\nfunc run() { target() }\nfunc target() {}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{filepath.Join(root, "...")}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitInvalidInvocation || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "typed lint fixes are not supported") || !bytes.Equal(got, input) {
+		t.Fatalf("runLintFix(typed) = exit %d, stdout %q, stderr %q, source %q", exitCode, stdout.String(), stderr.String(), got)
 	}
 }
 
@@ -1241,6 +1472,26 @@ func newCLISyntaxRegistry(t *testing.T) *rules.Registry {
 		Presets:          []rules.Preset{rules.PresetCorrectness},
 		MinimumGoVersion: "1.22",
 		Requirement:      rules.RequireSyntax,
+		NodeInterests:    []rules.NodeKind{rules.NodeCallExpr},
+		Categories:       []rules.Category{rules.CategoryCorrectness},
+		Examples:         []rules.Example{{Incorrect: "target()", Correct: "reviewed()"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return registry
+}
+
+func newCLITypesRegistry(t *testing.T) *rules.Registry {
+	t.Helper()
+	registry, err := rules.NewRegistry(cliTypesRule{metadata: rules.Metadata{
+		ID:               "typed-call",
+		Summary:          "reports typed calls",
+		Documentation:    "Reports calls that require typed review.",
+		DefaultSeverity:  rules.SeverityWarn,
+		Presets:          []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion: "1.22",
+		Requirement:      rules.RequireTypes,
 		NodeInterests:    []rules.NodeKind{rules.NodeCallExpr},
 		Categories:       []rules.Category{rules.CategoryCorrectness},
 		Examples:         []rules.Example{{Incorrect: "target()", Correct: "reviewed()"}},

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -40,6 +42,21 @@ type lintTask struct {
 	file    discovery.File
 	root    string
 	options lintTaskOptions
+}
+
+type lintPackageTask struct {
+	root     string
+	patterns []string
+	options  lintTaskOptions
+}
+
+type lintInputPlan struct {
+	input       string
+	anchor      string
+	pattern     bool
+	selection   config.Selection
+	options     lintTaskOptions
+	requirement rules.Requirement
 }
 
 type lintFixExecution struct {
@@ -97,7 +114,7 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 			if result.configPath == "" {
 				return lintInvocation{}, false
 			}
-		case !strings.HasPrefix(argument, "-") && !strings.Contains(argument, "..."):
+		case !strings.HasPrefix(argument, "-"):
 			result.paths = append(result.paths, argument)
 		default:
 			return lintInvocation{}, false
@@ -149,7 +166,18 @@ func runLintCheck(
 	if err := ctx.Err(); err != nil {
 		return reportLintFailure(invocation, stdout, stderr, ExitCanceled, nil, err)
 	}
-	tasks, exitCode, err := prepareLintTasks(ctx, invocation, registry)
+	plans, exitCode, err := prepareLintInputPlans(ctx, invocation, registry)
+	if err != nil {
+		return reportLintFailure(invocation, stdout, stderr, exitCode, nil, err)
+	}
+	packageTask, packageMode, exitCode, err := prepareLintPackageTask(plans)
+	if err != nil {
+		return reportLintFailure(invocation, stdout, stderr, exitCode, nil, err)
+	}
+	if packageMode {
+		return runLintPackageCheck(ctx, invocation, stdout, stderr, registry, packageTask)
+	}
+	tasks, exitCode, err := prepareLintTasksFromPlans(ctx, plans, invocation.configPath, registry)
 	if err != nil {
 		return reportLintFailure(invocation, stdout, stderr, exitCode, nil, err)
 	}
@@ -208,29 +236,215 @@ func runLintCheck(
 	return exitCode
 }
 
+func runLintPackageCheck(
+	ctx context.Context,
+	invocation lintInvocation,
+	stdout, stderr io.Writer,
+	registry *rules.Registry,
+	task lintPackageTask,
+) int {
+	result, err := analysis.RunPackages(
+		ctx,
+		registry,
+		task.options.analysis,
+		analysis.PackageLoadOptions{
+			Dir:        task.root,
+			Patterns:   task.patterns,
+			Tests:      true,
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		return reportLintPackageFailure(invocation, stdout, stderr, exitCodeForError(ExitInternalError, err), result, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return reportLintPackageFailure(invocation, stdout, stderr, ExitCanceled, result, err)
+	}
+	exitCode := lintPackageResultExitCode(result)
+	if invocation.reporter == goxreport.JSON {
+		return reportLintPackageJSON(stdout, stderr, "check", exitCode, true, result, nil)
+	}
+	inputs, err := packageLintTextInputs(result)
+	if err != nil {
+		return report(stderr, ExitInternalError, "gox lint: prepare typed text report: %v\n", err)
+	}
+	output, err := goxreport.RenderPackageLintText(inputs, result.LoadDiagnostics, result.SourceProblems)
+	if err != nil {
+		return report(stderr, ExitInternalError, "gox lint: render typed text report: %v\n", err)
+	}
+	if len(output) > 0 {
+		if err := write(stdout, output); err != nil {
+			return report(stderr, ExitFilesystemError, "gox lint: write standard output: %v\n", err)
+		}
+	}
+	return exitCode
+}
+
+func prepareLintInputPlans(
+	ctx context.Context,
+	invocation lintInvocation,
+	registry *rules.Registry,
+) ([]lintInputPlan, int, error) {
+	type resolvedOptions struct {
+		options     lintTaskOptions
+		requirement rules.Requirement
+	}
+	inputs := invocation.paths
+	if len(inputs) == 0 {
+		inputs = []string{"."}
+	}
+	plans := make([]lintInputPlan, 0, len(inputs))
+	optionsByConfiguration := make(map[string]resolvedOptions)
+	for _, input := range inputs {
+		if err := ctx.Err(); err != nil {
+			return nil, ExitCanceled, err
+		}
+		anchor, pattern, err := lintInputAnchor(input)
+		if err != nil {
+			return nil, ExitInvalidInvocation, err
+		}
+		selection, err := config.Discover(anchor, invocation.configPath)
+		if err != nil {
+			return nil, ExitFilesystemError, err
+		}
+		resolved, found := optionsByConfiguration[selection.Path]
+		if !found {
+			options, exitCode, err := lintOptionsForSelection(selection, registry)
+			if err != nil {
+				return nil, exitCode, err
+			}
+			selected, err := registry.Resolve(options.analysis.Preset, options.analysis.Overrides)
+			if err != nil {
+				return nil, ExitInternalError, err
+			}
+			resolved = resolvedOptions{options: options, requirement: rules.MaximumRequirement(selected)}
+			optionsByConfiguration[selection.Path] = resolved
+		}
+		plans = append(plans, lintInputPlan{
+			input:       input,
+			anchor:      anchor,
+			pattern:     pattern,
+			selection:   selection,
+			options:     resolved.options,
+			requirement: resolved.requirement,
+		})
+	}
+	return plans, ExitSuccess, nil
+}
+
+func prepareLintPackageTask(plans []lintInputPlan) (lintPackageTask, bool, int, error) {
+	typed := false
+	for _, plan := range plans {
+		typed = typed || plan.requirement >= rules.RequireTypes
+	}
+	if !typed {
+		return lintPackageTask{}, false, ExitSuccess, nil
+	}
+	if len(plans) == 0 {
+		return lintPackageTask{}, false, ExitInternalError, errors.New("typed lint planning produced no inputs")
+	}
+	first := plans[0]
+	if first.selection.Root == "" {
+		return lintPackageTask{}, false, ExitInvalidInvocation, errors.New("typed lint requires a module, workspace, or repository root")
+	}
+	patterns := make([]string, 0, len(plans))
+	for _, plan := range plans {
+		if plan.requirement < rules.RequireTypes || plan.selection.Root != first.selection.Root ||
+			plan.selection.Path != first.selection.Path {
+			return lintPackageTask{}, false, ExitInvalidInvocation, errors.New("typed lint inputs must resolve to one project root and configuration")
+		}
+		pattern, exitCode, err := lintPackageQuery(plan.input, plan.anchor, plan.pattern, first.selection.Root)
+		if err != nil {
+			return lintPackageTask{}, false, exitCode, err
+		}
+		patterns = append(patterns, pattern)
+	}
+	sort.Strings(patterns)
+	patterns = slices.Compact(patterns)
+	return lintPackageTask{root: first.selection.Root, patterns: patterns, options: first.options}, true, ExitSuccess, nil
+}
+
+func lintInputAnchor(input string) (string, bool, error) {
+	cleaned := filepath.Clean(input)
+	if filepath.Base(cleaned) == "..." {
+		return filepath.Dir(cleaned), true, nil
+	}
+	if strings.Contains(input, "...") {
+		return "", false, fmt.Errorf("invalid package pattern %q", input)
+	}
+	return input, false, nil
+}
+
+func lintPackageQuery(input, anchor string, recursive bool, root string) (string, int, error) {
+	absolute, err := filepath.Abs(anchor)
+	if err != nil {
+		return "", ExitFilesystemError, fmt.Errorf("resolve lint input %q: %w", input, err)
+	}
+	relative, err := filepath.Rel(root, absolute)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", ExitInvalidInvocation, fmt.Errorf("typed lint input %q is outside project root %q", input, root)
+	}
+	if recursive {
+		if relative == "." {
+			return "./...", ExitSuccess, nil
+		}
+		return "./" + filepath.ToSlash(relative) + "/...", ExitSuccess, nil
+	}
+	info, err := os.Stat(absolute)
+	if err != nil {
+		return "", ExitFilesystemError, fmt.Errorf("inspect lint input %q: %w", absolute, err)
+	}
+	if !info.IsDir() {
+		return "file=" + absolute, ExitSuccess, nil
+	}
+	if relative == "." {
+		return ".", ExitSuccess, nil
+	}
+	return "./" + filepath.ToSlash(relative), ExitSuccess, nil
+}
+
+func packageLintTextInputs(result analysis.PackageResult) ([]goxreport.LintTextInput, error) {
+	inputs := make([]goxreport.LintTextInput, 0, len(result.Files))
+	for _, fileResult := range result.Files {
+		file, found := result.Sources.Lookup(fileResult.Path)
+		if !found {
+			return nil, fmt.Errorf("typed lint result source %q is missing", fileResult.Path)
+		}
+		inputs = append(inputs, goxreport.LintTextInput{File: file, Result: fileResult})
+	}
+	return inputs, nil
+}
+
 func prepareLintTasks(
 	ctx context.Context,
 	invocation lintInvocation,
 	registry *rules.Registry,
 ) ([]lintTask, int, error) {
+	plans, exitCode, err := prepareLintInputPlans(ctx, invocation, registry)
+	if err != nil {
+		return nil, exitCode, err
+	}
+	return prepareLintTasksFromPlans(ctx, plans, invocation.configPath, registry)
+}
+
+func prepareLintTasksFromPlans(
+	ctx context.Context,
+	plans []lintInputPlan,
+	configPath string,
+	registry *rules.Registry,
+) ([]lintTask, int, error) {
 	selected := make(map[string]discovery.File)
 	optionsByConfiguration := make(map[string]lintTaskOptions)
-	for _, input := range invocation.paths {
+	for _, plan := range plans {
 		if err := ctx.Err(); err != nil {
 			return nil, ExitCanceled, err
 		}
-		selection, err := config.Discover(input, invocation.configPath)
-		if err != nil {
-			return nil, ExitFilesystemError, err
-		}
-		if _, exists := optionsByConfiguration[selection.Path]; !exists {
-			options, exitCode, err := lintOptionsForSelection(selection, registry)
-			if err != nil {
-				return nil, exitCode, err
-			}
-			optionsByConfiguration[selection.Path] = options
-		}
-		files, err := discovery.GoFiles(ctx, []string{input}, discovery.Options{Root: selection.Root})
+		optionsByConfiguration[plan.selection.Path] = plan.options
+		files, err := discovery.GoFiles(
+			ctx,
+			[]string{plan.anchor},
+			discovery.Options{Root: plan.selection.Root},
+		)
 		if err != nil {
 			return nil, exitCodeForError(ExitFilesystemError, err), err
 		}
@@ -251,7 +465,7 @@ func prepareLintTasks(
 		if err := ctx.Err(); err != nil {
 			return nil, ExitCanceled, err
 		}
-		selection, err := config.Discover(path, invocation.configPath)
+		selection, err := config.Discover(path, configPath)
 		if err != nil {
 			return nil, ExitFilesystemError, err
 		}
@@ -305,7 +519,25 @@ func runLintFix(
 	if err := ctx.Err(); err != nil {
 		return reportLintFixFailure(invocation, stdout, stderr, ExitCanceled, nil, err)
 	}
-	tasks, exitCode, err := prepareLintTasks(ctx, invocation, registry)
+	plans, exitCode, err := prepareLintInputPlans(ctx, invocation, registry)
+	if err != nil {
+		return reportLintFixFailure(invocation, stdout, stderr, exitCode, nil, err)
+	}
+	_, packageMode, exitCode, err := prepareLintPackageTask(plans)
+	if err != nil {
+		return reportLintFixFailure(invocation, stdout, stderr, exitCode, nil, err)
+	}
+	if packageMode {
+		return reportLintFixFailure(
+			invocation,
+			stdout,
+			stderr,
+			ExitInvalidInvocation,
+			nil,
+			errors.New("typed lint fixes are not supported"),
+		)
+	}
+	tasks, exitCode, err := prepareLintTasksFromPlans(ctx, plans, invocation.configPath, registry)
 	if err != nil {
 		return reportLintFixFailure(invocation, stdout, stderr, exitCode, nil, err)
 	}
@@ -530,6 +762,14 @@ func lintResultExitCode(results []analysis.Result) int {
 	return ExitSuccess
 }
 
+func lintPackageResultExitCode(result analysis.PackageResult) int {
+	exitCode := lintResultExitCode(result.Files)
+	if len(result.LoadDiagnostics) > 0 || len(result.SourceProblems) > 0 {
+		exitCode = moreSevereExitCode(exitCode, ExitSourceError)
+	}
+	return exitCode
+}
+
 func reportLintFailure(
 	invocation lintInvocation,
 	stdout, stderr io.Writer,
@@ -539,6 +779,19 @@ func reportLintFailure(
 ) int {
 	if invocation.reporter == goxreport.JSON {
 		return reportLintJSON(stdout, stderr, "check", exitCode, false, results, err)
+	}
+	return report(stderr, exitCode, "gox lint: %v\n", err)
+}
+
+func reportLintPackageFailure(
+	invocation lintInvocation,
+	stdout, stderr io.Writer,
+	exitCode int,
+	result analysis.PackageResult,
+	err error,
+) int {
+	if invocation.reporter == goxreport.JSON {
+		return reportLintPackageJSON(stdout, stderr, "check", exitCode, false, result, err)
 	}
 	return report(stderr, exitCode, "gox lint: %v\n", err)
 }
@@ -613,6 +866,54 @@ func reportLintJSON(
 			stderr,
 			moreSevereExitCode(exitCode, ExitFilesystemError),
 			"gox lint: write JSON report: %v\n",
+			writeErr,
+		)
+	}
+	return exitCode
+}
+
+func reportLintPackageJSON(
+	stdout, stderr io.Writer,
+	mode string,
+	exitCode int,
+	complete bool,
+	packageResult analysis.PackageResult,
+	err error,
+) int {
+	errors_ := []goxreport.Error{}
+	if err != nil {
+		errors_ = append(errors_, goxreport.Error{Message: err.Error()})
+	}
+	result, buildErr := goxreport.NewPackageLintResult(
+		mode,
+		exitCategory(exitCode),
+		exitCode,
+		complete,
+		packageResult,
+		errors_,
+	)
+	if buildErr != nil {
+		return report(
+			stderr,
+			moreSevereExitCode(exitCode, ExitInternalError),
+			"gox lint: build typed JSON report: %v\n",
+			buildErr,
+		)
+	}
+	encoded, encodeErr := goxreport.MarshalLintJSON(result)
+	if encodeErr != nil {
+		return report(
+			stderr,
+			moreSevereExitCode(exitCode, ExitInternalError),
+			"gox lint: encode typed JSON report: %v\n",
+			encodeErr,
+		)
+	}
+	if writeErr := write(stdout, encoded); writeErr != nil {
+		return report(
+			stderr,
+			moreSevereExitCode(exitCode, ExitFilesystemError),
+			"gox lint: write typed JSON report: %v\n",
 			writeErr,
 		)
 	}

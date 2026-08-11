@@ -92,6 +92,15 @@ environment. Ambient `GOPACKAGESDRIVER` execution is always disabled so this
 boundary remains tied to the standard Go command driver; support for external
 build-system drivers requires a separate security and identity contract.
 
+The CLI selects this package boundary only when the enabled rule plan requires
+types or higher. It converts exact files, directories, and terminal `...`
+filesystem patterns into one read-only, test-aware package request after every
+input resolves to the same project root and configuration. Syntax-only patterns
+remain on physical-file discovery and cannot invoke `go/packages`. Required
+package or source-model diagnostics map to source-error exit code 2 without
+discarding valid partial rule results. Typed fixes and post-fix reloads remain a
+separate unimplemented transaction boundary.
+
 ## Alternatives Rejected
 
 - Custom Go parser/type checker: no evidenced missing standard capability and
@@ -115,10 +124,10 @@ Syntax dispatch visits uninterested nodes once to avoid indexing or repeated
 walks; a secondary index requires new representative benchmark evidence.
 
 CFG and SSA construction, analyzer fact scheduling, cache reuse, package-wide
-typed rules, and CLI package-pattern integration remain separate tier-runner
-work. A types, CFG, or SSA request currently shares the same typed prerequisite
-graph but does not mean that the more expensive representation has already been
-constructed.
+typed rules, heterogeneous per-path package configuration, and typed fixes
+remain separate tier-runner work. A types, CFG, or SSA request currently shares
+the same typed prerequisite graph but does not mean that the more expensive
+representation has already been constructed.
 
 The typed package AST and physical source model use separate parser file sets.
 The package parser preserves `go/packages`' existing AST object-resolution

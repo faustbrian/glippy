@@ -72,17 +72,28 @@ parse error is prohibited.
 The supported format-on-save setup and editor failure contract are documented
 in [`editor-integration.md`](../editor-integration.md).
 
-The Phase 3 syntax-only `lint` check accepts explicit files and directories,
-defaults to the current directory, and accepts `--reporter=text|json` plus an
-optional explicit configuration path. It discovers and sorts physical Go files,
-loads the selected preset and exact-rule overrides, runs the file-owned syntax
-driver, and never writes source. Visible diagnostics, suppression problems, and
-unused suppressions exit with findings; suppressed diagnostics alone do not.
-Parse failures, invalid configuration, filesystem failures, cancellation, and
-reporting failures retain their common exit categories. JSON remains valid and
-incomplete for invalid invocations and failures. Package patterns such as
-`./...` and typed loading remain rejected until their separate contracts are
-implemented.
+The Phase 3 `lint` check accepts explicit files, directories, and filesystem
+package patterns ending in `...`; defaults to the current directory; and
+accepts `--reporter=text|json` plus an optional explicit configuration path. It
+MUST resolve every input's project root and complete configuration before
+choosing an analysis path. When the maximum enabled tier is syntax, recursive
+patterns use deterministic physical-file discovery and MUST NOT invoke
+`go/packages`. When at least one enabled rule requires types, every input MUST
+resolve to one project root and configuration; the CLI converts files,
+directories, and recursive patterns into one read-only package load with test
+variants enabled. Heterogeneous typed roots or configurations MUST fail as an
+invalid invocation until a per-path package configuration design is accepted.
+
+Both analysis paths run enabled syntax rules and never write source. The typed
+path additionally runs types-tier rules over the shared package result. Visible
+rule diagnostics, suppression problems, and unused suppressions exit with
+findings; suppressed diagnostics alone do not. Required package-list, parse,
+type, or source-model problems exit with source error even when valid partial
+file results remain reportable. A completed typed load with prerequisite
+problems remains a complete report rather than an internal tool failure. Invalid
+configuration, filesystem failures, cancellation, and reporting failures retain
+their common exit categories. JSON remains valid and incomplete for invalid
+invocations and failures.
 
 `lint` never writes unless a fix flag is present. Ordinary `--fix` applies safe
 fixes only, `--fix-suggestions` applies suggestion fixes only, and
@@ -103,6 +114,11 @@ Cancellation stops before the next replacement and reports earlier confirmed
 writes. A post-format analysis engine failure remains an internal or
 cancellation outcome and MUST NOT be downgraded to an ordinary rejected-fix
 finding.
+
+Typed package fixes and post-fix package reloads are not implemented. A fix
+invocation whose enabled selection requires types, CFG, or SSA MUST fail as an
+invalid invocation before source discovery or replacement begins. Syntax-only
+recursive patterns MAY use the existing file-owned fix transactions.
 
 Successful text fix output contains only diagnostics and rejected-fix reasons
 left after coordination; a completely fixed invocation is silent. Lint-fix JSON
@@ -135,9 +151,12 @@ problem, and unused-suppression counts plus completeness. Incomplete JSON
 retains results completed before the failure. Invalid invocations requesting
 JSON MUST still receive this envelope.
 
-Formatting inputs are file-oriented. Typed lint patterns are package-oriented.
-The CLI MUST reject combinations whose file and package interpretations are
-ambiguous instead of silently changing modes.
+Formatting inputs are file-oriented. Typed lint inputs are package-oriented;
+explicit files use exact-file queries, directories select one package, and a
+terminal `...` selects packages recursively below its existing filesystem
+anchor. The CLI MUST reject malformed patterns, inputs outside the selected
+root, and combinations whose package interpretation would require more than one
+project root or configuration.
 
 ## Determinism And Reporting
 

@@ -87,10 +87,12 @@ and `path: source: message` for source-model failures. The package result retain
 the immutable load-owned source index so text locations do not require a later
 filesystem read.
 
-The syntax-only lint check CLI emits these text and JSON contracts for success,
-findings, invalid invocation, source/configuration/filesystem failure, and
-cancellation. Incomplete JSON retains every analysis result completed before
-the failure.
+The lint check CLI emits these text and JSON contracts for syntax-only and typed
+success, findings, invalid invocation, source/configuration/filesystem failure,
+and cancellation. A completed typed run keeps prerequisite failures in their
+dedicated channels, reports source-error exit code 2, and remains complete.
+Incomplete JSON retains every analysis result completed before an engine or I/O
+failure.
 
 The combined `check` command uses command and mode `check` and runs formatter
 comparison plus lint analysis over one immutable source snapshot per file.

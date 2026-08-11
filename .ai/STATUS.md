@@ -284,3 +284,13 @@ package kinds are stable `unknown`, `list`, `parse`, and `type` values; source
 problems retain normalized absolute paths and captured source digests; summary
 counts remain distinct from rule findings and generic tool errors. CLI
 package-pattern routing and exit handling remain open, so progress stays 45%.
+
+The non-writing lint CLI now accepts terminal `...` filesystem patterns,
+retains syntax-only invocations on deterministic file discovery, and routes a
+types-tier selection through one read-only, test-aware package load when every
+input shares one project root and configuration. Typed text and JSON reporting
+preserve rule, prerequisite, and source-model channels; required package or
+source problems exit with source error while complete partial results remain
+reportable. Heterogeneous typed configuration and typed fixes fail before
+loading or mutation. No built-in typed rule, per-path package policy, CFG/SSA
+runner, fact scheduler, or typed cache exists yet, so progress stays 45%.

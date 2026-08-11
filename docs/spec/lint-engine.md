@@ -132,6 +132,22 @@ classify visible diagnostics, suppression problems, and unused directives as
 findings while allowing fully suppressed diagnostics to succeed. No check path
 may invoke the fix coordinator or replace source bytes.
 
+The CLI MUST choose package analysis only when the maximum enabled requirement
+is types or higher. Syntax-only files, directories, and recursive filesystem
+patterns MUST remain on deterministic file discovery and MUST NOT invoke
+`go/packages`. A typed invocation MUST resolve every input to one project root
+and configuration, convert each explicit file, directory, or terminal `...`
+pattern into one package query relative to that root, enable test variants, and
+use read-only module mode. Until per-path package configuration is designed,
+heterogeneous roots or configurations MUST fail before package loading.
+
+The typed CLI MUST classify any retained package-list, parse, type, or
+source-model problem as a source error while preserving valid partial file
+results. A package run that returns all available prerequisite, source, and rule
+records without an engine error MUST remain complete even when its exit category
+is source error. Typed fix selection and post-fix package reloads remain
+unsupported and MUST fail before any source mutation.
+
 The syntax-only fix driver MUST select no more than one safe named fix from each
 visible diagnostic. A diagnostic with multiple safe alternatives is an invalid
 rule contract, not permission to choose by registration or edit order. The

@@ -33,12 +33,19 @@ so Windows write and fix behavior is not release-supported. The evidence and
 revisit boundary are recorded in
 [`../research/filesystem-platform-evidence-2026-08-11.md`](../research/filesystem-platform-evidence-2026-08-11.md).
 
-The first syntax-only lint CLI reuses the same project/configuration and
-physical-file discovery boundary. It validates all selected configurations,
-sorts file tasks, then analyzes them sequentially through the shared file
-driver. Text and versioned JSON reporters consume the same results. This check
-surface never enters the fix coordinator; package patterns and typed loading
-remain deferred to the package-aware design.
+The lint CLI resolves configuration before selecting its analysis boundary.
+Syntax-only files, directories, and terminal `...` patterns reuse deterministic
+physical-file discovery and cannot invoke `go/packages`. A selection containing
+types-tier rules instead converts its inputs into one read-only, test-aware
+package request rooted at the common project boundary, then uses the shared
+package driver and typed reporters. Package prerequisite and source-model
+problems map to source-error exit code 2 while retaining valid partial results.
+
+One typed invocation accepts only one project root and configuration. This
+avoids silently applying one package graph to heterogeneous policy until
+per-path package configuration has an explicit design. Typed fixes and
+post-fix package reloads remain unsupported and are rejected before source
+mutation; syntax-only recursive fixes retain the existing file transactions.
 
 ## Alternatives Rejected
 
