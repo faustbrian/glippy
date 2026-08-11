@@ -101,8 +101,10 @@ cannot cheaply clone `types.Info` while preserving AST-key identity. Native
 metadata continues to own selection, generated-file and type-error eligibility,
 and fix safety. Adapted package analyzers remain deterministic by package and
 rule ID, expose only captured compiled-source reads, and cannot use
-prerequisites, facts, result values, flags, cross-file related locations, or
-multi-file fixes.
+facts, flags, cross-file related locations, or multi-file fixes. A deterministic
+prerequisite DAG may produce exact-type results once per package; shared
+prerequisites execute once, diagnostics from metadata-less prerequisites fail,
+and cancellation stops dependent analyzers.
 
 Rules skip generated files unless their metadata opts in. Packages with type
 errors are also skipped by default; a types-tier or CFG-tier rule may explicitly

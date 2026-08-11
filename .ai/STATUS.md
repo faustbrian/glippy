@@ -373,8 +373,15 @@ when admitted, and exact captured source bytes after native types, CFG, and SSA
 consumers finish. Package and analyzer order is deterministic; physical files
 are owned once across test variants; synthetic test-main cache source is not a
 lint target; generated and ill-typed eligibility remains native metadata
-policy; and cross-file related locations or fixes fail closed. Prerequisites,
-facts,
-result values, analyzer flags, CFG/SSA adapter tiers, typed fix application,
-and mutable analyzers remain unsupported. The incomplete Phase 2 gates keep
-overall progress at 45%.
+policy; and cross-file related locations or fixes fail closed. Facts, analyzer
+flags, CFG/SSA adapter tiers, typed fix application, and mutable analyzers
+remain unsupported. The incomplete Phase 2 gates keep overall progress at
+45%.
+
+Audited typed `go/analysis` adapters now support deterministic prerequisite
+result DAGs. Each prerequisite runs once per package, shared nodes are reused,
+direct `ResultOf` maps preserve analyzer identity, result types are validated,
+metadata-less prerequisite diagnostics fail closed, and cancellation stops
+dependent callbacks. A real x/tools atomic analyzer proves inspector-result
+interoperability. Facts and analyzer flags remain unsupported, and the open
+Phase 2 gates keep overall progress at 45%.

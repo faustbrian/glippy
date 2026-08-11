@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"go/types"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 
@@ -97,7 +98,13 @@ func runPackageAnalyzers(
 			if !packageAnalyzerOwnsEligibleFile(pkg.ID, files, owners, analyzer.metadata) {
 				continue
 			}
-			produced, err := analyzer.rule.runPackage(pkg, files, owners, analyzer.severity)
+			produced, err := analyzer.rule.runPackage(
+				ctx,
+				pkg,
+				files,
+				owners,
+				analyzer.severity,
+			)
 			if contextErr := ctx.Err(); contextErr != nil {
 				return nil, contextErr
 			}
@@ -178,11 +185,15 @@ func packageAnalyzerOwnsEligibleFile(
 }
 
 func (r *packageAnalyzerRule) runPackage(
+	ctx context.Context,
 	pkg *packages.Package,
 	files []typedSyntaxFile,
 	owners map[string]string,
 	severity rules.Severity,
 ) ([]rules.Diagnostic, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if pkg == nil || pkg.Fset == nil || pkg.Types == nil || pkg.TypesInfo == nil || pkg.TypesSizes == nil {
 		return nil, fmt.Errorf("adapted package is missing required type information")
 	}
@@ -196,51 +207,88 @@ func (r *packageAnalyzerRule) runPackage(
 		syntax[index] = file.syntax
 		byPath[file.path] = file.source
 	}
-	analyzer := r.analyzer
+	if len(r.steps) == 0 {
+		return nil, fmt.Errorf("adapted package has no analyzer execution plan")
+	}
+	results := make(map[*goanalysis.Analyzer]any, len(r.steps))
 	upstream := make([]goanalysis.Diagnostic, 0)
-	pass := &goanalysis.Pass{
-		Analyzer:   &analyzer,
-		Fset:       pkg.Fset,
-		Files:      syntax,
-		Pkg:        pkg.Types,
-		TypesInfo:  pkg.TypesInfo,
-		TypesSizes: pkg.TypesSizes,
-		Module:     module,
-		Report: func(diagnostic goanalysis.Diagnostic) {
-			upstream = append(upstream, cloneAnalyzerDiagnostic(diagnostic))
-		},
-		ResultOf: make(map[*goanalysis.Analyzer]any),
-		ReadFile: func(filename string) ([]byte, error) {
-			path := filepath.Clean(filename)
-			if !filepath.IsAbs(path) || path != filename {
-				return nil, fmt.Errorf("read file %q: path is not normalized absolute", filename)
-			}
-			file, found := byPath[path]
+	for stepIndex, planned := range r.steps {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		analyzer := planned.analyzer
+		resultOf := make(map[*goanalysis.Analyzer]any, len(planned.original.Requires))
+		for _, required := range planned.original.Requires {
+			result, found := results[required]
 			if !found {
-				return nil, fmt.Errorf("read file %q: outside the adapted package source", filename)
+				return nil, fmt.Errorf(
+					"analyzer %q prerequisite %q did not run",
+					analyzer.Name,
+					required.Name,
+				)
 			}
-			return file.Bytes(), nil
-		},
-		ImportObjectFact:  func(types.Object, goanalysis.Fact) bool { return false },
-		ImportPackageFact: func(*types.Package, goanalysis.Fact) bool { return false },
-		ExportObjectFact: func(types.Object, goanalysis.Fact) {
-			panic("adapted analyzer attempted to export an undeclared object fact")
-		},
-		ExportPackageFact: func(goanalysis.Fact) {
-			panic("adapted analyzer attempted to export an undeclared package fact")
-		},
-		AllPackageFacts: func() []goanalysis.PackageFact { return nil },
-		AllObjectFacts:  func() []goanalysis.ObjectFact { return nil },
-	}
-	if analyzer.RunDespiteErrors {
-		pass.TypeErrors = slices.Clone(pkg.TypeErrors)
-	}
-	result, err := runAnalyzer(&analyzer, pass)
-	if err != nil {
-		return nil, err
-	}
-	if result != nil {
-		return nil, fmt.Errorf("analyzer returned an unexpected result")
+			resultOf[required] = result
+		}
+		reported := make([]goanalysis.Diagnostic, 0)
+		pass := &goanalysis.Pass{
+			Analyzer:   &analyzer,
+			Fset:       pkg.Fset,
+			Files:      syntax,
+			Pkg:        pkg.Types,
+			TypesInfo:  pkg.TypesInfo,
+			TypesSizes: pkg.TypesSizes,
+			Module:     module,
+			Report: func(diagnostic goanalysis.Diagnostic) {
+				reported = append(reported, cloneAnalyzerDiagnostic(diagnostic))
+			},
+			ResultOf: resultOf,
+			ReadFile: func(filename string) ([]byte, error) {
+				path := filepath.Clean(filename)
+				if !filepath.IsAbs(path) || path != filename {
+					return nil, fmt.Errorf("read file %q: path is not normalized absolute", filename)
+				}
+				file, found := byPath[path]
+				if !found {
+					return nil, fmt.Errorf("read file %q: outside the adapted package source", filename)
+				}
+				return file.Bytes(), nil
+			},
+			ImportObjectFact:  func(types.Object, goanalysis.Fact) bool { return false },
+			ImportPackageFact: func(*types.Package, goanalysis.Fact) bool { return false },
+			ExportObjectFact: func(types.Object, goanalysis.Fact) {
+				panic("adapted analyzer attempted to export an undeclared object fact")
+			},
+			ExportPackageFact: func(goanalysis.Fact) {
+				panic("adapted analyzer attempted to export an undeclared package fact")
+			},
+			AllPackageFacts: func() []goanalysis.PackageFact { return nil },
+			AllObjectFacts:  func() []goanalysis.ObjectFact { return nil },
+		}
+		if analyzer.RunDespiteErrors {
+			pass.TypeErrors = slices.Clone(pkg.TypeErrors)
+		}
+		result, err := runAnalyzer(&analyzer, pass)
+		if contextErr := ctx.Err(); contextErr != nil {
+			return nil, contextErr
+		}
+		if err != nil {
+			return nil, fmt.Errorf("analyzer %q: %w", analyzer.Name, err)
+		}
+		if got, want := reflect.TypeOf(result), analyzer.ResultType; got != want {
+			return nil, fmt.Errorf(
+				"analyzer %q returned result type %v; declared %v",
+				analyzer.Name,
+				got,
+				want,
+			)
+		}
+		if stepIndex != len(r.steps)-1 && len(reported) != 0 {
+			return nil, fmt.Errorf("prerequisite analyzer %q reported diagnostics", analyzer.Name)
+		}
+		if stepIndex == len(r.steps)-1 {
+			upstream = reported
+		}
+		results[planned.original] = result
 	}
 
 	diagnostics := make([]rules.Diagnostic, 0, len(upstream))

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	goanalysis "golang.org/x/tools/go/analysis"
+	atomicanalyzer "golang.org/x/tools/go/analysis/passes/atomic"
 	testsanalyzer "golang.org/x/tools/go/analysis/passes/tests"
 
 	"github.com/faustbrian/gox/internal/analysis"
@@ -186,6 +187,235 @@ func Testwrong(t *testing.T) {}
 		diagnostic.Range != (source.Range{Start: start, End: start + len("Testwrong")}) ||
 		!strings.Contains(diagnostic.Message, "Testwrong has malformed name") {
 		t.Fatalf("typed adapter diagnostic = %#v", diagnostic)
+	}
+}
+
+func TestAdaptAnalyzerRunsTypedPrerequisiteAnalyzers(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "adapter.go")
+	input := `package adapter
+
+import "sync/atomic"
+
+func increment(value *uint64) {
+	*value = atomic.AddUint64(value, 1)
+}
+`
+	writeTypesFixture(t, path, input)
+	options := adapterOptions("atomic-assignment")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(atomicanalyzer.Analyzer, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("RunPackages() = %#v", result)
+	}
+	diagnostic := result.Files[0].Diagnostics[0]
+	start := strings.Index(input, "*value =")
+	if diagnostic.RuleID != "atomic-assignment" || diagnostic.Path != path ||
+		diagnostic.Range.Start != start ||
+		!strings.Contains(diagnostic.Message, "direct assignment to atomic value") {
+		t.Fatalf("atomic diagnostic = %#v", diagnostic)
+	}
+}
+
+func TestAdaptAnalyzerStopsAfterCanceledTypedPrerequisite(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "adapter.go"), "package adapter\n")
+	ctx, cancel := context.WithCancel(context.Background())
+	prerequisite := &goanalysis.Analyzer{
+		Name:       "cancelingprerequisite",
+		Doc:        "cancels prerequisite execution",
+		ResultType: reflect.TypeFor[string](),
+		Run: func(*goanalysis.Pass) (any, error) {
+			cancel()
+			return "ready", nil
+		},
+	}
+	rootRan := false
+	upstream := &goanalysis.Analyzer{
+		Name:     "aftercancellation",
+		Doc:      "must not run after cancellation",
+		Requires: []*goanalysis.Analyzer{prerequisite},
+		Run: func(*goanalysis.Pass) (any, error) {
+			rootRan = true
+			return nil, nil
+		},
+	}
+	options := adapterOptions("prerequisite-cancellation")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(upstream, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = analysis.RunPackages(
+		ctx,
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if !errors.Is(err, context.Canceled) || rootRan {
+		t.Fatalf("RunPackages() error = %v, root ran = %t", err, rootRan)
+	}
+}
+
+func TestAdaptAnalyzerRunsSharedTypedPrerequisiteDAGOnce(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+	writeTypesFixture(t, filepath.Join(root, "adapter.go"), "package adapter\n")
+	leafRuns := 0
+	leaf := &goanalysis.Analyzer{
+		Name:       "leafresult",
+		Doc:        "provides a shared result",
+		ResultType: reflect.TypeFor[string](),
+		Run: func(*goanalysis.Pass) (any, error) {
+			leafRuns++
+			return "shared", nil
+		},
+	}
+	newBranch := func(name string) *goanalysis.Analyzer {
+		return &goanalysis.Analyzer{
+			Name: name, Doc: "consumes the shared result", Requires: []*goanalysis.Analyzer{leaf},
+			ResultType: reflect.TypeFor[int](),
+			Run: func(pass *goanalysis.Pass) (any, error) {
+				if pass.ResultOf[leaf] != "shared" {
+					return nil, errors.New("branch omitted shared prerequisite result")
+				}
+				return len(name), nil
+			},
+		}
+	}
+	left := newBranch("leftbranch")
+	right := newBranch("rightbranch")
+	upstream := &goanalysis.Analyzer{
+		Name: "dagroot", Doc: "consumes both branches",
+		Requires:   []*goanalysis.Analyzer{right, left},
+		ResultType: reflect.TypeFor[string](),
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			if pass.ResultOf[left] != len(left.Name) || pass.ResultOf[right] != len(right.Name) ||
+				len(pass.ResultOf) != 2 {
+				return nil, errors.New("root omitted direct prerequisite results")
+			}
+			pass.ReportRangef(pass.Files[0].Name, "prerequisite DAG")
+			return "complete", nil
+		},
+	}
+	options := adapterOptions("prerequisite-dag")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(upstream, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if leafRuns != 1 || len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("prerequisite DAG runs = %d, result = %#v", leafRuns, result)
+	}
+}
+
+func TestAdaptAnalyzerRejectsTypedPrerequisiteRuntimeViolations(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		result    any
+		report    bool
+		wantError string
+	}{
+		{name: "result type", result: 42, wantError: "returned result type int"},
+		{name: "diagnostic", result: "ready", report: true, wantError: "reported diagnostics"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/adapter\n\ngo 1.26.0\n")
+			writeTypesFixture(t, filepath.Join(root, "adapter.go"), "package adapter\n")
+			prerequisite := &goanalysis.Analyzer{
+				Name: "invalidprerequisite", Doc: "violates the prerequisite contract",
+				ResultType: reflect.TypeFor[string](),
+				Run: func(pass *goanalysis.Pass) (any, error) {
+					if test.report {
+						pass.ReportRangef(pass.Files[0].Name, "unexpected prerequisite diagnostic")
+					}
+					return test.result, nil
+				},
+			}
+			upstream := &goanalysis.Analyzer{
+				Name: "invalidroot", Doc: "depends on an invalid prerequisite",
+				Requires: []*goanalysis.Analyzer{prerequisite},
+				Run:      func(*goanalysis.Pass) (any, error) { return nil, nil },
+			}
+			options := adapterOptions("invalid-prerequisite")
+			options.Metadata.Requirement = rules.RequireTypes
+			options.ReadOnlyAudited = true
+			adapted, err := analysis.AdaptAnalyzer(upstream, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			registry, err := rules.NewRegistry(adapted)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = analysis.RunPackages(
+				context.Background(),
+				registry,
+				analysis.RunOptions{Preset: rules.PresetCorrectness},
+				analysis.PackageLoadOptions{
+					Dir: root, Patterns: []string{"."}, ModuleMode: analysis.ModuleReadonly,
+				},
+			)
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("RunPackages() error = %v, want %q", err, test.wantError)
+			}
+		})
 	}
 }
 
@@ -996,6 +1226,10 @@ func TestAdaptAnalyzerRejectsUnsupportedAnalyzerContracts(t *testing.T) {
 	flagged := &goanalysis.Analyzer{Name: "flagged", Doc: "flagged", Run: validRun}
 	flagged.Flags.Init("flagged", flag.ContinueOnError)
 	flagged.Flags.Bool("enabled", false, "enable analysis")
+	prerequisiteWithFacts := &goanalysis.Analyzer{
+		Name: "prerequisitefacts", Doc: "prerequisite facts", Run: validRun,
+		FactTypes: []goanalysis.Fact{new(adapterFact)},
+	}
 	tests := []struct {
 		name      string
 		analyzer  *goanalysis.Analyzer
@@ -1010,6 +1244,34 @@ func TestAdaptAnalyzerRejectsUnsupportedAnalyzerContracts(t *testing.T) {
 				Requires: []*goanalysis.Analyzer{prerequisite},
 			},
 			options: adapterOptions("requires-analyzer"), wantError: "prerequisite",
+		},
+		{
+			name: "typed prerequisite facts",
+			analyzer: &goanalysis.Analyzer{
+				Name: "requiresfacts", Doc: "requires facts", Run: validRun,
+				Requires: []*goanalysis.Analyzer{prerequisiteWithFacts},
+			},
+			options: func() analysis.AnalyzerAdapterOptions {
+				options := adapterOptions("requires-facts")
+				options.Metadata.Requirement = rules.RequireTypes
+				options.ReadOnlyAudited = true
+				return options
+			}(),
+			wantError: "prerequisitefacts\" facts",
+		},
+		{
+			name: "typed prerequisite flags",
+			analyzer: &goanalysis.Analyzer{
+				Name: "requiresflags", Doc: "requires flags", Run: validRun,
+				Requires: []*goanalysis.Analyzer{flagged},
+			},
+			options: func() analysis.AnalyzerAdapterOptions {
+				options := adapterOptions("requires-flags")
+				options.Metadata.Requirement = rules.RequireTypes
+				options.ReadOnlyAudited = true
+				return options
+			}(),
+			wantError: "flagged\" flags",
 		},
 		{
 			name: "facts",
@@ -1133,6 +1395,24 @@ func TestAdaptAnalyzerRejectsUnsupportedAnalyzerContracts(t *testing.T) {
 				return options
 			}(),
 			wantError: "type-error policy exceeds",
+		},
+		{
+			name: "typed prerequisite rejects type errors",
+			analyzer: &goanalysis.Analyzer{
+				Name: "typedrooterrors", Doc: "runs despite type errors", Run: validRun,
+				RunDespiteErrors: true,
+				Requires: []*goanalysis.Analyzer{{
+					Name: "typedprerequisiteerrors", Doc: "rejects type errors", Run: validRun,
+				}},
+			},
+			options: func() analysis.AnalyzerAdapterOptions {
+				options := adapterOptions("typed-root-errors")
+				options.Metadata.Requirement = rules.RequireTypes
+				options.Metadata.RunDespiteTypeErrors = true
+				options.ReadOnlyAudited = true
+				return options
+			}(),
+			wantError: "typedprerequisiteerrors\" contract",
 		},
 		{
 			name:     "unsupported tier metadata",

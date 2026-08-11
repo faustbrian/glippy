@@ -306,9 +306,10 @@ a rule ID or disables all rules.
 
 Suitable analyzers MAY be adapted without replacing the native scheduler or
 metadata. The adapter accepts syntax-only and types-tier analyzers with no
-prerequisite analyzers, facts, result type, or analyzer flags. Native metadata
-MUST declare only the file node interest and either the syntax or types tier;
-it remains authoritative for rule identity, selection, severity,
+facts or analyzer flags. Syntax analyzers MUST NOT declare prerequisites or a
+result type. Types-tier analyzers MAY declare a prerequisite-result DAG. Native
+metadata MUST declare only the file node interest and either the syntax or
+types tier; it remains authoritative for rule identity, selection, severity,
 generated-file and type-error policy, documentation, and fix safety.
 
 Each adapted file run MUST receive a fresh AST, its matching `token.FileSet`,
@@ -327,9 +328,18 @@ not declare `RunDespiteErrors`. An eligible package run MUST receive the
 load-owned file set, compiled syntax, package and type information, type sizes,
 module metadata, and exact captured source bytes. Test variants MUST assign
 each physical source to one canonical package owner, and the synthetic test
-main MUST NOT become a lint target. The pass MUST expose no prerequisite
-results, facts, ignored files, other files, or reads outside captured compiled
-Go source. Module replacement traversal MUST be bounded.
+main MUST NOT become a lint target. The pass MUST expose no facts, ignored
+files, other files, or reads outside captured compiled Go source. Module
+replacement traversal MUST be bounded.
+
+Typed prerequisite analyzers MUST run once per package in deterministic
+dependency order. Shared prerequisites MUST execute once, and each pass MUST
+receive only its direct prerequisite results keyed by the declared analyzer
+identity. Every returned value MUST exactly match its declared result type.
+Prerequisite diagnostics MUST fail the run because they have no native
+metadata; only the adapted root analyzer MAY produce mapped diagnostics.
+Cancellation observed after a prerequisite MUST prevent dependent analyzers
+from running.
 
 Typed adapted analyzers MUST run in deterministic package and rule-ID order.
 Generated-only and ill-typed packages MUST be skipped unless native metadata
@@ -362,8 +372,8 @@ until an independently cancellable execution boundary is proven.
 Before registration, maintainers MUST audit that an analyzer does not depend on
 deprecated object resolution or behavior absent from this pass contract. Such
 an analyzer is not suitable and MUST NOT be registered. Declared or observed
-unsupported CFG, SSA, fact, prerequisite, flag, result, cross-file related
-location, or multi-file fix behavior MUST be rejected with a clear
+unsupported CFG, SSA, fact, flag, cross-file related location, or multi-file
+fix behavior MUST be rejected with a clear
 compatibility diagnostic.
 
 Rule documentation and `explain` output MUST derive from the same immutable

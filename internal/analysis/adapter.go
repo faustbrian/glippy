@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 
 	goanalysis "golang.org/x/tools/go/analysis"
@@ -48,6 +49,12 @@ type packageAnalyzerRule struct {
 	analyzer goanalysis.Analyzer
 	metadata rules.Metadata
 	fixes    map[string]analyzerFix
+	steps    []packageAnalyzerStep
+}
+
+type packageAnalyzerStep struct {
+	original *goanalysis.Analyzer
+	analyzer goanalysis.Analyzer
 }
 
 // AdaptAnalyzer wraps one suitable go/analysis analyzer as a native rule.
@@ -61,19 +68,31 @@ func AdaptAnalyzer(
 	if err := goanalysis.Validate([]*goanalysis.Analyzer{analyzer}); err != nil {
 		return nil, fmt.Errorf("adapt go/analysis: %w", err)
 	}
-	if len(analyzer.Requires) != 0 {
+	typed := options.Metadata.Requirement == rules.RequireTypes
+	if len(analyzer.Requires) != 0 && !typed {
 		return nil, fmt.Errorf("adapt go/analysis %q: prerequisite analyzers are not supported", analyzer.Name)
 	}
-	if len(analyzer.FactTypes) != 0 {
-		return nil, fmt.Errorf("adapt go/analysis %q: facts require the typed package scheduler", analyzer.Name)
-	}
-	if analyzer.ResultType != nil {
+	if analyzer.ResultType != nil && !typed {
 		return nil, fmt.Errorf("adapt go/analysis %q: analyzer results require prerequisite scheduling", analyzer.Name)
 	}
-	hasFlags := false
-	analyzer.Flags.VisitAll(func(*flag.Flag) { hasFlags = true })
-	if hasFlags {
-		return nil, fmt.Errorf("adapt go/analysis %q: analyzer flags require native typed configuration", analyzer.Name)
+	plan := analyzerExecutionPlan(analyzer)
+	for _, step := range plan {
+		if len(step.FactTypes) != 0 {
+			return nil, fmt.Errorf(
+				"adapt go/analysis %q: analyzer %q facts require the typed package scheduler",
+				analyzer.Name,
+				step.Name,
+			)
+		}
+		hasFlags := false
+		step.Flags.VisitAll(func(*flag.Flag) { hasFlags = true })
+		if hasFlags {
+			return nil, fmt.Errorf(
+				"adapt go/analysis %q: analyzer %q flags require native typed configuration",
+				analyzer.Name,
+				step.Name,
+			)
+		}
 	}
 	if len(options.Metadata.Fixes) != 0 {
 		return nil, fmt.Errorf("adapt go/analysis %q: native fix metadata must come from suggested-fix mappings", analyzer.Name)
@@ -130,13 +149,27 @@ func AdaptAnalyzer(
 				analyzer.Name,
 			)
 		}
-		if metadata.RunDespiteTypeErrors && !analyzer.RunDespiteErrors {
-			return nil, fmt.Errorf(
-				"adapt go/analysis %q: native type-error policy exceeds the analyzer contract",
-				analyzer.Name,
-			)
+		if metadata.RunDespiteTypeErrors {
+			for _, step := range plan {
+				if !step.RunDespiteErrors {
+					return nil, fmt.Errorf(
+						"adapt go/analysis %q: native type-error policy exceeds analyzer %q contract",
+						analyzer.Name,
+						step.Name,
+					)
+				}
+			}
 		}
-		adapted = &packageAnalyzerRule{analyzer: snapshot, metadata: metadata, fixes: fixes}
+		steps := make([]packageAnalyzerStep, len(plan))
+		for index, step := range plan {
+			steps[index] = packageAnalyzerStep{original: step, analyzer: *step}
+		}
+		adapted = &packageAnalyzerRule{
+			analyzer: snapshot,
+			metadata: metadata,
+			fixes:    fixes,
+			steps:    steps,
+		}
 	default:
 		return nil, fmt.Errorf(
 			"adapt go/analysis %q: adapter metadata must declare syntax or types requirement",
@@ -147,6 +180,28 @@ func AdaptAnalyzer(
 		return nil, fmt.Errorf("adapt go/analysis %q metadata: %w", analyzer.Name, err)
 	}
 	return adapted, nil
+}
+
+func analyzerExecutionPlan(root *goanalysis.Analyzer) []*goanalysis.Analyzer {
+	visited := make(map[*goanalysis.Analyzer]struct{})
+	plan := make([]*goanalysis.Analyzer, 0)
+	var visit func(*goanalysis.Analyzer)
+	visit = func(analyzer *goanalysis.Analyzer) {
+		if _, found := visited[analyzer]; found {
+			return
+		}
+		visited[analyzer] = struct{}{}
+		requires := slices.Clone(analyzer.Requires)
+		sort.Slice(requires, func(left, right int) bool {
+			return requires[left].Name < requires[right].Name
+		})
+		for _, required := range requires {
+			visit(required)
+		}
+		plan = append(plan, analyzer)
+	}
+	visit(root)
+	return plan
 }
 
 func (r *analyzerRule) Metadata() rules.Metadata { return cloneAnalyzerMetadata(r.metadata) }
