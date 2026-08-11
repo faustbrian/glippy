@@ -24,6 +24,25 @@ type activePackageAnalyzer struct {
 	severity rules.Severity
 }
 
+func packageAnalyzersNeedFacts(
+	registry *rules.Registry,
+	selection []rules.Selection,
+) (bool, error) {
+	for _, selected := range selection {
+		if selected.Requirement != rules.RequireTypes {
+			continue
+		}
+		rule, found := registry.Lookup(selected.ID)
+		if !found {
+			return false, fmt.Errorf("selected unknown types rule %q", selected.ID)
+		}
+		if adapted, found := rule.(*packageAnalyzerRule); found && adapted.usesFacts() {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func partitionPackageAnalyzers(
 	registry *rules.Registry,
 	selection []rules.Selection,
@@ -83,13 +102,28 @@ func runPackageAnalyzers(
 	}
 
 	diagnostics := make([]rules.Diagnostic, 0)
-	for _, pkg := range packages_ {
-		files, err := packageSyntaxFiles(pkg, loaded.Sources)
-		if err != nil {
-			return nil, err
+	for _, analyzer := range active {
+		if analyzer.rule.usesFacts() {
+			produced, err := analyzer.rule.runPackageFactGraph(
+				ctx,
+				packages_,
+				loaded.Sources,
+				owners,
+				analyzer.metadata,
+				analyzer.severity,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", analyzer.metadata.ID, err)
+			}
+			diagnostics = append(diagnostics, produced...)
+			continue
 		}
-		for _, analyzer := range active {
+		for _, pkg := range packages_ {
 			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			files, err := packageSyntaxFiles(pkg, loaded.Sources)
+			if err != nil {
 				return nil, err
 			}
 			if pkg.IllTyped && !analyzer.metadata.RunDespiteTypeErrors {
@@ -104,6 +138,7 @@ func runPackageAnalyzers(
 				files,
 				owners,
 				analyzer.severity,
+				nil,
 			)
 			if contextErr := ctx.Err(); contextErr != nil {
 				return nil, contextErr
@@ -190,6 +225,7 @@ func (r *packageAnalyzerRule) runPackage(
 	files []typedSyntaxFile,
 	owners map[string]string,
 	severity rules.Severity,
+	facts *packageFactSet,
 ) ([]rules.Diagnostic, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -230,6 +266,22 @@ func (r *packageAnalyzerRule) runPackage(
 			resultOf[required] = result
 		}
 		reported := make([]goanalysis.Diagnostic, 0)
+		importPackageFact := func(*types.Package, goanalysis.Fact) bool { return false }
+		exportPackageFact := func(goanalysis.Fact) {
+			panic("adapted analyzer attempted to export an undeclared package fact")
+		}
+		allPackageFacts := func() []goanalysis.PackageFact { return nil }
+		if facts != nil {
+			importPackageFact = func(package_ *types.Package, fact goanalysis.Fact) bool {
+				return facts.importPackageFact(planned.original, package_, fact)
+			}
+			exportPackageFact = func(fact goanalysis.Fact) {
+				facts.exportPackageFact(planned.original, pkg.Types, fact)
+			}
+			allPackageFacts = func() []goanalysis.PackageFact {
+				return facts.allPackageFacts(planned.original, pkg.Types)
+			}
+		}
 		pass := &goanalysis.Pass{
 			Analyzer:   &analyzer,
 			Fset:       pkg.Fset,
@@ -253,16 +305,18 @@ func (r *packageAnalyzerRule) runPackage(
 				}
 				return file.Bytes(), nil
 			},
-			ImportObjectFact:  func(types.Object, goanalysis.Fact) bool { return false },
-			ImportPackageFact: func(*types.Package, goanalysis.Fact) bool { return false },
+			ImportObjectFact: func(types.Object, goanalysis.Fact) bool {
+				panic("adapted analyzer object facts are unsupported")
+			},
+			ImportPackageFact: importPackageFact,
 			ExportObjectFact: func(types.Object, goanalysis.Fact) {
-				panic("adapted analyzer attempted to export an undeclared object fact")
+				panic("adapted analyzer object facts are unsupported")
 			},
-			ExportPackageFact: func(goanalysis.Fact) {
-				panic("adapted analyzer attempted to export an undeclared package fact")
+			ExportPackageFact: exportPackageFact,
+			AllPackageFacts:   allPackageFacts,
+			AllObjectFacts: func() []goanalysis.ObjectFact {
+				panic("adapted analyzer object facts are unsupported")
 			},
-			AllPackageFacts: func() []goanalysis.PackageFact { return nil },
-			AllObjectFacts:  func() []goanalysis.ObjectFact { return nil },
 		}
 		if analyzer.RunDespiteErrors {
 			pass.TypeErrors = slices.Clone(pkg.TypeErrors)

@@ -385,3 +385,14 @@ metadata-less prerequisite diagnostics fail closed, and cancellation stops
 dependent callbacks. A real x/tools atomic analyzer proves inspector-result
 interoperability. Facts and analyzer flags remain unsupported, and the open
 Phase 2 gates keep overall progress at 45%.
+
+Typed `go/analysis` DAGs now support deterministic package facts across sorted
+import dependencies. Dependency syntax is loaded only for fact analyzers;
+shared dependency packages execute once; facts retain analyzer, package, and
+declared-type identity; Gob snapshots isolate later mutation; enumeration is
+limited to the current package and direct imports; and only selected root
+diagnostics are reported. The real x/tools `pkgfact` analyzer proves the
+dependency boundary. Undeclared or nondeterministically encoded facts,
+ill-typed prerequisite incompatibility, cancellation, and every object-fact
+operation fail closed. Object facts, analyzer flags, persistent fact caching,
+and the open Phase 2 gates remain, so overall progress stays 45%.

@@ -35,7 +35,7 @@ explicitly, reparses, formats, validates, and performs one atomic single-file
 replacement.
 
 The `go/analysis` adapter accepts syntax-only and audited read-only types-tier
-analyzers without facts or flags. Syntax runs
+analyzers without flags. Syntax runs
 reparse an isolated AST with a matching file set, supply a minimal package-name
 shell without type information, expose only the adapted source through
 `ReadFile`, and use a run-local analyzer descriptor. Typed runs execute after
@@ -50,6 +50,15 @@ once per package in deterministic dependency order, shared nodes execute once,
 and each pass receives only its direct declared results. Result types must
 match exactly. A prerequisite diagnostic fails because no native metadata owns
 it, and cancellation prevents remaining dependent callbacks.
+
+Types-tier analyzer DAGs may declare package facts. The scheduler loads exact
+dependency syntax for those DAGs, runs every analyzer-package pair once in
+sorted import order, and exposes dependency facts only to the current package
+and its direct imports. Gob snapshots isolate export and import values; unequal
+repeat encodings fail as nondeterministic, while custom encoders remain an
+explicit admission-audit boundary. Dependency diagnostics do not become user
+findings. Object-fact operations fail as unsupported until object identity and
+export-data persistence have a separate decision.
 
 Native metadata remains authoritative. A typed adapter requires an explicit
 read-only audit and cannot opt into type-error packages unless the upstream
@@ -175,8 +184,9 @@ status. Reporter and lint-driver integration must preserve the distinction
 between not performed, completed, and possibly completed replacement.
 Imported syntax analyzers pay one isolated parse per analyzer and file. Typed
 adapters reuse package state, so their admission audit must exclude mutation
-that could affect a later adapter. Neither tier can use facts, flags, arbitrary
-cross-file reads, or preempt a callback that does not return.
+that could affect a later adapter. Syntax adapters cannot use facts; neither
+tier can use object facts, flags, arbitrary cross-file reads, or preempt a
+callback that does not return.
 
 ## Revisit Trigger
 

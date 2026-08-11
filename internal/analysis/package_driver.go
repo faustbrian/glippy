@@ -69,6 +69,13 @@ func RunPackages(
 	}
 
 	loadOptions.Requirement = result.Requirement
+	needsFacts, err := packageAnalyzersNeedFacts(registry, selection)
+	if err != nil {
+		return result, err
+	}
+	if needsFacts {
+		loadOptions.LoadDependencySyntax = true
+	}
 	loaded, err := LoadPackages(ctx, loadOptions)
 	if err != nil {
 		return result, err

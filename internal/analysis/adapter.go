@@ -77,9 +77,9 @@ func AdaptAnalyzer(
 	}
 	plan := analyzerExecutionPlan(analyzer)
 	for _, step := range plan {
-		if len(step.FactTypes) != 0 {
+		if len(step.FactTypes) != 0 && !typed {
 			return nil, fmt.Errorf(
-				"adapt go/analysis %q: analyzer %q facts require the typed package scheduler",
+				"adapt go/analysis %q: analyzer %q facts require typed package execution",
 				analyzer.Name,
 				step.Name,
 			)

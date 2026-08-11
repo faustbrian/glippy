@@ -305,9 +305,10 @@ a rule ID or disables all rules.
 ## `go/analysis` Interoperability
 
 Suitable analyzers MAY be adapted without replacing the native scheduler or
-metadata. The adapter accepts syntax-only and types-tier analyzers with no
-facts or analyzer flags. Syntax analyzers MUST NOT declare prerequisites or a
-result type. Types-tier analyzers MAY declare a prerequisite-result DAG. Native
+metadata. The adapter accepts syntax-only and types-tier analyzers without
+analyzer flags. Syntax analyzers MUST NOT declare prerequisites, facts, or a
+result type. Types-tier analyzers MAY declare a prerequisite-result DAG and
+package facts. Native
 metadata MUST declare only the file node interest and either the syntax or
 types tier; it remains authoritative for rule identity, selection, severity,
 generated-file and type-error policy, documentation, and fix safety.
@@ -328,9 +329,9 @@ not declare `RunDespiteErrors`. An eligible package run MUST receive the
 load-owned file set, compiled syntax, package and type information, type sizes,
 module metadata, and exact captured source bytes. Test variants MUST assign
 each physical source to one canonical package owner, and the synthetic test
-main MUST NOT become a lint target. The pass MUST expose no facts, ignored
-files, other files, or reads outside captured compiled Go source. Module
-replacement traversal MUST be bounded.
+main MUST NOT become a lint target. The pass MUST expose no ignored files,
+other files, or reads outside captured compiled Go source. Module replacement
+traversal MUST be bounded.
 
 Typed prerequisite analyzers MUST run once per package in deterministic
 dependency order. Shared prerequisites MUST execute once, and each pass MUST
@@ -340,6 +341,30 @@ Prerequisite diagnostics MUST fail the run because they have no native
 metadata; only the adapted root analyzer MAY produce mapped diagnostics.
 Cancellation observed after a prerequisite MUST prevent dependent analyzers
 from running.
+
+When any analyzer step declares facts, the scheduler MUST load dependency
+syntax and type information and execute the complete analyzer DAG in sorted
+import dependency order before each selected root. One analyzer step MUST run
+at most once for one package across shared roots. Only selected physical root
+sources MAY produce reporter-visible diagnostics; diagnostics produced while
+running the adapted root analyzer on dependencies MUST be discarded, while a
+diagnostic from a metadata-less prerequisite MUST fail the run.
+
+Package facts MUST be isolated by exact analyzer identity, package identity,
+and declared fact type. Export MUST snapshot the value through Gob encoding;
+two immediate encodings that differ MUST fail as nondeterministic. Import MUST
+reset and decode into the caller's independently owned destination. Enumeration
+MUST return only facts for the current package and its direct imports, ordered
+by package path and fact type. Analyzer admission MUST separately audit custom
+Gob encoders and fact values for deterministic representation: equal immediate
+encodings are a runtime guard, not proof that arbitrary analyzer-owned mutable
+state is deterministic. Object facts remain unsupported and every object-fact
+operation MUST fail clearly.
+
+An ill-typed selected root MUST retain native metadata eligibility. If native
+metadata admits type errors, every analyzer step MUST declare
+`RunDespiteErrors`. A required ill-typed dependency whose fact-producing step
+does not admit errors MUST fail instead of supplying missing or stale facts.
 
 Typed adapted analyzers MUST run in deterministic package and rule-ID order.
 Generated-only and ill-typed packages MUST be skipped unless native metadata
@@ -372,8 +397,8 @@ until an independently cancellable execution boundary is proven.
 Before registration, maintainers MUST audit that an analyzer does not depend on
 deprecated object resolution or behavior absent from this pass contract. Such
 an analyzer is not suitable and MUST NOT be registered. Declared or observed
-unsupported CFG, SSA, fact, flag, cross-file related location, or multi-file
-fix behavior MUST be rejected with a clear
+unsupported CFG, SSA, object-fact, flag, cross-file related location, or
+multi-file fix behavior MUST be rejected with a clear
 compatibility diagnostic.
 
 Rule documentation and `explain` output MUST derive from the same immutable

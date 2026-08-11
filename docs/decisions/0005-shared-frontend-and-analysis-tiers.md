@@ -92,7 +92,7 @@ while preserving the ordinary package's production type context. The loader
 also removes the synthetic test-main package from the selected package set, so
 its generated Go-cache artifact cannot become a reporter-visible lint target.
 Native typed execution is currently root-package-only; native package-wide
-rules, dependency analysis, facts, and SSA require separate contracts.
+rules and general dependency analysis require separate contracts.
 
 Suitable types-tier `go/analysis` analyzers may run package-wide over the same
 load-owned syntax and type state after all native types, CFG, and SSA consumers
@@ -101,10 +101,22 @@ cannot cheaply clone `types.Info` while preserving AST-key identity. Native
 metadata continues to own selection, generated-file and type-error eligibility,
 and fix safety. Adapted package analyzers remain deterministic by package and
 rule ID, expose only captured compiled-source reads, and cannot use
-facts, flags, cross-file related locations, or multi-file fixes. A deterministic
-prerequisite DAG may produce exact-type results once per package; shared
-prerequisites execute once, diagnostics from metadata-less prerequisites fail,
-and cancellation stops dependent analyzers.
+object facts, flags, cross-file related locations, or multi-file fixes. A
+deterministic prerequisite DAG may produce exact-type results once per package;
+shared prerequisites execute once, diagnostics from metadata-less prerequisites
+fail, and cancellation stops dependent analyzers.
+
+An adapted analyzer DAG that declares package facts extends that same schedule
+vertically through sorted imports. Dependency syntax and type information are
+loaded only for this explicit requirement, each analyzer-package pair executes
+once across shared roots, and only selected root diagnostics are visible.
+Package facts are keyed by original analyzer identity, package identity, and
+declared type. Gob export snapshots isolate later mutations; import decodes an
+independent value; and enumeration exposes only the current package plus direct
+imports in canonical order. Two unequal immediate encodings fail, while
+maintainer admission remains responsible for excluding nondeterministic custom
+Gob encoders and analyzer-owned state. Object facts remain deferred until an
+object-path and export-data contract is designed.
 
 Rules skip generated files unless their metadata opts in. Packages with type
 errors are also skipped by default; a types-tier or CFG-tier rule may explicitly
