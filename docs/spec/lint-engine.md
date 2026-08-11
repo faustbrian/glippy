@@ -46,6 +46,20 @@ NOT populate dependency syntax and type-info maps unless enabled rules require
 dependency or fact analysis. It MUST NOT construct CFG or SSA at this boundary.
 Every graph is run-owned; types from separate loads MUST NOT be mixed.
 
+The package parser boundary MUST capture the exact bytes supplied after overlay
+and build selection into the shared immutable source model. Each normalized
+absolute path MUST identify exactly one digest within a load; incompatible
+bytes for one path MUST fail the run. Captured paths and source-model problems
+MUST be canonical. Invalid inputs MUST remain available as diagnostic-only
+source units rather than being discarded.
+
+Typed diagnostics and edits MUST resolve package positions against this
+captured source index. A typed consumer MUST NOT reread a file after package
+loading and treat the new bytes as the analyzed source version. The package AST
+MAY use its own parser file set, but its parser mode MUST preserve the upstream
+AST object-resolution compatibility expected by suitable `go/analysis`
+analyzers.
+
 Ordinary package loading MUST disable module proxies, private-module proxy
 bypass, direct version-control resolution, checksum-database access, automatic
 toolchain download, and ambient external package drivers. Network access MAY

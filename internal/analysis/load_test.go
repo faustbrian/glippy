@@ -49,6 +49,19 @@ func TestLoadPackagesProvidesOneCanonicalTypedModuleSnapshot(t *testing.T) {
 			t.Fatalf("LoadPackages() incomplete package %q", loaded.ID)
 		}
 	}
+	wantSources := []string{
+		filepath.Join(root, "a", "a.go"),
+		filepath.Join(root, "z", "z.go"),
+	}
+	if !slices.Equal(result.Sources.Paths(), wantSources) {
+		t.Fatalf("LoadPackages() source paths = %q", result.Sources.Paths())
+	}
+	for _, path := range wantSources {
+		file, found := result.Sources.Lookup(path)
+		if !found || file.Path() != path || !file.CanFormat() {
+			t.Fatalf("LoadPackages() source %q = %#v, %t", path, file, found)
+		}
+	}
 }
 
 func TestLoadPackagesRejectsCheapTiersAndPreservesCancellation(t *testing.T) {
@@ -182,6 +195,35 @@ func TestLoadPackagesRetainsCanonicalDependencyDiagnostics(t *testing.T) {
 	}
 }
 
+func TestLoadPackagesRetainsInvalidSourceForDiagnosticOnlyUse(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeLoadFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "broken.go")
+	writeLoadFixture(t, path, "package project\nfunc broken( {\n")
+
+	result, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir:         root,
+		Patterns:    []string{"."},
+		Requirement: rules.RequireTypes,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, found := result.Sources.Lookup(path)
+	if !found || file.CanFormat() {
+		t.Fatalf("LoadPackages() invalid source = %#v, %t", file, found)
+	}
+	problems := result.Sources.Problems()
+	if len(problems) != 1 || problems[0].Path != path || problems[0].Message == "" {
+		t.Fatalf("LoadPackages() source problems = %#v", problems)
+	}
+	if len(result.Diagnostics) == 0 {
+		t.Fatal("LoadPackages() omitted package parse diagnostic")
+	}
+}
+
 func TestLoadPackagesLoadsDependencySyntaxOnlyWhenRequested(t *testing.T) {
 	t.Parallel()
 
@@ -224,6 +266,7 @@ func TestLoadPackagesHonorsBuildSelectionAndOverlay(t *testing.T) {
 	writeLoadFixture(t, filepath.Join(root, "feature.go"), "//go:build feature\n\npackage project\nconst Feature = 1\n")
 	writeLoadFixture(t, filepath.Join(root, "target_linux.go"), "package project\nconst Target = \"linux\"\n")
 	writeLoadFixture(t, filepath.Join(root, "target_darwin.go"), "package project\nconst Target = \"darwin\"\n")
+	overlayInput := []byte("package project\nconst Base = 1\nconst OverlayOnly = 1\n")
 
 	result, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
 		Dir:         root,
@@ -233,7 +276,7 @@ func TestLoadPackagesHonorsBuildSelectionAndOverlay(t *testing.T) {
 		GOOS:        "linux",
 		GOARCH:      "amd64",
 		Overlay: map[string][]byte{
-			basePath: []byte("package project\nconst Base = 1\nconst OverlayOnly = 1\n"),
+			basePath: overlayInput,
 		},
 	})
 	if err != nil {
@@ -254,6 +297,18 @@ func TestLoadPackagesHonorsBuildSelectionAndOverlay(t *testing.T) {
 	if !slices.Contains(compiled, "feature.go") || !slices.Contains(compiled, "target_linux.go") ||
 		slices.Contains(compiled, "target_darwin.go") {
 		t.Fatalf("LoadPackages() compiled files = %q", compiled)
+	}
+	bound, found := result.Sources.Lookup(basePath)
+	if !found || string(bound.Bytes()) != "package project\nconst Base = 1\nconst OverlayOnly = 1\n" {
+		t.Fatalf("LoadPackages() overlay source = %#v, %t", bound, found)
+	}
+	overlayInput[0] = 'P'
+	writeLoadFixture(t, basePath, "package project\nconst ChangedAfterLoad = 1\n")
+	if string(bound.Bytes()) != "package project\nconst Base = 1\nconst OverlayOnly = 1\n" {
+		t.Fatalf("LoadPackages() source changed with disk: %q", bound.Bytes())
+	}
+	if len(result.Sources.Problems()) != 0 {
+		t.Fatalf("LoadPackages() source problems = %#v", result.Sources.Problems())
 	}
 }
 

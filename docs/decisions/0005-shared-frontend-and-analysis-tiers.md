@@ -40,6 +40,15 @@ type diagnostics from every populated package in the requested graph.
 Package-local errors therefore preserve partial typed results instead of
 becoming an opaque load failure.
 
+The package parser callback also constructs the shared physical source model
+from the exact bytes supplied by `go/packages`, after overlays and build
+selection. It retains one immutable source version per normalized absolute
+path, rejects incompatible bytes for the same identity, and exposes canonical
+paths plus source-model problems. Syntax-invalid or directive-invalid inputs
+remain available as diagnostic-only source units. Typed consumers therefore
+map package positions and edits to the bytes that were actually type-checked;
+they do not reread a path after loading and guess that it is unchanged.
+
 Package selection delegates module and `go.work` semantics to the active Go
 toolchain and accepts explicit test inclusion, canonical build tags, overlays,
 GOOS, and GOARCH inputs. Module loading is read-only by default and supports an
@@ -77,6 +86,13 @@ CFG and SSA construction, analyzer fact scheduling, cache reuse, and integration
 with the file-owned lint driver remain separate tier-runner work. A types, CFG,
 or SSA request currently shares the same typed prerequisite graph but does not
 mean that the more expensive representation has already been constructed.
+
+The typed package AST and physical source model use separate parser file sets.
+The package parser preserves `go/packages`' existing AST object-resolution
+behavior for analyzer compatibility, while the source model keeps its isolated
+syntax, scanner ledger, trivia, directives, and digest. This additional parse
+is the current cost of retaining both type identity and exact source fidelity
+through public standard-library boundaries.
 
 ## Revisit Trigger
 

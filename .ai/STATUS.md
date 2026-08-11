@@ -249,3 +249,11 @@ package drivers. Explicit network opt-in uses only the caller-supplied Go
 environment. Typed rule execution, CFG/SSA construction, fact scheduling,
 caching, and CLI package-pattern integration remain open, so progress stays
 45%.
+
+Typed package parsing now binds every selected or dependency AST to the exact
+post-overlay bytes supplied by `go/packages`. A canonical run-owned source
+index retains immutable digests, tokens, trivia, directives, and diagnostic-only
+invalid files; duplicate package variants share one source identity, and
+incompatible bytes for the same path fail instead of racing a later filesystem
+read. Typed diagnostics and edit mapping are not implemented yet, so the
+overall capability gate remains 45%.

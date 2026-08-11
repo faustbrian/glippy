@@ -4,14 +4,19 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/gox/internal/source"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -54,6 +59,38 @@ type PackageLoadResult struct {
 	Requirement rules.Requirement
 	Packages    []*packages.Package
 	Diagnostics []PackageDiagnostic
+	Sources     PackageSourceSet
+}
+
+// PackageSourceSet is one immutable index of the exact bytes parsed by a
+// package load.
+type PackageSourceSet struct {
+	paths    []string
+	files    map[string]*source.File
+	problems []PackageSourceProblem
+}
+
+// PackageSourceProblem records why one captured source is diagnostic-only.
+type PackageSourceProblem struct {
+	Path    string
+	Message string
+}
+
+// Paths returns normalized physical source identities in canonical order.
+func (s PackageSourceSet) Paths() []string { return slices.Clone(s.paths) }
+
+// Lookup returns the immutable source version parsed for path.
+func (s PackageSourceSet) Lookup(path string) (*source.File, bool) {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return nil, false
+	}
+	file, found := s.files[path]
+	return file, found
+}
+
+// Problems returns source-model failures in canonical order.
+func (s PackageSourceSet) Problems() []PackageSourceProblem {
+	return slices.Clone(s.problems)
 }
 
 // LoadPackages loads the typed prerequisite shared by types, CFG, and SSA
@@ -93,6 +130,7 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 	if err != nil {
 		return PackageLoadResult{}, err
 	}
+	sourceCollector := newPackageSourceCollector()
 
 	loaded, err := packages.Load(&packages.Config{
 		Context:    ctx,
@@ -102,12 +140,17 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 		BuildFlags: buildFlags,
 		Tests:      options.Tests,
 		Overlay:    cloneOverlay(options.Overlay),
+		ParseFile:  sourceCollector.parseFile,
 	}, patterns...)
 	if contextErr := ctx.Err(); contextErr != nil {
 		return PackageLoadResult{}, contextErr
 	}
 	if err != nil {
 		return PackageLoadResult{}, fmt.Errorf("load Go packages: %w", err)
+	}
+	sources, err := sourceCollector.result()
+	if err != nil {
+		return PackageLoadResult{}, err
 	}
 	ordered, err := canonicalPackages(loaded)
 	if err != nil {
@@ -117,7 +160,94 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 		Requirement: options.Requirement,
 		Packages:    ordered,
 		Diagnostics: packageDiagnostics(ordered),
+		Sources:     sources,
 	}, nil
+}
+
+type packageSourceCollector struct {
+	mu       sync.Mutex
+	files    map[string]*source.File
+	problems map[string]PackageSourceProblem
+	err      error
+}
+
+func newPackageSourceCollector() *packageSourceCollector {
+	return &packageSourceCollector{
+		files:    make(map[string]*source.File),
+		problems: make(map[string]PackageSourceProblem),
+	}
+}
+
+func (c *packageSourceCollector) parseFile(
+	fileSet *token.FileSet,
+	filename string,
+	input []byte,
+) (*ast.File, error) {
+	physical, sourceErr := source.Load(filename, input)
+	c.add(filename, physical, sourceErr)
+	return parser.ParseFile(fileSet, filename, input, parser.AllErrors|parser.ParseComments)
+}
+
+func (c *packageSourceCollector) add(filename string, file *source.File, sourceErr error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	path := filepath.Clean(filename)
+	if file != nil {
+		path = file.Path()
+	}
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		if c.err == nil {
+			c.err = fmt.Errorf("package parser returned non-normalized source path %q", path)
+		}
+		return
+	}
+	if file == nil {
+		if c.err == nil {
+			c.err = fmt.Errorf("package parser did not capture source %q: %v", path, sourceErr)
+		}
+		return
+	}
+	if previous, found := c.files[path]; found {
+		if previous.Digest() != file.Digest() && c.err == nil {
+			c.err = fmt.Errorf("package parser returned incompatible source versions for %q", path)
+		}
+	} else {
+		c.files[path] = file
+	}
+	if sourceErr != nil {
+		problem := PackageSourceProblem{Path: path, Message: sourceErr.Error()}
+		if previous, found := c.problems[path]; found && previous != problem && c.err == nil {
+			c.err = fmt.Errorf("package parser returned incompatible source problems for %q", path)
+		} else {
+			c.problems[path] = problem
+		}
+	}
+}
+
+func (c *packageSourceCollector) result() (PackageSourceSet, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.err != nil {
+		return PackageSourceSet{}, c.err
+	}
+	paths := make([]string, 0, len(c.files))
+	files := make(map[string]*source.File, len(c.files))
+	for path, file := range c.files {
+		paths = append(paths, path)
+		files[path] = file
+	}
+	sort.Strings(paths)
+	problems := make([]PackageSourceProblem, 0, len(c.problems))
+	for _, problem := range c.problems {
+		problems = append(problems, problem)
+	}
+	sort.Slice(problems, func(left, right int) bool {
+		if problems[left].Path != problems[right].Path {
+			return problems[left].Path < problems[right].Path
+		}
+		return problems[left].Message < problems[right].Message
+	})
+	return PackageSourceSet{paths: paths, files: files, problems: problems}, nil
 }
 
 const typedPackageLoadMode = packages.NeedName |
