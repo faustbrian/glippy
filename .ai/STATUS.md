@@ -1033,3 +1033,11 @@ physical byte ranges, source digests, every file status and stable enum, fix
 provenance, uncertainty after an unconfirmed rename, deterministic ordering,
 and forward-compatible field handling without exposing source or replacement
 text. Progress remains 45% behind maintainer-approved external adoption.
+
+The deterministic release builder now preserves the caller's explicit
+`GOMODCACHE` across its sanitized inner Go environment. The tag workflow's
+task-owned module cache therefore remains the only dependency cache used by
+both the outer maintainer command and every target build, and its existing
+cleanup covers the complete release build instead of leaving inner builds to
+fall back to the user's default module cache. No tag or release was created;
+progress remains 45% behind maintainer-approved external adoption.

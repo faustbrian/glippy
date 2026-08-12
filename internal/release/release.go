@@ -624,7 +624,7 @@ func buildTarget(
 
 func buildEnvironment(goos, goarch string, cacheRoot ...string) []string {
 	values := make(map[string]string)
-	for _, name := range []string{"HOME", "PATH", "TMPDIR"} {
+	for _, name := range []string{"GOMODCACHE", "HOME", "PATH", "TMPDIR"} {
 		if value, found := os.LookupEnv(name); found {
 			values[name] = value
 		}

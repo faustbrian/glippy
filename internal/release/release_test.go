@@ -415,6 +415,7 @@ func TestOwnedOutputCleansPrivateDirectoryAfterClose(t *testing.T) {
 
 func TestBuildEnvironmentPinsBuildAffectingSettings(t *testing.T) {
 	t.Setenv("GOCACHEPROG", "ambient-cache --unsafe")
+	t.Setenv("GOMODCACHE", "/tmp/release-module-cache")
 	t.Setenv("GOFIPS140", "v1.0.0")
 	t.Setenv("GOX_RELEASE_UNRELATED", "ambient")
 
@@ -428,6 +429,9 @@ func TestBuildEnvironmentPinsBuildAffectingSettings(t *testing.T) {
 	}
 	if values["GOCACHE"] != "/tmp/release-cache" || values["GOCACHEPROG"] != "" {
 		t.Fatalf("cache environment = %#v", values)
+	}
+	if values["GOMODCACHE"] != "/tmp/release-module-cache" {
+		t.Fatalf("module cache environment = %#v", values)
 	}
 	if values["GOFIPS140"] != "off" {
 		t.Fatalf("GOFIPS140 = %q", values["GOFIPS140"])

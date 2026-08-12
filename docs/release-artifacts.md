@@ -29,10 +29,10 @@ The builder uses the selected local Go toolchain with
 `GOTOOLCHAIN=local`, `GOENV=off`, `GOWORK=off`, `CGO_ENABLED=0`, read-only module
 mode, path trimming, disabled implicit VCS metadata, and explicit linked version
 metadata. Every invocation creates and removes its own empty build cache,
-disables external cache programs and FIPS source substitution, and admits only
-the minimal host environment needed to locate the toolchain, module cache, and
-temporary directory. It does not sign, publish, upload, tag, or modify a
-repository.
+disables external cache programs and FIPS source substitution, preserves an
+explicit caller-owned `GOMODCACHE`, and admits only the minimal host environment
+needed to locate the toolchain, module cache, and temporary directory. It does
+not sign, publish, upload, tag, or modify a repository.
 
 The current prototype target set is:
 
