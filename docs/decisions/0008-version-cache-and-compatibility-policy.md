@@ -76,9 +76,14 @@ or native amd64 host execution.
 GitHub Releases is the selected publication channel. Public tags and releases
 remain prohibited until the full project reaches 100%, the release candidate
 passes the final gates, and the maintainer personally verifies and reviews it.
-The release workflow will retain the existing SHA-256 manifest and must add an
-accepted signing and provenance mechanism before publication; that mechanism is
-not selected by this decision.
+An authorized semantic-version tag activates one pinned GitHub Actions workflow
+that builds the existing archives, manifest, and SHA-256 checksums; submits
+every file for GitHub artifact attestation; and publishes the files as a GitHub
+Release. GitHub's short-lived OIDC workflow identity and Sigstore-backed signed
+SLSA provenance bind each digest to this repository and workflow without a
+long-lived private key. Checksums remain the offline integrity contract;
+attestation verification is the online provenance contract. This decision does
+not claim a signed Git tag or admit an installer channel.
 
 The 2026-08-12 cache-platform rehearsal also ran the complete cache and CLI
 package suites, including the race detector, on network-isolated Linux arm64
@@ -179,6 +184,9 @@ before external integrations are advertised.
 - Enable persistent caching implicitly: the platform and lifecycle boundary is
   still narrower than the ordinary uncached CLI contract, so projects must opt
   in while evidence grows.
+- Maintain a long-lived release signing key: GitHub's short-lived workflow
+  identity avoids private-key custody and rotation while binding provenance to
+  the selected publication channel.
 
 ## Consequences
 
@@ -196,3 +204,6 @@ machine-output schema versions.
 Before Phase 1 claims cross-version syntax support; before CLI caching becomes
 the default; when formatter caching, cross-machine sharing, or a filesystem
 without reliable hard links is admitted; and before the first public release.
+Revisit release provenance if GitHub Releases ceases to be the publication
+channel, offline signature verification becomes an adoption requirement, or
+GitHub changes the artifact-attestation trust or retention contract.

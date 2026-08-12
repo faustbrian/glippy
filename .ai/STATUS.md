@@ -885,3 +885,17 @@ for the pinned large formatter corpus, and 2 GiB peak formatter RSS across
 native Darwin/Linux amd64/arm64. Stable performance is no longer a Phase 2
 blocker; maintainer approval of the external `pkg/prompts` adoption remains
 open, so overall progress stays 45%.
+
+Publication and signing readiness now use one dormant tag-triggered GitHub
+Actions workflow. An authorized canonical semantic-version tag builds the
+existing deterministic Darwin/Linux amd64/arm64 archives, manifest, and
+checksums with Go 1.26.5; submits every file for GitHub's Sigstore-backed signed
+SLSA build provenance through short-lived OIDC identity; publishes the files as
+a GitHub Release; and retains an existing candidate after later failure. Pinned
+current action commits avoid the prior Node-runtime warning, and checkout
+credentials are absent from the build tree. Ordinary pushes and manual
+dispatches cannot invoke publication. No tag or release was created, and the
+100%-plus-maintainer-review gate remains mandatory. Live tag-triggered
+publication and attestation verification cannot be proven before that gate, so
+they remain final release-candidate evidence. Approved external adoption is
+still the Phase 2 blocker and overall progress stays 45%.

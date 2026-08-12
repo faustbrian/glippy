@@ -82,14 +82,33 @@ architecture emulation, while both arm64 executions were native to their host
 architecture. Both build environments ran on one physical Darwin host, so
 separate-host reproduction remains open.
 
-GitHub Releases is the selected publication channel. The builder already emits
-SHA-256 checksums, but signing, provenance attestations, checksummed installer
-metadata, and publication automation remain Phase 5 work. The signing and
-attestation mechanism requires a separate decision; likely Go/GitHub-native
-candidates are GitHub artifact attestations or SLSA provenance and keyless
-Cosign signing rather than a long-lived private release key.
+GitHub Releases is the selected publication channel. A push of a canonical
+semantic-version tag invokes the repository's `Publish release` workflow. It
+checks out the exact tag, builds the complete deterministic target set with Go
+1.26.5, submits every archive, manifest, and checksum file to GitHub artifact
+attestations, and creates one GitHub Release containing those files. Prerelease
+semantic versions create GitHub prereleases. The workflow uses pinned action
+commits, does not persist checkout credentials into the build tree, and retains
+an existing candidate for 14 days when attestation or publication fails.
+
+GitHub artifact attestations are the accepted signing and provenance mechanism.
+The workflow receives a short-lived GitHub OIDC identity, produces signed SLSA
+build provenance binding every released file's SHA-256 digest to this repository
+and workflow, and stores it in GitHub's attestation service. No long-lived
+private signing key exists. Consumers can verify a downloaded file with:
+
+```text
+gh attestation verify <artifact> --repo faustbrian/gox
+```
+
+The builder's checksum file remains the portable offline integrity surface;
+the signed attestation proves repository and workflow provenance when GitHub is
+available. Installer metadata remains deferred until an installation channel
+is admitted. A signed Git tag is not part of this artifact-provenance claim.
 
 No public tag or GitHub Release may be created until the complete goal reaches
 100%, the release candidate passes its final evidence gates, and the maintainer
 personally verifies and reviews it. The final naming audit must pass before that
-authorization is requested.
+authorization is requested. The tag is therefore both the activation event and
+the final publication authorization; ordinary pushes and manual workflow
+dispatches cannot invoke the release workflow.
