@@ -966,3 +966,12 @@ completion contracts. The guide deliberately provides no installation command
 or stable module-path promise because ADR 0001 requires the final collision and
 trademark audit first. Progress remains 45% behind maintainer-approved external
 adoption.
+
+Continuous-integration and pre-commit adoption now have one documented
+non-mutating `gox check` path. The GitHub Actions example pins the action
+commits, Go toolchain, and exact reviewed Gox source revision while keeping the
+tool checkout outside the selected project; the versioned Git hook shares the
+same check contract and discloses that partial staging is outside Gox's
+filesystem snapshot. Both paths prohibit implicit fixes and preserve the
+pre-release naming and installation boundary. Progress remains 45% behind
+maintainer-approved external adoption.

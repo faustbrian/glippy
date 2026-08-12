@@ -88,7 +88,9 @@ Apply these changes together so the repository has one formatter authority:
    source diff as one coordinated migration.
 
 The [editor integration guide](editor-integration.md) documents the supported
-stdin/stdout contract and examples.
+stdin/stdout contract and examples. The
+[CI and pre-commit guide](ci-and-precommit.md) provides a pinned development
+workflow and the non-mutating gate contract.
 
 ## Roll Back
 

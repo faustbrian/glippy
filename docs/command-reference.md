@@ -216,3 +216,4 @@ nonzero result as the same outcome.
 - [Machine reporting decision](decisions/0011-machine-reporting-schema.md)
 - [Supported Go versions](supported-go-versions.md)
 - [Editor integration](editor-integration.md)
+- [CI and pre-commit setup](ci-and-precommit.md)
