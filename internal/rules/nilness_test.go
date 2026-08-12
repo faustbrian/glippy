@@ -235,7 +235,7 @@ func TestDefaultRegistryDocumentsNilnessWithoutAFix(t *testing.T) {
 	}
 }
 
-func TestTypedAndSSARulesRemainOptIn(t *testing.T) {
+func TestTypesControlFlowAndSSARulesRemainOptIn(t *testing.T) {
 	t.Parallel()
 
 	registry, err := rules.NewDefaultRegistry()
@@ -254,9 +254,11 @@ func TestTypedAndSSARulesRemainOptIn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(suspicious) != 2 || suspicious[0].ID != "context-key" ||
-		suspicious[0].Requirement != rules.RequireTypes || suspicious[1].ID != "nilness" ||
-		suspicious[1].Requirement != rules.RequireSSA {
+	if len(suspicious) != 3 || suspicious[0].ID != "context-key" ||
+		suspicious[0].Requirement != rules.RequireTypes ||
+		suspicious[1].ID != "defer-in-infinite-loop" ||
+		suspicious[1].Requirement != rules.RequireControlFlow ||
+		suspicious[2].ID != "nilness" || suspicious[2].Requirement != rules.RequireSSA {
 		t.Fatalf("suspicious selection = %#v", suspicious)
 	}
 }
@@ -290,7 +292,10 @@ func BenchmarkNilnessSharedSSA(b *testing.B) {
 	}
 	nilnessSelection, err := nilnessRegistry.Resolve(
 		rules.PresetSuspicious,
-		map[string]rules.Severity{"context-key": rules.SeverityOff},
+		map[string]rules.Severity{
+			"context-key":            rules.SeverityOff,
+			"defer-in-infinite-loop": rules.SeverityOff,
+		},
 	)
 	if err != nil {
 		b.Fatal(err)

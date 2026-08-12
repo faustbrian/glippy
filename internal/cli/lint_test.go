@@ -222,6 +222,68 @@ func attach(ctx context.Context) context.Context {
 	}
 }
 
+func TestRunExposesBuiltInDeferInInfiniteLoopThroughLintAndExplain(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/deferloop\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sample.go")
+	input := []byte(`package sample
+func cleanup() {}
+func run() {
+	for {
+		defer cleanup()
+	}
+}
+`)
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".gox.toml"),
+		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n[lint.rules]\nnilness = \"off\"\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"lint", path}, strings.NewReader(""), &stdout, &stderr)
+	want := path + ":5:3: warn[defer-in-infinite-loop]: defer in this infinite loop cannot reach function exit and will never run\n" +
+		"  help: invoke the cleanup explicitly in each iteration or make a function exit reachable\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf("Run(lint defer-in-infinite-loop) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("Run(lint defer-in-infinite-loop) mutated source: %q", got)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run([]string{"explain", "defer-in-infinite-loop"}, strings.NewReader(""), &stdout, &stderr)
+	for _, contract := range []string{
+		"defer-in-infinite-loop\n",
+		"analysis tier: control flow\n",
+		"generated files: excluded\n",
+		"type-error packages: excluded\n",
+		"fixes:\n  none\n",
+	} {
+		if !strings.Contains(stdout.String(), contract) {
+			t.Fatalf("Run(explain defer-in-infinite-loop) output does not contain %q:\n%s", contract, stdout.String())
+		}
+	}
+	if exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf("Run(explain defer-in-infinite-loop) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+}
+
 func TestRunAppliesConfiguredSuppressionReasonPolicyAcrossSyntaxCommands(t *testing.T) {
 	t.Parallel()
 

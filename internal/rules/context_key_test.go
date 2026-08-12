@@ -155,7 +155,10 @@ func BenchmarkContextKeySharedTypes(b *testing.B) {
 	}
 	contextSelection, err := contextRegistry.Resolve(
 		rules.PresetSuspicious,
-		map[string]rules.Severity{"nilness": rules.SeverityOff},
+		map[string]rules.Severity{
+			"defer-in-infinite-loop": rules.SeverityOff,
+			"nilness":                rules.SeverityOff,
+		},
 	)
 	if err != nil {
 		b.Fatal(err)
@@ -283,6 +286,7 @@ func runContextKey(
 		overrides = make(map[string]rules.Severity)
 	}
 	overrides["nilness"] = rules.SeverityOff
+	overrides["defer-in-infinite-loop"] = rules.SeverityOff
 	if _, configured := overrides["context-key"]; !configured {
 		overrides["context-key"] = rules.SeverityWarn
 	}

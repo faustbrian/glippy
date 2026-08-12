@@ -647,3 +647,17 @@ without diagnostics; the root selection of an immutable go-libraries snapshot
 selected 16 files without diagnostics and does not represent its nested
 modules. The incomplete Phase 2 naming, release-platform, publication, and
 approved external-adoption gates keep overall progress at 45%.
+
+The production registry now also admits its first CFG-tier built-in,
+`defer-in-infinite-loop`, under the opt-in `suspicious` preset. It reports live
+defers lexically enclosed by conditionless loops only when the shared function
+CFG cannot reach a return, built-in panic, or `runtime.Goexit` after the defer.
+This distinguishes real loop exits from breaks owned by nested switches or
+selects, excludes nested function bodies, unreachable defers, generated files,
+and ill-typed packages, and offers no fix. Go 1.26.5 vet accepted the proving
+defect. Current Staticcheck SA5003, a reviewed public repair, red-green
+behavioral tests, public lint and explain coverage, a 100-function CFG cost
+probe, and non-mutating dogfood support admission. Gox selected 111 files
+without diagnostics; an immutable `go-libraries/pkg/clock` snapshot selected
+18 files without diagnostics. Overall progress stays 45% behind the Phase 2
+naming, release-platform, publication, and approved external-adoption gates.

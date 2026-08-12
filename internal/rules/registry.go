@@ -59,6 +59,7 @@ func NewRegistry(nativeRules ...Rule) (*Registry, error) {
 func NewDefaultRegistry() (*Registry, error) {
 	return NewRegistry(
 		contextKeyRule{},
+		deferInInfiniteLoopRule{},
 		duplicateConditionRule{},
 		ineffectiveBreakRule{},
 		nilnessRule{},
