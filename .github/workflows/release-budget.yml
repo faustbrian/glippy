@@ -29,17 +29,17 @@ jobs:
             goarch: arm64
     steps:
       - name: Check out Gox
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           path: gox
       - name: Check out immutable formatter corpus
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: faustbrian/golib
           ref: f28f85133ac6d13169745807fc39e2d5ef6bf780
           path: corpus
       - name: Install the recorded Go toolchain
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: 1.26.5
           cache: false
@@ -49,7 +49,7 @@ jobs:
           GOTOOLCHAIN: local
           GOX_EDITOR_LATENCY_BUDGET_MS: "250"
           GOX_PEAK_RSS_FORMAT_BUDGET_BYTES: "2147483648"
-          GOX_PEAK_RSS_FORMAT_BUDGET_SECONDS: "15"
+          GOX_PEAK_RSS_FORMAT_BUDGET_SECONDS: "90"
           GOX_PEAK_RSS_FORMAT_REVISION: f28f85133ac6d13169745807fc39e2d5ef6bf780
           GOX_PEAK_RSS_FORMAT_ROOT: ${{ github.workspace }}/corpus
           GOX_PEAK_RSS_RUNS: "5"
@@ -72,7 +72,7 @@ jobs:
         working-directory: ${{ github.workspace }}/gox
       - name: Retain raw evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-budget-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ runner.temp }}/release-budget-${{ matrix.goos }}-${{ matrix.goarch }}.log

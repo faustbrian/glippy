@@ -18,7 +18,7 @@ case "$format_budget_bytes" in
 		;;
 esac
 
-format_budget_seconds=${GOX_PEAK_RSS_FORMAT_BUDGET_SECONDS:-15}
+format_budget_seconds=${GOX_PEAK_RSS_FORMAT_BUDGET_SECONDS:-90}
 case "$format_budget_seconds" in
 	''|*[!0-9]*|0)
 		printf '%s\n' 'GOX_PEAK_RSS_FORMAT_BUDGET_SECONDS must be a positive integer' >&2

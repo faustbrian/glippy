@@ -864,3 +864,12 @@ A local non-isolated Darwin arm64 rehearsal stayed within the provisional
 limits, but the workflow has not run from GitHub and therefore supplies no
 native remote evidence yet. Stable performance budgets and maintainer-approved
 external adoption remain open, so progress stays 45%.
+
+Native workflow run `31611144933` invalidated the provisional 15-second
+repository-scale formatter maximum. First samples completed in 17.370 seconds
+on Linux arm64, 20.470 seconds on Linux amd64, 30.130 seconds on Darwin arm64,
+and 67.690 seconds on Darwin amd64 while remaining below 2 GiB; editor maxima
+were 3.438 to 20.677 milliseconds. The campaign now uses a provisional
+90-second maximum, giving 33% headroom over the slowest observed native sample,
+and current Node-runtime action releases. A complete five-sample rerun on all
+four native runners remains required, so progress stays 45%.

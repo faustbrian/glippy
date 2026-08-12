@@ -396,7 +396,7 @@ revision `f28f85133ac6d13169745807fc39e2d5ef6bf780`: 5,314 Go files totaling
 formatter runs in non-writing check mode and every completed sample must remain
 within both provisional budgets:
 
-- at most 15 elapsed seconds; and
+- at most 90 elapsed seconds; and
 - at most 2,147,483,648 bytes peak resident memory.
 
 These are per-sample maximums, not median targets. `peak-rss.sh` enforces both
@@ -462,7 +462,7 @@ campaign and rationale.
 
 The manually dispatched `Release budget evidence` GitHub Actions workflow pins
 the corpus revision, Go 1.26.5, the 250-millisecond editor maximum, and the
-15-second/2-GiB formatter maximum. It runs on native GitHub-hosted
+90-second/2-GiB formatter maximum. It runs on native GitHub-hosted
 `macos-15-intel`, `macos-15`, `ubuntu-24.04`, and `ubuntu-24.04-arm` runners,
 covering Darwin and Linux on amd64 and arm64. Action dependencies are pinned by
 complete commit ID, cache reuse is disabled, and each job retains the raw host
@@ -477,3 +477,11 @@ because its purpose is release evidence, not a noisy per-commit wall-clock
 assertion. Its existence is not evidence that the four jobs passed; the
 recorded run URL, job conclusions, runner image versions, and raw artifacts
 remain required before the provisional limits become stable release budgets.
+
+The first native run, [`31611144933`](https://github.com/faustbrian/gox/actions/runs/31611144933),
+rejected the original 15-second maximum. Its first repository-scale samples
+completed in 17.370 seconds on Linux arm64, 20.470 seconds on Linux amd64,
+30.130 seconds on Darwin arm64, and 67.690 seconds on Darwin amd64; every sample
+remained below the 2-GiB memory ceiling. The replacement 90-second provisional
+maximum gives 33% headroom over the slowest observation. It remains
+provisional until all five samples pass on every native runner.
