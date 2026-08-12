@@ -60,6 +60,13 @@ set independently on network-isolated Linux arm64 and Darwin arm64 with Go
 1.26.5, executed each host-native archive, and found all archives, manifest,
 and checksums byte-identical across hosts.
 
+The 2026-08-12 cache-platform rehearsal also ran the complete cache and CLI
+package suites, including the race detector, on network-isolated Linux arm64
+overlayfs. Focused cases proved resolved-root pinning, symlink containment,
+reuse, pruning, invalid-root refusal, and cache-open failure reporting. This
+adds Linux runtime evidence without extending those filesystem claims to
+Windows or unrecorded storage drivers.
+
 The Phase 4 cache foundation uses a versioned SHA-256 key over canonical,
 length-prefixed fields. Every consumer must supply its result namespace, tool
 version, build Go toolchain, selected source language version, configuration

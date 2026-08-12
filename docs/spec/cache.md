@@ -136,8 +136,11 @@ symlink. A later change to the user-supplied symlink therefore cannot redirect
 the validated store into the project. The CLI removes canonical publication
 temporaries strictly older than 24 hours during the same non-canceled pruning
 pass; newer or unrecognized files remain untouched. Platform evidence for
-hard-link publication beyond the recorded filesystems and a product-wide
-warm-performance claim remain open.
+hard-link publication beyond the recorded Darwin/APFS and Linux/overlayfs
+filesystems and a product-wide warm-performance claim remain open. The
+[Linux cache-platform rehearsal](../research/cache-platform-evidence-2026-08-12.md)
+exercises root pinning, symlink containment, store lifecycle, and the CLI cache
+boundary on the recorded Linux pair.
 
 Persistent object identity is the owning package path plus the canonical
 x/tools `objectpath`. It is proven across independent type checks for package

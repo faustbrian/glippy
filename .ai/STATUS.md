@@ -560,8 +560,8 @@ recovery, cancel-without-prune behavior, syntax-command independence, invalid
 limits, roots inside the project, and cache-open failure categories.
 The current source-language identity remains the documented Go 1.26 prototype
 policy. Cache-root validation resolves existing symlink ancestry before open,
-but the validation-to-open race and broader platform runtime evidence remain
-open. Progress stays 45% behind the Phase 2 naming,
+but broader platform runtime evidence remained open at this point. Progress
+stays 45% behind the Phase 2 naming,
 release, platform-runtime, and approved external-adoption gates.
 
 Cache-root admission now resolves one immutable prospective target, validates
@@ -570,10 +570,14 @@ opens every resolved component through pinned rooted handles with identity
 checks. A deterministic symlink-swap regression proves that changing the
 caller-supplied link after validation cannot redirect cache writes into the
 project, while rejected roots create nothing. This closes the
-validation-to-open race in the current Darwin runtime evidence. Linux and
-Windows runtime evidence for this path remains open, and the Phase 2 naming,
-release, platform-runtime, and approved external-adoption gates keep overall
-progress at 45%.
+validation-to-open race in the current Darwin runtime evidence. A later
+network-isolated Linux arm64 overlayfs rehearsal passes the focused root
+pinning, escaping-shard, cache reuse, pruning, invalid-root, and failure-mapping
+cases, then the complete cache and CLI package suites with and without the race
+detector. This closes Linux runtime evidence for the current cache-root and CLI
+lifecycle boundary. Windows and unrecorded storage drivers remain open, and the
+Phase 2 naming, release, platform-runtime, and approved external-adoption gates
+keep overall progress at 45%.
 
 The Phase 2 prototype release builder now produces path-trimmed, cgo-free
 Darwin arm64 and Linux arm64 binaries with explicit linked versions inside
