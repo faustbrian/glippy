@@ -9,7 +9,8 @@ here.
 [RFC2119]: https://www.rfc-editor.org/rfc/rfc2119
 [RFC8174]: https://www.rfc-editor.org/rfc/rfc8174
 
-The binary name is written as `gox` while ADR 0001 remains provisional.
+The current product and binary name is `gox`. ADR 0001 requires one final
+collision and trademark audit before the first public tag.
 
 ## Commands
 
@@ -355,10 +356,15 @@ If JSON construction, encoding, or stream output fails after replacements,
 stderr MUST name every completed or possibly completed replacement, and the
 invocation MUST return the applicable failure category.
 
-Gox MUST advertise write and fix mode support only for operating-system,
-architecture, and filesystem combinations with runtime replacement evidence.
-The current Phase 2 evidence covers Darwin arm64 on APFS and Linux arm64 on
-overlayfs. Windows amd64 compilation is proven, but a release MUST NOT advertise
-Windows write or fix support until a runtime suite passes and the non-atomic
-rename boundary is accepted or replaced. Network and distributed filesystems
-are unproven even on an otherwise supported operating system.
+Gox MUST advertise runtime support only for macOS and Linux. It MUST advertise
+write and fix mode support only for operating-system, architecture, and local
+filesystem combinations with runtime replacement evidence. The current Phase 2
+evidence covers Darwin arm64 on APFS and Linux arm64 on overlayfs. Windows and
+all other operating systems MUST remain unsupported unless a later maintainer
+decision changes the platform policy and corresponding runtime evidence passes.
+
+Network, distributed, and userspace filesystems MUST remain outside the
+supported write/fix boundary until separately admitted. Gox MUST NOT claim
+forced-power-loss durability. A successful write means the documented sync and
+replacement sequence completed under the operating system contract; it does not
+extend that contract to storage hardware or unverified filesystem semantics.

@@ -2,6 +2,7 @@
 
 - Status: accepted for prototype
 - Date: 2026-08-09
+- Refreshed: 2026-08-12
 
 ## Context And Evidence
 
@@ -34,12 +35,21 @@ filesystem replacement; exit code 130 distinguishes cancellation from an
 internal tool defect.
 
 Write-mode support claims are scoped to platform and filesystem pairs with
-runtime integration evidence. The current Phase 2 evidence covers Darwin arm64
-on APFS and Linux arm64 on overlayfs. Windows amd64 cross-compiles, but Go's
-non-Unix rename contract is not atomic and no Windows runtime suite has passed,
-so Windows write and fix behavior is not release-supported. The evidence and
-revisit boundary are recorded in
+runtime integration evidence. Gox supports macOS and Linux only. The current
+Phase 2 replacement evidence covers Darwin arm64 on APFS and Linux arm64 on
+overlayfs; admitted release artifacts additionally target amd64. Windows and
+all other operating systems are intentionally unsupported, so Windows runtime
+evidence is not a release gate. The evidence and revisit boundary are recorded
+in
 [`../research/filesystem-platform-evidence-2026-08-11.md`](../research/filesystem-platform-evidence-2026-08-11.md).
+
+Write and fix guarantees apply only to local filesystems whose documented
+semantics satisfy the recorded same-directory replacement contract. Network,
+distributed, and userspace filesystems are outside the supported write/fix
+boundary unless separately admitted. Gox does not claim survival of a forced
+power loss; a successful return proves the implemented file and directory sync
+sequence completed, not storage-hardware durability beyond the operating system
+contract.
 
 The lint CLI resolves configuration before selecting its analysis boundary.
 Syntax-only files, directories, and terminal `...` patterns reuse deterministic
@@ -91,4 +101,6 @@ atomicity or durability there.
 ## Revisit Trigger
 
 Dogfood evidence demonstrates one-root configuration cannot model a required
-repository, or platform integration proves a safe broader filesystem policy.
+repository, or macOS/Linux integration proves a safe broader local-filesystem
+policy. Adding another operating system requires an explicit maintainer change
+to the supported-platform policy before runtime work begins.

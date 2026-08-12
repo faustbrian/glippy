@@ -1,8 +1,8 @@
 # Formatter Rules
 
-This document describes the current formatter dialect. Gox remains a
-pre-release working name, and formatter output is not yet covered by a stable
-release compatibility promise.
+This document describes the current formatter dialect. Gox is the selected
+development identity, but its final public name and formatter output are not
+yet covered by stable release compatibility promises.
 
 The formatter changes whitespace and canonical layout only. It does not add or
 remove imports, rename identifiers, simplify expressions, or perform semantic

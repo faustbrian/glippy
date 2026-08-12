@@ -51,6 +51,12 @@ non-generated files deliberately, inspect the complete migration, and run the
 external repository's own scoped gates before it can count as completed
 adoption.
 
+The maintainer selected `go-libraries/pkg/prompts` as the external adoption
+target on 2026-08-12. Selection does not approve the earlier disposable diff:
+the formatter migration must be reproduced from a current immutable revision,
+presented as a dedicated reviewable diff, and accepted by the maintainer before
+it counts as adoption.
+
 ## Bounded Write Rehearsal
 
 The `pkg/prompts` module was selected for a bounded write rehearsal because it

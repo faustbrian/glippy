@@ -32,20 +32,17 @@ These runs establish the current write-mode contract only for the recorded
 Darwin/APFS and Linux/overlayfs pairs. They do not establish crash recovery
 under forced power loss or atomicity on network mounts.
 
-## Windows And Other Platforms
+## Unsupported Platforms And Filesystems
 
-The filesystem, fix, and CLI test binaries cross-compile for Windows amd64, but
-they were not executed on Windows. The Go 1.26.5 `os.Rename` contract states
-that replacement is not atomic on non-Unix platforms, including within one
-directory. `os.Root.Rename` delegates to that contract. Gox therefore does not
-claim release-supported Windows write or fix behavior until a Windows runtime
-suite passes and a decision records the weaker replacement and directory-sync
-guarantees or selects a stronger platform implementation.
+Gox supports macOS and Linux only. The filesystem, fix, and CLI test binaries
+cross-compile for Windows amd64, but Windows runtime evidence is intentionally
+not a release gate and no Windows write or fix support is claimed.
 
-Plan 9, WebAssembly, WASI, network filesystems, and other unrecorded platform
-pairs have no write-mode claim. Check and standard-output modes remain
-non-mutating by contract, but compilation alone is not runtime evidence for
-those platforms.
+Plan 9, WebAssembly, WASI, network, distributed, userspace, and other unrecorded
+platform/filesystem pairs have no write-mode claim. Forced-power-loss durability
+is also outside the supported contract. Check and standard-output modes remain
+non-mutating by contract, but compilation alone is not runtime evidence for an
+unsupported platform.
 
 ## Authorities And Revisit Trigger
 

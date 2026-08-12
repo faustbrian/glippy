@@ -41,9 +41,8 @@ The current prototype target set is:
 - `linux/amd64`;
 - `linux/arm64`.
 
-Windows is excluded because its write and fix behavior has only cross-compile
-evidence. Other operating systems require their own runtime and filesystem
-evidence before admission. Darwin amd64 has Rosetta execution evidence and
+Windows and operating systems other than macOS and Linux are intentionally
+unsupported. Darwin amd64 has Rosetta execution evidence and
 Linux amd64 has Docker architecture-emulation evidence; neither substitutes
 for a native amd64 host claim.
 
@@ -83,7 +82,14 @@ architecture emulation, while both arm64 executions were native to their host
 architecture. Both build environments ran on one physical Darwin host, so
 separate-host reproduction remains open.
 
-`gox` remains a working name. A final rename requires updating the centralized
-release product name and linker path before any public artifact is produced.
-Signing, provenance attestations, checksummed installer metadata, and public
-publication remain Phase 5 work.
+GitHub Releases is the selected publication channel. The builder already emits
+SHA-256 checksums, but signing, provenance attestations, checksummed installer
+metadata, and publication automation remain Phase 5 work. The signing and
+attestation mechanism requires a separate decision; likely Go/GitHub-native
+candidates are GitHub artifact attestations or SLSA provenance and keyless
+Cosign signing rather than a long-lived private release key.
+
+No public tag or GitHub Release may be created until the complete goal reaches
+100%, the release candidate passes its final evidence gates, and the maintainer
+personally verifies and reviews it. The final naming audit must pass before that
+authorization is requested.

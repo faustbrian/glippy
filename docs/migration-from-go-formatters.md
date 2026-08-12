@@ -5,10 +5,10 @@ adopts Gox must make it the sole formatting authority for the selected files.
 Running gofmt, gofumpt, or golines after Gox can create permanent formatting
 churn.
 
-Gox, its binary name, and its module path remain provisional until the naming
-audit and release work are complete. Use a pinned, locally built revision for a
-rehearsal; do not treat the current name or command path as a stable release
-contract.
+Gox is the selected development identity. Its public binary and module contract
+remain gated on the final naming audit and release work. Use a pinned, locally
+built revision for a rehearsal; do not treat the current command path as a
+stable release contract.
 
 ## Why The Outputs Differ
 
@@ -104,8 +104,10 @@ files and reached a zero-difference second Gox check. Its tests, race tests,
 vet, and module-metadata check passed. Even so, 63 files were not gofmt fixed
 points, so the repository's existing format check would reject the migration.
 
-That rehearsal demonstrates why passing code gates does not resolve competing
-formatter authority. It does not establish owner approval, complete human
-review, or repository-wide adoption. See the
+The maintainer has selected `go-libraries/pkg/prompts` as the adoption target,
+but has not reviewed or approved that disposable diff. The migration must be
+reproduced from a current immutable revision and presented as a dedicated
+reviewable change. The earlier rehearsal demonstrates why passing code gates
+does not resolve competing formatter authority. See the
 [external dogfood record](research/external-dogfood-2026-08-11.md) for the
 bounded evidence.

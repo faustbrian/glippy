@@ -2,21 +2,19 @@
 
 - Initial audit: 2026-08-09
 - Candidate refresh: 2026-08-11
+- Maintainer development-name decision: 2026-08-12
 
 ## Conclusion
 
-`gox` is not suitable as the public product or binary name without accepting
-direct ecosystem collisions. The working name may remain during private
-development, but a replacement name and owner-controlled module path are
-required before a public tag. This is a technical collision audit, not legal
-clearance.
+`gox` has direct ecosystem collisions. The maintainer has chosen to retain Gox,
+binary `gox`, and module path `github.com/faustbrian/gox` during development and
+has rejected an immediate rename. This development decision does not constitute
+legal clearance or final public-release acceptance of the collisions.
 
-The current private module path, `github.com/faustbrian/gox`, follows this
-repository's configured remote. It is provisional and must change with the
-product name before third parties can depend on it. The recommended technical
-replacement is **Gofettle**, with binary `gofettle` and proposed module path
-`github.com/faustbrian/gofettle`, subject to maintainer approval, repository
-rename, and professional trademark review.
+The earlier technical screen recommended **Gofettle**, binary `gofettle`, and
+module path `github.com/faustbrian/gofettle`. That proposal came from this
+agent-produced collision audit rather than the maintainer and is not the chosen
+development identity. It remains historical candidate evidence only.
 
 ## Direct Collisions
 
@@ -66,15 +64,14 @@ domains. Search results are point-in-time evidence dated above. USPTO, TMview,
 and WIPO search entry points did not produce a reliable automated exact-mark
 result, so this audit makes no legal-clearance claim.
 
-Before adopting the recommendation, obtain jurisdiction- and class-specific
-trademark advice. Immediately before any public rename or reservation, repeat
-the repository, module, binary, package-manager, domain, and social-name checks.
-A negative automated search must not be treated as legal clearance.
+Before a public release under any name, obtain jurisdiction- and class-specific
+trademark advice and repeat the repository, module, binary, package-manager,
+domain, and social-name checks. A negative automated search must not be treated
+as legal clearance.
 
 ## Revisit Trigger
 
-The maintainer must approve or reject `Gofettle`. After approval and the final
-technical refresh, rename the repository, module path, binary, CLI examples,
-configuration references, cache namespaces, and release metadata as one
-coherent migration before any public release, package publication, installation
-documentation, or external integration references the current working name.
+Immediately before a public tag or installation contract, refresh the technical
+screen and record one final decision: retain Gox with explicit collision and
+trademark evidence, or rename the repository, module path, binary, CLI examples,
+configuration references, cache namespaces, and release metadata coherently.

@@ -2,6 +2,7 @@
 
 - Status: accepted for prototype; release details deferred
 - Date: 2026-08-09
+- Refreshed: 2026-08-12
 
 ## Context And Evidence
 
@@ -36,8 +37,9 @@ with neither reports `devel`. Official release builders set
 flag. Version inspection performs no source, configuration, package, or network
 work.
 
-The maintainer-only prototype release builder admits Darwin and Linux on amd64
-and arm64. It pins `GOAMD64=v1` and `GOARM64=v8.0`, uses the selected local Go
+The maintainer-only prototype release builder admits macOS and Linux on amd64
+and arm64. Windows and other operating systems are intentionally unsupported.
+It pins `GOAMD64=v1` and `GOARM64=v8.0`, uses the selected local Go
 toolchain,
 disables ambient workspace, environment-file, toolchain-download, and VCS
 metadata, builds without cgo, trims paths, and links the exact canonical
@@ -69,14 +71,21 @@ operating system and architecture. Darwin amd64 used Rosetta, Linux amd64 used
 Docker architecture emulation, and both arm64 executions were native to their
 host architecture. This proves the prototype artifact boundary without
 claiming native amd64 host evidence, reproduction on a separate physical host,
-or public platform support.
+or native amd64 host execution.
+
+GitHub Releases is the selected publication channel. Public tags and releases
+remain prohibited until the full project reaches 100%, the release candidate
+passes the final gates, and the maintainer personally verifies and reviews it.
+The release workflow will retain the existing SHA-256 manifest and must add an
+accepted signing and provenance mechanism before publication; that mechanism is
+not selected by this decision.
 
 The 2026-08-12 cache-platform rehearsal also ran the complete cache and CLI
 package suites, including the race detector, on network-isolated Linux arm64
 overlayfs. Focused cases proved resolved-root pinning, symlink containment,
 reuse, pruning, invalid-root refusal, and cache-open failure reporting. This
 adds Linux runtime evidence without extending those filesystem claims to
-Windows or unrecorded storage drivers.
+unsupported operating systems or unrecorded storage drivers.
 
 The Phase 4 cache foundation uses a versioned SHA-256 key over canonical,
 length-prefixed fields. Every consumer must supply its result namespace, tool

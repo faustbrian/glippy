@@ -51,17 +51,17 @@ separates terminal call arguments from callee fit decisions and reduces 193
 selector-pattern targets to two lines belonging to one intentionally broken,
 deeply indented indexed chain. The complete migration snapshot is classified,
 valid, and idempotent, restoring the Phase 1 exit gate. Existing safe
-filesystem, configuration, and CLI proof supports 45%. Windows and other
-unverified filesystem semantics, release artifacts, and
-external-repository adoption remain open before the 55% gate.
+filesystem, configuration, and CLI proof supports 45%. Stable release-scale
+performance budgets and approved external-repository adoption remain open
+before the 55% gate.
 
 The replacement integration suite now passes on Darwin 27.0.0 arm64 with APFS
-and Linux arm64 with overlayfs under Go 1.26.5. Windows amd64 filesystem, fix,
-and CLI tests cross-compile, but no Windows runtime evidence exists and Go does
-not promise atomic non-Unix rename. Release support is therefore scoped to the
-two recorded platform/filesystem pairs; Windows, network filesystems, and
-crash-durability under forced power loss remain unverified. This narrows the
-platform gate without advancing progress beyond 45%.
+and Linux arm64 with overlayfs under Go 1.26.5. Gox supports macOS and Linux
+only; Windows cross-compilation is informational and Windows runtime evidence is
+not a release gate. Network, distributed, and userspace filesystems plus forced
+power-loss durability are outside the supported write/fix boundary unless
+separately admitted. Current replacement guarantees remain scoped to the two
+recorded platform/filesystem pairs.
 
 An immutable external check of `go-libraries` at
 `a6f1c1f66a1b754e7384da0f6e97e0b3587c5f71` selected 5,051 files. It exposed
@@ -86,7 +86,7 @@ The current formatter dialect is now published with evidence-linked examples
 covering width, indentation, blocks, semicolons, control flow, lists, binary
 expressions, selectors, comments, directives, preserved source choices, and
 write refusal. This closes the Phase 2 formatter-rule documentation item but
-does not resolve the remaining platform, naming, or external-adoption gates.
+does not resolve the remaining stable-performance or external-adoption gates.
 
 Isolated Phase 3 foundation work now defines validated canonical rule metadata,
 an immutable ordered registry, preset and override resolution, maximum-tier
@@ -795,3 +795,20 @@ was 1,396,160 bytes plus the current Oxfmt/Oxlint source review at Oxc
 release-wide memory budget or bound `go/packages` package-selection reads that
 precede Gox's parse hook, so progress remains 45% behind the existing Phase 2
 release gates.
+
+The maintainer has retained Gox as the development product, binary, repository,
+and module identity; the earlier agent-produced Gofettle recommendation is not
+adopted. A fresh collision and trademark audit remains mandatory before the
+first public tag. Supported runtime operating systems are macOS and Linux only;
+Windows runtime evidence is no longer a release gate. Network, distributed, and
+userspace filesystems plus forced-power-loss durability are explicitly outside
+the supported write/fix contract unless later admitted. GitHub Releases is the
+selected publication channel, while its signing and provenance mechanism
+remains a Phase 5 decision. No tag or release may be created until the complete
+goal reaches 100%, its release evidence passes, and the maintainer personally
+verifies and reviews it. `go-libraries/pkg/prompts` is the selected external
+adoption target, but its earlier disposable 69-file migration was neither
+retained nor reviewed; it must be reproduced from a current immutable revision
+as a dedicated reviewable diff. These decisions remove naming, Windows, and
+unbounded-filesystem evidence from the current Phase 2 input list, but stable
+performance budgets and approved adoption remain open, so progress stays 45%.

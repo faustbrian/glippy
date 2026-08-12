@@ -1,8 +1,8 @@
 # ADR 0001: Product And Module Name
 
-- Status: provisional; replacement recommendation awaiting approval
+- Status: accepted for development; final public-release audit required
 - Date: 2026-08-09
-- Refreshed: 2026-08-11
+- Refreshed: 2026-08-12
 
 ## Context And Evidence
 
@@ -14,23 +14,24 @@ The complete evidence and candidate screen are recorded in
 
 ## Decision
 
-`gox` remains an internal working name only. The current
-`github.com/faustbrian/gox` module path follows the configured repository
-remote but is not a stable public import contract. Public installation,
-package publication, integrations, and releases are blocked until a replacement
-product name, binary name, and owner-controlled module path pass a repeated
-ecosystem audit and appropriate trademark review.
+The maintainer has selected **Gox**, binary `gox`, repository
+`github.com/faustbrian/gox`, and module path `github.com/faustbrian/gox` for
+continued development. The earlier **Gofettle** recommendation is rejected for
+the current development identity; no repository or namespace rename is
+authorized.
 
-The technical audit recommends **Gofettle**, binary `gofettle`, and module path
-`github.com/faustbrian/gofettle`. This recommendation is not adoption authority:
-the maintainer must approve the product name, obtain appropriate trademark
-advice, and authorize any external repository or namespace changes. Until then,
-the repository continues to use the private `gox` working identity.
+This is not final public-release clearance. Before the first public tag or
+installation contract, the project must refresh the ecosystem-collision audit,
+obtain appropriate trademark advice, and either retain Gox with an explicit
+acceptance of the documented collisions or select a replacement. Until that
+gate passes, the current module path must not be presented as a stable public
+import contract.
 
 ## Alternatives Rejected
 
-- Retain `gox`: rejected because installed-binary and command collisions are
-  already concrete, not hypothetical.
+- Rename immediately: rejected by the maintainer while the product remains in
+  development. The collision evidence remains relevant to the final
+  public-release decision.
 - `Goburnish`: technically clear in the checked namespaces, but longer and less
   direct as a frequently typed Go command.
 - `Goquoin`, `Goarden`, `Gomeld`, and `Gosculpt`: technically clear in the
@@ -39,12 +40,13 @@ the repository continues to use the private `gox` working identity.
 
 ## Consequences
 
-Internal implementation packages must remain unexported. Documentation must
-label the name as provisional. The local rename and external namespace
-reservation remain blocked on maintainer approval and legal review; they must
-happen before downstream consumers exist.
+Internal implementation packages remain unexported. Documentation may use Gox
+as the current product identity but must not claim final trademark clearance or
+a stable public module contract. No rename work is pending during ordinary
+development; the final release audit remains mandatory.
 
 ## Revisit Trigger
 
-Before the first public tag, installation instructions, external integration,
-or exported package contract.
+Immediately before the first public tag, installation instructions, external
+integration, or exported package contract, and whenever a material new `gox`
+collision appears.
