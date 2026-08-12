@@ -661,3 +661,16 @@ probe, and non-mutating dogfood support admission. Gox selected 111 files
 without diagnostics; an immutable `go-libraries/pkg/clock` snapshot selected
 18 files without diagnostics. Overall progress stays 45% behind the Phase 2
 naming, release-platform, publication, and approved external-adoption gates.
+
+Formatter acceptance now proves Gox suppression ownership rather than only
+directive identity and neighboring-line anchors. Every structurally valid line,
+next-line, paired-range, and file suppression retains the same normalized token
+ordinals across formatting, including rule IDs absent from the current registry;
+malformed syntax retains ordinary byte and anchor protection without acquiring
+a target. Ownership drift rejects complete-file and fragment output before any
+bytes are returned, so stdout, check, diff, write, combined check, and lint-fix
+normalization share one refusal boundary. Focused fixtures cover direct scopes,
+paired ranges, file scope, malformed and unregistered directives, every
+formatter mode without mutation, and full fix rollback. Progress remains 45%
+behind the Phase 2 naming, release-platform, publication, and approved
+external-adoption gates.

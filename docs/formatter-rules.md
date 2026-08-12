@@ -178,7 +178,12 @@ adjacency:
 - Gox suppression directives.
 
 Formatting is rejected if comment or directive accounting cannot prove one
-valid owner for every input comment.
+valid owner for every input comment. A structurally valid Gox suppression must
+also own the same normalized source tokens after formatting. If expanding a
+compressed line would narrow an `ignore` or `ignore-line` target, Gox refuses
+stdout, check, diff, and write output instead of silently changing which
+diagnostic is suppressed. Formatter normalization after lint fixes uses the
+same refusal boundary and rolls back the selected single-file transaction.
 
 ## Preserved Source Choices
 

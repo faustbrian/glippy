@@ -57,6 +57,17 @@ on both sides because their ownership can be line-relative. Class-specific
 rules MAY allow canonical adjacent-versus-blank spacing before other directives
 while retaining their semantic target.
 
+For every structurally valid Gox suppression, validation MUST also preserve
+the exact normalized token ordinals owned by its line, next-line, paired-range,
+or file target. Comments, commas, and semicolons are excluded from this target
+fingerprint because their independent accounting permits comment placement,
+required trailing commas, and ordinary-statement separator normalization.
+Rule registration and configurable reason or expiry evaluation MUST NOT affect
+formatter validation: a syntactically valid directive for an unregistered rule
+still owns a target. Malformed directive syntax has no suppression target, but
+its exact bytes, order, comment owner, and physical anchor remain subject to
+the ordinary directive checks.
+
 ## Additional Evidence
 
 Owned multi-file fixtures SHOULD type-check or compile after formatting.

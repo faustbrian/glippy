@@ -1321,6 +1321,54 @@ func TestRunWriteDoesNotTouchFormattedFile(t *testing.T) {
 	}
 }
 
+func TestRunFormattingModesRejectSuppressionOwnershipDriftWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package sample\nfunc run(ready bool) {\n" +
+		"//gox:ignore duplicate-condition -- legacy branch\n" +
+		"if ready { use() } else if ready { retry() }\n}\nfunc use(){}\nfunc retry(){}\n")
+	tests := []struct {
+		name      string
+		arguments func(string) []string
+		stdin     io.Reader
+	}{
+		{name: "stdout", arguments: func(string) []string { return []string{"fmt"} }, stdin: bytes.NewReader(input)},
+		{name: "check", arguments: func(path string) []string { return []string{"fmt", "--check", path} }, stdin: failingReader{}},
+		{name: "diff", arguments: func(path string) []string { return []string{"fmt", "--diff", path} }, stdin: failingReader{}},
+		{name: "write", arguments: func(path string) []string { return []string{"fmt", "--write", path} }, stdin: failingReader{}},
+		{name: "combined check", arguments: func(path string) []string { return []string{"check", path} }, stdin: failingReader{}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, "source.go")
+			if err := os.WriteFile(path, input, 0o640); err != nil {
+				t.Fatal(err)
+			}
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+
+			exitCode := Run(test.arguments(path), test.stdin, &stdout, &stderr)
+
+			if exitCode != ExitInternalError || stdout.Len() != 0 ||
+				!strings.Contains(stderr.String(), "suppression ownership changed") {
+				t.Fatalf("Run() = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+			}
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, input) {
+				t.Fatalf("Run() mutated source: %q", got)
+			}
+		})
+	}
+}
+
 func TestRunWriteReportsVersionedJSONOutcomesInPathOrder(t *testing.T) {
 	t.Parallel()
 

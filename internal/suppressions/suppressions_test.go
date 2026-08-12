@@ -75,12 +75,99 @@ func run() {
 	}
 }
 
+func TestValidateStablePreservesPhysicalSuppressionTargets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		before  string
+		after   string
+		wantErr bool
+	}{
+		{
+			name: "next line target drifts when one statement line expands",
+			before: "package sample\nfunc run(ready bool) {\n" +
+				"//gox:ignore duplicate-condition -- legacy branch\n" +
+				"if ready { use() } else if ready { retry() }\n}\n",
+			after: "package sample\nfunc run(ready bool) {\n" +
+				"\t//gox:ignore duplicate-condition -- legacy branch\n" +
+				"\tif ready {\n\t\tuse()\n\t} else if ready {\n\t\tretry()\n\t}\n}\n",
+			wantErr: true,
+		},
+		{
+			name: "same line target drifts when statements split",
+			before: "package sample\nfunc run() { first(); second() " +
+				"//gox:ignore-line duplicate-condition -- legacy branch\n}\n",
+			after: "package sample\nfunc run() {\n\tfirst()\n\tsecond() " +
+				"//gox:ignore-line duplicate-condition -- legacy branch\n}\n",
+			wantErr: true,
+		},
+		{
+			name: "direct targets retain the same tokens after indentation changes",
+			before: "package sample\nfunc run() {\n//gox:ignore duplicate-condition\n" +
+				"target()\nother() //gox:ignore-line duplicate-condition\n}\n",
+			after: "package sample\nfunc run() {\n\t//gox:ignore duplicate-condition\n" +
+				"\ttarget()\n\tother() //gox:ignore-line duplicate-condition\n}\n",
+		},
+		{
+			name: "paired range target drifts across its end",
+			before: "package sample\n//gox:ignore-start duplicate-condition -- legacy branch\n" +
+				"func first() {}\nfunc second() {}\n//gox:ignore-end duplicate-condition\n",
+			after: "package sample\n//gox:ignore-start duplicate-condition -- legacy branch\n" +
+				"func first() {}\n//gox:ignore-end duplicate-condition\nfunc second() {}\n",
+			wantErr: true,
+		},
+		{
+			name: "paired range owns the same tokens after layout changes",
+			before: "package sample\n//gox:ignore-start duplicate-condition -- legacy branch\n" +
+				"func run(){first();second()}\n//gox:ignore-end duplicate-condition\n",
+			after: "package sample\n//gox:ignore-start duplicate-condition -- legacy branch\n" +
+				"func run() {\n\tfirst()\n\tsecond()\n}\n//gox:ignore-end duplicate-condition\n",
+		},
+		{
+			name: "file scope owns all tokens after layout changes",
+			before: "//gox:ignore-file duplicate-condition -- generated adapter\n" +
+				"package sample\nfunc run(){first();second()}\n",
+			after: "//gox:ignore-file duplicate-condition -- generated adapter\n" +
+				"package sample\n\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
+		},
+		{
+			name:    "unregistered rule still has stable syntax ownership",
+			before:  "package sample\n//gox:ignore future-rule\nfunc run(){first();second()}\n",
+			after:   "package sample\n//gox:ignore future-rule\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
+			wantErr: true,
+		},
+		{
+			name:   "malformed direct suppression has no target contract",
+			before: "package sample\n//gox:ignore duplicate-condition extra\nfunc run(){first();second()}\n",
+			after:  "package sample\n//gox:ignore duplicate-condition extra\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
+		},
+		{
+			name:   "unknown directive has no target contract",
+			before: "package sample\n//gox:unknown duplicate-condition\nfunc run(){first();second()}\n",
+			after:  "package sample\n//gox:unknown duplicate-condition\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			before := loadFile(t, test.before)
+			after := loadFile(t, test.after)
+			err := suppressions.ValidateStable(before, after)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("ValidateStable() error = %v, wantErr %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestParseReportsMalformedAndUnknownDirectivesInSourceOrder(t *testing.T) {
 	t.Parallel()
 
 	input := `//gox:ignore known-rule
 //gox:ignore
 //gox:ignore unknown-rule -- reason
+//gox:ignore-end unknown-rule -- invalid end reason
 //gox:ignore known-rule --
 package sample
 
@@ -95,6 +182,7 @@ func run() {}
 	want := []suppressions.ProblemKind{
 		suppressions.ProblemMissingReason,
 		suppressions.ProblemMalformed,
+		suppressions.ProblemUnknownRule,
 		suppressions.ProblemUnknownRule,
 		suppressions.ProblemMissingReason,
 		suppressions.ProblemMisplacedFileScope,
@@ -333,10 +421,14 @@ func FuzzParse(f *testing.F) {
 	f.Add([]byte("package sample\n//gox:ignore known-rule -- expires=2026-02-30 invalid\nfunc run() {}\n"))
 	f.Add([]byte("//gox:ignore-file known-rule\r\npackage sample\r\n"))
 	f.Add([]byte("package sample\n//gox:ignore-start known-rule\n//gox:ignore-end known-rule\n"))
+	f.Add([]byte("package sample\n//gox:ignore known-rule\nfunc run(){first();second()}\n"))
 	f.Fuzz(func(t *testing.T, input []byte) {
 		file, _ := source.Load("fuzz.go", input)
 		if file == nil {
 			return
+		}
+		if err := suppressions.ValidateStable(file, file); err != nil {
+			t.Fatalf("ValidateStable() rejected identical source: %v", err)
 		}
 		options := suppressions.ParseOptions{
 			KnownRules:   []string{"known-rule"},

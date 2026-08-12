@@ -12,6 +12,7 @@ import (
 
 	"github.com/faustbrian/gox/internal/format/doc"
 	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/gox/internal/suppressions"
 )
 
 // Options controls deterministic formatting.
@@ -50,6 +51,9 @@ func File(file *source.File, options Options) ([]byte, error) {
 	if err := source.ValidateEquivalent(file, formattedFile); err != nil {
 		return nil, fmt.Errorf("formatted output failed equivalence: %w", err)
 	}
+	if err := suppressions.ValidateStable(file, formattedFile); err != nil {
+		return nil, fmt.Errorf("formatted output failed suppression validation: %w", err)
+	}
 	again, err := render(formattedFile, options)
 	if err != nil {
 		return nil, fmt.Errorf("repeat formatting failed: %w", err)
@@ -79,6 +83,9 @@ func Fragment(fragment *source.Fragment, options Options) ([]byte, error) {
 	}
 	if err := source.ValidateFragmentEquivalent(fragment, formattedFragment); err != nil {
 		return nil, fmt.Errorf("formatted fragment failed equivalence: %w", err)
+	}
+	if err := suppressions.ValidateStable(fragment, formattedFragment); err != nil {
+		return nil, fmt.Errorf("formatted fragment failed suppression validation: %w", err)
 	}
 	again, err := renderFragment(formattedFragment, options)
 	if err != nil {

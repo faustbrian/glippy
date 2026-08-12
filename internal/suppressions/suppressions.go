@@ -4,8 +4,10 @@ package suppressions
 import (
 	"bytes"
 	"cmp"
+	"errors"
 	"go/token"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -94,9 +96,39 @@ type parsedDirective struct {
 	range_    source.Range
 }
 
+type physicalSource interface {
+	Bytes() []byte
+	Tokens() []source.Token
+	Directives() []source.Directive
+}
+
+type ownershipFingerprint struct {
+	directive int
+	start     int
+	end       int
+}
+
 // Directives returns an independent source-ordered suppression snapshot.
 func (i Index) Directives() []Directive {
 	return slices.Clone(i.directives)
+}
+
+// ValidateStable verifies that every structurally valid suppression continues
+// to own the same normalized physical tokens after a source transformation.
+// Rule registration and configurable reason or expiry policy deliberately do
+// not participate because formatting must be stable without lint configuration.
+func ValidateStable(before, after physicalSource) error {
+	if before == nil || after == nil {
+		return errors.New("suppression stability requires two source units")
+	}
+	beforeOwnership := suppressionOwnership(before)
+	afterOwnership := suppressionOwnership(after)
+	if !slices.EqualFunc(beforeOwnership, afterOwnership, func(left, right ownershipFingerprint) bool {
+		return left == right
+	}) {
+		return errors.New("suppression ownership changed")
+	}
+	return nil
 }
 
 // Parse validates Gox suppression directives and assigns physical targets.
@@ -323,10 +355,53 @@ func parseDirective(
 	requireReason bool,
 	expiryCutoff string,
 ) (parsedDirective, *Problem) {
+	parsed, reason, hasReason, problem := parseDirectiveShape(candidate)
+	if problem != nil {
+		return parsedDirective{}, problem
+	}
+	if _, found := known[parsed.ruleID]; !found {
+		return parsedDirective{}, &Problem{
+			Kind:    ProblemUnknownRule,
+			Range:   candidate.Range,
+			Message: "suppression names unknown rule " + parsed.ruleID,
+		}
+	}
+	parsed, problem = validateDirectiveSyntax(candidate, parsed, reason, hasReason)
+	if problem != nil {
+		return parsedDirective{}, problem
+	}
+	if requireReason && !parsed.rangeEnd && parsed.reason == "" {
+		return parsedDirective{}, &Problem{
+			Kind:    ProblemMissingReason,
+			Range:   candidate.Range,
+			Message: "suppression requires a non-empty reason",
+		}
+	}
+	if expiryCutoff != "" && parsed.expiresOn != "" && parsed.expiresOn <= expiryCutoff {
+		return parsedDirective{}, &Problem{
+			Kind:    ProblemExpired,
+			Range:   candidate.Range,
+			Message: "suppression expired on " + parsed.expiresOn,
+		}
+	}
+	return parsed, nil
+}
+
+func parseDirectiveSyntax(candidate source.Directive) (parsedDirective, *Problem) {
+	parsed, reason, hasReason, problem := parseDirectiveShape(candidate)
+	if problem != nil {
+		return parsedDirective{}, problem
+	}
+	return validateDirectiveSyntax(candidate, parsed, reason, hasReason)
+}
+
+func parseDirectiveShape(
+	candidate source.Directive,
+) (parsedDirective, string, bool, *Problem) {
 	text := strings.TrimSpace(strings.TrimPrefix(candidate.Raw, "//gox:"))
 	separator := strings.IndexFunc(text, unicode.IsSpace)
 	if separator < 0 {
-		return parsedDirective{}, malformed(candidate.Range, "suppression directive requires a rule ID")
+		return parsedDirective{}, "", false, malformed(candidate.Range, "suppression directive requires a rule ID")
 	}
 	label, rest := text[:separator], text[separator:]
 	rest = strings.TrimSpace(rest)
@@ -344,22 +419,24 @@ func parseDirective(
 	case "ignore-file":
 		parsed.scope = ScopeFile
 	default:
-		return parsedDirective{}, malformed(candidate.Range, "unknown suppression directive "+label)
+		return parsedDirective{}, "", false, malformed(candidate.Range, "unknown suppression directive "+label)
 	}
 
 	ruleText, reason, hasReason := splitReason(rest)
 	fields := strings.Fields(ruleText)
 	if len(fields) != 1 {
-		return parsedDirective{}, malformed(candidate.Range, "suppression directive requires exactly one rule ID")
+		return parsedDirective{}, "", false, malformed(candidate.Range, "suppression directive requires exactly one rule ID")
 	}
 	parsed.ruleID = fields[0]
-	if _, found := known[parsed.ruleID]; !found {
-		return parsedDirective{}, &Problem{
-			Kind:    ProblemUnknownRule,
-			Range:   candidate.Range,
-			Message: "suppression names unknown rule " + parsed.ruleID,
-		}
-	}
+	return parsed, reason, hasReason, nil
+}
+
+func validateDirectiveSyntax(
+	candidate source.Directive,
+	parsed parsedDirective,
+	reason string,
+	hasReason bool,
+) (parsedDirective, *Problem) {
 	if parsed.rangeEnd {
 		if hasReason {
 			return parsedDirective{}, malformed(candidate.Range, "suppression range end must not include a reason")
@@ -374,21 +451,113 @@ func parseDirective(
 			return parsedDirective{}, expiryProblem
 		}
 	}
-	if hasReason && parsed.reason == "" || requireReason && !hasReason {
+	if hasReason && parsed.reason == "" {
 		return parsedDirective{}, &Problem{
 			Kind:    ProblemMissingReason,
 			Range:   candidate.Range,
 			Message: "suppression requires a non-empty reason",
 		}
 	}
-	if expiryCutoff != "" && parsed.expiresOn != "" && parsed.expiresOn <= expiryCutoff {
-		return parsedDirective{}, &Problem{
-			Kind:    ProblemExpired,
-			Range:   candidate.Range,
-			Message: "suppression expired on " + parsed.expiresOn,
+	return parsed, nil
+}
+
+func suppressionOwnership(unit physicalSource) []ownershipFingerprint {
+	input := unit.Bytes()
+	tokens := unit.Tokens()
+	tokenStarts := normalizedTokenStarts(tokens)
+	packageOffset := len(input)
+	for _, item := range tokens {
+		if item.Kind == token.PACKAGE {
+			packageOffset = item.Range.Start
+			break
 		}
 	}
-	return parsed, nil
+
+	result := make([]ownershipFingerprint, 0)
+	openRanges := make(map[string]struct {
+		directive int
+		parsed    parsedDirective
+	})
+	directiveIndex := 0
+	for _, candidate := range unit.Directives() {
+		if candidate.Kind != source.DirectiveGoxSuppression {
+			continue
+		}
+		current := directiveIndex
+		directiveIndex++
+		parsed, problem := parseDirectiveSyntax(candidate)
+		if problem != nil {
+			continue
+		}
+		if parsed.rangeEnd {
+			opened, found := openRanges[parsed.ruleID]
+			if !found {
+				continue
+			}
+			result = append(result, ownershipFingerprintForRange(
+				opened.directive,
+				tokenStarts,
+				source.Range{
+					Start: opened.parsed.range_.End,
+					End:   parsed.range_.Start,
+				},
+			))
+			delete(openRanges, parsed.ruleID)
+			continue
+		}
+		if parsed.scope == ScopeRange {
+			if _, found := openRanges[parsed.ruleID]; found {
+				continue
+			}
+			openRanges[parsed.ruleID] = struct {
+				directive int
+				parsed    parsedDirective
+			}{directive: current, parsed: parsed}
+			continue
+		}
+
+		var target source.Range
+		switch parsed.scope {
+		case ScopeLine:
+			target = lineRange(input, parsed.range_.Start)
+		case ScopeNextLine:
+			target = nextLineRange(input, parsed.range_.End)
+		case ScopeFile:
+			if parsed.range_.Start >= packageOffset {
+				continue
+			}
+			target = source.Range{Start: 0, End: len(input)}
+		default:
+			continue
+		}
+		result = append(result, ownershipFingerprintForRange(current, tokenStarts, target))
+	}
+	slices.SortFunc(result, func(left, right ownershipFingerprint) int {
+		return cmp.Compare(left.directive, right.directive)
+	})
+	return result
+}
+
+func normalizedTokenStarts(tokens []source.Token) []int {
+	result := make([]int, 0, len(tokens))
+	for _, item := range tokens {
+		switch item.Kind {
+		case token.COMMENT, token.SEMICOLON, token.COMMA:
+			continue
+		}
+		result = append(result, item.Range.Start)
+	}
+	return result
+}
+
+func ownershipFingerprintForRange(
+	directive int,
+	tokenStarts []int,
+	target source.Range,
+) ownershipFingerprint {
+	start := sort.SearchInts(tokenStarts, target.Start)
+	end := sort.SearchInts(tokenStarts, target.End)
+	return ownershipFingerprint{directive: directive, start: start, end: end}
 }
 
 func parseExpiryMetadata(reason string, sourceRange source.Range) (string, string, *Problem) {

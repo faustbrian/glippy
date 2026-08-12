@@ -17,6 +17,18 @@ plugin-name compatibility can broaden rule matching. Gox needs exact native
 rule identity, one auditable scope per directive, and formatter-stable physical
 ownership rather than ESLint-compatible breadth.
 
+A focused 2026-08-12 reproduction showed that preserving directive bytes and
+adjacent-line placement alone was insufficient: expanding one compressed
+`if`/`else if` line left `//gox:ignore duplicate-condition` unchanged while
+moving the duplicate condition outside its next-line target. The formatter now
+compares the normalized token ordinals owned by every structurally valid direct,
+paired-range, and file suppression before accepting output. The comparison is
+independent of the configured rule registry, reason requirement, and expiry
+cutoff, while malformed syntax remains subject to ordinary byte and anchor
+preservation without being assigned a target. The shared formatter boundary
+covers complete files, fragments, every formatter CLI mode, combined check,
+and formatter normalization inside single-file fix transactions.
+
 Fix-mode behavior was refreshed against Oxc commit `00e1b76` on 2026-08-11.
 Oxlint's current `FixOptions` exposes `--fix`, `--fix-suggestions`, and
 `--fix-dangerously`; its dangerous mode also selects suggestions. Gox needs

@@ -1973,6 +1973,47 @@ func TestFormatRejectsDirectiveAnchorMovementWithoutPartialOutput(t *testing.T) 
 	}
 }
 
+func TestFormatRejectsSuppressionTargetDriftWithoutPartialOutput(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load(
+		"suppression.go",
+		[]byte("package sample\nfunc run(ready bool) {\n//gox:ignore duplicate-condition -- legacy branch\nif ready { use() } else if ready { retry() }\n}\nfunc use(){}\nfunc retry(){}\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	formatted, err := goxformat.File(
+		file,
+		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err == nil || !strings.Contains(err.Error(), "suppression ownership changed") {
+		t.Fatalf("File() error = %v, want suppression ownership rejection", err)
+	}
+	if len(formatted) != 0 {
+		t.Fatalf("File() returned partial output %q", formatted)
+	}
+
+	fragment, err := source.LoadFragment(
+		"suppression.go",
+		source.FragmentStatement,
+		[]byte("//gox:ignore duplicate-condition -- legacy branch\nif ready { use() } else if ready { retry() }"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	formatted, err = goxformat.Fragment(
+		fragment,
+		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err == nil || !strings.Contains(err.Error(), "suppression ownership changed") {
+		t.Fatalf("Fragment() error = %v, want suppression ownership rejection", err)
+	}
+	if len(formatted) != 0 {
+		t.Fatalf("Fragment() returned partial output %q", formatted)
+	}
+}
+
 func TestFormatRejectsDiagnosticOnlyFileWithoutPartialOutput(t *testing.T) {
 	t.Parallel()
 

@@ -148,6 +148,26 @@ func TestCoordinateRollsBackEveryAcceptedFixWhenValidationFails(t *testing.T) {
 	}
 }
 
+func TestCoordinateRollsBackFixWhenFormatterWouldChangeSuppressionOwnership(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\nfunc run(ready bool) {\n" +
+		"//gox:ignore duplicate-condition -- legacy branch\n" +
+		"if ready { use() } else if ready { retry() }\n}\nfunc use(){}\nfunc retry(){}\n"
+	file := loadSource(t, input)
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{
+		selection(file, "rename", "rewrite", rules.FixSafe, edit(input, "use", "primary")),
+	}, fixOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(result.Bytes, file.Bytes()) || len(result.Applied) != 0 || len(result.Rejected) != 1 ||
+		result.Rejected[0].Reason != fixengine.RejectionValidation ||
+		!strings.Contains(result.Rejected[0].Message, "suppression ownership changed") {
+		t.Fatalf("Coordinate() result = %#v", result)
+	}
+}
+
 func TestCoordinateRunsPostFormatValidationBeforeAcceptingFixes(t *testing.T) {
 	t.Parallel()
 
