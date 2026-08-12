@@ -36,6 +36,7 @@ type lintInvocation struct {
 
 type lintTaskOptions struct {
 	analysis            analysis.RunOptions
+	buildSelection      config.Analysis
 	format              goxformat.Options
 	cache               config.Cache
 	configurationDigest cache.Digest
@@ -507,6 +508,7 @@ func lintOptionsForSelection(
 			RequireSuppressionReason: loaded.Lint.Suppressions.RequireReason,
 			SuppressionExpiryCutoff:  loaded.Lint.Suppressions.ExpiryCutoff,
 		},
+		buildSelection: loaded.Analysis,
 		format: goxformat.Options{
 			Width:     loaded.Format.LineWidth,
 			TabWidth:  loaded.Format.TabWidth,
@@ -917,13 +919,22 @@ func runUncachedPackageAnalysis(
 	task lintPackageTask,
 	overlay map[string][]byte,
 ) (analysis.PackageResult, error) {
-	return analysis.RunPackages(ctx, registry, task.options.analysis, analysis.PackageLoadOptions{
+	return analysis.RunPackages(ctx, registry, task.options.analysis, packageLoadOptions(task, overlay))
+}
+
+func packageLoadOptions(task lintPackageTask, overlay map[string][]byte) analysis.PackageLoadOptions {
+	selection := task.options.buildSelection
+	return analysis.PackageLoadOptions{
 		Dir:        task.root,
 		Patterns:   task.patterns,
 		Tests:      true,
+		BuildTags:  slices.Clone(selection.BuildTags),
 		ModuleMode: analysis.ModuleReadonly,
+		Env:        packageAnalysisEnvironment(selection.CGOEnabled),
 		Overlay:    overlay,
-	})
+		GOOS:       selection.GOOS,
+		GOARCH:     selection.GOARCH,
+	}
 }
 
 func validateLintPackagePrerequisites(result analysis.PackageResult) error {

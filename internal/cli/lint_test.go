@@ -1154,6 +1154,121 @@ max-bytes = 1048576
 	}
 }
 
+func TestRunPackageCommandsUseOneConfiguredBuildSelection(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/buildselection\n\ngo 1.26.0\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "selected.go")
+	input := []byte(`//go:build selected && linux && cgo
+
+package buildselection
+
+func run() {
+	target()
+}
+
+func target() {}
+`)
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	configuration := `version = 1
+
+[analysis]
+build-tags = ["selected"]
+goos = "linux"
+goarch = "amd64"
+cgo-enabled = true
+`
+	if err := os.WriteFile(configurationPath, []byte(configuration), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := filepath.Join(t.TempDir(), "analysis-cache")
+	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+	t.Setenv("GOOS", "darwin")
+	t.Setenv("GOARCH", "arm64")
+	t.Setenv("CGO_ENABLED", "0")
+	runs := new(atomic.Int64)
+	registry := newCLITypesRegistryWithRuns(t, runs)
+	want := path + ":6:2: warn[typed-call]: typed call requires review\n"
+
+	var uncachedOutput bytes.Buffer
+	var uncachedError bytes.Buffer
+	if exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{configPath: configurationPath, paths: []string{root}},
+		&uncachedOutput,
+		&uncachedError,
+		registry,
+	); exitCode != ExitFindings || uncachedOutput.String() != want || uncachedError.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(configured build selection) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			uncachedOutput.String(),
+			uncachedError.String(),
+		)
+	}
+
+	configuration += `
+[cache]
+enabled = true
+max-entries = 64
+max-bytes = 1048576
+`
+	if err := os.WriteFile(configurationPath, []byte(configuration), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var coldOutput bytes.Buffer
+	var coldError bytes.Buffer
+	if exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{configPath: configurationPath, paths: []string{root}},
+		&coldOutput,
+		&coldError,
+		registry,
+	); exitCode != ExitFindings || coldOutput.String() != want || coldError.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(cached build selection) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			coldOutput.String(),
+			coldError.String(),
+		)
+	}
+	coldRuns := runs.Load()
+	var warmOutput bytes.Buffer
+	var warmError bytes.Buffer
+	if exitCode := runCombinedCheck(
+		context.Background(),
+		checkInvocation{configPath: configurationPath, paths: []string{root}},
+		&warmOutput,
+		&warmError,
+		registry,
+	); exitCode != ExitFindings || warmOutput.String() != want || warmError.Len() != 0 {
+		t.Fatalf(
+			"runCombinedCheck(cached build selection) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			warmOutput.String(),
+			warmError.String(),
+		)
+	}
+	if runs.Load() != coldRuns {
+		t.Fatalf("warm configured build selection reran typed rule %d times", runs.Load()-coldRuns)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("configured package commands mutated source: %q", got)
+	}
+}
+
 func TestResolvedCacheToolIdentityBindsDevelopmentBinary(t *testing.T) {
 	first, err := resolvedCacheToolIdentity("devel", strings.NewReader("first binary"))
 	if err != nil {
@@ -1398,7 +1513,17 @@ func TestRunSyntaxCommandsRemainIndependentOfConfiguredPersistentCache(t *testin
 	configurationPath := filepath.Join(root, ".gox.toml")
 	if err := os.WriteFile(
 		configurationPath,
-		[]byte("version = 1\n[cache]\nenabled = true\n"),
+		[]byte(`version = 1
+
+[analysis]
+build-tags = ["syntax_only"]
+goos = "plan9"
+goarch = "amd64"
+cgo-enabled = false
+
+[cache]
+enabled = true
+`),
 		0o600,
 	); err != nil {
 		t.Fatal(err)
@@ -1791,6 +1916,73 @@ func TestRunLintFixAppliesFormatsAndReanalyzesOneSafeTypedFix(t *testing.T) {
 	want := "package project\n\nfunc run() {\n\tprimary()\n}\n\nfunc target() {}\n\nfunc primary() {}\n"
 	if got, err := os.ReadFile(path); err != nil || string(got) != want {
 		t.Fatalf("runLintFix(typed) source = %q, error = %v", got, err)
+	}
+}
+
+func TestRunLintFixUsesConfiguredBuildSelectionForPlanningAndValidation(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/buildselectionfix\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "selected.go")
+	input := []byte(`//go:build selected && linux && cgo
+
+package buildselectionfix
+
+func run() { target() }
+func target() {}
+func primary() {}
+`)
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	configuration := `version = 1
+
+[analysis]
+build-tags = ["selected"]
+goos = "linux"
+goarch = "amd64"
+cgo-enabled = true
+`
+	if err := os.WriteFile(configurationPath, []byte(configuration), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			fix:        true,
+			paths:      []string{filepath.Join(root, "...")},
+			reporter:   goxreport.Text,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesFixRegistry(t, "primary"),
+	)
+
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("runLintFix(configured build selection) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+	want := `//go:build selected && linux && cgo
+
+package buildselectionfix
+
+func run() {
+	primary()
+}
+
+func target() {}
+
+func primary() {}
+`
+	if got, err := os.ReadFile(path); err != nil || string(got) != want {
+		t.Fatalf("runLintFix(configured build selection) source = %q, error = %v", got, err)
 	}
 }
 

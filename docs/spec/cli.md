@@ -134,6 +134,10 @@ finding.
 Typed package fixing is cache-independent even when persistent analysis caching
 is enabled for non-mutating lint. The initial plan and each candidate validation
 use fresh package loads in read-only module mode with test variants enabled.
+Every package load uses the same resolved `[analysis]` build tags, GOOS,
+GOARCH, and cgo selection as non-mutating typed lint and combined check; ambient
+target and cgo variables do not select a different package graph. Candidate
+overlay validation and final reselection MUST retain that selection.
 Package or source-model problems in the initial plan fail with source error
 before replacement; the same problems caused by a candidate become a stable
 validation rejection and preserve the original file. A final fresh package
@@ -278,6 +282,9 @@ Syntax-only commands and every formatter or fix path MUST remain independent of
 the persistent analysis cache. An invalid cache-root policy is an invalid
 invocation, cache filesystem failures use the filesystem category, and cache
 identity conflicts or invariant failures use the internal-error category.
+Cache-disabled and cache-enabled package runs MUST use the same resolved build
+selection and explicit Go environment. Persistent cache identity MUST bind
+that complete selection without changing which files or packages are loaded.
 
 ## Exit Categories
 

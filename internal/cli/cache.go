@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"go/build"
 	"io"
 	"os"
 	"path/filepath"
@@ -69,27 +68,12 @@ func runPackageAnalysis(
 	registry *rules.Registry,
 	task lintPackageTask,
 ) (analysis.PackageResult, error) {
-	loadOptions := analysis.PackageLoadOptions{
-		Dir:        task.root,
-		Patterns:   task.patterns,
-		Tests:      true,
-		ModuleMode: analysis.ModuleReadonly,
-	}
+	loadOptions := packageLoadOptions(task, nil)
 	if !task.options.cache.Enabled {
 		return analysis.RunPackages(ctx, registry, task.options.analysis, loadOptions)
 	}
 
-	cgoEnabled, err := configuredCGOEnabled()
-	if err != nil {
-		return analysis.PackageResult{}, newPackageAnalysisError(
-			ExitInvalidInvocation,
-			"%w",
-			err,
-		)
-	}
-	loadOptions.GOOS = configuredTarget("GOOS", runtime.GOOS)
-	loadOptions.GOARCH = configuredTarget("GOARCH", runtime.GOARCH)
-	loadOptions.Env = packageCacheEnvironment(cgoEnabled)
+	cgoEnabled := task.options.buildSelection.CGOEnabled
 	root, err := packageCacheRoot()
 	if err != nil {
 		return analysis.PackageResult{}, err
@@ -225,29 +209,7 @@ func packageCacheRoot() (string, error) {
 	return filepath.Clean(root), nil
 }
 
-func configuredCGOEnabled() (bool, error) {
-	value, configured := os.LookupEnv("CGO_ENABLED")
-	if !configured || value == "" {
-		return build.Default.CgoEnabled, nil
-	}
-	switch value {
-	case "0":
-		return false, nil
-	case "1":
-		return true, nil
-	default:
-		return false, fmt.Errorf("CGO_ENABLED must be 0 or 1 when persistent caching is enabled")
-	}
-}
-
-func configuredTarget(name, fallback string) string {
-	if value := os.Getenv(name); value != "" {
-		return value
-	}
-	return fallback
-}
-
-func packageCacheEnvironment(cgoEnabled bool) []string {
+func packageAnalysisEnvironment(cgoEnabled bool) []string {
 	values := make(map[string]string)
 	for _, entry := range os.Environ() {
 		name, value, found := strings.Cut(entry, "=")

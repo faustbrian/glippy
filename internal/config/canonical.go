@@ -13,6 +13,17 @@ func (c Config) CanonicalBytes() []byte {
 	encoded = binary.AppendVarint(encoded, int64(c.Version))
 	encoded = binary.AppendVarint(encoded, int64(c.Format.LineWidth))
 	encoded = binary.AppendVarint(encoded, int64(c.Format.TabWidth))
+	encoded = binary.AppendUvarint(encoded, uint64(len(c.Analysis.BuildTags)))
+	for _, tag := range c.Analysis.BuildTags {
+		encoded = appendCanonicalString(encoded, tag)
+	}
+	encoded = appendCanonicalString(encoded, c.Analysis.GOOS)
+	encoded = appendCanonicalString(encoded, c.Analysis.GOARCH)
+	if c.Analysis.CGOEnabled {
+		encoded = append(encoded, 1)
+	} else {
+		encoded = append(encoded, 0)
+	}
 	encoded = appendCanonicalString(encoded, string(c.Lint.Preset))
 
 	ruleIDs := make([]string, 0, len(c.Lint.Rules))

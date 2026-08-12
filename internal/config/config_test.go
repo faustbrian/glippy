@@ -3,8 +3,10 @@ package config_test
 import (
 	"bytes"
 	"errors"
+	"go/build"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -24,6 +26,10 @@ func TestParseReportsStrictDecodeErrorsAtSourceLocation(t *testing.T) {
 		{name: "unknown key", input: "version = 1\nwidht = 80\n", wantLine: 2},
 		{name: "duplicate key", input: "version = 1\nversion = 1\n", wantLine: 2},
 		{name: "invalid type", input: "version = \"one\"\n", wantLine: 1},
+		{name: "build tags type", input: "version = 1\n[analysis]\nbuild-tags = \"selected\"\n", wantLine: 3},
+		{name: "goos type", input: "version = 1\n[analysis]\ngoos = true\n", wantLine: 3},
+		{name: "goarch type", input: "version = 1\n[analysis]\ngoarch = 64\n", wantLine: 3},
+		{name: "cgo type", input: "version = 1\n[analysis]\ncgo-enabled = \"yes\"\n", wantLine: 3},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -73,6 +79,10 @@ func TestParseRequiresVersionAndUsesOptionalDefaults(t *testing.T) {
 			if got.Lint.Preset != config.PresetCorrectness || len(got.Lint.Rules) != 0 {
 				t.Fatalf("Parse() lint defaults = %#v, want correctness with no overrides", got.Lint)
 			}
+			if len(got.Analysis.BuildTags) != 0 || got.Analysis.GOOS != runtime.GOOS ||
+				got.Analysis.GOARCH != runtime.GOARCH || got.Analysis.CGOEnabled != build.Default.CgoEnabled {
+				t.Fatalf("Parse() analysis defaults = %#v", got.Analysis)
+			}
 			if got.Cache.Enabled || got.Cache.MaxEntries != config.DefaultCacheMaxEntries ||
 				got.Cache.MaxBytes != config.DefaultCacheMaxBytes {
 				t.Fatalf("Parse() cache defaults = %#v", got.Cache)
@@ -109,6 +119,26 @@ func TestParseRejectsInvalidSemanticValues(t *testing.T) {
 			name:      "migration preset without target",
 			input:     "version = 1\n[lint]\npreset = \"migration\"\n",
 			wantError: "unknown lint preset \"migration\"",
+		},
+		{
+			name:      "empty build tag",
+			input:     "version = 1\n[analysis]\nbuild-tags = [\"\"]\n",
+			wantError: "analysis.build-tags contains invalid tag",
+		},
+		{
+			name:      "invalid build tag",
+			input:     "version = 1\n[analysis]\nbuild-tags = [\"one,two\"]\n",
+			wantError: "analysis.build-tags contains invalid tag",
+		},
+		{
+			name:      "invalid goos",
+			input:     "version = 1\n[analysis]\ngoos = \"Linux\"\n",
+			wantError: "analysis.goos must contain only lowercase ASCII letters and digits",
+		},
+		{
+			name:      "invalid goarch",
+			input:     "version = 1\n[analysis]\ngoarch = \"amd/64\"\n",
+			wantError: "analysis.goarch must contain only lowercase ASCII letters and digits",
 		},
 		{
 			name:       "severity",
@@ -158,6 +188,12 @@ func TestCanonicalBytesIgnoreSourceOrderAndCacheLifecyclePolicy(t *testing.T) {
 
 	first, err := config.Parse("first.toml", []byte(`version = 1
 
+[analysis]
+build-tags = ["z", "a", "a"]
+goos = "linux"
+goarch = "amd64"
+cgo-enabled = true
+
 [cache]
 enabled = true
 max-entries = 32
@@ -171,6 +207,12 @@ a-rule = "error"
 		t.Fatal(err)
 	}
 	second, err := config.Parse("second.toml", []byte(`version = 1
+
+[analysis]
+cgo-enabled = true
+goarch = "amd64"
+goos = "linux"
+build-tags = ["a", "z"]
 
 [lint.rules]
 a-rule = "error"
@@ -197,6 +239,19 @@ enabled = true
 	if bytes.Equal(first.CanonicalBytes(), second.CanonicalBytes()) {
 		t.Fatal("result-affecting configuration was omitted from identity")
 	}
+	for _, mutate := range []func(*config.Config){
+		func(configuration *config.Config) { configuration.Analysis.BuildTags = []string{"different"} },
+		func(configuration *config.Config) { configuration.Analysis.GOOS = "darwin" },
+		func(configuration *config.Config) { configuration.Analysis.GOARCH = "arm64" },
+		func(configuration *config.Config) { configuration.Analysis.CGOEnabled = false },
+	} {
+		candidate := first
+		candidate.Analysis.BuildTags = append([]string(nil), first.Analysis.BuildTags...)
+		mutate(&candidate)
+		if bytes.Equal(first.CanonicalBytes(), candidate.CanonicalBytes()) {
+			t.Fatal("analysis selection was omitted from result configuration identity")
+		}
+	}
 }
 
 func TestParseReportsRuleErrorsDeterministically(t *testing.T) {
@@ -220,6 +275,12 @@ func TestParseAppliesTypedConfiguration(t *testing.T) {
 line-width = 88
 tab-width = 4
 
+[analysis]
+build-tags = ["selected", "integration", "selected"]
+goos = "linux"
+goarch = "amd64"
+cgo-enabled = true
+
 [lint]
 preset = "suspicious"
 
@@ -238,6 +299,10 @@ disabled-rule = "off"
 	}
 	if got.Lint.Preset != config.PresetSuspicious {
 		t.Fatalf("Parse() preset = %q, want %q", got.Lint.Preset, config.PresetSuspicious)
+	}
+	if strings.Join(got.Analysis.BuildTags, ",") != "integration,selected" ||
+		got.Analysis.GOOS != "linux" || got.Analysis.GOARCH != "amd64" || !got.Analysis.CGOEnabled {
+		t.Fatalf("Parse() analysis = %#v", got.Analysis)
 	}
 	if got.Lint.Rules["known-rule"] != config.SeverityWarn {
 		t.Fatalf("Parse() known-rule = %q, want %q", got.Lint.Rules["known-rule"], config.SeverityWarn)

@@ -731,3 +731,15 @@ without diagnostics; an immutable `go-libraries/pkg/wsdl/...` snapshot at
 `1be04c0e6f17f587dc6083b701467620b95d511d` selected 53 files without
 diagnostics. Overall progress stays 45% behind the Phase 2 naming, Windows
 runtime, publication/signing, and maintainer-approved external adoption gates.
+
+Package-aware `gox lint`, combined `gox check`, and typed fix planning,
+reselection, and post-fix validation now share one configuration-owned build
+selection. Strict `[analysis]` fields select sorted build tags, GOOS, GOARCH,
+and cgo; runtime/build defaults apply when fields are omitted. Cache-disabled
+and cache-enabled execution now load the same package graph with `GOENV=off`,
+and all selection fields contribute to canonical result identity. Focused
+red-green coverage proves a `selected && linux && cgo` file is analyzed through
+cold and warm lint/check paths and safely fixed through the same selection.
+Syntax-only commands remain independent of package loading and persistent
+cache state. Overall progress remains 45% behind the existing Phase 2 release
+gates.

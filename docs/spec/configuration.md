@@ -23,6 +23,12 @@ version = 1
 line-width = 100
 tab-width = 8
 
+[analysis]
+build-tags = []
+goos = "linux"
+goarch = "amd64"
+cgo-enabled = true
+
 [lint]
 preset = "correctness"
 
@@ -87,6 +93,19 @@ formatting behavior and MUST NOT contribute to cached-result identity.
 Syntax-only linting, formatting, and fix planning MUST NOT open or prune the
 typed analysis cache.
 
+`analysis.build-tags` MUST be a list of Go build-tag identifiers. Gox sorts
+and deduplicates the list before package loading and cache identity. The
+`analysis.goos` and `analysis.goarch` values MUST use lowercase Go target
+identifier syntax, and `analysis.cgo-enabled` MUST be a boolean. When omitted,
+the resolved defaults are the binary's runtime `GOOS` and `GOARCH`, no custom
+build tags, and the Go build context's cgo default. Package-aware `lint`,
+combined `check`, typed fix planning and reselection, and post-fix validation
+MUST use this one resolved selection whether persistent caching is disabled or
+enabled. `GOOS`, `GOARCH`, and `CGO_ENABLED` environment variables MUST NOT
+override it. Package loads set `GOENV=off`; unsupported but syntactically valid
+targets remain package-loading errors rather than configuration-schema errors.
+All four resolved fields MUST contribute to result configuration identity.
+
 ## Discovery And Precedence
 
 Without `--config`, Gox discovers one project configuration by walking upward
@@ -98,9 +117,9 @@ Phase 0 does not provide implicit parent merging or nested configuration.
 An explicit `--config` selects exactly that file and disables discovery.
 Precedence is built-in defaults, selected configuration, matching typed path
 override when introduced, then explicit command-line options. Environment
-variables MUST NOT silently override formatter or lint policy; GOOS, GOARCH,
-build tags, toolchain, module/workspace state, and cgo selection are explicit
-analysis inputs and cache keys.
+variables MUST NOT silently override formatter or lint policy. Build tags,
+GOOS, GOARCH, and cgo selection come from `[analysis]`; toolchain and
+module/workspace state remain explicit analysis inputs and cache keys.
 
 `GOX_CACHE_DIR` MAY select the normalized absolute cache root when persistent
 analysis caching is enabled. It does not enable caching and MUST NOT override

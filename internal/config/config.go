@@ -5,10 +5,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"go/build"
 	"os"
+	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/pelletier/go-toml/v2"
 
@@ -54,16 +58,25 @@ const (
 
 // Config is one fully defaulted and validated project configuration.
 type Config struct {
-	Version int
-	Format  Format
-	Lint    Lint
-	Cache   Cache
+	Version  int
+	Format   Format
+	Analysis Analysis
+	Lint     Lint
+	Cache    Cache
 }
 
 // Format contains formatter policy that materially affects adoption.
 type Format struct {
 	LineWidth int
 	TabWidth  int
+}
+
+// Analysis contains the resolved build selection for package-aware rules.
+type Analysis struct {
+	BuildTags  []string
+	GOOS       string
+	GOARCH     string
+	CGOEnabled bool
 }
 
 // Lint contains the selected preset and explicit rule overrides.
@@ -114,15 +127,23 @@ func (e *Error) Error() string {
 func (e *Error) Unwrap() error { return e.cause }
 
 type fileConfig struct {
-	Version *int         `toml:"version"`
-	Format  formatConfig `toml:"format"`
-	Lint    lintConfig   `toml:"lint"`
-	Cache   cacheConfig  `toml:"cache"`
+	Version  *int           `toml:"version"`
+	Format   formatConfig   `toml:"format"`
+	Analysis analysisConfig `toml:"analysis"`
+	Lint     lintConfig     `toml:"lint"`
+	Cache    cacheConfig    `toml:"cache"`
 }
 
 type formatConfig struct {
 	LineWidth *int `toml:"line-width"`
 	TabWidth  *int `toml:"tab-width"`
+}
+
+type analysisConfig struct {
+	BuildTags  []string `toml:"build-tags"`
+	GOOS       *string  `toml:"goos"`
+	GOARCH     *string  `toml:"goarch"`
+	CGOEnabled *bool    `toml:"cgo-enabled"`
 }
 
 type lintConfig struct {
@@ -150,6 +171,11 @@ func Defaults() Config {
 		Format: Format{
 			LineWidth: DefaultLineWidth,
 			TabWidth:  DefaultTabWidth,
+		},
+		Analysis: Analysis{
+			GOOS:       runtime.GOOS,
+			GOARCH:     runtime.GOARCH,
+			CGOEnabled: build.Default.CgoEnabled,
 		},
 		Lint: Lint{
 			Preset:      PresetCorrectness,
@@ -203,6 +229,37 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 			return Config{}, semanticError(path, "format.tab-width must be positive")
 		}
 		result.Format.TabWidth = *decoded.Format.TabWidth
+	}
+	if decoded.Analysis.BuildTags != nil {
+		result.Analysis.BuildTags = append([]string(nil), decoded.Analysis.BuildTags...)
+		for _, tag := range result.Analysis.BuildTags {
+			if !validBuildTag(tag) {
+				return Config{}, semanticError(path, "analysis.build-tags contains invalid tag %q", tag)
+			}
+		}
+		sort.Strings(result.Analysis.BuildTags)
+		result.Analysis.BuildTags = slices.Compact(result.Analysis.BuildTags)
+	}
+	if decoded.Analysis.GOOS != nil {
+		if !validTarget(*decoded.Analysis.GOOS) {
+			return Config{}, semanticError(
+				path,
+				"analysis.goos must contain only lowercase ASCII letters and digits",
+			)
+		}
+		result.Analysis.GOOS = *decoded.Analysis.GOOS
+	}
+	if decoded.Analysis.GOARCH != nil {
+		if !validTarget(*decoded.Analysis.GOARCH) {
+			return Config{}, semanticError(
+				path,
+				"analysis.goarch must contain only lowercase ASCII letters and digits",
+			)
+		}
+		result.Analysis.GOARCH = *decoded.Analysis.GOARCH
+	}
+	if decoded.Analysis.CGOEnabled != nil {
+		result.Analysis.CGOEnabled = *decoded.Analysis.CGOEnabled
 	}
 	if decoded.Lint.Preset != nil {
 		preset := Preset(*decoded.Lint.Preset)
@@ -304,6 +361,31 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 		result.Lint.RuleOptions[rule] = rules.NewOptionSet(values)
 	}
 	return result, nil
+}
+
+func validBuildTag(tag string) bool {
+	if tag == "" {
+		return false
+	}
+	for _, character := range tag {
+		if !unicode.IsLetter(character) && !unicode.IsDigit(character) &&
+			character != '_' && character != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+func validTarget(target string) bool {
+	if target == "" {
+		return false
+	}
+	for _, character := range target {
+		if (character < 'a' || character > 'z') && (character < '0' || character > '9') {
+			return false
+		}
+	}
+	return true
 }
 
 func decodeRuleOption(value any, kind rules.OptionKind) (rules.OptionValue, error) {
