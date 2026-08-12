@@ -942,3 +942,17 @@ cancellation, invalid-invocation, and output-failure exit categories. The
 installation guide documents each supported shell and requires regeneration
 after upgrades. This closes the Phase 5 shell-completion implementation item
 without advancing the incomplete Phase 2 adoption gate; progress stays 45%.
+
+The repository now publishes a normative vulnerability-reporting and product
+support contract. Private GitHub vulnerability reports are the canonical
+channel, with a no-details fallback for establishing private contact; scope
+explicitly covers write-root escape, unsafe fix claims, directive corruption,
+unexpected execution or network access, cache trust, resource-bound bypasses,
+and release provenance. Before the first public release no revision is
+supported; afterwards the latest stable release is supported on macOS and Linux
+amd64/arm64 with the recorded source-language and filesystem boundaries. The
+policy promises no response or remediation SLA and distinguishes unsupported
+input from a security-boundary failure. A signed-in private-report submission
+remains a final release-readiness check because the public endpoint redirect
+does not prove repository private-reporting configuration. Progress remains
+45% behind maintainer-approved external adoption.

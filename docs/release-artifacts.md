@@ -112,3 +112,8 @@ personally verifies and reviews it. The final naming audit must pass before that
 authorization is requested. The tag is therefore both the activation event and
 the final publication authorization; ordinary pushes and manual workflow
 dispatches cannot invoke the release workflow.
+
+Published releases use the support and vulnerability boundaries in the
+[product support policy](support-policy.md) and the repository
+[security policy](../SECURITY.md). Before the first tag, every artifact remains
+an unsupported development artifact even when it passed a release rehearsal.

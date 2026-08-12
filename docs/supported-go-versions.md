@@ -35,3 +35,7 @@ understands it and the formatter, lint, corpus, and compatibility gates for
 that language family pass. Adding a newer maximum does not automatically drop
 the current minimum; supported-version changes are release compatibility
 changes.
+
+This source-language range is distinct from the lifetime of a published Gox
+binary. Which Gox release receives fixes is defined by the
+[product support policy](support-policy.md).
