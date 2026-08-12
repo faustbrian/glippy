@@ -757,3 +757,16 @@ reuse CLI engines and preserve the existing stale-edit, fix-safety, formatting,
 and validation transaction. The current binary still provides no live editor
 diagnostics, code actions, or LSP. Progress remains 45% behind the existing
 Phase 2 release gates.
+
+The first repeatable peak-resident-memory probe now builds with a task-owned Go
+cache and normalizes Darwin and Linux `/usr/bin/time` results to bytes. Five
+Darwin arm64 samples over the default repository selection measured formatter
+check at a 342,622,208-byte median and 306,724,864-388,268,032-byte range. Recursive
+combined check with the opt-in `suspicious` preset exercised types, CFG, and SSA
+at a 407,846,912-byte median and 357,351,424-417,349,632-byte range. Every
+measurement remained non-writing and the harness removed its binary,
+configuration, output, and build cache. The owned repository is not a
+release-scale large-module or workspace proxy, and platform `time` does not
+sample aggregate simultaneous RSS across every package-loading subprocess.
+These results therefore do not set a CI or product-wide memory threshold.
+Progress remains 45% behind the Phase 2 release gates.

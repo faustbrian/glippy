@@ -25,6 +25,7 @@ go test ./internal/format/doc -run '^$' -fuzz '^FuzzRenderDeterministic$' -fuzzt
   GOWORK=off GOCACHE="$task_cache" go test ./benchmarks -run '^$' -bench '^BenchmarkGoxEditorStdin$' -benchmem -benchtime=10x -count=5
 )
 ./benchmarks/editor-latency.sh
+./benchmarks/peak-rss.sh
 ```
 
 The first command is a functional check. Benchmark setup that is not part of
@@ -286,3 +287,44 @@ gate for the reference host, not a stable CI threshold or a cross-platform
 performance claim. The 38.8-fold spread between the fastest and slowest fresh
 processes, and the contention-sensitive in-process timings, require an isolated
 runner and broader file-size corpus before a regression threshold can be set.
+
+## Peak Resident Memory Probe
+
+`peak-rss.sh` builds one current-tree binary and keeps the build plus measured
+package loads on one task-owned warm Go build cache. It measures peak resident
+memory through the platform `/usr/bin/time` and runs five samples by default
+for two repository-scale, non-writing workloads:
+
+- formatter-only check over the default Gox repository selection; and
+- recursive combined format and opt-in `suspicious` lint check, which selects
+  the current types, CFG, and SSA tiers over all Gox packages.
+
+Exit 1 is an expected completed measurement because either workload may find
+formatting differences or diagnostics. Every other nonzero status fails the
+probe. Results are emitted as CSV with peak RSS normalized to bytes on Darwin
+and Linux. `GOX_PEAK_RSS_RUNS` may select a different positive sample count.
+The script removes its binary, configuration, measurement output, and build
+cache on every exit path.
+
+Recorded 2026-08-12 at source revision `76035e6` on an Apple M4 Max with
+128 GiB RAM, macOS 27.0 (26A5388g), and Go 1.26.5, `darwin/arm64`:
+
+| Workload | Samples | Median peak RSS | Observed range |
+| --- | ---: | ---: | ---: |
+| Formatter check | 5 | 342,622,208 bytes | 306,724,864-388,268,032 bytes |
+| Typed combined check | 5 | 407,846,912 bytes | 357,351,424-417,349,632 bytes |
+
+Raw peak-RSS samples, in bytes:
+
+```text
+formatter 306724864 342622208 362545152 326582272 388268032
+typed     387399680 413581312 407846912 357351424 417349632
+```
+
+The repository is an owned repeatable workload, but it is not a release-scale
+proxy for a large module or workspace. Measurements therefore describe one
+host and revision only. The platform `time` result also does not sample the
+aggregate simultaneous RSS of Gox and every package-loading subprocess. Do not
+establish a CI or product-wide memory threshold until representative large
+repositories run on stable supported hosts and the observed variance supports
+a justified budget.
