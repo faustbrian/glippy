@@ -1025,3 +1025,11 @@ short compatibility decision into an actionable contributor and user contract.
 This closes the formatter/rule/configuration compatibility-policy documentation
 item without advancing the Phase 2 gate; progress remains 45% behind
 maintainer-approved external adoption.
+
+The public machine-output reference now defines the complete schema-version-1
+consumer contract for formatter, lint, fix, typed-prerequisite, and combined
+check reports. It records the common envelope, exit categories, completeness,
+physical byte ranges, source digests, every file status and stable enum, fix
+provenance, uncertainty after an unconfirmed rename, deterministic ordering,
+and forward-compatible field handling without exposing source or replacement
+text. Progress remains 45% behind maintainer-approved external adoption.

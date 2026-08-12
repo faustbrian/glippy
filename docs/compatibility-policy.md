@@ -151,6 +151,9 @@ release.
 
 Human wording MAY improve without a version change, but scripts MUST use the
 machine reporter and stable exit categories rather than parse human prose.
+The public [machine output reference](machine-output.md) defines the current
+schema-version-1 fields, values, range semantics, ordering, and completeness
+contract.
 
 ## CLI And Platform Contracts
 

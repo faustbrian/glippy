@@ -134,7 +134,8 @@ atomicity.
 
 Lint accepts `--config=<path>` and `--reporter=text|json`. Text is the default.
 Machine output is schema version 1 and omits source snippets and replacement
-text.
+text. See the [machine output reference](machine-output.md) for field, range,
+completeness, ordering, and fix-provenance semantics.
 
 ## Combined Check
 
@@ -218,6 +219,7 @@ nonzero result as the same outcome.
 - [Lint rule catalog](lint-rules.md)
 - [Suppression reference](suppressions.md)
 - [Fix safety](spec/fix-safety.md)
+- [Machine output reference](machine-output.md)
 - [Machine reporting decision](decisions/0011-machine-reporting-schema.md)
 - [Supported Go versions](supported-go-versions.md)
 - [Editor integration](editor-integration.md)

@@ -147,6 +147,9 @@ Changes to formatter output, stable rules, fixes, configuration, machine
 schemas, CLI behavior, or supported targets must classify their compatibility
 and migration impact under the
 [compatibility and change policy](compatibility-policy.md).
+Machine-reporting changes must update the public
+[machine output reference](machine-output.md) in the same batch as the encoder
+and its schema fixtures.
 
 Rule tests cover positive diagnostics, conservative non-diagnostics, exact
 primary and related ranges, severity and option variants, supported Go
