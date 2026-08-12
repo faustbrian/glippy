@@ -222,6 +222,71 @@ func attach(ctx context.Context) context.Context {
 	}
 }
 
+func TestRunExposesBuiltInErrorsIsArgumentsThroughLintAndExplain(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/errorsisarguments\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sample.go")
+	input := []byte(`package sample
+
+import (
+	"errors"
+	"io"
+)
+
+func match(err error) bool {
+	return errors.Is(io.EOF, err)
+}
+`)
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".gox.toml"),
+		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n[lint.rules]\ncontext-key = \"off\"\ndefer-in-infinite-loop = \"off\"\nnilness = \"off\"\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"lint", path}, strings.NewReader(""), &stdout, &stderr)
+	want := path + ":9:19: warn[errors-is-arguments]: errors.Is arguments appear to be reversed\n" +
+		"  help: pass the error value first and the package sentinel second\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf("Run(lint errors-is-arguments) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("Run(lint errors-is-arguments) mutated source: %q", got)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run([]string{"explain", "errors-is-arguments"}, strings.NewReader(""), &stdout, &stderr)
+	for _, contract := range []string{
+		"errors-is-arguments\n",
+		"analysis tier: types\n",
+		"generated files: excluded\n",
+		"type-error packages: excluded\n",
+		"fixes:\n  none\n",
+	} {
+		if !strings.Contains(stdout.String(), contract) {
+			t.Fatalf("Run(explain errors-is-arguments) output does not contain %q:\n%s", contract, stdout.String())
+		}
+	}
+	if exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf("Run(explain errors-is-arguments) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+}
+
 func TestRunExposesBuiltInDeferInInfiniteLoopThroughLintAndExplain(t *testing.T) {
 	t.Parallel()
 

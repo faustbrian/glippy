@@ -714,3 +714,20 @@ external snapshot produced one built-in-boolean finding and correctly excluded
 ten defined-boolean comparisons plus an `any`-typed comparison. Overall
 progress remains 45% behind the Phase 2 naming, Windows runtime,
 publication/signing, and maintainer-approved external adoption gates.
+
+The production registry now also admits `errors-is-arguments` under the opt-in
+`suspicious` preset. The native types-tier rule identifies the standard library
+`errors.Is` function and reports a directly referenced external package global
+in the first position unless the second argument is also an external package
+global. Package-local globals, local aliases, fields, calls, composite
+expressions, lookalikes, generated files, and ill-typed packages remain
+excluded. The rule offers no fix because its deliberately narrow heuristic does
+not prove that swapping arguments preserves caller intent. Go 1.26.5 vet
+accepted the proving defect. Current Staticcheck SA1032, its historical
+both-external-global exclusion, two reviewed public repairs, red-green
+behavioral tests, public lint and explain coverage, a 100-finding shared-types
+cost probe, and non-mutating dogfood support admission. Gox selected 115 files
+without diagnostics; an immutable `go-libraries/pkg/wsdl/...` snapshot at
+`1be04c0e6f17f587dc6083b701467620b95d511d` selected 53 files without
+diagnostics. Overall progress stays 45% behind the Phase 2 naming, Windows
+runtime, publication/signing, and maintainer-approved external adoption gates.

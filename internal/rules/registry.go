@@ -61,6 +61,7 @@ func NewDefaultRegistry() (*Registry, error) {
 		contextKeyRule{},
 		deferInInfiniteLoopRule{},
 		duplicateConditionRule{},
+		errorsIsArgumentsRule{},
 		ineffectiveBreakRule{},
 		nilnessRule{},
 		redundantBoolComparisonRule{},

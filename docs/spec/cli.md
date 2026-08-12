@@ -39,9 +39,9 @@ Cancellation and output failures retain the common exit categories. The
 compiled registry contains only rules that satisfy the admission gate. The
 default correctness rules are `duplicate-condition` and
 `ineffective-break`; the types-tier `context-key`, CFG-tier
-`defer-in-infinite-loop`, and SSA-tier `nilness` rules remain in the opt-in
-`suspicious` preset. The types-tier `redundant-bool-comparison` rule is the
-first opt-in `style` rule.
+`defer-in-infinite-loop`, types-tier `errors-is-arguments`, and SSA-tier
+`nilness` rules remain in the opt-in `suspicious` preset. The types-tier
+`redundant-bool-comparison` rule is the first opt-in `style` rule.
 
 `fmt` without a write, check, or diff flag writes formatted content to stdout
 for one explicit file or stdin. Multiple filesystem inputs require `--write`,

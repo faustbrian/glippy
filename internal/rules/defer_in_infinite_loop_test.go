@@ -322,8 +322,9 @@ func BenchmarkDeferInInfiniteLoopSharedCFG(b *testing.B) {
 		b.Fatal(err)
 	}
 	deferSelection, err := deferRegistry.Resolve(rules.PresetSuspicious, map[string]rules.Severity{
-		"context-key": rules.SeverityOff,
-		"nilness":     rules.SeverityOff,
+		"context-key":         rules.SeverityOff,
+		"errors-is-arguments": rules.SeverityOff,
+		"nilness":             rules.SeverityOff,
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -390,6 +391,7 @@ func runDeferInInfiniteLoop(
 		overrides = make(map[string]rules.Severity)
 	}
 	overrides["nilness"] = rules.SeverityOff
+	overrides["errors-is-arguments"] = rules.SeverityOff
 	result, err := analysis.RunPackages(
 		context.Background(),
 		registry,
