@@ -11,6 +11,8 @@ here.
 
 The current product and binary name is `gox`. ADR 0001 requires one final
 collision and trademark audit before the first public tag.
+The user-facing summary of this normative contract is the
+[`command-reference.md`](../command-reference.md) guide.
 
 ## Commands
 

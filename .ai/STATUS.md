@@ -956,3 +956,13 @@ input from a security-boundary failure. A signed-in private-report submission
 remains a final release-readiness check because the public endpoint redirect
 does not prove repository private-reporting configuration. Progress remains
 45% behind maintainer-approved external adoption.
+
+The implemented CLI now has one user-facing command reference covering every
+command, mode, flag, input shape, reporter boundary, fix class, write-safety
+boundary, configuration entry point, and exit code. Examples distinguish
+stdout, non-mutating, and mutating paths and direct users to the normative CLI,
+configuration, formatter, fix, machine-schema, source-version, editor, and
+completion contracts. The guide deliberately provides no installation command
+or stable module-path promise because ADR 0001 requires the final collision and
+trademark audit first. Progress remains 45% behind maintainer-approved external
+adoption.
