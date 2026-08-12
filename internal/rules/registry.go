@@ -63,6 +63,7 @@ func NewDefaultRegistry() (*Registry, error) {
 		duplicateConditionRule{},
 		ineffectiveBreakRule{},
 		nilnessRule{},
+		redundantBoolComparisonRule{},
 	)
 }
 

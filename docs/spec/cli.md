@@ -40,7 +40,8 @@ compiled registry contains only rules that satisfy the admission gate. The
 default correctness rules are `duplicate-condition` and
 `ineffective-break`; the types-tier `context-key`, CFG-tier
 `defer-in-infinite-loop`, and SSA-tier `nilness` rules remain in the opt-in
-`suspicious` preset.
+`suspicious` preset. The types-tier `redundant-bool-comparison` rule is the
+first opt-in `style` rule.
 
 `fmt` without a write, check, or diff flag writes formatted content to stdout
 for one explicit file or stdin. Multiple filesystem inputs require `--write`,
@@ -108,6 +109,12 @@ enabled named fix. Multiple enabled alternatives violate the rule contract and
 fail before any write. The built-in `ineffective-break` rule offers
 `remove-break` only as a suggestion because removal preserves current behavior
 but may conceal an intended return or labeled loop exit.
+The built-in `redundant-bool-comparison` rule offers
+`simplify-comparison` as a safe fix only when the retained operand has
+predeclared boolean type, an alias resolving directly to it, or untyped boolean
+type. Candidates with a retained defined boolean operand are excluded because
+the comparison may intentionally normalize the result type. Comparisons whose
+removed source contains a comment remain diagnostics without a fix.
 
 Every lint fix mode prevalidates every selected configuration and source before
 its first write, refuses generated files and paths traversing symlinks,

@@ -687,3 +687,21 @@ paired ranges, file scope, malformed and unregistered directives, every
 formatter mode without mutation, and full fix rollback. Progress remains 45%
 behind the Phase 2 naming, release-platform, publication, and approved
 external-adoption gates.
+
+The production registry now admits `redundant-bool-comparison` as the first
+opt-in `style` rule and the first built-in safe fix. The types-tier rule reports
+equality and inequality comparisons against compile-time boolean constants
+only when the other operand is statically boolean. Its `simplify-comparison`
+fix preserves exact operand source and precedence, refuses comment loss, and is
+offered only when the retained expression has predeclared or untyped boolean
+type; retained defined boolean values are excluded because the comparison may
+intentionally normalize an interface value's dynamic type. Focused red-green
+behavior covers exact edits,
+type and trivia boundaries, public JSON and explain output, formatter-
+normalized typed fixing, reanalysis, and idempotency. Current Staticcheck S1002,
+the Go 1.26.5 vet boundary, a 100-finding shared-types cost probe, 113-file Gox
+dogfood, and 129-file immutable `go-libraries` dogfood support admission. The
+external snapshot produced one built-in-boolean finding and correctly excluded
+ten defined-boolean comparisons plus an `any`-typed comparison. Overall
+progress remains 45% behind the Phase 2 naming, Windows runtime,
+publication/signing, and maintainer-approved external adoption gates.

@@ -192,6 +192,101 @@ func TestRunLintReportsBuiltInIneffectiveBreak(t *testing.T) {
 	}
 }
 
+func TestRunLintFixAppliesBuiltInRedundantBoolComparisonSafeFix(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/redundantbool\n\ngo 1.26.0\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(ready bool){if ready == true { println() }}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n[lint]\npreset = \"style\"\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run(
+		[]string{"lint", "--reporter=json", "--config=" + configurationPath, path},
+		failingReader{},
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf("Run(lint) exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+	var result goxreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode lint JSON: %v; output = %q", err, stdout.String())
+	}
+	if len(result.Diagnostics) != 1 {
+		t.Fatalf("Run(lint) diagnostics = %#v, want one redundant comparison", result.Diagnostics)
+	}
+	diagnostic := result.Diagnostics[0]
+	position := bytes.Index(input, []byte("ready == true"))
+	if diagnostic.RuleID != "redundant-bool-comparison" ||
+		diagnostic.Severity != rules.SeverityWarn ||
+		diagnostic.MessageKey != "omit-comparison" ||
+		diagnostic.Message != "comparison with a boolean constant is redundant" ||
+		diagnostic.Help != "use the boolean expression directly" ||
+		diagnostic.Range.Start != position || diagnostic.Range.End != position+len("ready == true") ||
+		len(diagnostic.Related) != 0 || len(diagnostic.Fixes) != 1 ||
+		diagnostic.Fixes[0] != (goxreport.LintFix{Name: "simplify-comparison", Safety: rules.FixSafe}) {
+		t.Fatalf("Run(lint) diagnostic = %#v", diagnostic)
+	}
+	gotBeforeFix, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(gotBeforeFix, input) {
+		t.Fatalf("Run(lint) source = %q, error = %v", gotBeforeFix, err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run(
+		[]string{"lint", "--fix", "--config=" + configurationPath, path},
+		failingReader{},
+		&stdout,
+		&stderr,
+	)
+
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("Run(lint --fix) exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+	want := "package sample\n\nfunc run(ready bool) {\n\tif ready {\n\t\tprintln()\n\t}\n}\n"
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != want {
+		t.Fatalf("Run(lint --fix) source = %q, error = %v", got, err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run(
+		[]string{"lint", "--fix", "--config=" + configurationPath, path},
+		failingReader{},
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("Run(second lint --fix) exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+	second, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(second, got) {
+		t.Fatalf("Run(second lint --fix) source = %q, error = %v", second, err)
+	}
+}
+
 func TestRunLintFixLeavesBuiltInDuplicateConditionUnchanged(t *testing.T) {
 	t.Parallel()
 
@@ -849,6 +944,35 @@ func TestRunExplainDocumentsBuiltInIneffectiveBreak(t *testing.T) {
 		"generated files: excluded\n",
 		"fixes:\n  remove-break [suggestion]: remove the ineffective break\n",
 		"Type switches are not inspected",
+	} {
+		if !strings.Contains(stdout.String(), contract) {
+			t.Fatalf("Run(explain) output = %q, want %q", stdout.String(), contract)
+		}
+	}
+}
+
+func TestRunExplainDocumentsBuiltInRedundantBoolComparison(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"explain", "redundant-bool-comparison"}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf("Run(explain) exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+	for _, contract := range []string{
+		"redundant-bool-comparison\n",
+		"default severity: warn\n",
+		"presets: style\n",
+		"minimum Go: 1.26\n",
+		"analysis tier: types\n",
+		"generated files: excluded\n",
+		"fixes:\n  simplify-comparison [safe]: replace the comparison with an equivalent boolean expression\n",
+		"Boolean type parameters are not reported",
+		"retained operand has a defined boolean type",
+		"A diagnostic has no automatic fix when removing the comparison would discard a comment",
 	} {
 		if !strings.Contains(stdout.String(), contract) {
 			t.Fatalf("Run(explain) output = %q, want %q", stdout.String(), contract)
