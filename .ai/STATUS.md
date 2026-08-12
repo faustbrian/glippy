@@ -1006,3 +1006,12 @@ paired examples, and uses source-safe code fences. A generator replaces the
 catalog atomically, while a byte-for-byte freshness test prevents metadata and
 published documentation from drifting. Progress remains 45% behind
 maintainer-approved external adoption.
+
+The public suppression reference now documents every implemented exact-rule
+scope, source-bound ownership rule, reason and deterministic expiry policy,
+problem class, unused-waiver outcome, reporter boundary, and formatter/fix
+stability guarantee. README, command, and contributor documentation link the
+same contract while the normative lint and configuration specifications remain
+authoritative. This closes the stable-release suppression-documentation item
+without changing the Phase 2 gate; progress remains 45% behind
+maintainer-approved external adoption.

@@ -113,7 +113,9 @@ Lint is non-writing unless a fix-class flag is present. The default
 `correctness` preset enables the current high-signal default rules. Other
 presets and per-rule severities are selected in `.gox.toml`. Use
 `gox explain <rule>` to inspect a rule's prerequisites, configuration, fix
-safety, examples, and known limitations.
+safety, examples, and known limitations. The
+[suppression reference](suppressions.md) defines exact-rule waivers, scopes,
+reasons, expiry, unused directives, and formatter ownership.
 
 ### Fix classes
 
@@ -214,6 +216,7 @@ nonzero result as the same outcome.
 - [Configuration specification](spec/configuration.md)
 - [Formatter rules](formatter-rules.md)
 - [Lint rule catalog](lint-rules.md)
+- [Suppression reference](suppressions.md)
 - [Fix safety](spec/fix-safety.md)
 - [Machine reporting decision](decisions/0011-machine-reporting-schema.md)
 - [Supported Go versions](supported-go-versions.md)

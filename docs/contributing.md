@@ -139,6 +139,10 @@ go generate ./internal/report
 The report package test compares `docs/lint-rules.md` byte-for-byte with a
 fresh render, so manually edited or stale rule documentation fails verification.
 
+Changes to suppression parsing, ownership, configuration, or reporting must
+update the public [suppression reference](suppressions.md) and the normative
+lint and configuration specifications in the same batch.
+
 Rule tests cover positive diagnostics, conservative non-diagnostics, exact
 primary and related ranges, severity and option variants, supported Go
 versions, type-error behavior, generated files, suppressions, metadata, and
