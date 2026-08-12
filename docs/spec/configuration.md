@@ -1,4 +1,8 @@
-# Configuration Contract Draft
+# Configuration Contract
+
+This document defines the implemented pre-release schema version 1. Public
+compatibility follows the [compatibility policy](../compatibility-policy.md);
+unknown schema versions and fields fail rather than receiving guessed meaning.
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
 "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
@@ -11,10 +15,10 @@ here.
 
 ## Format And Version
 
-The Phase 0 candidate is `.gox.toml`, renamed with the product if ADR 0001
-changes. It MUST contain `version = 1`. Unknown keys, duplicate semantic keys,
-unknown rule IDs, and invalid values MUST fail with a source-located diagnostic
-where the TOML decoder permits it.
+The configuration file is `.gox.toml`, renamed with the product only if ADR
+0001 changes. It MUST contain `version = 1`. Unknown keys, duplicate semantic
+keys, unknown rule IDs, and invalid values MUST fail with a source-located
+diagnostic where the TOML decoder permits it.
 
 ```toml
 version = 1
@@ -112,7 +116,8 @@ Without `--config`, Gox discovers one project configuration by walking upward
 from each input to the nearest module, workspace, or repository root and then
 selecting the nearest configuration at or above that boundary. Inputs that
 resolve to different project configurations form separate deterministic runs.
-Phase 0 does not provide implicit parent merging or nested configuration.
+Schema version 1 does not provide implicit parent merging or nested
+configuration.
 
 An explicit `--config` selects exactly that file and disables discovery.
 Precedence is built-in defaults, selected configuration, matching typed path
@@ -131,7 +136,7 @@ later symlink change cannot redirect cache operations into the project.
 
 Nested configuration or inheritance MAY be introduced only after a concrete
 multi-root journey demonstrates that typed path overrides are insufficient.
-Any such addition requires cycle handling, boundary rules, and a migration
+Any such addition MUST define cycle handling, boundary rules, and a migration
 decision.
 
 ## File Policies
@@ -149,4 +154,4 @@ Defaults:
 - invalid configuration aborts the complete run before any write.
 
 Rules and formatter behavior MAY define test-file or generated-file
-eligibility, but no rule may construct its own discovery policy.
+eligibility, but a rule MUST NOT construct its own discovery policy.

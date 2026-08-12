@@ -1041,3 +1041,12 @@ both the outer maintainer command and every target build, and its existing
 cleanup covers the complete release build instead of leaving inner builds to
 fall back to the user's default module cache. No tag or release was created;
 progress remains 45% behind maintainer-approved external adoption.
+
+The current risk and decision indexes now match the implemented product rather
+than their Phase 0 snapshot. They record the accepted Go 1.25/1.26 range,
+implemented schema-version-1 configuration and machine-reporting contracts,
+persistent cache controls, canonical test-variant ownership, current native
+performance budgets, and the remaining release-candidate rerun boundaries.
+Rule-noise adoption and the final name audit remain explicitly open; no engine
+or release-readiness capability is inferred from documentation alone. Overall
+progress remains 45% behind maintainer-approved external adoption.
