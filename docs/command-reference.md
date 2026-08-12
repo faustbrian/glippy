@@ -217,3 +217,4 @@ nonzero result as the same outcome.
 - [Supported Go versions](supported-go-versions.md)
 - [Editor integration](editor-integration.md)
 - [CI and pre-commit setup](ci-and-precommit.md)
+- [Contributor architecture and rule authoring](contributing.md)

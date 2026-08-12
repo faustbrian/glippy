@@ -975,3 +975,14 @@ same check contract and discloses that partial staging is outside Gox's
 filesystem snapshot. Both paths prohibit implicit fixes and preserve the
 pre-release naming and installation boundary. Progress remains 45% behind
 maintainer-approved external adoption.
+
+Contributor documentation now maps every internal package to its ownership
+boundary and defines the formatter, native-rule, fix, and `go/analysis`
+extension workflows. Rule authors must start from admission evidence, choose
+the cheapest execution interface, keep source and analysis ownership in the
+shared engines, derive `gox explain` from canonical metadata, and cover ranges,
+configuration, versions, generated and type-error behavior, suppressions,
+fixes, determinism, and proportional performance. The guide preserves the
+closed internal extension surface and links formatter changes to corpus,
+equivalence, compatibility, and user-facing documentation. Progress remains
+45% behind maintainer-approved external adoption.
