@@ -8,6 +8,8 @@ import (
 
 type ineffectiveBreakRule struct{}
 
+const ineffectiveBreakRemoveFix = "remove-break"
+
 func (ineffectiveBreakRule) Metadata() Metadata {
 	return Metadata{
 		ID:               "ineffective-break",
@@ -19,6 +21,11 @@ func (ineffectiveBreakRule) Metadata() Metadata {
 		Requirement:      RequireSyntax,
 		NodeInterests:    []NodeKind{NodeForStmt, NodeRangeStmt},
 		Categories:       []Category{CategoryCorrectness},
+		Fixes: []FixMetadata{{
+			Name:        ineffectiveBreakRemoveFix,
+			Description: "remove the ineffective break",
+			Safety:      FixSuggestion,
+		}},
 		KnownLimitations: []string{
 			"Only switches and selects that are direct statements of the loop body are inspected.",
 			"A final if statement is inspected one level deep; more deeply nested terminal branches are not unfolded.",
@@ -61,6 +68,11 @@ func (ineffectiveBreakRule) RunSyntax(ctx *Context, node ast.Node) ([]Finding, e
 					Message:    "unlabeled break exits only the enclosing switch or select",
 					Range:      range_,
 					Help:       "label the surrounding loop and break to that label, or remove the ineffective break",
+					Fixes: []Fix{{
+						Name:   ineffectiveBreakRemoveFix,
+						Safety: FixSuggestion,
+						Edits:  []Edit{{Range: range_}},
+					}},
 				})
 			}
 		}

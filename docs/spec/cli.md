@@ -105,7 +105,9 @@ fixes only, `--fix-suggestions` applies suggestion fixes only, and
 composable; unsafe authorization MUST NOT implicitly authorize suggestions or
 safe fixes. For each diagnostic, the driver automatically selects only one
 enabled named fix. Multiple enabled alternatives violate the rule contract and
-fail before any write.
+fail before any write. The built-in `ineffective-break` rule offers
+`remove-break` only as a suggestion because removal preserves current behavior
+but may conceal an intended return or labeled loop exit.
 
 Every lint fix mode prevalidates every selected configuration and source before
 its first write, refuses generated files and paths traversing symlinks,

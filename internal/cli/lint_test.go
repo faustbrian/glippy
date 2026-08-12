@@ -2256,6 +2256,86 @@ func TestRunLintFixAppliesOnlyExplicitSuggestionFixes(t *testing.T) {
 	}
 }
 
+func TestRunLintFixLeavesBuiltInIneffectiveBreakSuggestionUnchanged(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(){for{select{default:break}}}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewDefaultRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		registry,
+	)
+
+	if exitCode != ExitFindings || stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "warn[ineffective-break]") ||
+		!strings.Contains(stdout.String(), "fix[suggestion]: remove-break") {
+		t.Fatalf("runLintFix() exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("runLintFix() changed suggestion-only source: %q", got)
+	}
+}
+
+func TestRunLintFixAppliesBuiltInIneffectiveBreakSuggestion(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	input := []byte(`package sample
+func run() {
+	for {
+		select {
+		default:
+			break // the select already ends here
+		}
+	}
+}
+`)
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewDefaultRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{fixSuggestions: true, paths: []string{path}, reporter: goxreport.Text},
+		&stdout,
+		&stderr,
+		registry,
+	)
+
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("runLintFix(suggestion) exit = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+	want := "package sample\n\nfunc run() {\n\tfor {\n\t\tselect {\n\t\tdefault:\n\t\t// the select already ends here\n\t\t}\n\t}\n}\n"
+	if got, err := os.ReadFile(path); err != nil || string(got) != want {
+		t.Fatalf("runLintFix(suggestion) source = %q, error = %v", got, err)
+	}
+}
+
 func TestRunLintFixAppliesOnlyExplicitUnsafeFixes(t *testing.T) {
 	t.Parallel()
 

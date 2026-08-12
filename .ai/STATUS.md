@@ -227,8 +227,12 @@ vet accepted the proving defect. Current Staticcheck SA4011 source, two reviewed
 public fixes, red-green behavioral tests, public lint and explain paths, a
 100-loop cost probe, and 7,732-file non-mutating dogfood support admission. The
 dogfood sample produced no diagnostics or observed false positives; focused
-fixtures and public fixes retain the positive evidence. No fix is offered
-because removal, return, and a labeled loop exit have different semantics.
+fixtures and public fixes retain the positive evidence. The rule now offers an
+exact-token `remove-break` suggestion: ordinary `--fix` preserves and reports
+it, while `--fix-suggestions` deletes the ineffective statement, retains
+adjacent comments, formatter-normalizes the file, and reanalyzes before write.
+It remains suggestion-only because removal, return, and a labeled loop exit
+represent different intended repairs.
 Phase 2 naming, release artifacts, platform runtime, and approved external
 adoption keep overall progress at 45%.
 

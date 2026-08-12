@@ -45,7 +45,13 @@ func run(ch <-chan int, values []int) {
 		position := strings.Index(input[offset:], "break") + offset
 		if position < offset || diagnostic.RuleID != "ineffective-break" ||
 			diagnostic.Range != (source.Range{Start: position, End: position + len("break")}) ||
-			diagnostic.MessageKey != "ineffective-break" || len(diagnostic.Fixes) != 0 {
+			diagnostic.MessageKey != "ineffective-break" || len(diagnostic.Fixes) != 1 ||
+			diagnostic.Fixes[0].Name != "remove-break" ||
+			diagnostic.Fixes[0].Safety != rules.FixSuggestion ||
+			len(diagnostic.Fixes[0].Edits) != 1 ||
+			diagnostic.Fixes[0].Edits[0] != (rules.Edit{
+				Range: source.Range{Start: position, End: position + len("break")},
+			}) {
 			t.Fatalf("diagnostic %d = %#v, want break at %d", index, diagnostic, position)
 		}
 		offset = position + len("break")
@@ -122,7 +128,7 @@ func run() { for { switch { default: break } } }
 	}
 }
 
-func TestDefaultRegistryDocumentsIneffectiveBreakWithoutAFix(t *testing.T) {
+func TestDefaultRegistryDocumentsIneffectiveBreakSuggestionFix(t *testing.T) {
 	t.Parallel()
 
 	registry, err := rules.NewDefaultRegistry()
@@ -133,7 +139,12 @@ func TestDefaultRegistryDocumentsIneffectiveBreakWithoutAFix(t *testing.T) {
 	if !found || metadata.Requirement != rules.RequireSyntax ||
 		metadata.DefaultSeverity != rules.SeverityWarn ||
 		metadata.MinimumGoVersion != "1.26" || metadata.RunOnGenerated ||
-		len(metadata.Fixes) != 0 || len(metadata.Presets) != 1 ||
+		len(metadata.Fixes) != 1 ||
+		metadata.Fixes[0] != (rules.FixMetadata{
+			Name:        "remove-break",
+			Description: "remove the ineffective break",
+			Safety:      rules.FixSuggestion,
+		}) || len(metadata.Presets) != 1 ||
 		metadata.Presets[0] != rules.PresetCorrectness {
 		t.Fatalf("metadata = %#v, found = %v", metadata, found)
 	}

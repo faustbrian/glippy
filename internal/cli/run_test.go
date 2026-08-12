@@ -179,7 +179,8 @@ func TestRunLintReportsBuiltInIneffectiveBreak(t *testing.T) {
 		diagnostic.Message != "unlabeled break exits only the enclosing switch or select" ||
 		diagnostic.Help != "label the surrounding loop and break to that label, or remove the ineffective break" ||
 		diagnostic.Range.Start != position || diagnostic.Range.End != position+len("break") ||
-		len(diagnostic.Related) != 0 || len(diagnostic.Fixes) != 0 {
+		len(diagnostic.Related) != 0 || len(diagnostic.Fixes) != 1 ||
+		diagnostic.Fixes[0] != (goxreport.LintFix{Name: "remove-break", Safety: rules.FixSuggestion}) {
 		t.Fatalf("Run(lint) diagnostic = %#v", diagnostic)
 	}
 	got, err := os.ReadFile(path)
@@ -846,7 +847,7 @@ func TestRunExplainDocumentsBuiltInIneffectiveBreak(t *testing.T) {
 		"minimum Go: 1.26\n",
 		"analysis tier: syntax\n",
 		"generated files: excluded\n",
-		"fixes:\n  none\n",
+		"fixes:\n  remove-break [suggestion]: remove the ineffective break\n",
 		"Type switches are not inspected",
 	} {
 		if !strings.Contains(stdout.String(), contract) {

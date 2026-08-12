@@ -35,8 +35,9 @@ toolchain while leaving the required repair to the developer.
 
 `ineffective-break` is enabled as a warning in the `correctness` preset. It
 requires only syntax, subscribes to `for` and `range` statements, excludes
-generated files, and offers no fix. The exact unlabeled `break` token is the
-primary range.
+generated files, and offers `remove-break` as a suggestion fix. The exact
+unlabeled `break` token is both the primary range and the deletion range, so
+adjacent comments and trivia remain available to formatter normalization.
 
 The rule inspects ordinary switches and selects that are direct statements of
 the loop body. A break reports only when it is the clause's final statement or
@@ -46,9 +47,11 @@ nested behind another block or loop do not report. Type switches and deeper
 terminal conditional nesting remain explicit limitations until dedicated
 fixtures and need justify expanding the traversal.
 
-Removing the statement, returning, or adding a loop label have different
-behavioral consequences. No automatic fix is therefore classified as safe,
-suggestive, or unsafe.
+Removing the statement preserves the current control flow, but returning or
+adding a loop label may be the intended repair. Gox therefore classifies
+removal as a suggestion rather than a safe default: ordinary `--fix` reports
+and preserves it, while explicit `--fix-suggestions` removes only the break
+token before the standard reparse, format, validation, and atomic-write path.
 
 ## Behavioral Evidence
 
@@ -56,11 +59,13 @@ The red rule suite produced no diagnostics and treated the new suppression as
 an unknown rule before registration. Focused tests now prove exact ranges for
 ordinary and range loops, switch and select clauses, final conditional
 branches, nested-loop ownership, labeled and effective breaks, out-of-scope
-nesting, generated-file exclusion, suppression, severity overrides, and no-fix
-metadata. The public JSON lint path proves default registration, warning
-severity, exact range and message fields, non-mutation, and findings exit
-status. `gox explain ineffective-break` renders the canonical limitations and
-no-fix contract.
+nesting, generated-file exclusion, suppression, severity overrides, suggestion
+metadata, and the exact deletion edit. The public lint paths prove default
+registration, warning severity, exact range and message fields, ordinary
+`--fix` non-mutation, explicit suggestion selection, comment retention,
+formatter normalization, reanalysis, and findings or success exit status.
+`gox explain ineffective-break` renders the canonical limitations and
+suggestion contract.
 
 ## Cost And Dogfood Signal
 
