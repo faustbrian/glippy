@@ -254,7 +254,7 @@ func TestDefaultRegistryDocumentsContextKeyWithoutAFix(t *testing.T) {
 	}
 	metadata, found := registry.Metadata("context-key")
 	if !found || metadata.Requirement != rules.RequireTypes ||
-		metadata.DefaultSeverity != rules.SeverityWarn || metadata.MinimumGoVersion != "1.26" ||
+		metadata.DefaultSeverity != rules.SeverityWarn || metadata.MinimumGoVersion != "1.25" ||
 		metadata.RunOnGenerated || metadata.RunDespiteTypeErrors || len(metadata.Fixes) != 0 ||
 		len(metadata.Presets) != 1 || metadata.Presets[0] != rules.PresetSuspicious ||
 		len(metadata.Examples) == 0 || len(metadata.KnownLimitations) == 0 {

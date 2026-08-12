@@ -1,6 +1,6 @@
 # ADR 0008: Version, Cache, And Compatibility Policy
 
-- Status: accepted for prototype; release details deferred
+- Status: accepted
 - Date: 2026-08-09
 - Refreshed: 2026-08-12
 
@@ -24,11 +24,41 @@ persistent result-cache option to copy. Gox therefore keeps this policy
 Go-specific and limited to the package-loading and typed-analysis costs already
 measured in this repository.
 
+The [Go release policy](https://go.dev/doc/devel/release#policy) supports each
+major release until two newer major releases exist. With Go 1.26 as the build
+frontend, that makes Go 1.25 and Go 1.26 the evidence and compatibility range
+instead of an open-ended promise for every language version the parser may
+happen to accept.
+
 ## Decision
 
-Phase 0 development targets Go 1.26 source and uses module language version
-1.26. A public release must separately state minimum runtime toolchain,
-official build toolchain, supported source versions, and newer-syntax behavior.
+Gox supports Go 1.25 and Go 1.26 source. Release archives will be built with
+Go 1.26.5 and will have no external Go runtime dependency. Source installation
+uses the module's Go 1.26 toolchain requirement. Windows is intentionally
+unsupported; the admitted release targets are macOS and Linux on amd64 and
+arm64.
+
+For each physical source path, Gox selects the nearest containing `go.mod`
+within the discovered project root, then the root `go.work`, then Go 1.26 as
+the explicit default. Patch directives normalize to their language family.
+Missing directives use the default; malformed files and versions outside Go
+1.25 through Go 1.26 fail before formatting, analysis, or writes. Editor stdin
+uses `--stdin-filepath` only as this context and never reads or writes that
+source path. Rule scheduling omits metadata whose minimum language family is
+newer than the selected source version. Cache identity uses that same selected
+version instead of a build-time constant.
+
+The Go parser is intentionally syntax-only and does not reject every semantic
+feature by module language version. Gox does not add type loading to formatting
+or syntax linting merely to reject a construct such as Go 1.26
+`new(expression)` in a Go 1.25 module. Those modes preserve and reparse the
+syntax without claiming that it type-checks; typed linting retains
+`go/packages` language-version diagnostics.
+
+Newer source remains unsupported until a frontend built with that Go release
+and the formatter, lint, corpus, and compatibility gates pass. The complete
+user-facing contract is in
+[`supported-go-versions.md`](../supported-go-versions.md).
 
 `gox version` prints one deterministic product version. Explicit link-time
 release metadata takes precedence over the Go main-module version; a binary

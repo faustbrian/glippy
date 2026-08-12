@@ -22,6 +22,10 @@ the default formatter configuration is then used. Fragment buffers require an
 explicit `--fragment=declaration`, `--fragment=statement`, or
 `--fragment=expression` argument.
 
+The same path selects the source language according to the
+[supported-version contract](supported-go-versions.md). Unsupported or
+malformed project language directives fail without formatted output.
+
 On success Gox writes only the complete formatted source to stdout and exits
 zero. Parse, configuration, and pre-output cancellation failures write a
 diagnostic to stderr, exit nonzero, and produce no formatted source. A stdout

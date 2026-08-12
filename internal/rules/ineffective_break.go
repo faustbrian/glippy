@@ -17,7 +17,7 @@ func (ineffectiveBreakRule) Metadata() Metadata {
 		Documentation:    "An unlabeled break at the end of a switch case or select clause exits only that switch or select. When the construct is directly inside a loop, the break has no control-flow effect and commonly means the author intended to leave the outer loop.",
 		DefaultSeverity:  SeverityWarn,
 		Presets:          []Preset{PresetCorrectness},
-		MinimumGoVersion: "1.26",
+		MinimumGoVersion: "1.25",
 		Requirement:      RequireSyntax,
 		NodeInterests:    []NodeKind{NodeForStmt, NodeRangeStmt},
 		Categories:       []Category{CategoryCorrectness},

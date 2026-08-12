@@ -12,6 +12,7 @@ import (
 
 // RunOptions selects native rules and suppression policy for one source file.
 type RunOptions struct {
+	SourceGoVersion          string
 	Preset                   rules.Preset
 	Overrides                map[string]rules.Severity
 	RuleOptions              map[string]rules.OptionSet
@@ -51,7 +52,12 @@ func Run(
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	selection, err := registry.ResolveConfigured(options.Preset, options.Overrides, options.RuleOptions)
+	selection, err := registry.ResolveConfiguredForGoVersion(
+		options.Preset,
+		options.Overrides,
+		options.RuleOptions,
+		options.SourceGoVersion,
+	)
 	if err != nil {
 		return Result{}, fmt.Errorf("resolve analysis rules: %w", err)
 	}

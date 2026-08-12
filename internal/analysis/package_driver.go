@@ -37,7 +37,12 @@ func RunPackages(
 	if err := ctx.Err(); err != nil {
 		return PackageResult{}, err
 	}
-	selection, err := registry.ResolveConfigured(options.Preset, options.Overrides, options.RuleOptions)
+	selection, err := registry.ResolveConfiguredForGoVersion(
+		options.Preset,
+		options.Overrides,
+		options.RuleOptions,
+		options.SourceGoVersion,
+	)
 	if err != nil {
 		return PackageResult{}, fmt.Errorf("resolve package analysis rules: %w", err)
 	}

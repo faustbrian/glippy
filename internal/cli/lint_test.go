@@ -866,6 +866,79 @@ func TestRunLintCheckAnalyzesConfiguredSyntaxRulesWithoutMutation(t *testing.T) 
 	}
 }
 
+func TestRunLintRejectsUnsupportedSourceVersion(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/project\n\ngo 1.24\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "source.go"), []byte("package project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"lint", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSourceError {
+		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitSourceError)
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "supports Go 1.25 through Go 1.26") {
+		t.Fatalf("Run() stdout = %q, stderr = %q", stdout.String(), stderr.String())
+	}
+}
+
+func TestPrepareLintInputPlansBindsResolvedSourceVersion(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/project\n\ngo 1.25.4\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "source.go"), []byte("package project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".gox.toml"),
+		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewDefaultRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	plans, exitCode, err := prepareLintInputPlans(
+		context.Background(),
+		lintInvocation{paths: []string{root}},
+		registry,
+	)
+	if err != nil || exitCode != ExitSuccess || len(plans) != 1 {
+		t.Fatalf("prepareLintInputPlans() = %#v, exit %d, error %v", plans, exitCode, err)
+	}
+	if plans[0].options.sourceGoVersion != "go1.25" ||
+		plans[0].options.analysis.SourceGoVersion != "go1.25" ||
+		plans[0].requirement != rules.RequireSSA {
+		t.Fatalf(
+			"source versions = %q and %q, requirement = %s; want go1.25 and SSA",
+			plans[0].options.sourceGoVersion,
+			plans[0].options.analysis.SourceGoVersion,
+			plans[0].requirement,
+		)
+	}
+}
+
 func TestRunLintCheckUsesOneConfigurationSnapshotForTierAndExecution(t *testing.T) {
 	t.Parallel()
 

@@ -50,6 +50,11 @@ for one explicit file or stdin. Multiple filesystem inputs require `--write`,
 MAY use `--stdin-filepath` for language version and configuration context but
 MUST NOT make that path writable.
 
+Source-language discovery and the supported Go 1.25 through Go 1.26 range are
+defined in [`supported-go-versions.md`](../supported-go-versions.md).
+Unsupported or malformed selected language directives are source errors and
+must fail before output or mutation.
+
 `fmt --diff` is path-based and non-writing. It MUST emit three-context-line
 unified differences for changed files in normalized path order, omit unchanged
 files, and use the normalized source path plus `.orig` as the old label and the

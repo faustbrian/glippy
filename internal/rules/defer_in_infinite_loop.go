@@ -18,7 +18,7 @@ func (deferInInfiniteLoopRule) Metadata() Metadata {
 		Documentation:    "A defer statement schedules work for function return or panic unwinding, not for the end of a loop iteration. This rule reports a defer in a conditionless for loop when the function control-flow graph cannot reach a return, built-in panic, or runtime.Goexit after that defer.",
 		DefaultSeverity:  SeverityWarn,
 		Presets:          []Preset{PresetSuspicious},
-		MinimumGoVersion: "1.26",
+		MinimumGoVersion: "1.25",
 		Requirement:      RequireControlFlow,
 		Categories:       []Category{CategoryCorrectness, CategorySuspicious},
 		KnownLimitations: []string{

@@ -2,6 +2,7 @@ package rules
 
 import (
 	"fmt"
+	"go/version"
 	"reflect"
 	"regexp"
 	"slices"
@@ -121,8 +122,24 @@ func (r *Registry) ResolveConfigured(
 	overrides map[string]Severity,
 	options map[string]OptionSet,
 ) ([]Selection, error) {
+	return r.ResolveConfiguredForGoVersion(preset, overrides, options, "")
+}
+
+// ResolveConfiguredForGoVersion applies configuration and omits rules whose
+// declared minimum exceeds the selected normalized source language version.
+// An empty source version retains the version-independent registry contract.
+func (r *Registry) ResolveConfiguredForGoVersion(
+	preset Preset,
+	overrides map[string]Severity,
+	options map[string]OptionSet,
+	sourceGoVersion string,
+) ([]Selection, error) {
 	if r == nil {
 		return nil, fmt.Errorf("resolve requires a registry")
+	}
+	if sourceGoVersion != "" &&
+		(!version.IsValid(sourceGoVersion) || version.Lang(sourceGoVersion) != sourceGoVersion) {
+		return nil, fmt.Errorf("invalid source Go version %q", sourceGoVersion)
 	}
 	if !validPreset(preset) {
 		return nil, fmt.Errorf("unknown preset %q", preset)
@@ -166,6 +183,10 @@ func (r *Registry) ResolveConfigured(
 			severity = override
 		}
 		if severity == SeverityOff {
+			continue
+		}
+		if sourceGoVersion != "" &&
+			version.Compare(sourceGoVersion, "go"+metadata.MinimumGoVersion) < 0 {
 			continue
 		}
 		configured := options[id]

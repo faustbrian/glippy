@@ -1102,7 +1102,7 @@ func TestRunExplainDocumentsBuiltInDuplicateCondition(t *testing.T) {
 	for _, contract := range []string{
 		"duplicate-condition\n",
 		"default severity: warn\n",
-		"minimum Go: 1.26\n",
+		"minimum Go: 1.25\n",
 		"analysis tier: syntax\n",
 		"generated files: excluded\n",
 		"fixes:\n  none\n",
@@ -1128,7 +1128,7 @@ func TestRunExplainDocumentsBuiltInIneffectiveBreak(t *testing.T) {
 	for _, contract := range []string{
 		"ineffective-break\n",
 		"default severity: warn\n",
-		"minimum Go: 1.26\n",
+		"minimum Go: 1.25\n",
 		"analysis tier: syntax\n",
 		"generated files: excluded\n",
 		"fixes:\n  remove-break [suggestion]: remove the ineffective break\n",
@@ -1155,7 +1155,7 @@ func TestRunExplainDocumentsBuiltInRedundantBoolComparison(t *testing.T) {
 		"redundant-bool-comparison\n",
 		"default severity: warn\n",
 		"presets: style\n",
-		"minimum Go: 1.26\n",
+		"minimum Go: 1.25\n",
 		"analysis tier: types\n",
 		"generated files: excluded\n",
 		"fixes:\n  simplify-comparison [safe]: replace the comparison with an equivalent boolean expression\n",
@@ -2770,6 +2770,95 @@ func TestRunUsesDiscoveredConfigurationForStandardInputPath(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunRejectsUnsupportedStandardInputSourceVersion(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/project\n\ngo 1.24\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run(
+		[]string{"fmt", "--stdin-filepath", filepath.Join(root, "source.go")},
+		strings.NewReader("package sample\n"),
+		&stdout,
+		&stderr,
+	)
+
+	if exitCode != ExitSourceError {
+		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitSourceError)
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "supports Go 1.25 through Go 1.26") {
+		t.Fatalf("Run() stdout = %q, stderr = %q", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunRejectsUnsupportedSourceVersionBeforeWrite(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	original := []byte("package sample\nfunc run(){work()}\n")
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/project\n\ngo 1.27\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--write", path}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSourceError {
+		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitSourceError)
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "supports Go 1.25 through Go 1.26") {
+		t.Fatalf("Run() stdout = %q, stderr = %q", stdout.String(), stderr.String())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("unsupported source changed to %q", got)
+	}
+}
+
+func TestRunClassifiesSourceVersionReadFailureAsFilesystemError(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	if err := os.Mkdir(filepath.Join(root, "go.mod"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", path}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitFilesystemError {
+		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitFilesystemError)
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "read source language file") {
+		t.Fatalf("Run() stdout = %q, stderr = %q", stdout.String(), stderr.String())
 	}
 }
 

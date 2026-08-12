@@ -18,6 +18,7 @@ import (
 	"github.com/faustbrian/gox/internal/filesystem"
 	fixengine "github.com/faustbrian/gox/internal/fix"
 	goxformat "github.com/faustbrian/gox/internal/format"
+	"github.com/faustbrian/gox/internal/goversion"
 	goxreport "github.com/faustbrian/gox/internal/report"
 	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
@@ -40,6 +41,7 @@ type lintTaskOptions struct {
 	format              goxformat.Options
 	cache               config.Cache
 	configurationDigest cache.Digest
+	sourceGoVersion     string
 }
 
 type lintTask struct {
@@ -310,22 +312,28 @@ func prepareLintInputPlans(
 		if err != nil {
 			return nil, ExitFilesystemError, err
 		}
-		resolved, found := optionsByConfiguration[selection.Path]
+		language, err := goversion.Resolve(anchor, selection.Root)
+		if err != nil {
+			return nil, sourceVersionErrorExitCode(err), err
+		}
+		optionsKey := selection.Path + "\x00" + language.Language
+		resolved, found := optionsByConfiguration[optionsKey]
 		if !found {
-			options, exitCode, err := lintOptionsForSelection(selection, registry)
+			options, exitCode, err := lintOptionsForSelection(selection, language.Language, registry)
 			if err != nil {
 				return nil, exitCode, err
 			}
-			selected, err := registry.ResolveConfigured(
+			selected, err := registry.ResolveConfiguredForGoVersion(
 				options.analysis.Preset,
 				options.analysis.Overrides,
 				options.analysis.RuleOptions,
+				options.sourceGoVersion,
 			)
 			if err != nil {
 				return nil, ExitInvalidInvocation, err
 			}
 			resolved = resolvedOptions{options: options, requirement: rules.MaximumRequirement(selected)}
-			optionsByConfiguration[selection.Path] = resolved
+			optionsByConfiguration[optionsKey] = resolved
 		}
 		plans = append(plans, lintInputPlan{
 			input:       input,
@@ -359,6 +367,9 @@ func prepareLintPackageTask(plans []lintInputPlan) (lintPackageTask, bool, int, 
 		if plan.requirement < rules.RequireTypes || plan.selection.Root != first.selection.Root ||
 			plan.selection.Path != first.selection.Path {
 			return lintPackageTask{}, false, ExitInvalidInvocation, errors.New("typed lint inputs must resolve to one project root and configuration")
+		}
+		if plan.options.sourceGoVersion != first.options.sourceGoVersion {
+			return lintPackageTask{}, false, ExitInvalidInvocation, errors.New("typed lint inputs must resolve to one source Go version")
 		}
 		pattern, exitCode, err := lintPackageQuery(plan.input, plan.anchor, plan.pattern, first.selection.Root)
 		if err != nil {
@@ -446,7 +457,7 @@ func prepareLintTasksFromPlans(
 		if err := ctx.Err(); err != nil {
 			return nil, ExitCanceled, err
 		}
-		optionsByConfiguration[plan.selection.Path] = plan.options
+		optionsByConfiguration[plan.selection.Path+"\x00"+plan.options.sourceGoVersion] = plan.options
 		files, err := discovery.GoFiles(
 			ctx,
 			[]string{plan.anchor},
@@ -476,14 +487,19 @@ func prepareLintTasksFromPlans(
 		if err != nil {
 			return nil, ExitFilesystemError, err
 		}
-		options, exists := optionsByConfiguration[selection.Path]
+		language, err := goversion.Resolve(path, selection.Root)
+		if err != nil {
+			return nil, sourceVersionErrorExitCode(err), err
+		}
+		optionsKey := selection.Path + "\x00" + language.Language
+		options, exists := optionsByConfiguration[optionsKey]
 		if !exists {
 			var exitCode int
-			options, exitCode, err = lintOptionsForSelection(selection, registry)
+			options, exitCode, err = lintOptionsForSelection(selection, language.Language, registry)
 			if err != nil {
 				return nil, exitCode, err
 			}
-			optionsByConfiguration[selection.Path] = options
+			optionsByConfiguration[optionsKey] = options
 		}
 		tasks = append(tasks, lintTask{file: selected[path], root: selection.Root, options: options})
 	}
@@ -492,6 +508,7 @@ func prepareLintTasksFromPlans(
 
 func lintOptionsForSelection(
 	selection config.Selection,
+	sourceGoVersion string,
 	registry *rules.Registry,
 ) (lintTaskOptions, int, error) {
 	loaded, err := config.Load(selection, config.ParseOptions{
@@ -502,6 +519,7 @@ func lintOptionsForSelection(
 	}
 	return lintTaskOptions{
 		analysis: analysis.RunOptions{
+			SourceGoVersion:          sourceGoVersion,
 			Preset:                   loaded.Lint.Preset,
 			Overrides:                loaded.Lint.Rules,
 			RuleOptions:              loaded.Lint.RuleOptions,
@@ -516,6 +534,7 @@ func lintOptionsForSelection(
 		},
 		cache:               loaded.Cache,
 		configurationDigest: cache.DigestOf(loaded.CanonicalBytes()),
+		sourceGoVersion:     sourceGoVersion,
 	}, ExitSuccess, nil
 }
 

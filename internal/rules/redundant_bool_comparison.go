@@ -22,7 +22,7 @@ func (redundantBoolComparisonRule) Metadata() Metadata {
 		Documentation:    "Comparing a boolean expression with a compile-time true or false value adds no information. Use the boolean expression directly, negating it when the comparison reverses its truth value.",
 		DefaultSeverity:  SeverityWarn,
 		Presets:          []Preset{PresetStyle},
-		MinimumGoVersion: "1.26",
+		MinimumGoVersion: "1.25",
 		Requirement:      RequireTypes,
 		NodeInterests:    []NodeKind{NodeBinaryExpr},
 		Categories:       []Category{CategoryStyle, CategoryMaintainability},

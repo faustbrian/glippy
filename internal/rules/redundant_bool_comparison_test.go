@@ -202,7 +202,7 @@ func TestDefaultRegistryDocumentsRedundantBoolComparisonSafeFix(t *testing.T) {
 	}
 	metadata, found := registry.Metadata("redundant-bool-comparison")
 	if !found || metadata.Requirement != rules.RequireTypes ||
-		metadata.DefaultSeverity != rules.SeverityWarn || metadata.MinimumGoVersion != "1.26" ||
+		metadata.DefaultSeverity != rules.SeverityWarn || metadata.MinimumGoVersion != "1.25" ||
 		metadata.RunOnGenerated || metadata.RunDespiteTypeErrors ||
 		len(metadata.Presets) != 1 || metadata.Presets[0] != rules.PresetStyle ||
 		len(metadata.NodeInterests) != 1 || metadata.NodeInterests[0] != rules.NodeBinaryExpr ||

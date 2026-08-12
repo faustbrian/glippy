@@ -19,7 +19,7 @@ func (nilnessRule) Metadata() Metadata {
 		Documentation:    "Reports nil dereferences, degenerate nil comparisons, nil channel and map operations, nil panics, and invalid nil-slice conversions when SSA dominance proves the value's nilness. The implementation reuses the current x/tools nilness analyzer over Gox's shared SSA function instead of constructing a second SSA program.",
 		DefaultSeverity:  SeverityWarn,
 		Presets:          []Preset{PresetSuspicious},
-		MinimumGoVersion: "1.26",
+		MinimumGoVersion: "1.25",
 		Requirement:      RequireSSA,
 		Categories:       []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{

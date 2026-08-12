@@ -376,6 +376,44 @@ func TestRegistryAppliesDocumentedOptionDefaults(t *testing.T) {
 	}
 }
 
+func TestRegistryFiltersRulesBySelectedSourceVersion(t *testing.T) {
+	t.Parallel()
+
+	older := validMetadata("older-rule")
+	older.MinimumGoVersion = "1.25"
+	newer := validMetadata("newer-rule")
+	newer.MinimumGoVersion = "1.26"
+	registry, err := rules.NewRegistry(
+		metadataRule{metadata: newer},
+		metadataRule{metadata: older},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	selection, err := registry.ResolveConfiguredForGoVersion(
+		rules.PresetCorrectness,
+		nil,
+		nil,
+		"go1.25",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selection) != 1 || selection[0].ID != "older-rule" {
+		t.Fatalf("ResolveConfiguredForGoVersion() = %#v, want older-rule only", selection)
+	}
+
+	if _, err := registry.ResolveConfiguredForGoVersion(
+		rules.PresetCorrectness,
+		nil,
+		nil,
+		"1.25",
+	); err == nil || !strings.Contains(err.Error(), "invalid source Go version") {
+		t.Fatalf("ResolveConfiguredForGoVersion() invalid version error = %v", err)
+	}
+}
+
 func validMetadata(id string) rules.Metadata {
 	return rules.Metadata{
 		ID:               id,

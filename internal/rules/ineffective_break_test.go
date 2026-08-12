@@ -138,7 +138,7 @@ func TestDefaultRegistryDocumentsIneffectiveBreakSuggestionFix(t *testing.T) {
 	metadata, found := registry.Metadata("ineffective-break")
 	if !found || metadata.Requirement != rules.RequireSyntax ||
 		metadata.DefaultSeverity != rules.SeverityWarn ||
-		metadata.MinimumGoVersion != "1.26" || metadata.RunOnGenerated ||
+		metadata.MinimumGoVersion != "1.25" || metadata.RunOnGenerated ||
 		len(metadata.Fixes) != 1 ||
 		metadata.Fixes[0] != (rules.FixMetadata{
 			Name:        "remove-break",

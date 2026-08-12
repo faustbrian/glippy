@@ -18,6 +18,7 @@ import (
 	"github.com/faustbrian/gox/internal/discovery"
 	"github.com/faustbrian/gox/internal/filesystem"
 	goxformat "github.com/faustbrian/gox/internal/format"
+	"github.com/faustbrian/gox/internal/goversion"
 	goxreport "github.com/faustbrian/gox/internal/report"
 	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
@@ -615,6 +616,9 @@ func prepareFormatTasks(ctx context.Context, invocation formatInvocation) ([]for
 		if err != nil {
 			return nil, ExitFilesystemError, err
 		}
+		if _, err := goversion.Resolve(input, selection.Root); err != nil {
+			return nil, sourceVersionErrorExitCode(err), err
+		}
 		options, exitCode, err := formatOptionsForSelection(selection)
 		if err != nil {
 			return nil, exitCode, err
@@ -644,6 +648,9 @@ func prepareFormatTasks(ctx context.Context, invocation formatInvocation) ([]for
 		selection, err := config.Discover(path, invocation.configPath)
 		if err != nil {
 			return nil, ExitFilesystemError, err
+		}
+		if _, err := goversion.Resolve(path, selection.Root); err != nil {
+			return nil, sourceVersionErrorExitCode(err), err
 		}
 		options, exists := optionsByConfiguration[selection.Path]
 		if !exists {
@@ -909,6 +916,9 @@ func runFormatFile(ctx context.Context, invocation formatInvocation, stdout, std
 	if err != nil {
 		return report(stderr, exitCodeForError(ExitFilesystemError, err), "gox fmt: %v\n", err)
 	}
+	if _, err := goversion.Resolve(invocation.paths[0], selection.Root); err != nil {
+		return report(stderr, sourceVersionErrorExitCode(err), "gox fmt: %v\n", err)
+	}
 	files, err := discovery.GoFiles(
 		ctx,
 		invocation.paths,
@@ -956,7 +966,19 @@ func resolveFormatOptions(invocation formatInvocation) (goxformat.Options, int, 
 	if err != nil {
 		return goxformat.Options{}, configurationErrorExitCode(err), err
 	}
+	if invocation.stdinFilepath != "" {
+		if _, err := goversion.Resolve(invocation.stdinFilepath, selection.Root); err != nil {
+			return goxformat.Options{}, sourceVersionErrorExitCode(err), err
+		}
+	}
 	return formatOptionsForSelection(selection)
+}
+
+func sourceVersionErrorExitCode(err error) int {
+	if goversion.IsFilesystemError(err) {
+		return ExitFilesystemError
+	}
+	return ExitSourceError
 }
 
 func formatOptionsForSelection(selection config.Selection) (goxformat.Options, int, error) {

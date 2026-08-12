@@ -19,7 +19,7 @@ func (duplicateConditionRule) Metadata() Metadata {
 		Documentation:    "Repeated side-effect-free conditions make a later branch unreachable and commonly indicate a copied condition that was not updated. Chains with initializers or conditions whose evaluation may have effects are ignored because changing those branches requires more context.",
 		DefaultSeverity:  SeverityWarn,
 		Presets:          []Preset{PresetCorrectness},
-		MinimumGoVersion: "1.26",
+		MinimumGoVersion: "1.25",
 		Requirement:      RequireSyntax,
 		NodeInterests:    []NodeKind{NodeIfStmt},
 		Categories:       []Category{CategoryCorrectness},

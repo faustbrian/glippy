@@ -15,7 +15,7 @@ func (contextKeyRule) Metadata() Metadata {
 		Documentation:    "A context key must be comparable and should use a package-specific defined type to avoid collisions. Built-in types and anonymous empty structs can collide across packages, while nil or non-comparable keys cause context.WithValue to panic.",
 		DefaultSeverity:  SeverityWarn,
 		Presets:          []Preset{PresetSuspicious},
-		MinimumGoVersion: "1.26",
+		MinimumGoVersion: "1.25",
 		Requirement:      RequireTypes,
 		NodeInterests:    []NodeKind{NodeCallExpr},
 		Categories:       []Category{CategoryCorrectness, CategorySafety},

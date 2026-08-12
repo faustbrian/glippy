@@ -15,7 +15,7 @@ func (errorsIsArgumentsRule) Metadata() Metadata {
 		Documentation:    "errors.Is expects the error being inspected first and the target sentinel second. A package-level sentinel from another package in the first position usually means those arguments were reversed, so wrapped errors will not match as intended.",
 		DefaultSeverity:  SeverityWarn,
 		Presets:          []Preset{PresetSuspicious},
-		MinimumGoVersion: "1.26",
+		MinimumGoVersion: "1.25",
 		Requirement:      RequireTypes,
 		NodeInterests:    []NodeKind{NodeCallExpr},
 		Categories:       []Category{CategoryCorrectness},

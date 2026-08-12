@@ -23,7 +23,6 @@ import (
 
 const (
 	cacheDirectoryEnvironment = "GOX_CACHE_DIR"
-	sourceGoVersion           = "1.26"
 	formatterCacheMode        = "gox-v1"
 	staleCacheTemporaryAge    = 24 * time.Hour
 )
@@ -105,7 +104,7 @@ func runPackageAnalysis(
 		Store:           store,
 		ToolVersion:     toolIdentity,
 		BuildGoVersion:  runtime.Version(),
-		SourceGoVersion: sourceGoVersion,
+		SourceGoVersion: task.options.sourceGoVersion,
 		Configuration:   task.options.configurationDigest,
 		CGOEnabled:      cgoEnabled,
 		FormatterMode:   formatterCacheMode,

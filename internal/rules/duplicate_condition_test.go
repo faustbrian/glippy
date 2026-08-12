@@ -122,7 +122,7 @@ func TestDefaultRegistryDocumentsDuplicateConditionWithoutAFix(t *testing.T) {
 	metadata, found := registry.Metadata("duplicate-condition")
 	if !found || metadata.Requirement != rules.RequireSyntax ||
 		metadata.DefaultSeverity != rules.SeverityWarn ||
-		metadata.MinimumGoVersion != "1.26" ||
+		metadata.MinimumGoVersion != "1.25" ||
 		metadata.RunOnGenerated || len(metadata.Fixes) != 0 ||
 		len(metadata.Presets) != 1 || metadata.Presets[0] != rules.PresetCorrectness {
 		t.Fatalf("metadata = %#v, found = %v", metadata, found)

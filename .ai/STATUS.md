@@ -899,3 +899,15 @@ dispatches cannot invoke publication. No tag or release was created, and the
 publication and attestation verification cannot be proven before that gate, so
 they remain final release-candidate evidence. Approved external adoption is
 still the Phase 2 blocker and overall progress stays 45%.
+
+The supported-source contract now admits Go 1.25 and Go 1.26, normalizes patch
+directives to their language family, and resolves the nearest owning `go.mod`
+before a root `go.work` and the documented Go 1.26 default. Malformed files and
+older or newer source versions fail before formatting, linting, or writes;
+`--stdin-filepath` uses the same non-writing context. Rule scheduling respects
+each rule's minimum Go version, and typed cache identity uses the resolved
+source version instead of a constant. Release artifacts remain targeted as Go
+1.26.5 Darwin/Linux amd64/arm64 builds with no external Go runtime; Windows
+remains unsupported. This closes the supported-version policy item without
+changing the 45% phase gate: maintainer approval of the external `pkg/prompts`
+adoption remains open.
