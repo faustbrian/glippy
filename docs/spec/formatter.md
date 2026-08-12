@@ -74,6 +74,12 @@ receiver itself to break after `func`. Comments between `func` and the receiver
 or inside the receiver MAY require the receiver's comment-preserving broken
 form. An otherwise atomic receiver MAY remain over width.
 
+An uncommented single logical type parameter MUST remain flat when the
+following ordinary parameter or result list breaks. Comments before or inside
+the type-parameter list MAY require its comment-preserving broken form. A list
+with multiple logical type parameters retains the canonical flat and broken
+comma-list forms.
+
 Ordinary assignments MUST keep the assignment operator and the first
 right-hand expression on the same line. Width pressure inside the right-hand
 expression belongs to that expression's canonical groups, so a broken call

@@ -2185,6 +2185,42 @@ func TestFormatWrapsGenericFunctionSignatures(t *testing.T) {
 	}
 }
 
+func TestFormatKeepsSingleTypeParameterFlatWhenParametersBreak(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package wrapping\nfunc runInteractive[T any](ctx context.Context,prompt Prompt[T],execution Execution)(result T,resultErr error){}\n")
+	file, err := source.Load("single_type_parameter.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package wrapping\n\nfunc runInteractive[T any](\n\tctx context.Context,\n\tprompt Prompt[T],\n\texecution Execution,\n) (result T, resultErr error) {}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatBreaksSingleTypeParameterWhenItMakesUnderlyingTypeFit(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package wrapping\ntype Container[T any] map[string]map[string]map[string]map[string]map[string]map[string]map[string]map[string]T\n")
+	file, err := source.Load("single_type_parameter_type.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package wrapping\n\ntype Container[\n\tT any,\n] map[string]map[string]map[string]map[string]map[string]map[string]map[string]map[string]T\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatKeepsMethodReceiverFlatWhenParametersBreak(t *testing.T) {
 	t.Parallel()
 

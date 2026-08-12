@@ -824,3 +824,12 @@ set a stable budget. Larger reservations and retaining the first arena across
 idempotency validation both materially worsened peak RSS and were rejected.
 Progress therefore remains 45% behind the stable performance and approved
 adoption gates.
+
+The current `go-libraries/pkg/prompts` adoption diff exposed a signature
+priority defect: a single generic type parameter broke vertically to let the
+following ordinary parameters remain flat. Single uncommented type parameters
+now stay attached to the function name, while the later parameter list
+takes the width-driven break. Commented and multi-parameter generic lists keep
+their existing comment-preserving and comma-list layouts. The change improves
+seven files in the selected 77-file adoption target but does not constitute
+maintainer approval, so progress remains 45%.

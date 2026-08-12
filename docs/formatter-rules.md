@@ -106,9 +106,10 @@ result, err := client.executeContent(
 )
 ```
 
-An uncommented single method receiver stays flat even when a later signature
-list breaks. Comments inside a receiver or a noncanonical receiver list may
-require the receiver's comment-preserving broken form.
+An uncommented single method receiver or single logical function type
+parameter stays flat even when a later signature list breaks. Comments around
+either list, or a noncanonical receiver or type-parameter list, may require its
+comment-preserving broken form.
 
 ## Binary Expressions And Type Unions
 

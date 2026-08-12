@@ -1024,16 +1024,17 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 	}
 	parts = append(parts, l.arena.Text(function.Name.Name))
 	if function.Type.TypeParams != nil {
-		typeParameters, err := l.fieldListWithDelimiters(function.Type.TypeParams, "[", "]")
-		if err != nil {
-			return doc.ID{}, err
-		}
 		start, startFound := l.source.PhysicalOffset(function.Type.TypeParams.Pos())
 		end, endFound := l.source.PhysicalOffset(function.Type.TypeParams.End())
 		if !startFound || !endFound {
 			return doc.ID{}, errors.New("function type parameters have no physical boundary")
 		}
-		beforeTypeParameters, err := l.inlineComments(l.commentsBetween(boundary, start), true)
+		leadingComments := l.commentsBetween(boundary, start)
+		typeParameters, err := l.functionTypeParameterList(function.Type.TypeParams, leadingComments)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		beforeTypeParameters, err := l.inlineComments(leadingComments, true)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -1124,6 +1125,37 @@ func (l *lowerer) receiverList(keywordPosition token.Pos, fields *ast.FieldList)
 
 func (l *lowerer) fieldList(fields *ast.FieldList) (doc.ID, error) {
 	return l.fieldListWithDelimiters(fields, "(", ")")
+}
+
+func (l *lowerer) functionTypeParameterList(fields *ast.FieldList, leadingComments []source.Comment) (doc.ID, error) {
+	if fields == nil || len(fields.List) != 1 || len(fields.List[0].Names) != 1 || len(leadingComments) != 0 {
+		return l.fieldListWithDelimiters(fields, "[", "]")
+	}
+	opening, openingFound := l.source.PhysicalOffset(fields.Opening)
+	closing, closingFound := l.source.PhysicalOffset(fields.Closing)
+	if !openingFound || !closingFound {
+		return doc.ID{}, errors.New("type parameter list has no physical boundary")
+	}
+	for _, comment := range l.comments {
+		if comment.Range.Start >= opening+len("[") && comment.Range.End <= closing {
+			return l.fieldListWithDelimiters(fields, "[", "]")
+		}
+	}
+	field := fields.List[0]
+	item, err := l.field(field)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	start, startFound := l.source.PhysicalOffset(field.Pos())
+	end, endFound := l.source.PhysicalOffset(field.End())
+	if !startFound || !endFound {
+		return doc.ID{}, errors.New("type parameter has no physical range")
+	}
+	return l.delimitedSingle(fields.Opening, fields.Closing, "[", "]", delimitedItem{
+		document: item,
+		start:    start,
+		end:      end,
+	})
 }
 
 func (l *lowerer) fieldListWithDelimiters(fields *ast.FieldList, open, close string) (doc.ID, error) {
