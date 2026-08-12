@@ -306,6 +306,12 @@ and Linux. `GOX_PEAK_RSS_RUNS` may select a different positive sample count.
 The script removes its binary, configuration, measurement output, and build
 cache on every exit path.
 
+`GOX_PEAK_RSS_FORMAT_ROOT` may replace only the formatter workload with another
+directory. The typed workload deliberately remains the owned Gox packages so
+an unrelated module or workspace cannot silently change the selected analysis
+contract. Record the external root's immutable revision, selected-file count,
+provenance, and environment beside any result.
+
 Recorded 2026-08-12 at source revision `76035e6` on an Apple M4 Max with
 128 GiB RAM, macOS 27.0 (26A5388g), and Go 1.26.5, `darwin/arm64`:
 
@@ -321,10 +327,32 @@ formatter 306724864 342622208 362545152 326582272 388268032
 typed     387399680 413581312 407846912 357351424 417349632
 ```
 
-The repository is an owned repeatable workload, but it is not a release-scale
-proxy for a large module or workspace. Measurements therefore describe one
-host and revision only. The platform `time` result also does not sample the
-aggregate simultaneous RSS of Gox and every package-loading subprocess. Do not
-establish a CI or product-wide memory threshold until representative large
-repositories run on stable supported hosts and the observed variance supports
-a justified budget.
+### Large Formatter Snapshot
+
+An additional 2026-08-12 formatter campaign used a temporary Git archive of
+`go-libraries` revision `1be04c0e6f17f587dc6083b701467620b95d511d` as
+`GOX_PEAK_RSS_FORMAT_ROOT`. The snapshot contained only committed bytes from
+that object and was deleted after the run. The Gox binary used source revision
+`2a21699`. Schema-1 check reporting confirmed 5,138 selected files, 4,904
+formatting differences, a complete result, and findings exit 1 without
+mutation.
+
+Five samples on the same Darwin arm64 host measured a 1,760,575,488-byte median
+peak RSS and a 1,659,682,816-2,057,584,640-byte range:
+
+```text
+1678180352 1659682816 1986904064 2057584640 1760575488
+```
+
+This is release-scale formatter evidence for one immutable 5,138-file snapshot
+on one non-isolated host. It does not establish a memory budget, cross-platform
+behavior, or typed large-workspace memory. The typed rows emitted by that
+campaign still exercised Gox itself and are not evidence about `go-libraries`.
+
+The default Gox repository is an owned repeatable workload, but it is not a
+release-scale proxy for a large module or workspace. Measurements therefore
+describe one host and revision only. The platform `time` result also does not
+sample the aggregate simultaneous RSS of Gox and every package-loading
+subprocess. Do not establish a CI or product-wide memory threshold until
+representative large repositories run on stable supported hosts and the
+observed variance supports a justified budget.

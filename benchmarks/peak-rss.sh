@@ -17,6 +17,13 @@ fi
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH='' cd -- "$script_dir/.." && pwd)
+format_root_input=${GOX_PEAK_RSS_FORMAT_ROOT:-$repo_root}
+if [ ! -d "$format_root_input" ]; then
+	printf 'GOX_PEAK_RSS_FORMAT_ROOT is not a directory: %s\n' \
+		"$format_root_input" >&2
+	exit 1
+fi
+format_root=$(CDPATH='' cd -- "$format_root_input" && pwd -P)
 task_root=$(mktemp -d "${TMPDIR:-/tmp}/gox-peak-rss.XXXXXX")
 
 cleanup() {
@@ -84,6 +91,6 @@ measure() {
 }
 
 printf '%s\n' 'workload,sample,peak_rss_bytes'
-measure formatter-check "$task_root/gox" fmt --check "$repo_root"
+measure formatter-check "$task_root/gox" fmt --check "$format_root"
 measure typed-combined-check "$task_root/gox" check \
 	--config="$task_root/gox.toml" "$repo_root/..."

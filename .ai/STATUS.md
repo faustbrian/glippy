@@ -770,3 +770,14 @@ release-scale large-module or workspace proxy, and platform `time` does not
 sample aggregate simultaneous RSS across every package-loading subprocess.
 These results therefore do not set a CI or product-wide memory threshold.
 Progress remains 45% behind the Phase 2 release gates.
+
+The peak-memory harness now accepts an explicit formatter-only workload root
+without changing its owned typed-analysis selection. A five-sample campaign
+over a temporary Git archive of `go-libraries` revision
+`1be04c0e6f17f587dc6083b701467620b95d511d` selected 5,138 files and completed
+with 4,904 formatting differences. Peak RSS had a 1,760,575,488-byte median and
+1,659,682,816-2,057,584,640-byte range on the same non-isolated Darwin arm64
+host. The immutable snapshot, binary, output, configuration, and Go cache were
+removed after the run. This is one large-repository formatter result, not a
+stable budget, cross-platform claim, or typed large-workspace measurement.
+Progress remains 45% behind the Phase 2 release gates.
