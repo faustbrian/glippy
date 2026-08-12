@@ -1,5 +1,9 @@
 # Editor Integration
 
+The stable boundary and the evidence gate for any future persistent service are
+recorded in
+[ADR 0013](decisions/0013-editor-integration-architecture.md).
+
 Repositories replacing gofmt, gofumpt, or golines should complete the
 [formatter migration workflow](migration-from-go-formatters.md) before enabling
 format-on-save. Gox must be the only active formatter for the selected files.
@@ -80,3 +84,16 @@ The example is based on Helix
 [`079a789`](https://github.com/helix-editor/helix/tree/079a789e8cb08ead67f19e1971a1b7438b37354b),
 whose current language configuration documents `formatter`, `auto-format`, the
 stdin/stdout contract, and `%{buffer_name}` expansion.
+
+## Diagnostics And Code Actions
+
+The current binary does not advertise an LSP server, live editor diagnostics,
+or editor code actions. Use `gox lint` or `gox check` as an external editor or
+task-runner command.
+
+A future Gox lint action must be one source-version-bound transaction: select
+one named fix under its safety policy, reject stale or overlapping edits, apply
+the edit to the in-memory source, reparse, run the shared formatter, validate
+the final source, and return that final replacement. Editors must not apply a
+Gox lint edit and then invoke an unrelated formatter over the intermediate
+buffer. Suggestion and unsafe actions remain explicit opt-ins.

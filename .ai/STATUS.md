@@ -743,3 +743,17 @@ cold and warm lint/check paths and safely fixed through the same selection.
 Syntax-only commands remain independent of package loading and persistent
 cache state. Overall progress remains 45% behind the existing Phase 2 release
 gates.
+
+ADR 0013 now closes the required editor-architecture decision for the initial
+formatter integration. The stable boundary remains complete-file stdin/stdout
+with truthful filepath context and visible source or configuration failures.
+Current Oxfmt 0.63.0 at Oxc
+`73acba93fba517cee1f584951e41d250a59de591` was reviewed: its LSP adds document
+formatting, minimal edits, configuration watchers, and immutable snapshot
+replacement alongside its stdin path. Gox defers that persistent surface until
+formatter latency, typed diagnostics, version-bound code actions, shared cache
+lifetime, or validated consumers show a material benefit. Future services must
+reuse CLI engines and preserve the existing stale-edit, fix-safety, formatting,
+and validation transaction. The current binary still provides no live editor
+diagnostics, code actions, or LSP. Progress remains 45% behind the existing
+Phase 2 release gates.

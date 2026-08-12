@@ -25,7 +25,7 @@ deferred status is an explicit gate, not silent approval.
 | Cache inputs and invalidation | ADR 0008 and cache specification; opt-in typed CLI ownership, canonical configuration identity, and bounded post-run pruning implemented |
 | Machine diagnostics | ADR 0011; formatter, lint-check, and lint-fix prototype schema accepted |
 | Formatter diff output | ADR 0012; bounded text-only unified differences |
-| Editor architecture | Open: stdin/stdout is the prototype boundary; ADR required before Phase 5 integration |
+| Editor architecture | ADR 0013; stdin/stdout formatter accepted, persistent service evidence-gated |
 | Extension mechanism | Syntax and audited typed `go/analysis` adapters implemented; no dynamic plugin API initially |
 | Formatter and rule compatibility | ADR 0008 |
 
