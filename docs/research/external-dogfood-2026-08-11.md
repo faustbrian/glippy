@@ -105,3 +105,7 @@ vet, and module-metadata gates. The reviewable patch has SHA-256
 The live `go-libraries` repository remains unmodified. Maintainer review and
 approval of the complete migration, including replacement of the repository's
 gofmt authority, are still required before this counts as adoption.
+The compact
+[`pkg/prompts` adoption review](prompts-adoption-review-2026-08-12.md)
+identifies the exact decision, representative layout classes, highest-value
+files, and current reproduction evidence.

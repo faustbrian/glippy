@@ -921,3 +921,14 @@ millisecond editor, 90 second large-corpus, and 2 GiB formatter RSS budgets
 therefore remain valid after adding per-path Go-version resolution. Approved
 external adoption remains the sole Phase 2 exit blocker, so overall progress
 stays 45%.
+
+The `pkg/prompts` human-review boundary is now explicit rather than represented
+only by a 17,750-line patch. A compact review record defines what approval
+changes, shows the intentional alignment, signature, call, literal, function
+literal, condition, and blank-grouping classes, and orders the highest-value
+files for inspection. Current Gox revision `88c01b7` reproduces all 77
+formatted files byte-for-byte; fresh tests, race tests, vet, and tidy-diff pass
+on the disposable snapshot. Sixty-three files remain intentionally incompatible
+with gofmt, so approval must include replacing the module's existing formatter
+authority. The live external repository is still unmodified and human approval
+remains the Phase 2 exit gate; progress stays 45%.

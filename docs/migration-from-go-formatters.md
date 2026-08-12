@@ -114,3 +114,7 @@ reviewable change. The earlier rehearsal demonstrates why passing code gates
 does not resolve competing formatter authority. See the
 [external dogfood record](research/external-dogfood-2026-08-11.md) for the
 bounded evidence.
+The dedicated
+[`pkg/prompts` adoption review](research/prompts-adoption-review-2026-08-12.md)
+provides the maintainer decision boundary and representative before/after
+layouts.
