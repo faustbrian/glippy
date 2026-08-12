@@ -26,8 +26,9 @@ case "$format_budget_seconds" in
 		;;
 esac
 
-if [ ! -x /usr/bin/time ]; then
-	printf '%s\n' '/usr/bin/time is required' >&2
+time_command=${GOX_TIME_COMMAND:-/usr/bin/time}
+if [ ! -x "$time_command" ]; then
+	printf 'time command is not executable: %s\n' "$time_command" >&2
 	exit 1
 fi
 
@@ -40,9 +41,77 @@ if [ ! -d "$format_root_input" ]; then
 	exit 1
 fi
 format_root=$(CDPATH='' cd -- "$format_root_input" && pwd -P)
+
+gox_revision=${GOX_RELEASE_GOX_REVISION:-}
+if [ -n "$gox_revision" ]; then
+	actual_gox_revision=$(git -C "$repo_root" rev-parse HEAD)
+	if [ "$actual_gox_revision" != "$gox_revision" ]; then
+		printf 'Gox revision is %s; want %s\n' \
+			"$actual_gox_revision" "$gox_revision" >&2
+		exit 1
+	fi
+	if [ -n "$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)" ]; then
+		printf '%s\n' 'Gox repository must be clean for a release budget run' >&2
+		exit 1
+	fi
+fi
+
+expected_goos=${GOX_RELEASE_EXPECTED_GOOS:-}
+expected_goarch=${GOX_RELEASE_EXPECTED_GOARCH:-}
+if [ -n "$expected_goos" ] || [ -n "$expected_goarch" ]; then
+	if [ -z "$expected_goos" ] || [ -z "$expected_goarch" ]; then
+		printf '%s\n' 'GOX_RELEASE_EXPECTED_GOOS and GOX_RELEASE_EXPECTED_GOARCH must be set together' >&2
+		exit 1
+	fi
+	set -- $(go env GOHOSTOS GOHOSTARCH)
+	go_host_os=$1
+	go_host_arch=$2
+	if [ "$go_host_os" != "$expected_goos" ] || [ "$go_host_arch" != "$expected_goarch" ]; then
+		printf 'release budget requires %s/%s; Go host is %s/%s\n' \
+			"$expected_goos" "$expected_goarch" "$go_host_os" "$go_host_arch" >&2
+		exit 1
+	fi
+	kernel_os_raw=$(uname -s)
+	case "$kernel_os_raw" in
+		Darwin) kernel_os=darwin ;;
+		Linux) kernel_os=linux ;;
+		*) kernel_os=$kernel_os_raw ;;
+	esac
+	kernel_arch_raw=$(uname -m)
+	case "$kernel_arch_raw" in
+		x86_64|amd64) kernel_arch=amd64 ;;
+		arm64|aarch64) kernel_arch=arm64 ;;
+		*) kernel_arch=$kernel_arch_raw ;;
+	esac
+	if [ "$kernel_os" != "$expected_goos" ] || [ "$kernel_arch" != "$expected_goarch" ]; then
+		printf 'release budget requires native %s/%s; kernel is %s/%s\n' \
+			"$expected_goos" "$expected_goarch" "$kernel_os" "$kernel_arch" >&2
+		exit 1
+	fi
+fi
+
+format_revision=${GOX_PEAK_RSS_FORMAT_REVISION:-}
+if [ -n "$format_revision" ]; then
+	actual_format_revision=$(git -C "$format_root" rev-parse HEAD)
+	if [ "$actual_format_revision" != "$format_revision" ]; then
+		printf 'formatter corpus revision is %s; want %s\n' \
+			"$actual_format_revision" "$format_revision" >&2
+		exit 1
+	fi
+	if [ -n "$(git -C "$format_root" status --porcelain=v1 --untracked-files=all)" ]; then
+		printf '%s\n' 'formatter corpus must be clean for a release budget run' >&2
+		exit 1
+	fi
+fi
+
 task_root=$(mktemp -d "${TMPDIR:-/tmp}/gox-peak-rss.XXXXXX")
 
 cleanup() {
+	trap - EXIT HUP INT TERM
+	if [ -d "$task_root/modcache" ] &&
+		! GOMODCACHE="$task_root/modcache" go clean -modcache >/dev/null 2>&1; then
+		chmod -R u+w "$task_root/modcache"
+	fi
 	find "$task_root" -mindepth 1 -delete
 	rmdir "$task_root"
 }
@@ -50,10 +119,10 @@ trap cleanup EXIT HUP INT TERM
 
 time_output="$task_root/time-output"
 command_output="$task_root/command-output"
-if /usr/bin/time -l true >/dev/null 2>"$time_output" &&
+if "$time_command" -l true >/dev/null 2>"$time_output" &&
 	grep -q 'maximum resident set size' "$time_output"; then
 	time_mode=darwin
-elif /usr/bin/time -v true >/dev/null 2>"$time_output" &&
+elif "$time_command" -v true >/dev/null 2>"$time_output" &&
 	grep -q 'Maximum resident set size (kbytes)' "$time_output"; then
 	time_mode=gnu
 else
@@ -62,7 +131,9 @@ else
 fi
 
 GOCACHE="$task_root/cache"
-export GOCACHE
+GOMODCACHE="$task_root/modcache"
+export GOCACHE GOMODCACHE
+env -u GOWORK go -C "$repo_root" mod download
 env -u GOWORK go -C "$repo_root" build -o "$task_root/gox" ./cmd/gox
 
 printf '%s\n' 'version = 1' '[lint]' 'preset = "suspicious"' \
@@ -75,17 +146,14 @@ measure() {
 	shift 3
 	sample=1
 	while [ "$sample" -le "$runs" ]; do
-		started=$(date +%s)
 		set +e
 		if [ "$time_mode" = darwin ]; then
-			/usr/bin/time -l "$@" >"$command_output" 2>"$time_output"
+			"$time_command" -l "$@" >"$command_output" 2>"$time_output"
 		else
-			/usr/bin/time -v "$@" >"$command_output" 2>"$time_output"
+			"$time_command" -v "$@" >"$command_output" 2>"$time_output"
 		fi
 		status=$?
 		set -e
-		finished=$(date +%s)
-		elapsed_seconds=$((finished - started))
 		if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
 			printf '%s: command exited %d\n' "$label" "$status" >&2
 			sed -n '1,20p' "$command_output" >&2
@@ -93,16 +161,26 @@ measure() {
 			exit "$status"
 		fi
 		if [ "$time_mode" = darwin ]; then
+			elapsed_seconds=$(awk '/ real / { print $1; exit }' "$time_output")
 			peak_bytes=$(awk '/maximum resident set size/ { print $1; exit }' "$time_output")
 		else
+			elapsed_seconds=$(awk -F': ' '/Elapsed \(wall clock\) time/ {
+				n = split($2, parts, ":")
+				if (n == 2) {
+					printf "%.3f\n", parts[1] * 60 + parts[2]
+				} else if (n == 3) {
+					printf "%.3f\n", parts[1] * 3600 + parts[2] * 60 + parts[3]
+				}
+				exit
+			}' "$time_output")
 			peak_bytes=$(awk -F: '/Maximum resident set size \(kbytes\)/ {
 				gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2)
 				printf "%.0f\n", $2 * 1024
 				exit
 			}' "$time_output")
 		fi
-		if [ -z "$peak_bytes" ]; then
-			printf '%s\n' 'failed to parse peak RSS' >&2
+		if [ -z "$elapsed_seconds" ] || [ -z "$peak_bytes" ]; then
+			printf '%s\n' 'failed to parse elapsed time or peak RSS' >&2
 			exit 1
 		fi
 		if [ "$peak_bytes" -gt "$budget_bytes" ]; then
@@ -110,16 +188,26 @@ measure() {
 				"$label" "$peak_bytes" "$budget_bytes" >&2
 			exit 1
 		fi
-		if [ "$elapsed_seconds" -gt "$budget_seconds" ]; then
-			printf '%s elapsed-time budget exceeded: %s seconds > %s seconds\n' \
+		if ! awk -v elapsed="$elapsed_seconds" -v budget="$budget_seconds" \
+			'BEGIN { exit !(elapsed <= budget) }'; then
+			printf '%s elapsed-time budget exceeded: %.3f seconds > %s seconds\n' \
 				"$label" "$elapsed_seconds" "$budget_seconds" >&2
 			exit 1
 		fi
-		printf '%s,%d,%s,%s\n' "$label" "$sample" "$elapsed_seconds" "$peak_bytes"
+		printf '%s,%d,%.3f,%s\n' "$label" "$sample" "$elapsed_seconds" "$peak_bytes"
 		sample=$((sample + 1))
 	done
 }
 
+if [ -n "$expected_goos" ]; then
+	printf 'metadata,goos,%s\nmetadata,goarch,%s\n' "$expected_goos" "$expected_goarch"
+fi
+if [ -n "$gox_revision" ]; then
+	printf 'metadata,gox_revision,%s\n' "$gox_revision"
+fi
+if [ -n "$format_revision" ]; then
+	printf 'metadata,format_revision,%s\n' "$format_revision"
+fi
 printf '%s\n' 'workload,sample,elapsed_seconds,peak_rss_bytes'
 measure formatter-check "$format_budget_bytes" "$format_budget_seconds" \
 	"$task_root/gox" fmt --check "$format_root"

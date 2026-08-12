@@ -1,0 +1,80 @@
+name: Release budget evidence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  formatter-budget:
+    name: ${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+          - runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+    steps:
+      - name: Check out Gox
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: gox
+      - name: Check out immutable formatter corpus
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: faustbrian/golib
+          ref: f28f85133ac6d13169745807fc39e2d5ef6bf780
+          path: corpus
+      - name: Install the recorded Go toolchain
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: 1.26.5
+          cache: false
+      - name: Measure release budgets
+        shell: bash
+        env:
+          GOTOOLCHAIN: local
+          GOX_EDITOR_LATENCY_BUDGET_MS: "250"
+          GOX_PEAK_RSS_FORMAT_BUDGET_BYTES: "2147483648"
+          GOX_PEAK_RSS_FORMAT_BUDGET_SECONDS: "15"
+          GOX_PEAK_RSS_FORMAT_REVISION: f28f85133ac6d13169745807fc39e2d5ef6bf780
+          GOX_PEAK_RSS_FORMAT_ROOT: ${{ github.workspace }}/corpus
+          GOX_PEAK_RSS_RUNS: "5"
+          GOX_RELEASE_EXPECTED_GOARCH: ${{ matrix.goarch }}
+          GOX_RELEASE_EXPECTED_GOOS: ${{ matrix.goos }}
+          GOX_RELEASE_GOX_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/release-budget-${{ matrix.goos }}-${{ matrix.goarch }}.log"
+          {
+            printf 'metadata,runner_name,%s\n' "$RUNNER_NAME"
+            printf 'metadata,runner_os,%s\n' "$RUNNER_OS"
+            printf 'metadata,runner_arch,%s\n' "$RUNNER_ARCH"
+            printf 'metadata,image_os,%s\n' "${ImageOS:-unknown}"
+            printf 'metadata,image_version,%s\n' "${ImageVersion:-unknown}"
+            go version
+            ./benchmarks/editor-latency.sh
+            ./benchmarks/peak-rss.sh
+          } | tee "$evidence"
+        working-directory: ${{ github.workspace }}/gox
+      - name: Retain raw evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-budget-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ runner.temp }}/release-budget-${{ matrix.goos }}-${{ matrix.goarch }}.log
+          if-no-files-found: error
+          retention-days: 14

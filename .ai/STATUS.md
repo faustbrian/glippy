@@ -853,3 +853,14 @@ migration falls from 69 to 65 changed files and passes a clean second formatter
 check plus the module's tests, race tests, vet, and tidy-diff gates. The live
 repository remains unmodified, and maintainer approval of the full migration
 is still required, so progress remains 45%.
+
+Release-budget automation now has an owned fresh-process timing driver and a
+manual four-runner GitHub Actions matrix for native Darwin/Linux amd64/arm64.
+The matrix pins Go 1.26.5, action commits, explicit thresholds, and public
+`golib` revision `f28f85133ac6d13169745807fc39e2d5ef6bf780`; the peak-memory
+probe rejects Go-host, kernel-architecture, dirty Gox or corpus trees, or
+revision drift in either repository.
+A local non-isolated Darwin arm64 rehearsal stayed within the provisional
+limits, but the workflow has not run from GitHub and therefore supplies no
+native remote evidence yet. Stable performance budgets and maintainer-approved
+external adoption remain open, so progress stays 45%.

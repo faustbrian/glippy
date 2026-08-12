@@ -261,11 +261,12 @@ The Phase 2 editor probe formats the 879-byte owned hostile workload through
 the complete standard-input CLI path. `BenchmarkGoxEditorStdin` includes
 configuration resolution, input reading, source loading, formatting,
 validation, and a discarded stdout write while excluding process startup.
-`editor-latency.sh` builds the current binary with a disposable Go build cache
-and uses Hyperfine to measure 20 fresh processes after five warmups. The script
-can be invoked outside the repository because its build runs from the resolved
-repository root. It requires `hyperfine` and removes its temporary binary and
-build cache on every exit path.
+`editor-latency.sh` builds the current binary and an owned Go timing driver with
+disposable build and module caches. The driver measures 20 fresh processes with
+Go's monotonic clock after five warmups, records every sample, and enforces the
+maximum directly. The script can be invoked outside the repository because its
+build runs from the resolved repository root. It has no third-party timing-tool
+dependency and removes its temporary binaries and caches on every exit path.
 
 Recorded 2026-08-11 on the same non-isolated Apple M4 Max, macOS 27.0
 (26A5388g), Go 1.26.5, `darwin/arm64`:
@@ -389,9 +390,9 @@ a product-wide typed-analysis or cross-architecture threshold.
 
 ## Provisional Release-Scale Formatter Budgets
 
-The 2026-08-12 release-scale campaign uses the immutable `go-libraries`
-revision `c60393a86b17b070b699805d1b8df99b87a7bfa6`: 5,319 Go files totaling
-41,818,190 source bytes, of which formatter discovery selects 5,138. The
+The current release-scale campaign uses the immutable public `golib`
+revision `f28f85133ac6d13169745807fc39e2d5ef6bf780`: 5,314 Go files totaling
+41,763,075 source bytes, of which formatter discovery selects 5,138. The
 formatter runs in non-writing check mode and every completed sample must remain
 within both provisional budgets:
 
@@ -404,6 +405,12 @@ enforces a 250 ms maximum for each fresh-process invocation on the owned
 879-byte editor workload. Both scripts allow an explicit threshold override so
 release automation can pin the published values rather than silently accepting
 a source-tree default change.
+
+The worker-selection study and arm64 samples below used the preceding local
+revision `c60393a86b17b070b699805d1b8df99b87a7bfa6`. They justify the provisional
+thresholds but are not evidence for the newly pinned public corpus. The native
+runner campaign must reproduce the limits against `f28f851` before the budgets
+become stable.
 
 Before choosing the repository-scale limits, a three-sample worker study
 compared 4, 8, and 16 formatter workers on Darwin arm64. Eight workers reduced
@@ -450,3 +457,23 @@ native, isolated Darwin and Linux runners reproduce it and native amd64 samples
 cover the published architecture matrix. A threshold failure blocks the
 corresponding release candidate; changing a budget requires a new recorded
 campaign and rationale.
+
+### Native Runner Campaign
+
+The manually dispatched `Release budget evidence` GitHub Actions workflow pins
+the corpus revision, Go 1.26.5, the 250-millisecond editor maximum, and the
+15-second/2-GiB formatter maximum. It runs on native GitHub-hosted
+`macos-15-intel`, `macos-15`, `ubuntu-24.04`, and `ubuntu-24.04-arm` runners,
+covering Darwin and Linux on amd64 and arm64. Action dependencies are pinned by
+complete commit ID, cache reuse is disabled, and each job retains the raw host
+metadata and samples as a short-lived artifact.
+
+The workflow supplies the campaign's pinned budgets. `peak-rss.sh` enforces
+those supplied thresholds and rejects a run when the requested Go host, kernel
+operating system or architecture, clean Gox revision, or clean corpus revision
+does not match. This prevents architecture emulation, uncommitted source, or a
+moving corpus from being recorded as native evidence. The workflow is manual
+because its purpose is release evidence, not a noisy per-commit wall-clock
+assertion. Its existence is not evidence that the four jobs passed; the
+recorded run URL, job conclusions, runner image versions, and raw artifacts
+remain required before the provisional limits become stable release budgets.
