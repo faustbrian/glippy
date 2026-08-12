@@ -911,3 +911,13 @@ source version instead of a constant. Release artifacts remain targeted as Go
 remains unsupported. This closes the supported-version policy item without
 changing the 45% phase gate: maintainer approval of the external `pkg/prompts`
 adoption remains open.
+
+Native release-budget workflow run `31615360856` passed all four supported
+platform and architecture jobs against source-version revision `d0df995`.
+Fresh-process editor maxima were 3.704 to 21.374 milliseconds; five-sample
+repository formatter maxima were 16.970 to 45.630 seconds; and formatter peak
+RSS maxima were 1,408,126,976 to 1,732,407,296 bytes. The existing 250
+millisecond editor, 90 second large-corpus, and 2 GiB formatter RSS budgets
+therefore remain valid after adding per-path Go-version resolution. Approved
+external adoption remains the sole Phase 2 exit blocker, so overall progress
+stays 45%.
