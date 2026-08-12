@@ -83,6 +83,9 @@ type fragmentWrapper struct {
 // LoadFragment constructs a physical source fragment using the fixed wrapper
 // for kind. Invalid fragments retain their physical ledger for diagnostics.
 func LoadFragment(path string, kind FragmentKind, input []byte) (*Fragment, error) {
+	if err := ValidateSize(int64(len(input))); err != nil {
+		return nil, err
+	}
 	wrapper, err := wrapperForFragment(kind)
 	if err != nil {
 		return nil, err

@@ -17,6 +17,7 @@ import (
 	"github.com/faustbrian/gox/internal/filesystem"
 	goxreport "github.com/faustbrian/gox/internal/report"
 	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/gox/internal/source"
 	goxversion "github.com/faustbrian/gox/internal/version"
 )
 
@@ -26,6 +27,22 @@ type failingReader struct{}
 
 func (failingReader) Read([]byte) (int, error) {
 	return 0, errStream
+}
+
+type repeatedReader struct {
+	remaining int64
+}
+
+func (r *repeatedReader) Read(buffer []byte) (int, error) {
+	if r.remaining == 0 {
+		return 0, io.EOF
+	}
+	count := min(int64(len(buffer)), r.remaining)
+	for index := range int(count) {
+		buffer[index] = 'x'
+	}
+	r.remaining -= count
+	return int(count), nil
 }
 
 type failingWriter struct{}
@@ -94,6 +111,178 @@ func TestRunReportsResolvedVersion(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("Run() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunFormatRejectsOversizedStandardInputAsSourceFailure(t *testing.T) {
+	reader := &repeatedReader{remaining: source.MaxFileSize + 1}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt"}, reader, &stdout, &stderr)
+
+	if exitCode != ExitSourceError || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "Go source exceeds 67108864-byte limit") {
+		t.Fatalf("Run(fmt oversized stdin) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunFormatCheckReportsOversizedFileAsIncompleteJSONSourceFailure(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "oversized.go")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(source.MaxFileSize + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"fmt", "--check", "--reporter=json", path}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSourceError || stderr.Len() != 0 {
+		t.Fatalf("Run(fmt check oversized) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+	report := decodeFormatJSONReport(t, stdout.Bytes())
+	if report.Outcome.Category != "source_error" || report.Summary.Complete || len(report.Errors) != 1 ||
+		!strings.Contains(report.Errors[0].Message, "67108864-byte limit") {
+		t.Fatalf("Run(fmt check oversized) report = %#v", report)
+	}
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
+		t.Fatal("Run(fmt check oversized) mutated source")
+	}
+}
+
+func TestRunWriteFixAndCombinedCheckPreserveOversizedSource(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "oversized.go")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(source.MaxFileSize + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, arguments := range [][]string{
+		{"fmt", "--write", path},
+		{"lint", "--fix", path},
+		{"check", path},
+	} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		exitCode := Run(arguments, failingReader{}, &stdout, &stderr)
+		if exitCode != ExitSourceError || stdout.Len() != 0 ||
+			!strings.Contains(stderr.String(), "67108864-byte limit") {
+			t.Fatalf("Run(%q) = exit %d, stdout %q, stderr %q", arguments, exitCode, stdout.String(), stderr.String())
+		}
+		after, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
+			t.Fatalf("Run(%q) mutated oversized source", arguments)
+		}
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 2 {
+			t.Fatalf("Run(%q) left replacement artifacts: %#v", arguments, entries)
+		}
+	}
+}
+
+func TestRunTypedCombinedCheckClassifiesOversizedSource(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/project\n\ngo 1.26.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".gox.toml"),
+		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "oversized.go")
+	writeOversizedValidSource(t, path)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"check", "--reporter=json", root}, failingReader{}, &stdout, &stderr)
+
+	if exitCode != ExitSourceError || stderr.Len() != 0 {
+		t.Fatalf("Run(typed oversized check) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+	var result goxreport.CheckResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode typed oversized check JSON: %v; output = %q", err, stdout.String())
+	}
+	if result.Outcome.Category != "source_error" || result.Summary.Complete || len(result.Errors) != 1 ||
+		!strings.Contains(result.Errors[0].Message, "67108864-byte limit") {
+		t.Fatalf("Run(typed oversized check) result = %#v", result)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() != source.MaxFileSize+1 {
+		t.Fatalf("Run(typed oversized check) changed source size to %d", info.Size())
+	}
+}
+
+func writeOversizedValidSource(t *testing.T, path string) {
+	t.Helper()
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	written, err := file.WriteString("package project\n")
+	if err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	padding := []byte(strings.Repeat(" ", 1<<20))
+	for remaining := source.MaxFileSize + 1 - int64(written); remaining > 0; {
+		chunk := min(remaining, int64(len(padding)))
+		count, writeErr := file.Write(padding[:chunk])
+		if writeErr != nil || int64(count) != chunk {
+			_ = file.Close()
+			t.Fatalf("write oversized source: %d bytes, %v", count, writeErr)
+		}
+		remaining -= chunk
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

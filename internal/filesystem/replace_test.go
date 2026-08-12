@@ -8,7 +8,28 @@ import (
 	"testing"
 
 	"github.com/faustbrian/gox/internal/filesystem"
+	"github.com/faustbrian/gox/internal/source"
 )
+
+func TestReadRejectsOversizedSourceBeforeSnapshotAllocation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "oversized.go")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(source.MaxFileSize + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := filesystem.Read(path)
+	if snapshot != nil || !errors.Is(err, source.ErrTooLarge) {
+		t.Fatalf("Read() returned snapshot=%t, error=%v, want ErrTooLarge", snapshot != nil, err)
+	}
+}
 
 func TestSnapshotReplaceAtomicallyPreservesPermissions(t *testing.T) {
 	t.Parallel()
@@ -109,6 +130,40 @@ func TestSnapshotReplaceRejectsChangedSourceBytes(t *testing.T) {
 	}
 	if string(got) != string(changed) {
 		t.Fatalf("Replace() content = %q, want newer source preserved", got)
+	}
+}
+
+func TestSnapshotReplaceTreatsOversizedSourceGrowthAsStale(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "source.go")
+	if err := os.WriteFile(path, []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := filesystem.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(source.MaxFileSize + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	err = snapshot.Replace([]byte("package changed\n"))
+	if !errors.Is(err, filesystem.ErrStale) || errors.Is(err, source.ErrTooLarge) {
+		t.Fatalf("Replace() error = %v, want stale-source conflict", err)
+	}
+	info, statErr := os.Stat(path)
+	if statErr != nil {
+		t.Fatal(statErr)
+	}
+	if info.Size() != source.MaxFileSize+1 {
+		t.Fatalf("Replace() changed grown source size to %d", info.Size())
 	}
 }
 

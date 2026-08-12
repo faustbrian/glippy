@@ -15,6 +15,7 @@ import (
 
 	"github.com/faustbrian/gox/internal/analysis"
 	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/gox/internal/source"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -433,6 +434,60 @@ func TestLoadPackagesValidatesRequestIdentity(t *testing.T) {
 				t.Fatal("LoadPackages() accepted invalid request")
 			}
 		})
+	}
+}
+
+func TestLoadPackagesRejectsOversizedOverlayBeforePackageLoading(t *testing.T) {
+	if testing.Short() {
+		t.Skip("allocates one source-size boundary buffer")
+	}
+	root := t.TempDir()
+	writeLoadFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "project.go")
+	writeLoadFixture(t, path, "package project\n")
+	overlay := make([]byte, source.MaxFileSize+1)
+
+	result, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes,
+		Overlay: map[string][]byte{path: overlay},
+	})
+	if len(result.Packages) != 0 || !errors.Is(err, source.ErrTooLarge) {
+		t.Fatalf("LoadPackages() = %#v, %v, want ErrTooLarge", result, err)
+	}
+}
+
+func TestLoadPackagesRejectsOversizedDiskSourceWithoutReparsing(t *testing.T) {
+	root := t.TempDir()
+	writeLoadFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "project.go")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	written, err := file.WriteString("package project\n")
+	if err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	padding := []byte(strings.Repeat(" ", 1<<20))
+	for remaining := source.MaxFileSize + 1 - int64(written); remaining > 0; {
+		chunk := min(remaining, int64(len(padding)))
+		count, writeErr := file.Write(padding[:chunk])
+		if writeErr != nil || int64(count) != chunk {
+			_ = file.Close()
+			t.Fatalf("write oversized source: %d bytes, %v", count, writeErr)
+		}
+		remaining -= chunk
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes,
+	})
+	if len(result.Packages) != 0 || !errors.Is(err, source.ErrTooLarge) {
+		t.Fatalf("LoadPackages() returned packages=%d, paths=%q, diagnostics=%#v, problems=%#v, error=%v, want ErrTooLarge", len(result.Packages), result.Sources.Paths(), result.Diagnostics, result.Sources.Problems(), err)
 	}
 }
 

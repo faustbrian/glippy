@@ -3,9 +3,11 @@ package analysis
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
+	"go/scanner"
 	"go/token"
 	"os"
 	"path/filepath"
@@ -131,10 +133,8 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 			return PackageLoadResult{}, fmt.Errorf("package loading patterns must not be empty")
 		}
 	}
-	for path := range options.Overlay {
-		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-			return PackageLoadResult{}, fmt.Errorf("package overlay path %q is not normalized absolute", path)
-		}
+	if err := validatePackageOverlay(options.Overlay); err != nil {
+		return PackageLoadResult{}, err
 	}
 	buildFlags, err := packageBuildFlags(options)
 	if err != nil {
@@ -174,17 +174,35 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 	}, nil
 }
 
+func validatePackageOverlay(overlay map[string][]byte) error {
+	paths := make([]string, 0, len(overlay))
+	for path := range overlay {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+			return fmt.Errorf("package overlay path %q is not normalized absolute", path)
+		}
+		if err := source.ValidateSize(int64(len(overlay[path]))); err != nil {
+			return fmt.Errorf("package overlay %q: %w", path, err)
+		}
+	}
+	return nil
+}
+
 type packageSourceCollector struct {
 	mu       sync.Mutex
 	files    map[string]*source.File
 	problems map[string]PackageSourceProblem
-	err      error
+	errors   map[string]map[string]error
 }
 
 func newPackageSourceCollector() *packageSourceCollector {
 	return &packageSourceCollector{
 		files:    make(map[string]*source.File),
 		problems: make(map[string]PackageSourceProblem),
+		errors:   make(map[string]map[string]error),
 	}
 }
 
@@ -195,6 +213,12 @@ func (c *packageSourceCollector) parseFile(
 ) (*ast.File, error) {
 	physical, sourceErr := source.Load(filename, input)
 	c.add(filename, physical, sourceErr)
+	if physical == nil {
+		return nil, scanner.ErrorList{&scanner.Error{
+			Pos: token.Position{Filename: filename, Line: 1, Column: 1},
+			Msg: sourceErr.Error(),
+		}}
+	}
 	return parser.ParseFile(fileSet, filename, input, parser.AllErrors|parser.ParseComments)
 }
 
@@ -206,39 +230,61 @@ func (c *packageSourceCollector) add(filename string, file *source.File, sourceE
 		path = file.Path()
 	}
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		if c.err == nil {
-			c.err = fmt.Errorf("package parser returned non-normalized source path %q", path)
-		}
+		c.addError(path, fmt.Errorf("package parser returned non-normalized source path %q", path))
 		return
 	}
 	if file == nil {
-		if c.err == nil {
-			c.err = fmt.Errorf("package parser did not capture source %q: %v", path, sourceErr)
-		}
+		c.addError(path, fmt.Errorf("package parser did not capture source %q: %w", path, sourceErr))
 		return
 	}
 	if previous, found := c.files[path]; found {
-		if previous.Digest() != file.Digest() && c.err == nil {
-			c.err = fmt.Errorf("package parser returned incompatible source versions for %q", path)
+		if previous.Digest() != file.Digest() {
+			c.addError(path, fmt.Errorf("package parser returned incompatible source versions for %q", path))
 		}
 	} else {
 		c.files[path] = file
 	}
 	if sourceErr != nil {
 		problem := PackageSourceProblem{Path: path, Digest: file.Digest(), Message: sourceErr.Error()}
-		if previous, found := c.problems[path]; found && previous != problem && c.err == nil {
-			c.err = fmt.Errorf("package parser returned incompatible source problems for %q", path)
+		if previous, found := c.problems[path]; found && previous != problem {
+			c.addError(path, fmt.Errorf("package parser returned incompatible source problems for %q", path))
 		} else {
 			c.problems[path] = problem
 		}
 	}
 }
 
+func (c *packageSourceCollector) addError(key string, err error) {
+	if err == nil {
+		return
+	}
+	if c.errors[key] == nil {
+		c.errors[key] = make(map[string]error)
+	}
+	c.errors[key][err.Error()] = err
+}
+
 func (c *packageSourceCollector) result() (PackageSourceSet, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.err != nil {
-		return PackageSourceSet{}, c.err
+	if len(c.errors) > 0 {
+		keys := make([]string, 0, len(c.errors))
+		for key := range c.errors {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		failures := make([]error, 0, len(keys))
+		for _, key := range keys {
+			messages := make([]string, 0, len(c.errors[key]))
+			for message := range c.errors[key] {
+				messages = append(messages, message)
+			}
+			sort.Strings(messages)
+			for _, message := range messages {
+				failures = append(failures, c.errors[key][message])
+			}
+		}
+		return PackageSourceSet{}, errors.Join(failures...)
 	}
 	paths := make([]string, 0, len(c.files))
 	files := make(map[string]*source.File, len(c.files))

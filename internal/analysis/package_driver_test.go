@@ -2,6 +2,7 @@ package analysis_test
 
 import (
 	"context"
+	"errors"
 	"go/ast"
 	"maps"
 	"path/filepath"
@@ -12,7 +13,43 @@ import (
 	"github.com/faustbrian/gox/internal/analysis"
 	"github.com/faustbrian/gox/internal/cache"
 	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/gox/internal/source"
 )
+
+func TestRunPackagesRejectsOversizedOverlayBeforeCloningOrCachePlanning(t *testing.T) {
+	if testing.Short() {
+		t.Skip("allocates one source-size boundary buffer")
+	}
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "project.go")
+	writeTypesFixture(t, path, "package project\n")
+	registry, err := rules.NewRegistry(typesRule{
+		metadata: typesMetadata("typed-overlay", rules.NodeFile),
+		run: func(*rules.TypesContext, ast.Node) ([]rules.Finding, error) {
+			return nil, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Preset: rules.PresetCorrectness,
+			Cache:  &analysis.PackageCacheOptions{},
+		},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."},
+			Overlay: map[string][]byte{path: make([]byte, source.MaxFileSize+1)},
+		},
+	)
+	if len(result.Files) != 0 || !errors.Is(err, source.ErrTooLarge) {
+		t.Fatalf("RunPackages() returned files=%d, error=%v, want ErrTooLarge before cache validation", len(result.Files), err)
+	}
+}
 
 func TestRunPackagesCombinesSyntaxAndTypesBeforeSuppressing(t *testing.T) {
 	t.Parallel()

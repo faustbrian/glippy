@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/faustbrian/gox/internal/analysis"
@@ -131,9 +130,9 @@ func runCombinedCheck(
 		if err := ctx.Err(); err != nil {
 			return reportCombinedCheck(invocation, stdout, stderr, ExitCanceled, false, executions, err)
 		}
-		input, err := os.ReadFile(task.file.Path)
+		input, err := source.ReadFile(task.file.Path)
 		if err != nil {
-			return reportCombinedCheck(invocation, stdout, stderr, ExitFilesystemError, false, executions, fmt.Errorf("read %q: %w", task.file.Path, err))
+			return reportCombinedCheck(invocation, stdout, stderr, exitCodeForError(ExitFilesystemError, err), false, executions, fmt.Errorf("read %q: %w", task.file.Path, err))
 		}
 		file, err := source.Load(task.file.Path, input)
 		if err != nil {

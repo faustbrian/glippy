@@ -161,6 +161,9 @@ type File struct {
 // Load constructs a physical source unit. Invalid Go returns the lossless
 // diagnostic-only File together with the parse or scan error.
 func Load(path string, input []byte) (*File, error) {
+	if err := ValidateSize(int64(len(input))); err != nil {
+		return nil, err
+	}
 	physical := bytes.Clone(input)
 	cleanPath := filepath.Clean(path)
 	fileSet := token.NewFileSet()

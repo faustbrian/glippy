@@ -8,10 +8,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/faustbrian/gox/internal/source"
 )
 
 // ErrStale reports that a source path no longer identifies the bytes read.
@@ -87,7 +88,10 @@ func ReadWithin(root, path string) (*Snapshot, error) {
 	if !os.SameFile(listed, opened) {
 		return nil, fmt.Errorf("read source path %q: %w", absolute, ErrStale)
 	}
-	input, err := io.ReadAll(file)
+	if err := source.ValidateSize(opened.Size()); err != nil {
+		return nil, fmt.Errorf("read source path %q: %w", absolute, err)
+	}
+	input, err := source.ReadAll(file)
 	if err != nil {
 		return nil, fmt.Errorf("read source path %q: %w", absolute, err)
 	}
@@ -95,7 +99,7 @@ func ReadWithin(root, path string) (*Snapshot, error) {
 		path:     absolute,
 		root:     rootAbsolute,
 		name:     name,
-		bytes:    bytes.Clone(input),
+		bytes:    input,
 		digest:   sha256.Sum256(input),
 		info:     opened,
 		rootInfo: rootInfo,
@@ -110,6 +114,9 @@ func (s *Snapshot) Bytes() []byte { return bytes.Clone(s.bytes) }
 
 // Replace validates the source version and atomically replaces changed bytes.
 func (s *Snapshot) Replace(output []byte) error {
+	if err := source.ValidateSize(int64(len(output))); err != nil {
+		return fmt.Errorf("replace source path %q: %w", s.path, err)
+	}
 	boundary, err := os.OpenRoot(s.root)
 	if err != nil {
 		return fmt.Errorf("open source root %q: %w", s.root, err)
@@ -192,7 +199,10 @@ func (s *Snapshot) validateCurrent(boundary *os.Root) error {
 	if !os.SameFile(listed, opened) || !os.SameFile(s.info, opened) || opened.Mode().Perm() != s.info.Mode().Perm() {
 		return fmt.Errorf("validate source path %q: %w", s.path, ErrStale)
 	}
-	current, err := io.ReadAll(file)
+	if opened.Size() != s.info.Size() {
+		return fmt.Errorf("validate source size %q: %w", s.path, ErrStale)
+	}
+	current, err := source.ReadAll(file)
 	if err != nil {
 		return fmt.Errorf("read current source %q: %w", s.path, err)
 	}

@@ -73,6 +73,15 @@ Standard-input fragments use an explicit fragment kind and the wrapper/mapping
 contract in [`fragments.md`](fragments.md). Fragment kind inference after a
 parse error is prohibited.
 
+Every complete source file and physical stdin fragment is limited to
+67,108,864 exact bytes as specified in
+[`source-model.md`](source-model.md#source-size-boundary). Oversized stdin,
+ordinary files, typed-package sources and overlays, and write/fix snapshots
+exit as source errors. No mode may emit formatted bytes, partial text findings,
+or replace a file after this limit is exceeded. JSON check, lint, and formatter
+path modes retain a valid incomplete source-error envelope. An unrelated
+reader, stat, open, or transport failure remains a filesystem error.
+
 The supported format-on-save setup and editor failure contract are documented
 in [`editor-integration.md`](../editor-integration.md).
 

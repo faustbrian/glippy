@@ -96,6 +96,39 @@ hook constructs the same source identity, digest, lexical ledger, and physical
 mapping. Synthesized `CompiledGoFiles`, including cgo output, MUST NOT become
 editable source units.
 
+## Source Size Boundary
+
+Gox accepts at most 67,108,864 bytes (64 MiB) for one complete Go file or one
+physical standard-input fragment. The limit is measured over exact input bytes
+before cloning, parsing, snapshotting for a write or fix, or cloning a package
+overlay. An input of exactly 67,108,864 bytes is permitted; the next byte is a
+source error. Stream reads consume at most one byte beyond the limit to prove
+overflow, and regular-file snapshots reject a known oversized size before
+allocating the source buffer while still detecting growth during the read.
+
+The same boundary applies to lexical/syntax loading, formatter stdin and path
+inputs, lint and combined check, typed-package parse hooks and overlays, and
+pre-write or pre-fix snapshots. Oversized input produces no formatted stdout,
+no partial text findings, and no replacement attempt. JSON modes report an
+incomplete `source_error` result. Transport failures while reading a bounded
+stream remain filesystem failures rather than being reclassified as source
+size failures.
+
+For typed disk input, `go/packages` and its Go-tool subprocess may read source
+while selecting the package before Gox's parse hook receives the bytes. The
+hook enforces the boundary before Gox constructs its immutable source unit or
+invokes the Go parser, but this limit is not evidence that upstream package
+selection itself has a 64 MiB memory ceiling.
+
+The initial value is deliberately conservative relative to the audited Go
+corpus: an immutable 5,314-file `go-libraries` tree had a largest Go file of
+1,396,160 bytes, approximately one forty-eighth of the boundary. The current
+Oxfmt/Oxlint source review at Oxc
+`73acba93fba517cee1f584951e41d250a59de591` found no smaller formatter boundary
+that should control this Go-specific policy. Revisit the value if a validated
+generated-source workflow requires a larger file, or if release-scale memory
+evidence supports a smaller limit without rejecting credible Go repositories.
+
 ## Validation Invariants
 
 For every accepted source unit:

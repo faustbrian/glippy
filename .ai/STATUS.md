@@ -781,3 +781,17 @@ host. The immutable snapshot, binary, output, configuration, and Go cache were
 removed after the run. This is one large-repository formatter result, not a
 stable budget, cross-platform claim, or typed large-workspace measurement.
 Progress remains 45% behind the Phase 2 release gates.
+
+Source ingestion is now bounded by one 67,108,864-byte limit shared by complete
+files and physical stdin fragments. Syntax loading, CLI file and stream reads,
+typed-package parse hooks and overlays, and write/fix snapshots reject overflow
+before Gox performs further cloning or parsing; regular-file snapshots use the
+known size for early refusal and bounded reads still detect growth. Oversized
+input is a source error, produces no formatted or partial text output,
+preserves the original file, and yields incomplete machine results. The policy
+is based on an immutable 5,314-file `go-libraries` audit whose largest Go file
+was 1,396,160 bytes plus the current Oxfmt/Oxlint source review at Oxc
+`73acba93fba517cee1f584951e41d250a59de591`. The boundary does not establish a
+release-wide memory budget or bound `go/packages` package-selection reads that
+precede Gox's parse hook, so progress remains 45% behind the existing Phase 2
+release gates.

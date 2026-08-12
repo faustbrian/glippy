@@ -78,6 +78,9 @@ func RunPackages(
 		return result, err
 	}
 	loadOptions.LoadDependencySyntax = needsFacts || needsNativeDependencies
+	if err := validatePackageOverlay(loadOptions.Overlay); err != nil {
+		return result, err
+	}
 	loadOptions = clonePackageLoadOptions(loadOptions)
 	cachePlan, err := preparePackageCachePlan(options.Cache, selection, loadOptions)
 	if err != nil {

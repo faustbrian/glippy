@@ -201,13 +201,13 @@ func runLintCheck(
 		if err := ctx.Err(); err != nil {
 			return reportLintFailure(invocation, stdout, stderr, ExitCanceled, results, err)
 		}
-		input, err := os.ReadFile(task.file.Path)
+		input, err := source.ReadFile(task.file.Path)
 		if err != nil {
 			return reportLintFailure(
 				invocation,
 				stdout,
 				stderr,
-				ExitFilesystemError,
+				exitCodeForError(ExitFilesystemError, err),
 				results,
 				fmt.Errorf("read %q: %w", task.file.Path, err),
 			)
@@ -858,7 +858,7 @@ func prepareLintPackageSnapshot(
 	}
 	snapshot, err := filesystem.ReadWithin(root, file.Path())
 	if err != nil {
-		return nil, ExitFilesystemError, err
+		return nil, exitCodeForError(ExitFilesystemError, err), err
 	}
 	snapshotFile, err := source.Load(snapshot.Path(), snapshot.Bytes())
 	if err != nil {
@@ -980,7 +980,7 @@ func prepareLintFixExecutions(
 		}
 		snapshot, err := filesystem.ReadWithin(task.root, task.file.Path)
 		if err != nil {
-			return executions, ExitFilesystemError, err
+			return executions, exitCodeForError(ExitFilesystemError, err), err
 		}
 		file, err := source.Load(snapshot.Path(), snapshot.Bytes())
 		if err != nil {

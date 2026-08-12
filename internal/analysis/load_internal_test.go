@@ -1,10 +1,35 @@
 package analysis
 
 import (
+	"errors"
+	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/faustbrian/gox/internal/source"
 )
+
+func TestPackageSourceCollectorOrdersMultipleFatalSourceFailures(t *testing.T) {
+	root := t.TempDir()
+	aPath := filepath.Join(root, "a.go")
+	zPath := filepath.Join(root, "z.go")
+	collector := newPackageSourceCollector()
+	collector.add(zPath, nil, fmt.Errorf("z overflow: %w", source.ErrTooLarge))
+	collector.add(aPath, nil, fmt.Errorf("a overflow: %w", source.ErrTooLarge))
+
+	result, err := collector.result()
+	if len(result.Paths()) != 0 || !errors.Is(err, source.ErrTooLarge) {
+		t.Fatalf("result() returned paths=%q, error=%v, want ErrTooLarge", result.Paths(), err)
+	}
+	want := "package parser did not capture source " + fmt.Sprintf("%q: a overflow", aPath) +
+		": Go source is too large\npackage parser did not capture source " +
+		fmt.Sprintf("%q: z overflow", zPath) + ": Go source is too large"
+	if err.Error() != want {
+		t.Fatalf("result() error = %q, want %q", err, want)
+	}
+}
 
 func TestPackageLoadEnvironmentDisablesEveryOrdinaryModuleNetworkRoute(t *testing.T) {
 	t.Parallel()

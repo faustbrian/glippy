@@ -7,6 +7,7 @@
 | Gofmt workflow conflict | Recorded fixed-point classes, pinned divergences, and sole-formatter migration boundary | Supported-version reruns and release migration guidance |
 | Comment or directive migration | Stable identity and token-boundary ownership | Dense comments, directives, cgo/build constraints, fuzz minimization |
 | Layout pathologies | Iterative renderer, fixed fit budget, 100,000-depth and 20,000-breadth allocation guards | Release-scale peak-memory and stable-runner latency budgets |
+| Oversized source exhausts memory | One 64 MiB exact-byte boundary before source cloning, parsing, package-overlay cloning, and write/fix snapshots; bounded streams read one proving byte | Release-scale corpus and peak-memory evidence; revisit for validated generated-source workflows |
 | Type-aware latency | Demand tiers and one run-owned package load | Cold/warm module/workspace benchmarks and cancellation proof |
 | Rule noise | Correctness-only default and admission gate | Multi-repository dogfood false-positive record |
 | Unsafe or conflicting fixes | Source digests, explicit conflict rejection, full validation | Stale/overlap/rollback/atomic-write integration suite |

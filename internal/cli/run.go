@@ -200,9 +200,9 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 	if err := ctx.Err(); err != nil {
 		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
 	}
-	input, err := io.ReadAll(stdin)
+	input, err := source.ReadAll(stdin)
 	if err != nil {
-		return report(stderr, ExitFilesystemError, "gox fmt: read standard input: %v\n", err)
+		return report(stderr, exitCodeForError(ExitFilesystemError, err), "gox fmt: read standard input: %v\n", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
@@ -374,7 +374,7 @@ func reportFormatTaskError(stderr io.Writer, err error) int {
 func formatTaskErrorExitCode(err error) int {
 	exitCode := exitCodeForError(ExitInternalError, err)
 	var taskError *formatTaskError
-	if exitCode != ExitCanceled && errors.As(err, &taskError) {
+	if exitCode == ExitInternalError && errors.As(err, &taskError) {
 		exitCode = taskError.exitCode
 	}
 	return exitCode
@@ -383,6 +383,9 @@ func formatTaskErrorExitCode(err error) int {
 func exitCodeForError(fallback int, err error) int {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return ExitCanceled
+	}
+	if errors.Is(err, source.ErrTooLarge) {
+		return ExitSourceError
 	}
 	return fallback
 }
@@ -489,9 +492,9 @@ func runFormatCheck(
 		return report(stderr, exitCode, "gox fmt: %v\n", err)
 	}
 	prepared, err := mapFormatTasks(ctx, tasks, formatWorkerLimit(len(tasks)), func(ctx context.Context, task formatTask) (preparedFormatCheck, error) {
-		input, err := os.ReadFile(task.file.Path)
+		input, err := source.ReadFile(task.file.Path)
 		if err != nil {
-			return preparedFormatCheck{}, newFormatTaskError(ExitFilesystemError, "read %q: %w", task.file.Path, err)
+			return preparedFormatCheck{}, newFormatTaskError(exitCodeForError(ExitFilesystemError, err), "read %q: %w", task.file.Path, err)
 		}
 		if err := ctx.Err(); err != nil {
 			return preparedFormatCheck{}, err
@@ -559,9 +562,9 @@ func runFormatDiff(ctx context.Context, invocation formatInvocation, stdout, std
 		return report(stderr, exitCode, "gox fmt: %v\n", err)
 	}
 	prepared, err := mapFormatTasks(ctx, tasks, formatWorkerLimit(len(tasks)), func(ctx context.Context, task formatTask) (preparedFormatDiff, error) {
-		input, err := os.ReadFile(task.file.Path)
+		input, err := source.ReadFile(task.file.Path)
 		if err != nil {
-			return preparedFormatDiff{}, newFormatTaskError(ExitFilesystemError, "read %q: %w", task.file.Path, err)
+			return preparedFormatDiff{}, newFormatTaskError(exitCodeForError(ExitFilesystemError, err), "read %q: %w", task.file.Path, err)
 		}
 		if err := ctx.Err(); err != nil {
 			return preparedFormatDiff{}, err
@@ -922,9 +925,9 @@ func runFormatFile(ctx context.Context, invocation formatInvocation, stdout, std
 	if err != nil {
 		return report(stderr, exitCode, "gox fmt: %v\n", err)
 	}
-	input, err := os.ReadFile(path)
+	input, err := source.ReadFile(path)
 	if err != nil {
-		return report(stderr, ExitFilesystemError, "gox fmt: read %q: %v\n", path, err)
+		return report(stderr, exitCodeForError(ExitFilesystemError, err), "gox fmt: read %q: %v\n", path, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
