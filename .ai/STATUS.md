@@ -873,3 +873,15 @@ were 3.438 to 20.677 milliseconds. The campaign now uses a provisional
 90-second maximum, giving 33% headroom over the slowest observed native sample,
 and current Node-runtime action releases. A complete five-sample rerun on all
 four native runners remains required, so progress stays 45%.
+
+Native workflow rerun `31611653501` passed all four supported platform and
+architecture jobs at revision `345a8de5c8dfd7980863a075123940919e7c4e63`.
+Each job completed 20 editor samples, five repository-scale formatter samples,
+the typed side-workload, and artifact retention. Editor maxima were 3.257 to
+19.571 milliseconds, formatter maxima were 16.840 to 42.020 seconds by runner,
+and peak RSS maxima were 1,305,530,368 to 1,713,582,080 bytes. This establishes
+stable release budgets of 250 milliseconds for editor formatting, 90 seconds
+for the pinned large formatter corpus, and 2 GiB peak formatter RSS across
+native Darwin/Linux amd64/arm64. Stable performance is no longer a Phase 2
+blocker; maintainer approval of the external `pkg/prompts` adoption remains
+open, so overall progress stays 45%.

@@ -451,12 +451,11 @@ is the cgroup-v2 `memory.peak` value and therefore also includes the minimal
 container runtime processes. The Linux figure is conservative for Gox but is
 not directly interchangeable with Darwin process RSS.
 
-The budget is now executable and has headroom over every recorded supported-OS
-arm64 sample. It remains provisional rather than a stable release claim until
-native, isolated Darwin and Linux runners reproduce it and native amd64 samples
-cover the published architecture matrix. A threshold failure blocks the
-corresponding release candidate; changing a budget requires a new recorded
-campaign and rationale.
+The budget is executable and has headroom over every recorded local supported-OS
+arm64 sample. The native runner campaign below establishes the stable release
+budget across the supported operating-system and architecture matrix. A
+threshold failure blocks the corresponding release candidate; changing a
+budget requires a new recorded campaign and rationale.
 
 ### Native Runner Campaign
 
@@ -483,5 +482,19 @@ rejected the original 15-second maximum. Its first repository-scale samples
 completed in 17.370 seconds on Linux arm64, 20.470 seconds on Linux amd64,
 30.130 seconds on Darwin arm64, and 67.690 seconds on Darwin amd64; every sample
 remained below the 2-GiB memory ceiling. The replacement 90-second provisional
-maximum gives 33% headroom over the slowest observation. It remains
-provisional until all five samples pass on every native runner.
+maximum gave 33% headroom over the slowest observation.
+
+The complete rerun, [`31611653501`](https://github.com/faustbrian/gox/actions/runs/31611653501),
+passed at Gox revision `345a8de5c8dfd7980863a075123940919e7c4e63`.
+Every native runner completed 20 editor samples, five formatter samples, the
+typed side-workload, and artifact retention:
+
+| Runner | Editor maximum | Formatter elapsed range | Formatter peak RSS range |
+| --- | ---: | ---: | ---: |
+| Darwin amd64 | 19.571 ms | 25.070-42.020 s | 1,410,637,824-1,713,582,080 B |
+| Darwin arm64 | 15.557 ms | 25.830-28.040 s | 1,327,251,456-1,486,569,472 B |
+| Linux amd64 | 3.257 ms | 21.520-21.720 s | 1,152,860,160-1,398,861,824 B |
+| Linux arm64 | 3.538 ms | 16.700-16.840 s | 1,231,724,544-1,305,530,368 B |
+
+This establishes the stable 250-millisecond editor, 90-second formatter, and
+2-GiB formatter peak-RSS budgets for native macOS and Linux on amd64 and arm64.
