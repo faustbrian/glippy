@@ -32,6 +32,10 @@ same construct uses its canonical broken form one column below that boundary.
 - Constant, variable, type, function, method, field, and signature structure is
   retained while spacing and eligible lists are canonicalized.
 - Blocks always place ordinary statements on hard line boundaries.
+- A source blank line between statement groups remains exactly one blank line.
+  Repeated blank lines collapse to one. Explicit semicolon-separated
+  statements remain adjacent after their semicolon becomes a hard line, and
+  blank padding immediately inside braces is removed.
 - Ordinary explicit semicolons become line breaks. Grammar semicolons in `if`,
   classic `for`, and switch headers remain in those headers.
 - Explicit empty statements remain visible when their removal could change a
@@ -59,6 +63,19 @@ func run() {
 	_ = result
 }
 ```
+
+A source-authored blank line remains a grouping boundary:
+
+```go
+func run() {
+	prepare()
+
+	execute()
+}
+```
+
+A compressed `prepare();execute()` sequence instead formats to adjacent hard
+lines without inventing a blank group.
 
 The complete expected files are exercised by
 [`TestFormatExpandsMotivatingHostileGo`](../internal/format/format_test.go).

@@ -99,10 +99,13 @@ leave Gox-formatted source under a gofmt, gofumpt, or golines gate.
 
 ## Current Dogfood Evidence
 
-A disposable migration of the external `pkg/prompts` module changed 69 of 77
+A disposable migration of the external `pkg/prompts` module changed 65 of 77
 files and reached a zero-difference second Gox check. Its tests, race tests,
-vet, and module-metadata check passed. Even so, 63 files were not gofmt fixed
-points, so the repository's existing format check would reject the migration.
+vet, and module-metadata check passed. The current formatter retains one
+source-authored blank line between statement groups, including all 168 exact
+`t.Parallel()` grouping gaps in this snapshot. The repository's existing
+gofmt-based format check remains incompatible with the migration by the
+documented fixed-point decision.
 
 The maintainer has selected `go-libraries/pkg/prompts` as the adoption target,
 but has not reviewed or approved that disposable diff. The migration must be

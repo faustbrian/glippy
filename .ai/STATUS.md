@@ -843,3 +843,13 @@ per-sample maxima of 15 seconds, 2 GiB, and 250 ms for the fresh-process editor
 workload. Native isolated Darwin/Linux and amd64 reproduction remains required
 before the release budget is stable. Progress remains 45% behind that evidence
 and maintainer-approved external adoption.
+
+The refreshed `go-libraries/pkg/prompts` adoption diff now preserves one
+source-authored blank separator between statement groups while collapsing
+repeats and keeping explicit semicolon-expanded statements adjacent. All 168
+exact `t.Parallel()` grouping gaps in source revision
+`c60393a86b17b070b699805d1b8df99b87a7bfa6` survive formatting; the reviewable
+migration falls from 69 to 65 changed files and passes a clean second formatter
+check plus the module's tests, race tests, vet, and tidy-diff gates. The live
+repository remains unmodified, and maintainer approval of the full migration
+is still required, so progress remains 45%.

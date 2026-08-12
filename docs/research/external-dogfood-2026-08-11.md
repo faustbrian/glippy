@@ -84,3 +84,24 @@ This rehearsal proves writable non-generated module behavior, idempotency, and
 the named local gates on a disposable snapshot. It still does not establish
 owner approval, migration-policy acceptance, complete human review of the
 large diff, or a repository-wide write result.
+
+## Current Reviewable Migration
+
+The selected adoption target was reproduced from immutable source revision
+`c60393a86b17b070b699805d1b8df99b87a7bfa6` on 2026-08-12. Review exposed that
+the earlier formatter removed source-authored blank-line grouping between
+ordinary statements. The source model already retained the required physical
+gaps; statement lowering now preserves one blank separator, collapses repeats,
+does not invent a group after an explicit semicolon, and removes trailing blank
+padding before a closing brace. This matches current Oxfmt's source-gap policy
+at Oxc commit `dd3e4160a230d376e93b91fa9c2031d282ceefdd`.
+
+The refreshed 77-file snapshot changes 65 files with 7,625 insertions and 3,599
+deletions. All 168 exact `t.Parallel()` blank-line boundaries present in the
+baseline remain in the formatted result; the prior formatted snapshot retained
+none. A second Gox check is clean, and the snapshot passes `go test`, race,
+vet, and module-metadata gates. The reviewable patch has SHA-256
+`14b23895b77a43531833bd11f5ec2428e878e26d98a81ab649d8822e392a0c1e`.
+The live `go-libraries` repository remains unmodified. Maintainer review and
+approval of the complete migration, including replacement of the repository's
+gofmt authority, are still required before this counts as adoption.

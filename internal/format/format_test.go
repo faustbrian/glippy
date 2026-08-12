@@ -105,6 +105,13 @@ func TestFormatFragmentsAtTheirSelectedUserBoundary(t *testing.T) {
 			want:  "ctx, cancel := context.WithCancel(t.Context())\ncancel()\nresult := work(ctx)\n",
 		},
 		{
+			name:  "statement groups",
+			kind:  source.FragmentStatement,
+			width: 100,
+			input: "first()\n\n\nsecond();\n\nthird()",
+			want:  "first()\n\nsecond()\nthird()\n",
+		},
+		{
 			name:  "expression",
 			kind:  source.FragmentExpression,
 			width: 20,
@@ -954,6 +961,24 @@ func TestFormatPreservesStatementBoundaryComments(t *testing.T) {
 	want := "package comments\n\nfunc run() {\n\t// before first\n\tfirst() // after first\n\t// between statements\n\tsecond()\n\t// before close\n}\n"
 	if string(got) != want {
 		t.Fatalf("File() = %q, want statement boundary comments anchored", got)
+	}
+}
+
+func TestFormatPreservesBlankLinesBetweenStatementGroups(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package grouping\nfunc run(){first()\n\n\nsecond();\n\nthird()\n\n// grouped\nfourth()\n// attached\n\nfifth()\nsixth() /* trailing\n\ncomment */\nseventh()\n\n// before close\n\n}\n")
+	file, err := source.Load("statement_groups.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package grouping\n\nfunc run() {\n\tfirst()\n\n\tsecond()\n\tthird()\n\n\t// grouped\n\tfourth()\n\t// attached\n\n\tfifth()\n\tsixth() /* trailing\n\ncomment */\n\tseventh()\n\n\t// before close\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
 	}
 }
 

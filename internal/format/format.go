@@ -324,10 +324,13 @@ func (l *lowerer) fragmentStatements(statements []ast.Stmt) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	parts := make([]doc.ID, 0, len(lowered)*2)
+	parts := make([]doc.ID, 0, len(lowered)*3)
 	for index, statement := range lowered {
 		if index > 0 {
 			parts = append(parts, l.arena.HardLine())
+			if statement.blankBefore {
+				parts = append(parts, l.arena.HardLine())
+			}
 		}
 		parts = append(parts, statement.document)
 	}
@@ -989,7 +992,7 @@ func (l *lowerer) physicalHeader(
 func (l *lowerer) hasBlankPhysicalGap(start, end int) (bool, error) {
 	gap, valid := l.source.Slice(source.Range{Start: start, End: end})
 	if !valid {
-		return false, errors.New("import group has an invalid physical gap")
+		return false, errors.New("source has an invalid physical gap")
 	}
 	return strings.Count(gap, "\n") >= 2, nil
 }
@@ -1432,8 +1435,9 @@ func (l *lowerer) blockTail(block *ast.BlockStmt) (doc.ID, error) {
 }
 
 type loweredStatement struct {
-	document  doc.ID
-	outdented bool
+	document    doc.ID
+	outdented   bool
+	blankBefore bool
 }
 
 func (l *lowerer) statementRange(statements []ast.Stmt, boundary, closing int) ([]loweredStatement, error) {
@@ -1444,6 +1448,18 @@ func (l *lowerer) statementRange(statements []ast.Stmt, boundary, closing int) (
 			return nil, errors.New("statement has no physical start offset")
 		}
 		leading := l.commentsBetween(boundary, statementStart)
+		gapEnd := statementStart
+		if len(leading) > 0 {
+			gapEnd = leading[0].Range.Start
+		}
+		blankBefore := false
+		if index > 0 {
+			var err error
+			blankBefore, err = l.hasStatementBlankGap(boundary, gapEnd)
+			if err != nil {
+				return nil, err
+			}
+		}
 		limit := closing
 		if index+1 < len(statements) {
 			limit, found = l.source.PhysicalOffset(statements[index+1].Pos())
@@ -1462,16 +1478,33 @@ func (l *lowerer) statementRange(statements []ast.Stmt, boundary, closing int) (
 		if !found {
 			return nil, errors.New("statement has no physical end offset")
 		}
-		lowered = l.withTrailingComments(lowered, l.trailingComments(statementEnd, limit))
+		trailing := l.trailingComments(statementEnd, limit)
+		lowered = l.withTrailingComments(lowered, trailing)
 		outdented := statementIsOutdented(statement)
-		loweredStatements = append(loweredStatements, loweredStatement{document: lowered, outdented: outdented})
+		loweredStatements = append(loweredStatements, loweredStatement{
+			document:    lowered,
+			outdented:   outdented,
+			blankBefore: blankBefore,
+		})
 		boundary = statementEnd
+		if len(trailing) > 0 {
+			boundary = trailing[len(trailing)-1].Range.End
+		}
 	}
 	if trailingBoundary := l.commentsBetween(boundary, closing); len(trailingBoundary) > 0 {
 		outdented := len(statements) > 0 && statementIsClause(statements[len(statements)-1])
+		blankBefore := false
+		if len(statements) > 0 {
+			var err error
+			blankBefore, err = l.hasStatementBlankGap(boundary, trailingBoundary[0].Range.Start)
+			if err != nil {
+				return nil, err
+			}
+		}
 		loweredStatements = append(loweredStatements, loweredStatement{
-			document:  l.commentsDocument(trailingBoundary),
-			outdented: outdented,
+			document:    l.commentsDocument(trailingBoundary),
+			outdented:   outdented,
+			blankBefore: blankBefore,
 		})
 	}
 	return loweredStatements, nil
@@ -1496,15 +1529,38 @@ func statementIsClause(statement ast.Stmt) bool {
 }
 
 func (l *lowerer) statementSequence(statements []loweredStatement) doc.ID {
-	parts := make([]doc.ID, 0, len(statements)*2)
+	parts := make([]doc.ID, 0, len(statements)*3)
 	for _, statement := range statements {
-		line := l.arena.Concat(l.arena.HardLine(), statement.document)
+		separator := l.arena.HardLine()
+		if statement.blankBefore {
+			separator = l.arena.Concat(separator, l.arena.HardLine())
+		}
+		line := l.arena.Concat(separator, statement.document)
 		if !statement.outdented {
 			line = l.arena.Indent(line)
 		}
 		parts = append(parts, line)
 	}
 	return l.arena.Concat(parts...)
+}
+
+func (l *lowerer) hasStatementBlankGap(start, end int) (bool, error) {
+	blank, err := l.hasBlankPhysicalGap(start, end)
+	if err != nil || !blank {
+		return blank, err
+	}
+	first := sort.Search(len(l.tokens), func(index int) bool {
+		return l.tokens[index].Range.Start >= start
+	})
+	for _, item := range l.tokens[first:] {
+		if item.Range.Start >= end {
+			break
+		}
+		if item.Semicolon == source.SemicolonExplicit {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func (l *lowerer) statementWithLimit(statement ast.Stmt, limit int) (doc.ID, error) {

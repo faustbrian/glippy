@@ -82,6 +82,14 @@ requires comments and suppressions not to cross content boundaries. This
 supports Gox retaining immutable bytes, lexical tokens, token gaps, comment
 identity, directives, and byte offsets rather than treating `go/ast` as a CST.
 
+Blank-line behavior was refreshed on 2026-08-12 against Oxc commit
+[`dd3e416`](https://github.com/oxc-project/oxc/commit/dd3e4160a230d376e93b91fa9c2031d282ceefdd).
+The current formatter builders explicitly preserve intentional blank lines
+between adjacent nodes while capping consecutive empty lines to one, and the
+call-argument printer applies the same source-gap policy between arguments.
+This supports retaining one source-authored statement-group separator in Gox
+without retaining arbitrary indentation or repeated blank padding.
+
 The formatter rejects any parse diagnostic. Its CLI provides check, stdin,
 configuration discovery, bounded threads, CI, and LSP workflows. Gox must not
 copy three weaker operational choices: default in-place mutation, plain

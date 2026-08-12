@@ -44,6 +44,12 @@ slicing, assertions, and Go types before Phase 1 exits.
 Blocks and ordinary statement lists MUST use hard line boundaries. Explicit
 semicolons between ordinary statements MUST lower to hard lines. Semicolons in
 `if`, classic `for`, and switch grammar MUST remain in their clause.
+Between adjacent statement groups, a physical blank-line gap MUST remain one
+blank line. Multiple blank lines MUST collapse to one. A gap after an explicit
+ordinary-statement semicolon MUST NOT create a blank group, and leading or
+trailing blank lines immediately inside braces MUST NOT be retained. A blank
+gap before a boundary comment group belongs to that group; comment-owned gaps
+after the group retain the comment-placement behavior below.
 An explicit empty statement MUST retain a visible `;`, including after a label,
 because removing a labeled empty statement can attach the label to a different
 following statement. An implicit empty statement before a closing brace MUST
