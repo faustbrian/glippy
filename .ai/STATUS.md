@@ -629,3 +629,21 @@ while existing load identity binds dependency source changes. This closes the
 native dependency-analysis boundary. Built-in rule admission and the Phase 2
 naming, release-platform, publication, and approved external-adoption gates
 remain open, so progress stays 45%.
+
+The production registry now admits its first native types-tier built-in,
+`context-key`, under the opt-in `suspicious` preset. It identifies the standard
+library `context.WithValue` by typed object identity and reports built-in key
+types, aliases resolving directly to built-ins, anonymous empty structs, nil
+keys, and statically non-comparable keys. Package-defined comparable types,
+named empty structs, aliases to named key types, pointers, non-empty anonymous
+structs, and unresolved interface or type-parameter values remain accepted. The
+rule still reports type parameters whose single structural restriction proves
+every permitted type non-comparable. It excludes generated and ill-typed
+packages and offers no fix. Go 1.26.5 vet accepted the proving defects. Current
+Staticcheck SA1029, three reviewed public fixes, red-green behavioral tests,
+the public lint and explain paths, a 100-call
+cost probe, and non-mutating dogfood support admission. Gox selected 109 files
+without diagnostics; the root selection of an immutable go-libraries snapshot
+selected 16 files without diagnostics and does not represent its nested
+modules. The incomplete Phase 2 naming, release-platform, publication, and
+approved external-adoption gates keep overall progress at 45%.

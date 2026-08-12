@@ -235,7 +235,7 @@ func TestDefaultRegistryDocumentsNilnessWithoutAFix(t *testing.T) {
 	}
 }
 
-func TestNilnessIsOptInUntilEveryCommandSupportsTypedDefaults(t *testing.T) {
+func TestTypedAndSSARulesRemainOptIn(t *testing.T) {
 	t.Parallel()
 
 	registry, err := rules.NewDefaultRegistry()
@@ -254,8 +254,9 @@ func TestNilnessIsOptInUntilEveryCommandSupportsTypedDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(suspicious) != 1 || suspicious[0].ID != "nilness" ||
-		suspicious[0].Requirement != rules.RequireSSA {
+	if len(suspicious) != 2 || suspicious[0].ID != "context-key" ||
+		suspicious[0].Requirement != rules.RequireTypes || suspicious[1].ID != "nilness" ||
+		suspicious[1].Requirement != rules.RequireSSA {
 		t.Fatalf("suspicious selection = %#v", suspicious)
 	}
 }
@@ -287,7 +288,10 @@ func BenchmarkNilnessSharedSSA(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	nilnessSelection, err := nilnessRegistry.Resolve(rules.PresetSuspicious, nil)
+	nilnessSelection, err := nilnessRegistry.Resolve(
+		rules.PresetSuspicious,
+		map[string]rules.Severity{"context-key": rules.SeverityOff},
+	)
 	if err != nil {
 		b.Fatal(err)
 	}

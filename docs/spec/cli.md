@@ -38,8 +38,8 @@ invalid argument counts exit as invalid invocation without writing stdout.
 Cancellation and output failures retain the common exit categories. The
 compiled registry contains only rules that satisfy the admission gate. The
 default correctness rules are `duplicate-condition` and
-`ineffective-break`; the deeper `nilness` rule remains in the opt-in
-`suspicious` preset.
+`ineffective-break`; the types-tier `context-key` rule and SSA-tier `nilness`
+rule remain in the opt-in `suspicious` preset.
 
 `fmt` without a write, check, or diff flag writes formatted content to stdout
 for one explicit file or stdin. Multiple filesystem inputs require `--write`,
