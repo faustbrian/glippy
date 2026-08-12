@@ -503,6 +503,20 @@ func TestRenderBoundsAdversarialDepthAndBreadthAllocations(t *testing.T) {
 	}
 }
 
+func TestArenaCapacityHintBoundsNodeStorageAllocations(t *testing.T) {
+	const nodes = 20_000
+
+	allocations := testing.AllocsPerRun(5, func() {
+		arena := NewArenaWithCapacity(nodes + 1)
+		for range nodes {
+			arena.Text("x")
+		}
+	})
+	if allocations > 2 {
+		t.Fatalf("capacity-aware arena allocations = %.0f, want at most 2", allocations)
+	}
+}
+
 func BenchmarkRenderAdversarialNesting(b *testing.B) {
 	for _, depth := range []int{20_000, 100_000} {
 		b.Run(strconv.Itoa(depth), func(b *testing.B) {

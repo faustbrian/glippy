@@ -32,6 +32,11 @@ type sourceUnit interface {
 	Slice(source.Range) (string, bool)
 }
 
+const (
+	documentsPerToken    = 3
+	maximumArenaCapacity = 8_192
+)
+
 // File formats one valid immutable source unit.
 func File(file *source.File, options Options) ([]byte, error) {
 	if file == nil {
@@ -98,8 +103,18 @@ func Fragment(fragment *source.Fragment, options Options) ([]byte, error) {
 }
 
 func render(file *source.File, options Options) ([]byte, error) {
-	arena := doc.NewArena()
-	lower := newLowerer(arena, file)
+	tokens := file.Tokens()
+	return renderFileWithCapacity(file, options, tokens, arenaCapacity(len(tokens)))
+}
+
+func renderFileWithCapacity(
+	file *source.File,
+	options Options,
+	tokens []source.Token,
+	capacity int,
+) ([]byte, error) {
+	arena := doc.NewArenaWithCapacity(capacity)
+	lower := newLowerer(arena, file, tokens)
 	var document doc.ID
 	if err := file.ReadSyntax(func(syntax *ast.File) error {
 		var err error
@@ -124,8 +139,10 @@ func render(file *source.File, options Options) ([]byte, error) {
 }
 
 func renderFragment(fragment *source.Fragment, options Options) ([]byte, error) {
-	arena := doc.NewArena()
-	lower := newLowerer(arena, fragment)
+	tokens := fragment.Tokens()
+	capacity := arenaCapacity(len(tokens))
+	arena := doc.NewArenaWithCapacity(capacity)
+	lower := newLowerer(arena, fragment, tokens)
 	var document doc.ID
 	if err := fragment.ReadSyntax(func(syntax source.FragmentSyntax) error {
 		var err error
@@ -164,7 +181,14 @@ type lowerer struct {
 	emittedComment []bool
 }
 
-func newLowerer(arena *doc.Arena, file sourceUnit) lowerer {
+func arenaCapacity(tokenCount int) int {
+	if tokenCount >= maximumArenaCapacity/documentsPerToken {
+		return maximumArenaCapacity
+	}
+	return min(tokenCount*documentsPerToken+1, maximumArenaCapacity)
+}
+
+func newLowerer(arena *doc.Arena, file sourceUnit, tokens []source.Token) lowerer {
 	comments := file.Comments()
 	commentByStart := make(map[int]int, len(comments))
 	for index, comment := range comments {
@@ -174,7 +198,7 @@ func newLowerer(arena *doc.Arena, file sourceUnit) lowerer {
 		arena:          arena,
 		source:         file,
 		physical:       file.Bytes(),
-		tokens:         file.Tokens(),
+		tokens:         tokens,
 		comments:       comments,
 		commentByStart: commentByStart,
 		emittedComment: make([]bool, len(comments)),

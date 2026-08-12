@@ -812,3 +812,15 @@ retained nor reviewed; it must be reproduced from a current immutable revision
 as a dedicated reviewable diff. These decisions remove naming, Windows, and
 unbounded-filesystem evidence from the current Phase 2 input list, but stable
 performance budgets and approved adoption remain open, so progress stays 45%.
+
+Formatter lowering now gives each document arena an allocation-only capacity
+hint of three nodes per physical token, capped at 8,192 nodes per render. The
+arena remains growable and formatting output is unchanged. Fixed-iteration
+benchmarks reduce allocated bytes by 26.6% for the editor workload, 28.7% for
+100 dense loops, and 8.2% for 1,000 dense loops. Three checks over the immutable
+5,138-file `go-libraries` snapshot measured a 1,742,274,560-byte median peak RSS,
+inside the earlier campaign's range; this does not prove an RSS improvement or
+set a stable budget. Larger reservations and retaining the first arena across
+idempotency validation both materially worsened peak RSS and were rejected.
+Progress therefore remains 45% behind the stable performance and approved
+adoption gates.

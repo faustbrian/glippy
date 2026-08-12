@@ -2,6 +2,7 @@
 
 - Status: accepted for prototype
 - Date: 2026-08-09
+- Refreshed: 2026-08-12
 
 ## Context And Evidence
 
@@ -37,6 +38,12 @@ deterministic fuzz run show no unbounded search or recursive stack growth. The
 recorded evidence and remaining peak-memory boundary are in
 `benchmarks/README.md`.
 
+Lowering supplies an allocation-only arena capacity hint of three document
+nodes per physical token, capped at 8,192 nodes per render. The arena remains
+growable, so the hint cannot reject valid syntax or change layout. The cap
+prevents concurrently formatted large files from front-loading node storage;
+the token basis avoids reserving in proportion to a single large literal.
+
 Binary operators, type-union operators, and selector dots break after the
 operator. Ordinary statement boundaries and block contents use hard lines.
 Broken comma lists emit required trailing commas through group-scoped
@@ -61,6 +68,10 @@ to measure their rendered continuation.
   work.
 - Unbounded recursive fit scans: repeated scanning and stack growth can become
   pathological.
+- Large per-file arena reservations: a 131,072-node hint reduced focused
+  allocation volume but materially increased large-corpus peak RSS.
+- Retain the first render's arena for idempotency validation: keeping its node
+  storage live across reparsing raised large-corpus peak RSS further.
 - Pure streaming Oppen printing initially: difficult group-scoped
   conditionals, suffix comments, and source markers; revisit only if the
   bounded model proves too conservative or expensive.

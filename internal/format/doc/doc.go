@@ -84,9 +84,14 @@ type Arena struct {
 
 // NewArena constructs an Arena containing the shared empty document.
 func NewArena() *Arena {
-	arena := &Arena{}
-	arena.initialize()
-	return arena
+	return NewArenaWithCapacity(1)
+}
+
+// NewArenaWithCapacity constructs an Arena with a caller-supplied node capacity
+// hint. The hint changes allocation only; it does not limit growth.
+func NewArenaWithCapacity(capacity int) *Arena {
+	capacity = max(capacity, 1)
+	return &Arena{nodes: make([]node, 1, capacity)}
 }
 
 // Empty returns a document that emits no content.

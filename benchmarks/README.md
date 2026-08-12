@@ -349,6 +349,34 @@ on one non-isolated host. It does not establish a memory budget, cross-platform
 behavior, or typed large-workspace memory. The typed rows emitted by that
 campaign still exercised Gox itself and are not evidence about `go-libraries`.
 
+### Bounded Arena Capacity Follow-up
+
+A 2026-08-12 follow-up on the same host measured document construction before
+and after a physical-token-based capacity hint capped at 8,192 nodes. Both
+states used Go 1.26.5, `GOMAXPROCS=1`, matching fixed iteration counts within
+each comparison, and task-owned disposable build caches. The focused
+allocated-byte results were:
+
+| Workload | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| Editor stdin, 879 bytes | 1,091,837 B/op | 801,202 B/op | -26.6% |
+| 100 dense classic loops | 3,883,051 B/op | 2,769,086 B/op | -28.7% |
+| 1,000 dense classic loops | 45,396,918 B/op | 41,661,580 B/op | -8.2% |
+
+The hint changes allocation only; the arena remains growable. Direct lowering
+of the editor and 1,000-loop inputs measured 2.88 and 2.40 document nodes per
+physical token respectively, supporting a three-node hint. A focused allocation
+guard proves that a sufficient hint does not repeatedly grow node storage.
+
+Three non-isolated formatter checks over the same immutable 5,138-file snapshot
+measured peak RSS of 1,682,063,360, 1,742,274,560, and 1,883,815,936 bytes, with
+a 1,742,274,560-byte median. This is inside the earlier campaign's observed
+range and does not prove an RSS improvement or establish a stable budget.
+A 131,072-node ceiling instead produced a 2,252,865,536-byte median, and
+retaining the first render's arena through repeat-format validation produced a
+2,380,267,520-byte median; both designs were rejected. Latency remained too
+variable for a new claim.
+
 The default Gox repository is an owned repeatable workload, but it is not a
 release-scale proxy for a large module or workspace. Measurements therefore
 describe one host and revision only. The platform `time` result also does not
