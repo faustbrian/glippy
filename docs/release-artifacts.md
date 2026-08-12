@@ -1,8 +1,8 @@
 # Prototype Release Artifacts
 
 The maintainer-only release builder produces deterministic artifacts for the
-platform/filesystem pairs with current runtime evidence. It is not a public Gox
-command and does not widen the product CLI.
+admitted prototype targets. It is not a public Gox command and does not widen
+the product CLI.
 
 Run it from a clean source revision with a task-owned disposable `GOCACHE`:
 
@@ -36,17 +36,23 @@ repository.
 
 The current prototype target set is:
 
+- `darwin/amd64`;
 - `darwin/arm64`;
+- `linux/amd64`;
 - `linux/arm64`.
 
 Windows is excluded because its write and fix behavior has only cross-compile
-evidence. Other operating systems and architectures require their own runtime
-and filesystem evidence before admission.
+evidence. Other operating systems require their own runtime and filesystem
+evidence before admission. The amd64 archives have deterministic cross-build
+evidence; native or emulated execution and cross-host reproduction are required
+before their runtime boundary is described as proven.
 
 For version `v0.1.0`, the builder emits:
 
 ```text
+gox_v0.1.0_darwin_amd64.tar.gz
 gox_v0.1.0_darwin_arm64.tar.gz
+gox_v0.1.0_linux_amd64.tar.gz
 gox_v0.1.0_linux_arm64.tar.gz
 gox_v0.1.0_manifest.json
 gox_v0.1.0_checksums.txt
@@ -66,7 +72,8 @@ the linked version. The independent
 [release platform rehearsal](research/release-platform-evidence-2026-08-12.md)
 also produced the complete target set on network-isolated Linux arm64, executed
 its native archive, and matched all four output files byte-for-byte with an
-independent Darwin arm64 build of the same revision and version.
+independent Darwin arm64 build of the same revision and version. That rehearsal
+predates amd64 admission and therefore covers the earlier two-target set only.
 
 `gox` remains a working name. A final rename requires updating the centralized
 release product name and linker path before any public artifact is produced.

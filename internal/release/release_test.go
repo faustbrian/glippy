@@ -19,8 +19,9 @@ import (
 )
 
 func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
-	if runtime.GOARCH != "arm64" || runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
-		t.Skip("prototype release targets are Darwin and Linux arm64")
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" ||
+		runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		t.Skip("prototype release targets are Darwin and Linux amd64 and arm64")
 	}
 
 	parent := t.TempDir()
@@ -50,6 +51,22 @@ func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
 		manifests[0].Version != "v0.0.0-test" || manifests[0].SourceRevision != revision ||
 		manifests[0].GoVersion == "" {
 		t.Fatalf("manifest identity = %#v", manifests[0])
+	}
+	wantTargets := map[Target]bool{
+		{GOOS: "darwin", GOARCH: "amd64"}: true,
+		{GOOS: "darwin", GOARCH: "arm64"}: true,
+		{GOOS: "linux", GOARCH: "amd64"}:  true,
+		{GOOS: "linux", GOARCH: "arm64"}:  true,
+	}
+	for _, artifact := range manifests[0].Artifacts {
+		target := Target{GOOS: artifact.GOOS, GOARCH: artifact.GOARCH}
+		if !wantTargets[target] {
+			t.Fatalf("manifest contains unexpected target %#v", target)
+		}
+		delete(wantTargets, target)
+	}
+	if len(wantTargets) != 0 {
+		t.Fatalf("manifest is missing targets %#v", wantTargets)
 	}
 	names := []string{
 		"gox_v0.0.0-test_manifest.json",
@@ -228,11 +245,13 @@ func TestBuildRejectsDirtyOrMismatchedSourceBeforeCreatingOutput(t *testing.T) {
 	}
 }
 
-func TestDefaultTargetsAreCurrentRuntimeProvenPlatforms(t *testing.T) {
+func TestDefaultTargetsAreAdmittedPrototypePlatforms(t *testing.T) {
 	t.Parallel()
 
 	want := []Target{
+		{GOOS: "darwin", GOARCH: "amd64"},
 		{GOOS: "darwin", GOARCH: "arm64"},
+		{GOOS: "linux", GOARCH: "amd64"},
 		{GOOS: "linux", GOARCH: "arm64"},
 	}
 	got := DefaultTargets()
@@ -412,6 +431,9 @@ func TestBuildEnvironmentPinsBuildAffectingSettings(t *testing.T) {
 	}
 	if values["GOFIPS140"] != "off" {
 		t.Fatalf("GOFIPS140 = %q", values["GOFIPS140"])
+	}
+	if values["GOAMD64"] != "v1" || values["GOARM64"] != "v8.0" {
+		t.Fatalf("architecture environment = %#v", values)
 	}
 	if _, found := values["GOX_RELEASE_UNRELATED"]; found {
 		t.Fatalf("unrelated ambient setting leaked into build: %#v", values)

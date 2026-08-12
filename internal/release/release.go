@@ -31,7 +31,9 @@ const (
 )
 
 var defaultTargets = []Target{
+	{GOOS: "darwin", GOARCH: "amd64"},
 	{GOOS: "darwin", GOARCH: "arm64"},
+	{GOOS: "linux", GOARCH: "amd64"},
 	{GOOS: "linux", GOARCH: "arm64"},
 }
 
@@ -71,8 +73,7 @@ type Manifest struct {
 	Artifacts      []Artifact `json:"artifacts"`
 }
 
-// DefaultTargets returns the platform/filesystem pairs with current runtime
-// evidence for the prototype release.
+// DefaultTargets returns the admitted prototype release targets.
 func DefaultTargets() []Target {
 	return append([]Target(nil), defaultTargets...)
 }
@@ -637,6 +638,7 @@ func buildEnvironment(goos, goarch string, cacheRoot ...string) []string {
 	values["GOTOOLCHAIN"] = "local"
 	values["GOWORK"] = "off"
 	values["GOEXPERIMENT"] = ""
+	values["GOAMD64"] = "v1"
 	values["GOARM64"] = "v8.0"
 	if len(cacheRoot) > 0 && cacheRoot[0] != "" {
 		values["GOCACHE"] = cacheRoot[0]

@@ -580,8 +580,9 @@ Phase 2 naming, release, platform-runtime, and approved external-adoption gates
 keep overall progress at 45%.
 
 The Phase 2 prototype release builder now produces path-trimmed, cgo-free
-Darwin arm64 and Linux arm64 binaries with explicit linked versions inside
-normalized tar/gzip archives. A versioned manifest binds the complete source
+Darwin and Linux binaries for amd64 and arm64, with `GOAMD64=v1` and
+`GOARM64=v8.0` pinned and explicit linked versions inside normalized tar/gzip
+archives. A versioned manifest binds the complete source
 revision, exact Go toolchain, target, size, and SHA-256 digest; a sorted checksum
 file covers every archive and the manifest. The builder verifies exact `HEAD`
 with no tracked, untracked, or ignored content, rejects external local module
@@ -601,9 +602,11 @@ network-isolated Linux arm64 rehearsal at exact revision `c0a15b5` also built
 both targets, validated every checksum, and executed the Linux archive. Its two
 archives, manifest, and checksum file were byte-identical to an independent
 Darwin arm64 build with the same Go 1.26.5 toolchain and linked version. This
-closes the Linux-host artifact rehearsal; the final name,
-signing/publication, Windows runtime, and approved external adoption remain
-open, so progress stays 45%.
+closes the Linux-host artifact rehearsal for the earlier arm64-only target set.
+The amd64 archives have deterministic cross-build evidence but still require
+execution and cross-host reproduction. The final name, signing/publication,
+Windows runtime, and approved external adoption remain open, so progress stays
+45%.
 
 Typed, CFG, and SSA lint selections may now apply admitted single-file fixes.
 The fix driver builds its plan from a fresh cache-independent, read-only,

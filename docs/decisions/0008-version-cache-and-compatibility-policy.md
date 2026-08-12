@@ -36,8 +36,9 @@ with neither reports `devel`. Official release builders set
 flag. Version inspection performs no source, configuration, package, or network
 work.
 
-The maintainer-only prototype release builder admits only the runtime-proven
-Darwin arm64 and Linux arm64 targets. It uses the selected local Go toolchain,
+The maintainer-only prototype release builder admits Darwin and Linux on amd64
+and arm64. It pins `GOAMD64=v1` and `GOARM64=v8.0`, uses the selected local Go
+toolchain,
 disables ambient workspace, environment-file, toolchain-download, and VCS
 metadata, builds without cgo, trims paths, and links the exact canonical
 version. Deterministic tar/gzip metadata, a versioned JSON manifest, and sorted
@@ -59,6 +60,9 @@ decision. The 2026-08-12 release-platform rehearsal built the complete target
 set independently on network-isolated Linux arm64 and Darwin arm64 with Go
 1.26.5, executed each host-native archive, and found all archives, manifest,
 and checksums byte-identical across hosts.
+That rehearsal predates amd64 admission and proves the earlier arm64 target
+set. The amd64 archives require their own execution and cross-host reproduction
+before the amd64 runtime boundary is described as proven.
 
 The 2026-08-12 cache-platform rehearsal also ran the complete cache and CLI
 package suites, including the race detector, on network-isolated Linux arm64

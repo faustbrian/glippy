@@ -1,5 +1,8 @@
 # Release Platform Evidence, 2026-08-12
 
+This record covers the two-target arm64 set admitted at revision `c0a15b5`.
+The later amd64 admission does not broaden the evidence captured here.
+
 ## Contract
 
 The prototype release builder must produce the complete admitted target set
@@ -47,6 +50,6 @@ Darwin binary printed `gox v0.0.0-linux-rehearsal` on Darwin. The extracted
 Linux binary printed the same version inside the network-isolated Linux host
 and retained executable mode `0755`.
 
-This closes the open independent Linux-host artifact rehearsal for the current
-prototype target set. The name decision, signing, publication, and broader
-platform-runtime gates remain open.
+This closed the independent Linux-host artifact rehearsal for the then-current
+two-target arm64 set. The name decision, signing, publication, and broader
+platform-runtime gates remained open.
