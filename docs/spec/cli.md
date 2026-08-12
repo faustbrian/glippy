@@ -24,6 +24,7 @@ gox lint --fix [paths...]
 gox check [paths...]
 gox explain <rule>
 gox version
+gox completion <bash|zsh|fish>
 ```
 
 `gox version` MUST accept no operands or flags and MUST write exactly
@@ -31,6 +32,17 @@ gox version
 link-time release metadata, then a non-development Go module build version, and
 finally `devel`. The command MUST NOT read source or configuration files or
 modify the filesystem.
+
+`gox completion <bash|zsh|fish>` MUST accept exactly one supported shell and
+write one deterministic completion script to standard output. The script MUST
+cover the complete command surface, command-specific flags and enum values,
+filesystem operands, supported shells, and every rule ID in the compiled
+registry. Completion generation MUST NOT read standard input, project source,
+configuration, package state, or the network and MUST NOT modify the
+filesystem. Invalid shells and argument counts are invalid invocations;
+cancellation and output failures retain the common exit categories.
+Installation is documented in
+[`shell-completion.md`](../shell-completion.md).
 
 `gox explain <rule>` MUST accept exactly one rule ID and render the complete
 human documentation derived from that rule's immutable compiled metadata. It

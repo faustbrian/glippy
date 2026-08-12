@@ -932,3 +932,13 @@ on the disposable snapshot. Sixty-three files remain intentionally incompatible
 with gofmt, so approval must include replacing the module's existing formatter
 authority. The live external repository is still unmodified and human approval
 remains the Phase 2 exit gate; progress stays 45%.
+
+The binary now generates deterministic Bash, Zsh, and Fish completion scripts
+through `gox completion <shell>`. Generated scripts cover the complete command
+surface, command-specific flags and enum values, filesystem operands, supported
+shells, and the current compiled rule IDs. Generation reads no standard input,
+project, configuration, package state, or network resource and preserves
+cancellation, invalid-invocation, and output-failure exit categories. The
+installation guide documents each supported shell and requires regeneration
+after upgrades. This closes the Phase 5 shell-completion implementation item
+without advancing the incomplete Phase 2 adoption gate; progress stays 45%.

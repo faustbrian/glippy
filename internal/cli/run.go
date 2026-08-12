@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/faustbrian/gox/internal/completion"
 	"github.com/faustbrian/gox/internal/config"
 	goxdiff "github.com/faustbrian/gox/internal/diff"
 	"github.com/faustbrian/gox/internal/discovery"
@@ -43,6 +44,7 @@ var defaultFormatOptions = goxformat.Options{
 }
 
 const formatUsage = "gox: expected 'fmt [--write|--check|--diff] [--reporter=text|json] [--config=<path>] [--stdin-filepath=<path>] [--fragment=declaration|statement|expression] [path...]'\n"
+const completionUsage = "gox: expected 'completion <bash|zsh|fish>'\n"
 const explainUsage = "gox: expected 'explain <rule>'\n"
 const versionUsage = "gox: expected 'version'\n"
 
@@ -74,6 +76,13 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 	}
 	if len(arguments) > 0 && arguments[0] == "version" {
 		return runVersion(ctx, arguments, stdout, stderr)
+	}
+	if len(arguments) > 0 && arguments[0] == "completion" {
+		registry, err := rules.NewDefaultRegistry()
+		if err != nil {
+			return report(stderr, ExitInternalError, "gox completion: initialize rule registry: %v\n", err)
+		}
+		return runCompletion(ctx, arguments, stdout, stderr, registry)
 	}
 	if len(arguments) > 0 && arguments[0] == "explain" {
 		registry, err := rules.NewDefaultRegistry()
@@ -221,6 +230,48 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 	}
 	if err := write(stdout, formatted); err != nil {
 		return report(stderr, ExitFilesystemError, "gox fmt: write standard output: %v\n", err)
+	}
+	return ExitSuccess
+}
+
+func runCompletion(
+	ctx context.Context,
+	arguments []string,
+	stdout, stderr io.Writer,
+	registry *rules.Registry,
+) int {
+	if len(arguments) != 2 {
+		return report(stderr, ExitInvalidInvocation, completionUsage)
+	}
+	var shell completion.Shell
+	switch arguments[1] {
+	case string(completion.Bash):
+		shell = completion.Bash
+	case string(completion.Zsh):
+		shell = completion.Zsh
+	case string(completion.Fish):
+		shell = completion.Fish
+	default:
+		return report(stderr, ExitInvalidInvocation, completionUsage)
+	}
+	if ctx == nil {
+		return report(stderr, ExitInternalError, "gox completion: context is required\n")
+	}
+	if registry == nil {
+		return report(stderr, ExitInternalError, "gox completion: rule registry is required\n")
+	}
+	if err := ctx.Err(); err != nil {
+		return report(stderr, ExitCanceled, "gox completion: %v\n", err)
+	}
+	output, err := completion.Render(shell, registry.IDs())
+	if err != nil {
+		return report(stderr, ExitInternalError, "gox completion: render: %v\n", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return report(stderr, ExitCanceled, "gox completion: %v\n", err)
+	}
+	if err := write(stdout, output); err != nil {
+		return report(stderr, ExitFilesystemError, "gox completion: write standard output: %v\n", err)
 	}
 	return ExitSuccess
 }
