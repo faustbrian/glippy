@@ -986,3 +986,13 @@ fixes, determinism, and proportional performance. The guide preserves the
 closed internal extension surface and links formatter changes to corpus,
 equivalence, compatibility, and user-facing documentation. Progress remains
 45% behind maintainer-approved external adoption.
+
+The public repository now has a root product overview. It explains the
+hostile-source and width-aware formatter purpose, separate formatter and linter
+ownership, Go-native frontend, tiered analysis, safe fix boundary, Oxfmt,
+Oxlint, and Oxc reference direction, and explicit rejection of the ESLint
+architecture target. The command, development-evaluation, platform,
+source-version, filesystem, network, support, security, and release gates link
+to their authoritative contracts without presenting the development module or
+binary as a stable installation path. Progress remains 45% behind
+maintainer-approved external adoption.
