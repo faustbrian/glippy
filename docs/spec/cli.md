@@ -268,7 +268,7 @@ source identity and every range associated with a rendered record before
 emitting output, and MUST NOT include source excerpts or fix replacement text.
 
 Formatter read, parse, and layout preparation uses at most the smaller of the
-selection size, `GOMAXPROCS`, and 32 workers. Task identity is assigned only
+selection size, `GOMAXPROCS`, and 8 workers. Task identity is assigned only
 after normalized-path sorting. Completion timing cannot reorder findings.
 Failure selection follows exit severity first and normalized task order within
 one severity.

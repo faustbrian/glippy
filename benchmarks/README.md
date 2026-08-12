@@ -383,4 +383,70 @@ describe one host and revision only. The platform `time` result also does not
 sample the aggregate simultaneous RSS of Gox and every package-loading
 subprocess. Do not establish a CI or product-wide memory threshold until
 representative large repositories run on stable supported hosts and the
-observed variance supports a justified budget.
+observed variance supports a justified budget. The following campaign adds a
+provisional maximum for the selected formatter workload; it does not establish
+a product-wide typed-analysis or cross-architecture threshold.
+
+## Provisional Release-Scale Formatter Budgets
+
+The 2026-08-12 release-scale campaign uses the immutable `go-libraries`
+revision `c60393a86b17b070b699805d1b8df99b87a7bfa6`: 5,319 Go files totaling
+41,818,190 source bytes, of which formatter discovery selects 5,138. The
+formatter runs in non-writing check mode and every completed sample must remain
+within both provisional budgets:
+
+- at most 15 elapsed seconds; and
+- at most 2,147,483,648 bytes peak resident memory.
+
+These are per-sample maximums, not median targets. `peak-rss.sh` enforces both
+budgets when it is run against this corpus. `editor-latency.sh` separately
+enforces a 250 ms maximum for each fresh-process invocation on the owned
+879-byte editor workload. Both scripts allow an explicit threshold override so
+release automation can pin the published values rather than silently accepting
+a source-tree default change.
+
+Before choosing the repository-scale limits, a three-sample worker study
+compared 4, 8, and 16 formatter workers on Darwin arm64. Eight workers reduced
+median elapsed time from 9.61 to 5.63 seconds versus four workers. Sixteen
+workers reached 4.65 seconds but raised median peak RSS from 1,512,259,584 to
+1,857,765,376 bytes and produced a 2,520,662,016-byte outlier. A Linux arm64
+Docker runtime showed no material median latency gain from 16 workers and a
+higher memory envelope. The automatic formatter ceiling is therefore eight
+workers.
+
+The native measurements used the Apple M4 Max host described above. The Linux
+runtime used Docker Desktop 29.6.2, Linux 6.12.76-linuxkit arm64, and the
+`golang:1.26.5-bookworm` image. Raw worker-study samples are elapsed seconds
+followed by peak bytes:
+
+```text
+darwin-4  9.61/1256767488 8.95/1264959488 9.61/1527578624
+darwin-8  6.11/1512259584 5.43/1486356480 5.63/1732608000
+darwin-16 4.45/1857765376 4.65/1659027456 5.99/2520662016
+linux-8   9.44/1340276736 9.53/1315958784 10.53/1430319104
+linux-16  9.40/1627377664 9.88/1520181248 9.51/1483059200
+```
+
+Five final samples with that ceiling produced:
+
+| Runtime | Median elapsed | Maximum elapsed | Median peak memory | Maximum peak memory |
+| --- | ---: | ---: | ---: | ---: |
+| Darwin arm64, native | 7.16 s | 8.38 s | 1,479,950,336 B | 1,694,957,568 B |
+| Linux arm64, Docker | 10.19 s | 10.86 s | 1,391,017,984 B | 1,588,207,616 B |
+
+```text
+darwin 8.38/1694957568 7.16/1408253952 6.53/1479950336 7.66/1643085824 6.32/1452720128
+linux  10.86/1296248832 10.43/1477431296 9.83/1588207616 10.19/1391017984 9.44/1180524544
+```
+
+Darwin memory is the Gox process maximum from `/usr/bin/time -l`. Linux memory
+is the cgroup-v2 `memory.peak` value and therefore also includes the minimal
+container runtime processes. The Linux figure is conservative for Gox but is
+not directly interchangeable with Darwin process RSS.
+
+The budget is now executable and has headroom over every recorded supported-OS
+arm64 sample. It remains provisional rather than a stable release claim until
+native, isolated Darwin and Linux runners reproduce it and native amd64 samples
+cover the published architecture matrix. A threshold failure blocks the
+corresponding release candidate; changing a budget requires a new recorded
+campaign and rationale.

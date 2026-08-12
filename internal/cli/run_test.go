@@ -1466,7 +1466,7 @@ func TestBoundedFormatWorkerLimitUsesEveryResourceBoundary(t *testing.T) {
 	}{
 		{name: "resource", resourceLimit: 4, taskCount: 20, want: 4},
 		{name: "selection", resourceLimit: 8, taskCount: 3, want: 3},
-		{name: "hard ceiling", resourceLimit: 64, taskCount: 100, want: maximumFormatWorkers},
+		{name: "hard ceiling", resourceLimit: 64, taskCount: 100, want: 8},
 		{name: "empty selection", resourceLimit: 8, taskCount: 0, want: 1},
 	}
 	for _, test := range tests {

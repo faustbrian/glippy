@@ -45,7 +45,7 @@ const formatUsage = "gox: expected 'fmt [--write|--check|--diff] [--reporter=tex
 const explainUsage = "gox: expected 'explain <rule>'\n"
 const versionUsage = "gox: expected 'version'\n"
 
-const maximumFormatWorkers = 32
+const maximumFormatWorkers = 8
 
 type formatInvocation struct {
 	fragmentKind  source.FragmentKind

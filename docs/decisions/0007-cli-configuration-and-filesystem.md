@@ -29,7 +29,10 @@ the same type. One immutable resolved snapshot is routed to that rule across
 every native analysis tier; no option value is an ambient environment input.
 
 File-formatting preparation is bounded by the selection size, `GOMAXPROCS`, and
-a hard ceiling of 32 workers. Sorted task indexes own result and error ordering.
+a hard ceiling of 8 workers. A release-scale study of 4, 8, and 16 workers found
+that 16 workers increased the Darwin median and maximum peak-memory envelope
+for only a small latency improvement, while Linux showed no material median
+latency improvement. Sorted task indexes own result and error ordering.
 Signal or caller cancellation stops scheduling and is observed before every
 filesystem replacement; exit code 130 distinguishes cancellation from an
 internal tool defect.

@@ -10,6 +10,22 @@ case "$runs" in
 		;;
 esac
 
+format_budget_bytes=${GOX_PEAK_RSS_FORMAT_BUDGET_BYTES:-2147483648}
+case "$format_budget_bytes" in
+	''|*[!0-9]*|0)
+		printf '%s\n' 'GOX_PEAK_RSS_FORMAT_BUDGET_BYTES must be a positive integer' >&2
+		exit 1
+		;;
+esac
+
+format_budget_seconds=${GOX_PEAK_RSS_FORMAT_BUDGET_SECONDS:-15}
+case "$format_budget_seconds" in
+	''|*[!0-9]*|0)
+		printf '%s\n' 'GOX_PEAK_RSS_FORMAT_BUDGET_SECONDS must be a positive integer' >&2
+		exit 1
+		;;
+esac
+
 if [ ! -x /usr/bin/time ]; then
 	printf '%s\n' '/usr/bin/time is required' >&2
 	exit 1
@@ -45,19 +61,21 @@ else
 	exit 1
 fi
 
-GOWORK=off
 GOCACHE="$task_root/cache"
-export GOWORK GOCACHE
-go -C "$repo_root" build -o "$task_root/gox" ./cmd/gox
+export GOCACHE
+env -u GOWORK go -C "$repo_root" build -o "$task_root/gox" ./cmd/gox
 
 printf '%s\n' 'version = 1' '[lint]' 'preset = "suspicious"' \
 	>"$task_root/gox.toml"
 
 measure() {
 	label=$1
-	shift
+	budget_bytes=$2
+	budget_seconds=$3
+	shift 3
 	sample=1
 	while [ "$sample" -le "$runs" ]; do
+		started=$(date +%s)
 		set +e
 		if [ "$time_mode" = darwin ]; then
 			/usr/bin/time -l "$@" >"$command_output" 2>"$time_output"
@@ -66,6 +84,8 @@ measure() {
 		fi
 		status=$?
 		set -e
+		finished=$(date +%s)
+		elapsed_seconds=$((finished - started))
 		if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
 			printf '%s: command exited %d\n' "$label" "$status" >&2
 			sed -n '1,20p' "$command_output" >&2
@@ -85,12 +105,24 @@ measure() {
 			printf '%s\n' 'failed to parse peak RSS' >&2
 			exit 1
 		fi
-		printf '%s,%d,%s\n' "$label" "$sample" "$peak_bytes"
+		if [ "$peak_bytes" -gt "$budget_bytes" ]; then
+			printf '%s peak RSS budget exceeded: %s bytes > %s bytes\n' \
+				"$label" "$peak_bytes" "$budget_bytes" >&2
+			exit 1
+		fi
+		if [ "$elapsed_seconds" -gt "$budget_seconds" ]; then
+			printf '%s elapsed-time budget exceeded: %s seconds > %s seconds\n' \
+				"$label" "$elapsed_seconds" "$budget_seconds" >&2
+			exit 1
+		fi
+		printf '%s,%d,%s,%s\n' "$label" "$sample" "$elapsed_seconds" "$peak_bytes"
 		sample=$((sample + 1))
 	done
 }
 
-printf '%s\n' 'workload,sample,peak_rss_bytes'
-measure formatter-check "$task_root/gox" fmt --check "$format_root"
-measure typed-combined-check "$task_root/gox" check \
+printf '%s\n' 'workload,sample,elapsed_seconds,peak_rss_bytes'
+measure formatter-check "$format_budget_bytes" "$format_budget_seconds" \
+	"$task_root/gox" fmt --check "$format_root"
+measure typed-combined-check 9223372036854775807 9223372036854775807 \
+	"$task_root/gox" check \
 	--config="$task_root/gox.toml" "$repo_root/..."

@@ -29,7 +29,7 @@ strict configuration discovery, configuration-aware stdin and check modes, and a
 prevalidated write-mode prototype with stale-source refusal, unchanged-file
 preservation, permission-preserving same-directory replacement, and generated
 file and symlink refusal. Formatting preparation is now bounded by selection
-size, `GOMAXPROCS`, and 32 workers while retaining normalized task order;
+size, `GOMAXPROCS`, and 8 workers while retaining normalized task order;
 interrupt, termination, and caller cancellation stop scheduling and are checked
 before every replacement with prior writes disclosed. Path-based check and
 write modes now share deterministic text outcomes and a versioned JSON envelope
@@ -41,8 +41,8 @@ mode now renders deterministic, bounded, three-context unified differences in
 path order without mutating source. The standard-input editor path now has
 current Conform.nvim and Helix format-on-save guidance plus in-process and
 fresh-process latency probes. All 100 recorded fresh processes satisfy the
-provisional 250 ms reference-host budget, but scheduler variance still blocks a
-stable CI threshold.
+provisional 250 ms reference-host budget; the probe now enforces that maximum,
+while native cross-platform and cross-architecture evidence remains open.
 
 Self-dogfood validates all 32 discovered repository files and changes 30. The
 control-flow repair reduces stranded control keywords from 82 to zero, and the
@@ -833,3 +833,13 @@ takes the width-driven break. Commented and multi-parameter generic lists keep
 their existing comment-preserving and comma-list layouts. The change improves
 seven files in the selected 77-file adoption target but does not constitute
 maintainer approval, so progress remains 45%.
+
+Release-scale formatter measurements now select an eight-worker automatic
+ceiling. On the immutable 5,138-file `go-libraries` corpus, five final Darwin
+arm64 samples completed in at most 8.38 seconds and 1,694,957,568 bytes peak
+RSS; five Linux arm64 Docker samples completed in at most 10.86 seconds and
+1,588,207,616 cgroup peak bytes. The benchmark probes now enforce provisional
+per-sample maxima of 15 seconds, 2 GiB, and 250 ms for the fresh-process editor
+workload. Native isolated Darwin/Linux and amd64 reproduction remains required
+before the release budget is stable. Progress remains 45% behind that evidence
+and maintainer-approved external adoption.
