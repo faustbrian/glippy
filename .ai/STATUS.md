@@ -996,3 +996,13 @@ source-version, filesystem, network, support, security, and release gates link
 to their authoritative contracts without presenting the development module or
 binary as a stable installation path. Progress remains 45% behind
 maintainer-approved external adoption.
+
+Every built-in lint rule now has published Markdown generated from the same
+immutable metadata that drives registry validation, scheduling, configuration,
+and `gox explain`. The deterministic renderer orders rule IDs, records presets,
+tiers, node and package requirements, generated and type-error policies,
+categories, fixes and safety, typed options, deprecation, limitations, and
+paired examples, and uses source-safe code fences. A generator replaces the
+catalog atomically, while a byte-for-byte freshness test prevents metadata and
+published documentation from drifting. Progress remains 45% behind
+maintainer-approved external adoption.

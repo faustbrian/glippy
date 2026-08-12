@@ -158,7 +158,8 @@ gox explain duplicate-condition
 
 `explain` accepts exactly one registered rule ID. Its output derives from the
 same immutable metadata used for rule registration and scheduling. It performs
-no project discovery or configuration loading.
+no project discovery or configuration loading. The
+[published rule catalog](lint-rules.md) is generated from the same metadata.
 
 ## Version
 
@@ -212,6 +213,7 @@ nonzero result as the same outcome.
 - [CLI specification](spec/cli.md)
 - [Configuration specification](spec/configuration.md)
 - [Formatter rules](formatter-rules.md)
+- [Lint rule catalog](lint-rules.md)
 - [Fix safety](spec/fix-safety.md)
 - [Machine reporting decision](decisions/0011-machine-reporting-schema.md)
 - [Supported Go versions](supported-go-versions.md)

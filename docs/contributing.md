@@ -130,6 +130,15 @@ Then:
    behavior meet the admission gate; and
 6. verify `gox explain <rule-id>` renders the intended canonical documentation.
 
+Regenerate the published catalog after any built-in metadata change:
+
+```sh
+go generate ./internal/report
+```
+
+The report package test compares `docs/lint-rules.md` byte-for-byte with a
+fresh render, so manually edited or stale rule documentation fails verification.
+
 Rule tests cover positive diagnostics, conservative non-diagnostics, exact
 primary and related ranges, severity and option variants, supported Go
 versions, type-error behavior, generated files, suppressions, metadata, and
