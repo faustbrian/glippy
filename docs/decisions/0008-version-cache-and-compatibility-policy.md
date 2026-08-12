@@ -58,11 +58,18 @@ output closing and temporary-resource cleanup succeeds. The builder neither
 signs nor publishes remotely and must be updated after the final product-name
 decision. The 2026-08-12 release-platform rehearsal built the complete target
 set independently on network-isolated Linux arm64 and Darwin arm64 with Go
-1.26.5, executed each host-native archive, and found all archives, manifest,
-and checksums byte-identical across hosts.
+1.26.5, executed each environment-native archive, and found all archives,
+manifest, and checksums byte-identical across environments on one physical
+Darwin host.
 That rehearsal predates amd64 admission and proves the earlier arm64 target
-set. The amd64 archives require their own execution and cross-host reproduction
-before the amd64 runtime boundary is described as proven.
+set. A later 2026-08-12 rehearsal built the four-target set independently on
+Darwin arm64 and emulated Linux amd64, found all six files byte-identical,
+validated both checksum sets, and executed every target binary on its declared
+operating system and architecture. Darwin amd64 used Rosetta, Linux amd64 used
+Docker architecture emulation, and both arm64 executions were native to their
+host architecture. This proves the prototype artifact boundary without
+claiming native amd64 host evidence, reproduction on a separate physical host,
+or public platform support.
 
 The 2026-08-12 cache-platform rehearsal also ran the complete cache and CLI
 package suites, including the race detector, on network-isolated Linux arm64

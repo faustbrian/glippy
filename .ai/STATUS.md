@@ -602,11 +602,17 @@ network-isolated Linux arm64 rehearsal at exact revision `c0a15b5` also built
 both targets, validated every checksum, and executed the Linux archive. Its two
 archives, manifest, and checksum file were byte-identical to an independent
 Darwin arm64 build with the same Go 1.26.5 toolchain and linked version. This
-closes the Linux-host artifact rehearsal for the earlier arm64-only target set.
-The amd64 archives have deterministic cross-build evidence but still require
-execution and cross-host reproduction. The final name, signing/publication,
-Windows runtime, and approved external adoption remain open, so progress stays
-45%.
+closes the Docker/Linux-environment artifact rehearsal for the earlier
+arm64-only target set.
+A later exact-revision rehearsal built the four-target set independently on
+Darwin arm64 and emulated Linux amd64, validated both checksum sets and archive
+modes, matched all six files byte-for-byte, and executed every target binary on
+its declared operating system and architecture. Darwin amd64 used Rosetta,
+Linux amd64 used Docker architecture emulation, and both arm64 executions were
+native to their host architecture. This closes the four-target prototype
+artifact evidence without claiming native amd64 host support or reproduction on
+a separate physical host. The final name, signing/publication, Windows runtime,
+and approved external adoption remain open, so progress stays 45%.
 
 Typed, CFG, and SSA lint selections may now apply admitted single-file fixes.
 The fix driver builds its plan from a fresh cache-independent, read-only,

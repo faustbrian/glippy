@@ -43,9 +43,9 @@ The current prototype target set is:
 
 Windows is excluded because its write and fix behavior has only cross-compile
 evidence. Other operating systems require their own runtime and filesystem
-evidence before admission. The amd64 archives have deterministic cross-build
-evidence; native or emulated execution and cross-host reproduction are required
-before their runtime boundary is described as proven.
+evidence before admission. Darwin amd64 has Rosetta execution evidence and
+Linux amd64 has Docker architecture-emulation evidence; neither substitutes
+for a native amd64 host claim.
 
 For version `v0.1.0`, the builder emits:
 
@@ -74,6 +74,14 @@ also produced the complete target set on network-isolated Linux arm64, executed
 its native archive, and matched all four output files byte-for-byte with an
 independent Darwin arm64 build of the same revision and version. That rehearsal
 predates amd64 admission and therefore covers the earlier two-target set only.
+The later
+[amd64 rehearsal](research/release-amd64-evidence-2026-08-12.md) built the
+four-target set independently on Darwin arm64 and emulated Linux amd64, matched
+all six files byte-for-byte, and executed every target binary on its declared
+operating system and architecture. The amd64 executions used Rosetta and Docker
+architecture emulation, while both arm64 executions were native to their host
+architecture. Both build environments ran on one physical Darwin host, so
+separate-host reproduction remains open.
 
 `gox` remains a working name. A final rename requires updating the centralized
 release product name and linker path before any public artifact is produced.
