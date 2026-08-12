@@ -62,7 +62,11 @@ Two builds are reproducible only when their source tree, explicit revision,
 version, Go toolchain, module inputs, and target set are identical. The tests
 build the complete target set twice, compare every emitted byte, verify the
 checksums, extract the current-host binary, and execute `gox version` to prove
-the linked version.
+the linked version. The independent
+[release platform rehearsal](research/release-platform-evidence-2026-08-12.md)
+also produced the complete target set on network-isolated Linux arm64, executed
+its native archive, and matched all four output files byte-for-byte with an
+independent Darwin arm64 build of the same revision and version.
 
 `gox` remains a working name. A final rename requires updating the centralized
 release product name and linker path before any public artifact is produced.

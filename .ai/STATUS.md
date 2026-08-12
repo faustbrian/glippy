@@ -592,9 +592,14 @@ published release. The builder disables ambient Go workspace, environment-file,
 toolchain-download, and implicit VCS inputs and performs no signing or remote
 publication. Integration evidence builds the complete target set twice,
 compares every output byte, verifies the archives and checksums, and executes
-the extracted current-host binary's version command. The final name, an
-independent Linux-host artifact rehearsal, signing/publication, Windows runtime,
-and approved external adoption remain open, so progress stays 45%.
+the extracted current-host binary's version command. An independent
+network-isolated Linux arm64 rehearsal at exact revision `c0a15b5` also built
+both targets, validated every checksum, and executed the Linux archive. Its two
+archives, manifest, and checksum file were byte-identical to an independent
+Darwin arm64 build with the same Go 1.26.5 toolchain and linked version. This
+closes the Linux-host artifact rehearsal; the final name,
+signing/publication, Windows runtime, and approved external adoption remain
+open, so progress stays 45%.
 
 Typed, CFG, and SSA lint selections may now apply admitted single-file fixes.
 The fix driver builds its plan from a fresh cache-independent, read-only,

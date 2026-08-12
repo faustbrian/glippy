@@ -55,7 +55,10 @@ writes and failure cleanup. Completed artifacts are atomically renamed to the
 requested path with a platform no-replacement primitive only after all fallible
 output closing and temporary-resource cleanup succeeds. The builder neither
 signs nor publishes remotely and must be updated after the final product-name
-decision.
+decision. The 2026-08-12 release-platform rehearsal built the complete target
+set independently on network-isolated Linux arm64 and Darwin arm64 with Go
+1.26.5, executed each host-native archive, and found all archives, manifest,
+and checksums byte-identical across hosts.
 
 The Phase 4 cache foundation uses a versioned SHA-256 key over canonical,
 length-prefixed fields. Every consumer must supply its result namespace, tool
