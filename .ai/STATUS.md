@@ -1015,3 +1015,13 @@ same contract while the normative lint and configuration specifications remain
 authoritative. This closes the stable-release suppression-documentation item
 without changing the Phase 2 gate; progress remains 45% behind
 maintainer-approved external adoption.
+
+The public compatibility policy now defines Semantic Versioning, release-note
+content, formatter-output classification, stable rule and preset evolution,
+fix-safety changes, configuration and machine-schema migration, CLI and
+platform compatibility, deprecation windows, and internal-format boundaries.
+It preserves the 100%-plus-maintainer-review release gate and turns ADR 0008's
+short compatibility decision into an actionable contributor and user contract.
+This closes the formatter/rule/configuration compatibility-policy documentation
+item without advancing the Phase 2 gate; progress remains 45% behind
+maintainer-approved external adoption.

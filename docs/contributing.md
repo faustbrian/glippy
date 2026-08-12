@@ -143,6 +143,11 @@ Changes to suppression parsing, ownership, configuration, or reporting must
 update the public [suppression reference](suppressions.md) and the normative
 lint and configuration specifications in the same batch.
 
+Changes to formatter output, stable rules, fixes, configuration, machine
+schemas, CLI behavior, or supported targets must classify their compatibility
+and migration impact under the
+[compatibility and change policy](compatibility-policy.md).
+
 Rule tests cover positive diagnostics, conservative non-diagnostics, exact
 primary and related ranges, severity and option variants, supported Go
 versions, type-error behavior, generated files, suppressions, metadata, and

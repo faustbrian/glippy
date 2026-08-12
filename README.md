@@ -127,6 +127,7 @@ precise scope.
 - [Editor integration](docs/editor-integration.md)
 - [CI and pre-commit setup](docs/ci-and-precommit.md)
 - [Shell completion](docs/shell-completion.md)
+- [Compatibility and change policy](docs/compatibility-policy.md)
 - [Release artifacts and provenance](docs/release-artifacts.md)
 - [Contributor architecture and rule authoring](docs/contributing.md)
 - [Architecture decisions](docs/decisions/README.md)

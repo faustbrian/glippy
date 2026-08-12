@@ -70,6 +70,8 @@ Users SHOULD read release notes before upgrading across formatter-output,
 configuration-schema, machine-diagnostic-schema, rule-default, rule-ID, or fix
 safety changes. The latest stable release is authoritative for its documented
 contracts; unreleased branch behavior does not override a published contract.
+The complete versioning, deprecation, and migration rules are defined in the
+[compatibility and change policy](compatibility-policy.md).
 
 Security reports follow [`../SECURITY.md`](../SECURITY.md). Ordinary defects
 belong in the repository's public issue tracker only when they contain no
