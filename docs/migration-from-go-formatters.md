@@ -109,12 +109,13 @@ statement groups, including all 168 exact `t.Parallel()` grouping gaps in this
 snapshot. Sixty-three files are not gofmt fixed points, so the migration
 replaces the module's gofmt and goimports authorities.
 
-The maintainer has selected `go-libraries/pkg/prompts` as the adoption target,
-but has not reviewed or approved the dedicated
-`feature/gox-prompts-adoption` commit. The first lint run exposed and drove a
-Gox fix for external `//nolint` physical-line ownership; the refreshed lint
-gate passes. Passing code gates still does not establish that the output is
-readable enough for daily use. See the
+The maintainer approved Phase 2 and the complete
+`go-libraries/pkg/prompts` adoption layout on 2026-08-13. The dedicated
+`feature/gox-prompts-adoption` commit therefore provides the required human
+readability decision as well as passing code gates. It remains unpushed and
+unintegrated pending a separate delivery decision. The first lint run exposed
+and drove a Gox fix for external `//nolint` physical-line ownership; the
+refreshed lint gate passes. See the
 [external dogfood record](research/external-dogfood-2026-08-11.md) for the
 bounded evidence.
 The dedicated
