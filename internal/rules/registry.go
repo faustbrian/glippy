@@ -72,6 +72,7 @@ func NewDefaultRegistry() (*Registry, error) {
 		deferInInfiniteLoopRule{},
 		duplicateConditionRule{},
 		errorsIsArgumentsRule{},
+		identicalBranchesRule{},
 		ineffectiveBreakRule{},
 		nilnessRule{},
 		redundantBoolComparisonRule{},

@@ -13,6 +13,7 @@ not stable release promises.
 - [defer-in-infinite-loop](#defer-in-infinite-loop)
 - [duplicate-condition](#duplicate-condition)
 - [errors-is-arguments](#errors-is-arguments)
+- [identical-branches](#identical-branches)
 - [ineffective-break](#ineffective-break)
 - [nilness](#nilness)
 - [redundant-bool-comparison](#redundant-bool-comparison)
@@ -208,6 +209,53 @@ errors.Is(io.EOF, err)
 
 ```go
 errors.Is(err, io.EOF)
+```
+
+## identical-branches
+
+detects identical if and else branches
+
+An if statement whose two direct branches perform the same work usually contains a copied branch
+that was not updated or a condition that no longer selects behavior. The condition may still have
+effects, so the rule diagnoses the duplication without offering an automatic rewrite.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: syntax
+- Node interests: `if-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: not applicable
+- Categories: `suspicious`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct if/else block pairs are compared; else-if chains are left to condition-specific rules.
+- Statements that differ syntactically but are semantically equivalent are not compared.
+- Commented statements are excluded because comments may document an intentional distinction between
+  otherwise identical branches.
+
+### Example: Keep distinct branch behavior
+
+**Incorrect**
+
+```go
+if ready { run() } else { run() }
+```
+
+**Correct**
+
+```go
+if ready { run() } else { wait() }
 ```
 
 ## ineffective-break

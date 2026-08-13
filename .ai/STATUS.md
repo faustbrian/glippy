@@ -1186,3 +1186,13 @@ baselined diagnostics cannot be fixed. ADR 0015 and the public baseline
 reference record the contract. Prioritized bug-catching and pedantic/style rule
 admission, complete dogfood, and final v0.2 release evidence remain open, so
 v0.2 is not complete or published.
+
+The v0.2 catalog now admits `identical-branches` as an opt-in `suspicious`
+syntax rule. It reports structurally identical direct `if`/`else` blocks,
+conservatively excludes commented statements and `else if` chains, and offers
+no fix because removing the condition could remove effects. Current Clippy and
+Revive source, a public Go lint finding, red-green fixtures, a 100-pair cost
+probe, and 135-file non-mutating Gox dogfood support admission. Self-assignment
+remains rejected as redundant with the default Go vet `assign` analyzer. The
+remaining prioritized bug-catching and pedantic/style catalog, external target
+dogfood, and final v0.2 release gates remain open.

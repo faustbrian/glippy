@@ -283,15 +283,17 @@ func TestTypesControlFlowAndSSARulesRemainOptIn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(suspicious) != 4 ||
+	if len(suspicious) != 5 ||
 		suspicious[0].ID != "context-key" ||
 		suspicious[0].Requirement != rules.RequireTypes ||
 		suspicious[1].ID != "defer-in-infinite-loop" ||
 		suspicious[1].Requirement != rules.RequireControlFlow ||
 		suspicious[2].ID != "errors-is-arguments" ||
 		suspicious[2].Requirement != rules.RequireTypes ||
-		suspicious[3].ID != "nilness" ||
-		suspicious[3].Requirement != rules.RequireSSA {
+		suspicious[3].ID != "identical-branches" ||
+		suspicious[3].Requirement != rules.RequireSyntax ||
+		suspicious[4].ID != "nilness" ||
+		suspicious[4].Requirement != rules.RequireSSA {
 		t.Fatalf("suspicious selection = %#v", suspicious)
 	}
 }
