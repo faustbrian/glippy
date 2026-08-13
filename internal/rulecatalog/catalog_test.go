@@ -37,6 +37,121 @@ func TestRegistryIncludesSelfAssignmentContract(t *testing.T) {
 	}
 }
 
+func TestRegistryIncludesStandardAnalyzerContracts(t *testing.T) {
+	t.Parallel()
+
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		id string
+		requirement rules.Requirement
+		nodeInterests []rules.NodeKind
+		runDespiteTypeErrors bool
+	}{
+		{
+			id: "atomic-update-assignment",
+			requirement: rules.RequireTypes,
+			nodeInterests: []rules.NodeKind{rules.NodeFile},
+			runDespiteTypeErrors: true,
+		},
+		{id: "context-cancel-leak", requirement: rules.RequireControlFlow},
+		{
+			id: "copied-lock",
+			requirement: rules.RequireTypes,
+			nodeInterests: []rules.NodeKind{rules.NodeFile},
+			runDespiteTypeErrors: true,
+		},
+		{
+			id: "http-response-before-error",
+			requirement: rules.RequireTypes,
+			nodeInterests: []rules.NodeKind{rules.NodeFile},
+		},
+		{
+			id: "impossible-type-assertion",
+			requirement: rules.RequireTypes,
+			nodeInterests: []rules.NodeKind{rules.NodeFile},
+		},
+	}
+	for _, test := range tests {
+		metadata, found := registry.Metadata(test.id)
+		if !found {
+			t.Fatalf("product registry does not include %s", test.id)
+		}
+		if metadata.DefaultSeverity != rules.SeverityWarn ||
+			!reflect.DeepEqual(
+				metadata.Presets,
+				[]rules.Preset{rules.PresetCorrectness},
+			) ||
+			metadata.MinimumGoVersion != "1.25" ||
+			metadata.Requirement != test.requirement ||
+			!reflect.DeepEqual(metadata.NodeInterests, test.nodeInterests) ||
+			metadata.RunOnGenerated ||
+			metadata.RunDespiteTypeErrors != test.runDespiteTypeErrors ||
+			len(metadata.Fixes) != 0 {
+			t.Fatalf("%s metadata = %#v", test.id, metadata)
+		}
+	}
+}
+
+func TestContextCancelLeakDoesNotLoadDependencySyntax(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/contextcancelcost\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "sample.go")
+	writeFixture(
+		t,
+		path,
+		`package sample
+
+import "context"
+
+func leak(parent context.Context) context.Context {
+	child, _ := context.WithCancel(parent)
+	return child
+}
+`,
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"context-cancel-leak": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paths := result.Sources.Paths(); !reflect.DeepEqual(paths, []string{path}) {
+		t.Fatalf(
+			"context-cancel-leak loaded %d source files, want only the target source",
+			len(paths),
+		)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("context-cancel-leak result = %#v", result)
+	}
+}
+
 func TestSelfAssignmentHonorsSuppressionGeneratedAndTypeErrorPolicies(t *testing.T) {
 	t.Parallel()
 
@@ -57,6 +172,7 @@ func suppressed(value int) int {
 	value = value
 	return value
 }
+
 `,
 	)
 	generatedPath := filepath.Join(root, "generated.go")
@@ -179,6 +295,117 @@ func BenchmarkSelfAssignmentPackageAnalysis(b *testing.B) {
 			benchmarkPackageRuns(b, registry, options, load, 1)
 		},
 	)
+}
+
+func BenchmarkStandardAnalyzerCatalogPackageAnalysis(b *testing.B) {
+	root := b.TempDir()
+	writeFixture(
+		b,
+		filepath.Join(root, "go.mod"),
+		"module example.com/standardcatalogbenchmark\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		b,
+		filepath.Join(root, "sample.go"),
+		`package sample
+
+import (
+	"context"
+	"net/http"
+	"sync"
+	"sync/atomic"
+)
+
+type state struct { lock sync.Mutex }
+type reader interface { Read() }
+type writer interface { Read(int) }
+
+func copied(value *state) state { return *value }
+func asserted(value reader) { _ = value.(writer) }
+func canceled(parent context.Context) context.Context {
+	child, _ := context.WithCancel(parent)
+	return child
+}
+func fetched() error {
+	response, err := http.Get("https://example.test")
+	defer response.Body.Close()
+	if err != nil { return err }
+	return nil
+}
+func incremented(value *uint64) { *value = atomic.AddUint64(value, 1) }
+`,
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		b.Fatal(err)
+	}
+	baseline, err := rules.NewRegistry(benchmarkPackageRule{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	load := analysis.PackageLoadOptions{
+		Dir: root,
+		Patterns: []string{"."},
+		ModuleMode: analysis.ModuleReadonly,
+	}
+	b.Run(
+		"typed-baseline",
+		func(b *testing.B) {
+			benchmarkPackageRuns(
+				b,
+				baseline,
+				analysis.RunOptions{
+					Preset: rules.PresetCorrectness,
+					SourceGoVersion: "go1.26",
+				},
+				load,
+				0,
+			)
+		},
+	)
+	b.Run(
+		"with-standard-analyzers",
+		func(b *testing.B) {
+			benchmarkPackageRuns(
+				b,
+				registry,
+				analysis.RunOptions{
+					Preset: rules.PresetCorrectness,
+					SourceGoVersion: "go1.26",
+				},
+				load,
+				5,
+			)
+		},
+	)
+	for _, ruleID := range
+		[]string{
+			"atomic-update-assignment",
+			"context-cancel-leak",
+			"copied-lock",
+			"http-response-before-error",
+			"impossible-type-assertion",
+		} {
+		ruleID := ruleID
+		b.Run(
+			ruleID,
+			func(b *testing.B) {
+				benchmarkPackageRuns(
+					b,
+					registry,
+					analysis.RunOptions{
+						Presets: []rules.Preset{},
+						Overrides: map[string]rules.Severity{
+							ruleID: rules.SeverityWarn,
+						},
+						SourceGoVersion: "go1.26",
+					},
+					load,
+					1,
+				)
+			},
+		)
+	}
 }
 
 type benchmarkPackageRule struct{}

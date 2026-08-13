@@ -5007,6 +5007,341 @@ func TestRunBaselinesStandardSelfAssignmentDeterministically(t *testing.T) {
 	}
 }
 
+func TestRunBaselinesStandardAnalyzerCatalogDeterministically(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/standardcatalogbaseline\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sample.go")
+	if err := os.WriteFile(
+		path,
+		[]byte(
+			`package sample
+
+import (
+	"context"
+	"net/http"
+	"sync"
+	"sync/atomic"
+)
+
+type state struct { lock sync.Mutex }
+type reader interface { Read() }
+type writer interface { Read(int) }
+
+func copied(value *state) state { return *value }
+func asserted(value reader) { _ = value.(writer) }
+func canceled(parent context.Context) context.Context {
+	child, _ := context.WithCancel(parent)
+	return child
+}
+func fetched() error {
+	response, err := http.Get("https://example.test")
+	defer response.Body.Close()
+	if err != nil { return err }
+	return nil
+}
+func incremented(value *uint64) { *value = atomic.AddUint64(value, 1) }
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(root, ".glippy.toml")
+	if err := os.WriteFile(
+		configPath,
+		[]byte("version = 1\n[lint]\npreset = \"correctness\"\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	baselinePath := filepath.Join(root, ".glippy-baseline.json")
+	generate := func() []byte {
+		t.Helper()
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		exitCode := Run(
+			[]string{"lint", "--generate-baseline=.glippy-baseline.json", path},
+			strings.NewReader(""),
+			&stdout,
+			&stderr,
+		)
+		if exitCode != ExitSuccess ||
+			stdout.String() !=
+				"glippy lint: wrote baseline " +
+					baselinePath +
+					" (5 diagnostics)\n" ||
+			stderr.Len() != 0 {
+			t.Fatalf(
+				"Run(generate standard catalog baseline) = exit %d, stdout %q, stderr %q",
+				exitCode,
+				stdout.String(),
+				stderr.String(),
+			)
+		}
+		encoded, err := os.ReadFile(baselinePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return encoded
+	}
+	first := generate()
+	second := generate()
+	if !bytes.Equal(first, second) {
+		t.Fatal("standard analyzer baseline generation is not deterministic")
+	}
+	for _, ruleID := range
+		[]string{
+			"atomic-update-assignment",
+			"context-cancel-leak",
+			"copied-lock",
+			"http-response-before-error",
+			"impossible-type-assertion",
+		} {
+		if !bytes.Contains(first, []byte(`"rule_id": "` + ruleID + `"`)) {
+			t.Fatalf("standard analyzer baseline omits %s: %q", ruleID, first)
+		}
+	}
+	if err := os.WriteFile(
+		configPath,
+		[]byte(
+			"version = 1\n[lint]\npreset = \"correctness\"\n" +
+				"[lint.baseline]\npath = \".glippy-baseline.json\"\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"lint", path}, strings.NewReader(""), &stdout, &stderr)
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(lint baselined standard catalog) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
+func TestRunExposesStandardAnalyzerCatalog(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		ruleID string
+		message string
+		needle string
+		rangeLength int
+		help string
+		source string
+	}{
+		{
+			name: "copied lock",
+			ruleID: "copied-lock",
+			message: "return copies lock value",
+			needle: "*value",
+			rangeLength: len("*value"),
+			help: "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/copylock",
+			source: `package sample
+
+import "sync"
+
+type state struct { lock sync.Mutex }
+
+func copyState(value *state) state {
+	return *value
+}
+
+func shareState(value *state) *state {
+	return value
+}
+`,
+		},
+		{
+			name: "impossible type assertion",
+			ruleID: "impossible-type-assertion",
+			message: "impossible type assertion",
+			needle: "writer)",
+			rangeLength: 0,
+			help: "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/ifaceassert",
+			source: `package sample
+
+type reader interface { Read() }
+type writer interface { Read(int) }
+
+func cast(value reader) {
+	_ = value.(writer)
+	_ = value.(reader)
+}
+`,
+		},
+		{
+			name: "context cancel leak",
+			ruleID: "context-cancel-leak",
+			message: "should be called, not discarded",
+			needle: "_ := context.WithCancel",
+			rangeLength: 1,
+			help: "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/lostcancel",
+			source: `package sample
+
+import "context"
+
+func derive(parent context.Context) context.Context {
+	child, _ := context.WithCancel(parent)
+	return child
+}
+
+func deriveSafely(parent context.Context) context.Context {
+	child, cancel := context.WithCancel(parent)
+	defer cancel()
+	return child
+}
+`,
+		},
+		{
+			name: "HTTP response before error",
+			ruleID: "http-response-before-error",
+			message: "using response before checking for errors",
+			needle: "response.Body.Close",
+			rangeLength: len("response"),
+			help: "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/httpresponse",
+			source: `package sample
+
+import "net/http"
+
+func fetch() error {
+	response, err := http.Get("https://example.test")
+	defer response.Body.Close()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func fetchSafely() error {
+	response, err := http.Get("https://example.test")
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	return nil
+}
+`,
+		},
+		{
+			name: "atomic update assignment",
+			ruleID: "atomic-update-assignment",
+			message: "direct assignment to atomic value",
+			needle: "*value = atomic.AddUint64",
+			rangeLength: len("*value"),
+			help: "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/atomic",
+			source: `package sample
+
+import "sync/atomic"
+
+func increment(value *uint64) {
+	*value = atomic.AddUint64(value, 1)
+}
+
+func incrementSafely(value *uint64) {
+	atomic.AddUint64(value, 1)
+}
+`,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+
+				root := t.TempDir()
+				if err := os.WriteFile(
+					filepath.Join(root, "go.mod"),
+					[]byte("module example.com/standardcatalog\n\ngo 1.26.0\n"),
+					0o600,
+				);
+					err != nil {
+					t.Fatal(err)
+				}
+				path := filepath.Join(root, "sample.go")
+				if err := os.WriteFile(path, []byte(test.source), 0o600);
+					err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(
+					filepath.Join(root, ".glippy.toml"),
+					[]byte("version = 1\n[lint]\npreset = \"correctness\"\n"),
+					0o600,
+				);
+					err != nil {
+					t.Fatal(err)
+				}
+
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				exitCode := Run(
+					[]string{"lint", "--reporter=json", path},
+					strings.NewReader(""),
+					&stdout,
+					&stderr,
+				)
+				if exitCode != ExitFindings || stderr.Len() != 0 {
+					t.Fatalf(
+						"Run(lint %s) = exit %d, stdout %q, stderr %q",
+						test.ruleID,
+						exitCode,
+						stdout.String(),
+						stderr.String(),
+					)
+				}
+				var result glippyreport.LintResult
+				if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+					t.Fatalf(
+						"decode %s JSON: %v; output = %q",
+						test.ruleID,
+						err,
+						stdout.String(),
+					)
+				}
+				if len(result.Diagnostics) != 1 {
+					t.Fatalf(
+						"%s diagnostics = %#v",
+						test.ruleID,
+						result.Diagnostics,
+					)
+				}
+				diagnostic := result.Diagnostics[0]
+				start := strings.Index(test.source, test.needle)
+				if diagnostic.RuleID != test.ruleID ||
+					diagnostic.Path != path ||
+					!strings.Contains(diagnostic.Message, test.message) ||
+					diagnostic.Help != test.help ||
+					diagnostic.Range.Start != start ||
+					diagnostic.Range.End != start + test.rangeLength {
+					t.Fatalf("%s diagnostic = %#v", test.ruleID, diagnostic)
+				}
+			},
+		)
+	}
+}
+
 func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 	t.Helper()
 	if err := os.WriteFile(
@@ -5019,7 +5354,15 @@ func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 	}
 	if err := os.WriteFile(
 		filepath.Join(root, ".glippy.toml"),
-		[]byte("version = 1\n[lint.rules]\nself-assignment = \"off\"\n"),
+		[]byte(
+			"version = 1\n[lint.rules]\n" +
+				"atomic-update-assignment = \"off\"\n" +
+				"context-cancel-leak = \"off\"\n" +
+				"copied-lock = \"off\"\n" +
+				"http-response-before-error = \"off\"\n" +
+				"impossible-type-assertion = \"off\"\n" +
+				"self-assignment = \"off\"\n",
+		),
 		0o600,
 	);
 		err != nil {

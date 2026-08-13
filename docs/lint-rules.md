@@ -9,15 +9,120 @@ not stable release promises.
 
 ## Rules
 
+- [atomic-update-assignment](#atomic-update-assignment)
+- [context-cancel-leak](#context-cancel-leak)
 - [context-key](#context-key)
+- [copied-lock](#copied-lock)
 - [defer-in-infinite-loop](#defer-in-infinite-loop)
 - [duplicate-condition](#duplicate-condition)
 - [errors-is-arguments](#errors-is-arguments)
+- [http-response-before-error](#http-response-before-error)
 - [identical-branches](#identical-branches)
+- [impossible-type-assertion](#impossible-type-assertion)
 - [ineffective-break](#ineffective-break)
 - [nilness](#nilness)
 - [redundant-bool-comparison](#redundant-bool-comparison)
 - [self-assignment](#self-assignment)
+
+## atomic-update-assignment
+
+detects atomic updates assigned back non-atomically
+
+Functions such as atomic.AddUint64 already update the pointed-to value atomically and return the new
+value. Assigning that return value back through the same pointer performs a second non-atomic write,
+defeating the synchronization contract and introducing a race.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: included
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The standard atomic analyzer covers the legacy sync/atomic AddInt32, AddInt64, AddUint32,
+  AddUint64, and AddUintptr functions.
+- Typed atomic wrapper methods and higher-level synchronization patterns are outside this analyzer's
+  scope.
+
+### Example: Use the atomic update without a second write
+
+**Incorrect**
+
+```go
+*value = atomic.AddUint64(value, 1)
+```
+
+**Correct**
+
+```go
+atomic.AddUint64(value, 1)
+```
+
+## context-cancel-leak
+
+detects context cancellation functions that may not run
+
+The cancellation function returned by context.WithCancel, context.WithTimeout, or
+context.WithDeadline releases resources owned by the derived context. Discarding it or returning
+along a path that never uses it can retain timers, children, and references longer than intended.
+Glippy implements the standard lostcancel contract over its shared control-flow tier because
+executing the analyzer's transitive no-return fact graph would require loading dependency syntax for
+the complete import closure.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- As in the standard lostcancel analyzer, any reference to the cancellation variable counts as a
+  use; the rule does not prove that the referenced function is eventually called.
+- Cancellation transferred through helpers, fields, or containers is outside the intraprocedural
+  ownership model.
+- The shared CFG recognizes built-in panic as non-returning; imported and project-local no-return
+  functions are not inferred through transitive analyzer facts.
+
+### Example: Retain and call the cancellation function
+
+**Incorrect**
+
+```go
+child, _ := context.WithCancel(parent)
+```
+
+**Correct**
+
+```go
+child, cancel := context.WithCancel(parent)
+defer cancel()
+```
 
 ## context-key
 
@@ -64,6 +169,53 @@ context.WithValue(ctx, "request-id", requestID)
 ```go
 type requestIDKey struct{}
 context.WithValue(ctx, requestIDKey{}, requestID)
+```
+
+## copied-lock
+
+detects locks copied after first use
+
+Copying a value that contains sync.Mutex, sync.RWMutex, or another lock-like noCopy value can split
+synchronization state and make callers believe they coordinate through the same lock. Glippy adapts
+the standard Go copylocks analyzer across assignments, declarations, returns, calls, ranges, and
+value receivers.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: included
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule follows the standard Go copylocks analyzer's lock-path and noCopy conventions.
+- Diagnostics do not prove that a particular copied lock has already been used at runtime; the
+  structural copy is the reported hazard.
+
+### Example: Keep lock-bearing values behind pointers
+
+**Incorrect**
+
+```go
+func clone(value *state) state { return *value }
+```
+
+**Correct**
+
+```go
+func share(value *state) *state { return value }
 ```
 
 ## defer-in-infinite-loop
@@ -212,6 +364,57 @@ errors.Is(io.EOF, err)
 errors.Is(err, io.EOF)
 ```
 
+## http-response-before-error
+
+detects HTTP responses used before their errors are checked
+
+An HTTP request may return a nil response with a non-nil error. Deferring response.Body.Close before
+checking that error can therefore dereference nil on the failure path and hide the original request
+failure.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The standard httpresponse analyzer recognizes net/http functions and Client methods returning
+  (*http.Response, error).
+- The rule targets the immediate defer-before-error-check pattern and does not attempt general
+  response ownership analysis.
+
+### Example: Check the request error before using the response
+
+**Incorrect**
+
+```go
+response, err := http.Get(url)
+defer response.Body.Close()
+if err != nil { return err }
+```
+
+**Correct**
+
+```go
+response, err := http.Get(url)
+if err != nil { return err }
+defer response.Body.Close()
+```
+
 ## identical-branches
 
 detects identical if and else branches
@@ -257,6 +460,52 @@ if ready { run() } else { run() }
 
 ```go
 if ready { run() } else { wait() }
+```
+
+## impossible-type-assertion
+
+detects interface assertions that can never succeed
+
+An interface-to-interface assertion is impossible when no concrete type can implement both
+interfaces because they declare the same method with conflicting signatures. Such an assertion
+always panics in its single-result form and always fails in its comma-ok form.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The standard ifaceassert analyzer reports only conflicts it can prove from interface method sets.
+- Assertions to concrete types are already checked by the Go type checker and are not duplicated
+  here.
+
+### Example: Assert compatible interfaces
+
+**Incorrect**
+
+```go
+value.(interface{ Read(int) })
+```
+
+**Correct**
+
+```go
+value.(interface{ Read() })
 ```
 
 ## ineffective-break
