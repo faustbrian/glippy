@@ -1262,7 +1262,36 @@ func TestRunCombinedCheckHonorsLintAndFormatConfiguration(t *testing.T) {
 		err != nil {
 		t.Fatal(err)
 	}
-	configuration := "version = 1\n[format]\nline-width = 30\n[lint.rules]\natomic-update-assignment = \"off\"\nbad-bit-mask = \"off\"\ncontext-cancel-leak = \"off\"\ncontradictory-condition = \"off\"\ncopied-lock = \"off\"\nduplicate-condition = \"off\"\nerrors-as-target = \"off\"\nhttp-response-before-error = \"off\"\nimpossible-comparison = \"off\"\nimpossible-type-assertion = \"off\"\nloop-capture = \"off\"\nnil-context = \"off\"\nself-assignment = \"off\"\ntime-duration-unit = \"off\"\ntime-layout = \"off\"\n"
+	configuration := "version = 1\n[format]\nline-width = 30\n[lint.rules]\n" +
+		"append-no-values = \"off\"\n" +
+		"atomic-update-assignment = \"off\"\n" +
+		"bad-bit-mask = \"off\"\n" +
+		"context-cancel-leak = \"off\"\n" +
+		"contradictory-condition = \"off\"\n" +
+		"copied-lock = \"off\"\n" +
+		"deferred-time-since = \"off\"\n" +
+		"duplicate-condition = \"off\"\n" +
+		"errors-as-target = \"off\"\n" +
+		"http-response-before-error = \"off\"\n" +
+		"impossible-comparison = \"off\"\n" +
+		"impossible-type-assertion = \"off\"\n" +
+		"invalid-slog-arguments = \"off\"\n" +
+		"invalid-struct-tag = \"off\"\n" +
+		"invalid-unmarshal-target = \"off\"\n" +
+		"loop-capture = \"off\"\n" +
+		"nil-context = \"off\"\n" +
+		"nil-function-comparison = \"off\"\n" +
+		"oversized-shift = \"off\"\n" +
+		"printf-arguments = \"off\"\n" +
+		"self-assignment = \"off\"\n" +
+		"standard-method-signature = \"off\"\n" +
+		"testing-goroutine-call = \"off\"\n" +
+		"time-duration-unit = \"off\"\n" +
+		"time-layout = \"off\"\n" +
+		"unreachable-code = \"off\"\n" +
+		"unsafe-host-port = \"off\"\n" +
+		"unused-result = \"off\"\n" +
+		"waitgroup-misuse = \"off\"\n"
 	if err := os.WriteFile(filepath.Join(root, ".glippy.toml"), []byte(configuration), 0o600);
 		err != nil {
 		t.Fatal(err)

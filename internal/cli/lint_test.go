@@ -6062,20 +6062,34 @@ func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 		filepath.Join(root, ".glippy.toml"),
 		[]byte(
 			"version = 1\n[lint.rules]\n" +
+				"append-no-values = \"off\"\n" +
 				"atomic-update-assignment = \"off\"\n" +
 				"bad-bit-mask = \"off\"\n" +
 				"context-cancel-leak = \"off\"\n" +
 				"contradictory-condition = \"off\"\n" +
 				"copied-lock = \"off\"\n" +
+				"deferred-time-since = \"off\"\n" +
 				"errors-as-target = \"off\"\n" +
 				"http-response-before-error = \"off\"\n" +
 				"impossible-comparison = \"off\"\n" +
 				"impossible-type-assertion = \"off\"\n" +
+				"invalid-slog-arguments = \"off\"\n" +
+				"invalid-struct-tag = \"off\"\n" +
+				"invalid-unmarshal-target = \"off\"\n" +
 				"loop-capture = \"off\"\n" +
 				"nil-context = \"off\"\n" +
+				"nil-function-comparison = \"off\"\n" +
+				"oversized-shift = \"off\"\n" +
+				"printf-arguments = \"off\"\n" +
 				"self-assignment = \"off\"\n" +
+				"standard-method-signature = \"off\"\n" +
+				"testing-goroutine-call = \"off\"\n" +
 				"time-duration-unit = \"off\"\n" +
-				"time-layout = \"off\"\n",
+				"time-layout = \"off\"\n" +
+				"unreachable-code = \"off\"\n" +
+				"unsafe-host-port = \"off\"\n" +
+				"unused-result = \"off\"\n" +
+				"waitgroup-misuse = \"off\"\n",
 		),
 		0o600,
 	);

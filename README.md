@@ -143,6 +143,7 @@ precise scope.
 - [Formatter rules](docs/formatter-rules.md)
 - [Configuration contract](docs/spec/configuration.md)
 - [Lint rule catalog](docs/lint-rules.md)
+- [Go vet compatibility](docs/go-vet-compatibility.md)
 - [Rule roadmap](docs/rule-roadmap.md)
 - [Suppression reference](docs/suppressions.md)
 - [Lint engine and suppressions](docs/spec/lint-engine.md)

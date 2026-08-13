@@ -10,6 +10,7 @@ not stable release promises.
 ## Rules
 
 - [almost-swapped](#almost-swapped)
+- [append-no-values](#append-no-values)
 - [atomic-update-assignment](#atomic-update-assignment)
 - [bad-bit-mask](#bad-bit-mask)
 - [context-cancel-leak](#context-cancel-leak)
@@ -18,6 +19,7 @@ not stable release promises.
 - [copied-lock](#copied-lock)
 - [defer-in-infinite-loop](#defer-in-infinite-loop)
 - [defer-in-loop](#defer-in-loop)
+- [deferred-time-since](#deferred-time-since)
 - [discarded-error](#discarded-error)
 - [duplicate-condition](#duplicate-condition)
 - [errors-as-target](#errors-as-target)
@@ -29,21 +31,34 @@ not stable release promises.
 - [impossible-type-assertion](#impossible-type-assertion)
 - [inconsistent-receiver-name](#inconsistent-receiver-name)
 - [ineffective-break](#ineffective-break)
+- [invalid-slog-arguments](#invalid-slog-arguments)
+- [invalid-struct-tag](#invalid-struct-tag)
+- [invalid-unmarshal-target](#invalid-unmarshal-target)
 - [lock-held-across-blocking-call](#lock-held-across-blocking-call)
 - [loop-capture](#loop-capture)
 - [mixed-receiver-type](#mixed-receiver-type)
 - [nil-context](#nil-context)
+- [nil-function-comparison](#nil-function-comparison)
 - [nilness](#nilness)
+- [oversized-shift](#oversized-shift)
+- [printf-arguments](#printf-arguments)
 - [redundant-bool-comparison](#redundant-bool-comparison)
 - [redundant-else](#redundant-else)
 - [resource-not-closed](#resource-not-closed)
 - [self-assignment](#self-assignment)
+- [standard-method-signature](#standard-method-signature)
 - [subsumed-condition](#subsumed-condition)
 - [suspicious-range](#suspicious-range)
+- [suspicious-string-conversion](#suspicious-string-conversion)
+- [testing-goroutine-call](#testing-goroutine-call)
 - [time-duration-unit](#time-duration-unit)
 - [time-layout](#time-layout)
 - [unnecessary-conversion](#unnecessary-conversion)
 - [unnecessary-sprintf](#unnecessary-sprintf)
+- [unreachable-code](#unreachable-code)
+- [unsafe-host-port](#unsafe-host-port)
+- [unused-result](#unused-result)
+- [waitgroup-misuse](#waitgroup-misuse)
 
 ## almost-swapped
 
@@ -91,6 +106,50 @@ right = left
 
 ```go
 left, right = right, left
+```
+
+## append-no-values
+
+detects append calls with no values to append
+
+Calling append with only its destination slice is an identity operation: it appends nothing and
+returns the same slice. Such a call is ineffective and usually means an argument was omitted during
+editing. Glippy adapts the standard Go appends analyzer.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only the built-in append function with exactly one argument is reported.
+
+### Example: Provide the value being appended
+
+**Incorrect**
+
+```go
+items = append(items)
+```
+
+**Correct**
+
+```go
+items = append(items, item)
 ```
 
 ## atomic-update-assignment
@@ -478,6 +537,53 @@ for _, path := range paths { file := open(path); defer file.Close() }
 
 ```go
 for _, path := range paths { process(path) }
+```
+
+## deferred-time-since
+
+detects time.Since evaluated before a deferred call
+
+Arguments to a deferred call are evaluated when the defer statement executes. Passing
+time.Since(start) directly therefore records the elapsed time at defer registration rather than when
+the surrounding function returns. Glippy adapts the standard Go defers analyzer.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The analyzer reports time.Since calls lexically evaluated inside a defer call and does not infer
+  equivalent custom elapsed-time helpers.
+- No automatic fix is offered because introducing a closure changes evaluation and comment
+  boundaries.
+
+### Example: Evaluate elapsed time when the deferred function runs
+
+**Incorrect**
+
+```go
+defer record(time.Since(start))
+```
+
+**Correct**
+
+```go
+defer func() { record(time.Since(start)) }()
 ```
 
 ## discarded-error
@@ -1018,6 +1124,144 @@ for {
 }
 ```
 
+## invalid-slog-arguments
+
+detects malformed structured logging argument lists
+
+Structured slog calls require alternating string keys and values unless an argument is a slog.Attr.
+A non-key argument in key position or a final key without a value produces malformed log records and
+runtime diagnostics. Glippy adapts the standard Go slog analyzer.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The analyzer recognizes standard log/slog functions and methods plus statically inferred wrappers
+  supported upstream.
+- Dynamic key and value slices passed through other APIs are outside this direct-call contract.
+
+### Example: Pair each structured key with a value
+
+**Incorrect**
+
+```go
+slog.Info("request", "method")
+```
+
+**Correct**
+
+```go
+slog.Info("request", "method", method)
+```
+
+## invalid-struct-tag
+
+detects malformed or ineffective struct field tags
+
+Malformed struct tags are not interpreted consistently by reflection-based encoders, while json and
+xml tags on unexported fields cannot affect encoding. Duplicate serialization tags can also make
+field selection ambiguous. Glippy adapts the standard Go structtag analyzer.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: included
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule follows reflect.StructTag.Get syntax and the standard analyzer's json, xml, and
+  duplicate-tag checks.
+- Application-specific tag namespaces and encoder behavior are outside this analyzer's contract.
+
+### Example: Use a quoted struct tag value
+
+**Incorrect**
+
+```go
+Field string `json:"field`
+```
+
+**Correct**
+
+```go
+Field string `json:"field"`
+```
+
+## invalid-unmarshal-target
+
+detects non-pointer values passed to unmarshalling APIs
+
+Unmarshal functions need a pointer or interface destination so decoded data can reach the caller.
+Passing a non-pointer concrete value returns an error instead of populating that value and commonly
+leaves the intended result unchanged. Glippy adapts the standard Go unmarshal analyzer.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The standard analyzer recognizes unmarshalling functions through their typed signatures and known
+  standard-library behavior.
+- The rule does not determine whether the caller later handles the returned invalid-target error.
+
+### Example: Pass an addressable destination
+
+**Incorrect**
+
+```go
+json.Unmarshal(data, value)
+```
+
+**Correct**
+
+```go
+json.Unmarshal(data, &value)
+```
+
 ## lock-held-across-blocking-call
 
 detects known blocking calls made while a sync lock is held
@@ -1226,6 +1470,51 @@ client.Do(nil, request)
 client.Do(context.TODO(), request)
 ```
 
+## nil-function-comparison
+
+detects comparisons between declared functions and nil
+
+A declared function is not a function-valued variable and cannot be nil. Comparing its identifier
+with nil therefore has a constant result and often confuses the function with its return value or an
+optional callback. Glippy adapts the standard Go nilfunc analyzer.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule reports declared functions and methods resolved as *types.Func objects; function-valued
+  variables may legitimately be nil.
+
+### Example: Call the function before comparing its result
+
+**Incorrect**
+
+```go
+if lookup == nil {}
+```
+
+**Correct**
+
+```go
+if lookup() == nil {}
+```
+
 ## nilness
 
 detects operations on values proven to be nil
@@ -1295,6 +1584,104 @@ if channel == nil { use(channel) }
 ```go
 channel := make(chan int)
 use(channel)
+```
+
+## oversized-shift
+
+detects shifts that equal or exceed an integer's width
+
+Shifting a non-constant integer by at least its bit width discards every bit and commonly indicates
+the wrong operand type, shift count, or architecture assumption. Glippy adapts the standard Go shift
+analyzer and excludes constant bit-width idioms handled by its upstream contract.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The standard analyzer checks compile-time shift counts against the width of non-constant integer
+  operands.
+- Constant operands and unreachable branches are treated according to the upstream analyzer's
+  compatibility rules.
+
+### Example: Keep the shift below the operand width
+
+**Incorrect**
+
+```go
+var value uint8
+_ = value << 8
+```
+
+**Correct**
+
+```go
+var value uint8
+_ = value << 7
+```
+
+## printf-arguments
+
+detects invalid Printf-style format strings and arguments
+
+Printf-style calls can silently render malformed output when a directive is invalid, an argument is
+missing, or an argument has the wrong type. Glippy adapts the standard Go printf analyzer, including
+its wrapper facts, through the shared typed scheduler and deterministic diagnostic contract.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+- `insert-string-format` (`suggestion`): insert an explicit %s format string before the non-constant
+  argument
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule follows the standard printf analyzer's recognized formatting functions and inferred
+  wrappers.
+- The configurable upstream funcs flag is not exposed as a Glippy rule option in this release.
+- The non-constant-format repair is suggestion-only because adding %s may not reflect the caller's
+  intended formatting contract.
+
+### Example: Match directives to argument types
+
+**Incorrect**
+
+```go
+fmt.Printf("%d", "value")
+```
+
+**Correct**
+
+```go
+fmt.Printf("%s", "value")
 ```
 
 ## redundant-bool-comparison
@@ -1501,6 +1888,53 @@ value = value
 value = replacement
 ```
 
+## standard-method-signature
+
+detects incorrect signatures for conventional standard methods
+
+A method named for a well-known standard interface can silently fail to implement that interface
+when its signature is slightly wrong. Dynamic interface checks then fail even though the method name
+communicates the opposite intent. Glippy adapts the standard Go stdmethods analyzer.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule covers the standard analyzer's fixed catalog of well-known interface method names and
+  signatures.
+- Methods whose names are deliberately unrelated to the standard contract may require a narrow
+  suppression.
+
+### Example: Match io.WriterTo
+
+**Incorrect**
+
+```go
+func (value) WriteTo(io.Writer) error
+```
+
+**Correct**
+
+```go
+func (value) WriteTo(io.Writer) (int64, error)
+```
+
 ## subsumed-condition
 
 detects else-if conditions covered by an earlier branch
@@ -1595,6 +2029,100 @@ for _, value := range values { value.ready = true }
 
 ```go
 for index := range values { values[index].ready = true }
+```
+
+## suspicious-string-conversion
+
+detects integer-to-string conversions that may expect decimal digits
+
+Converting an integer directly to string produces the UTF-8 encoding of one Unicode code point, not
+the decimal representation of the number. The conversion is often a mistaken substitute for
+formatting, but deliberate rune conversions remain possible, so Glippy places the standard analyzer
+in the suspicious preset.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+- `format-number-decimal` (`suggestion`): format the integer as decimal text
+- `convert-single-rune` (`suggestion`): make the intended code-point conversion explicit
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Byte, rune, and untyped-rune conversions are excluded because their code-point intent is explicit.
+- Both upstream repairs are suggestions: decimal formatting and explicit rune conversion have
+  different semantics.
+
+### Example: Choose digits or a code point explicitly
+
+**Incorrect**
+
+```go
+text := string(number)
+```
+
+**Correct**
+
+```go
+text := fmt.Sprint(number)
+```
+
+## testing-goroutine-call
+
+detects test termination methods called from worker goroutines
+
+Methods such as testing.T.Fatal, FailNow, and SkipNow terminate only the goroutine that calls them.
+Invoking them from a worker goroutine does not stop the test goroutine and can let the test continue
+with invalid state. Glippy adapts the standard Go testinggoroutine analyzer.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The experimental upstream subtest check is not enabled.
+- The analyzer follows direct and statically resolved local goroutine calls from functions accepting
+  *testing.T or *testing.B.
+
+### Example: Report worker failure to the test goroutine
+
+**Incorrect**
+
+```go
+go func() { t.Fatal("failed") }()
+```
+
+**Correct**
+
+```go
+if err := <-result; err != nil { t.Fatal(err) }
 ```
 
 ## time-duration-unit
@@ -1785,4 +2313,196 @@ text := fmt.Sprintf("%s", value)
 
 ```go
 text := value
+```
+
+## unreachable-code
+
+detects statements that execution cannot reach
+
+Statements following an unconditional return, panic, terminating branch, or infinite loop cannot
+execute. They often preserve stale work after a refactor or conceal control-flow mistakes. Glippy
+adapts the standard Go unreachable analyzer.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: included
+- Categories: `correctness`
+
+### Fixes
+
+- `remove-unreachable-code` (`suggestion`): remove the unreachable statement
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The upstream control-flow model reports the first unreachable statement in a contiguous region.
+- Removal remains suggestion-only because comments and intentionally retained examples require
+  review.
+
+### Example: Remove statements after a terminal return
+
+**Incorrect**
+
+```go
+return
+work()
+```
+
+**Correct**
+
+```go
+work()
+return
+```
+
+## unsafe-host-port
+
+detects host and port formatting that breaks IPv6 addresses
+
+Formatting an address as host:port with fmt.Sprintf does not add the brackets required around IPv6
+literals. The resulting address fails when passed to net.Dial and related APIs. net.JoinHostPort
+implements the grammar for IPv4, hostnames, and IPv6. Glippy adapts the standard Go hostport
+analyzer.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+- `use-net-join-host-port` (`suggestion`): construct the address with net.JoinHostPort
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The analyzer follows fmt.Sprintf address values into recognized net dialing calls and direct dial
+  arguments.
+- The net.JoinHostPort rewrite is suggestion-only because it can add an import and changes
+  formatting behavior for malformed input.
+
+### Example: Join network addresses with net.JoinHostPort
+
+**Incorrect**
+
+```go
+net.Dial("tcp", fmt.Sprintf("%s:%d", host, port))
+```
+
+**Correct**
+
+```go
+net.Dial("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+```
+
+## unused-result
+
+detects discarded results from side-effect-free operations
+
+Some standard functions and String or Error methods return their only useful effect as a value.
+Calling them as standalone statements discards that result and cannot accomplish the apparent
+operation. Glippy adapts the standard Go unusedresult analyzer with its authoritative default
+function catalog.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The configurable upstream funcs and stringmethods flags are not exposed as Glippy rule options in
+  this release.
+- The rule uses the standard analyzer's curated default catalog rather than guessing purity for
+  arbitrary functions.
+
+### Example: Use the returned value
+
+**Incorrect**
+
+```go
+fmt.Sprintf("%s", value)
+```
+
+**Correct**
+
+```go
+text := fmt.Sprintf("%s", value)
+```
+
+## waitgroup-misuse
+
+detects WaitGroup.Add calls made inside launched goroutines
+
+Calling WaitGroup.Add from inside the goroutine being counted races with Wait: the waiting goroutine
+may observe a zero count and return before Add executes. The count must be incremented before
+launching the goroutine. Glippy adapts the standard Go waitgroup analyzer.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The analyzer reports the direct pattern where WaitGroup.Add is the first statement of a newly
+  launched function literal.
+- More indirect counter ownership and synchronization protocols require separate concurrency
+  analysis.
+
+### Example: Increment before launching
+
+**Incorrect**
+
+```go
+go func() { wg.Add(1); defer wg.Done() }()
+```
+
+**Correct**
+
+```go
+wg.Add(1)
+go func() { defer wg.Done() }()
 ```

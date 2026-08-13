@@ -1208,3 +1208,16 @@ acceptance and the active `F1bonacc1/glippy` collision. The GitHub repository
 has not been renamed and no v0.2 tag, release, publication, or push is part of
 this batch. The remaining bug-catching and pedantic catalog is still open, so
 v0.2 is not complete.
+
+The v0.2 Go-vet compatibility batch now adapts fifteen additional authoritative
+x/tools analyzers behind stable Glippy IDs, correctness or suspicious preset
+contracts, shared facts and prerequisites, deterministic reporters, baselines,
+suppressions, generated/type-error policies, and source-version gates. All
+upstream edits are suggestion-only; unambiguous printf, unreachable-code, and
+host-port suggestions pass repeated validated CLI application. The published
+compatibility matrix explicitly retains ten unsupported default-vet analyzers
+and the partial/native differences, so Glippy does not claim full `go vet`
+replacement. One-iteration per-rule cost probes pass, and non-mutating dogfood
+finds no findings across 178 Glippy files and 57 prompts files at
+`2c9842015ab62fd7790f0d99bf54855ffa7000f2`. The seven-rule pedantic batch,
+five product-owned suggestion fixes, and final v0.2 release gates remain open.
