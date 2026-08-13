@@ -464,6 +464,22 @@ func TestLoadFragmentRejectsFilePlacementDirectives(t *testing.T) {
 	}
 }
 
+func TestLoadFragmentAllowsExternalNolintDirectives(t *testing.T) {
+	t.Parallel()
+
+	fragment, err := source.LoadFragment(
+		"stdin.go",
+		source.FragmentStatement,
+		[]byte("value = call(nil) //nolint:staticcheck"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fragment.CanFormat() {
+		t.Fatal("external nolint directives must remain formatable in fragments")
+	}
+}
+
 func TestLoadRejectsMalformedBuildConstraints(t *testing.T) {
 	t.Parallel()
 
@@ -728,6 +744,28 @@ func TestEquivalenceRejectsDirectiveLineAnchorMovement(t *testing.T) {
 	}
 	if err := source.ValidateEquivalent(generateTrailing, generateActivated); err == nil {
 		t.Fatal("ValidateEquivalent() must reject a directive moved to line start")
+	}
+}
+
+func TestEquivalenceRejectsNolintPhysicalLineOwnershipChanges(t *testing.T) {
+	t.Parallel()
+
+	before, err := source.Load(
+		"nolint.go",
+		[]byte("package directive\nfunc run(){if veryLongCall(nil,first,second) { //nolint:staticcheck\nwork()}}\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := source.Load(
+		"nolint.go",
+		[]byte("package directive\nfunc run(){if veryLongCall(\n\tnil,\n\tfirst,\n\tsecond,\n) { //nolint:staticcheck\nwork()}}\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.ValidateEquivalent(before, after); err == nil {
+		t.Fatal("ValidateEquivalent() must reject changed nolint physical-line ownership")
 	}
 }
 

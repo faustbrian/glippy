@@ -373,7 +373,8 @@ func classifyFragmentDirectives(
 func validateFragmentDirectives(path string, physical []byte, directives []Directive) error {
 	var result error
 	for _, directive := range directives {
-		if directive.Kind == DirectiveGoxSuppression {
+		if directive.Kind == DirectiveGoxSuppression ||
+			directive.Kind == DirectiveExternalSuppression {
 			continue
 		}
 		result = errors.Join(

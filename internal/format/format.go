@@ -1420,18 +1420,51 @@ func (l *lowerer) blockTail(block *ast.BlockStmt) (doc.ID, error) {
 	if !openingFound || !closingFound {
 		return doc.ID{}, errors.New("block delimiter has no physical offset")
 	}
-	statements, err := l.statementRange(block.List, opening+1, closing)
+	openingLimit := closing
+	if len(block.List) > 0 {
+		openingLimit, closingFound = l.source.PhysicalOffset(block.List[0].Pos())
+		if !closingFound {
+			return doc.ID{}, errors.New("first block statement has no physical offset")
+		}
+	}
+	openingTrailing := l.openingNolintComments(opening+1, openingLimit)
+	boundary := opening + 1
+	if len(openingTrailing) > 0 {
+		boundary = openingTrailing[len(openingTrailing)-1].Range.End
+	}
+	statements, err := l.statementRange(block.List, boundary, closing)
 	if err != nil {
 		return doc.ID{}, err
 	}
+	openingSuffix := l.withTrailingComments(l.arena.Empty(), openingTrailing)
 	if len(statements) == 0 {
+		if len(openingTrailing) > 0 {
+			return l.arena.Concat(openingSuffix, l.arena.HardLine(), l.arena.Text("}")), nil
+		}
 		return l.arena.Text("}"), nil
 	}
 	return l.arena.Concat(
+		openingSuffix,
 		l.statementSequence(statements),
 		l.arena.HardLine(),
 		l.arena.Text("}"),
 	), nil
+}
+
+func (l *lowerer) openingNolintComments(start, limit int) []source.Comment {
+	var owned []source.Comment
+	for index, comment := range l.comments {
+		if l.emittedComment[index] || comment.Range.Start < start || comment.Range.Start >= limit {
+			continue
+		}
+		if !l.samePhysicalLine(start, comment.Range.Start) ||
+			!isNolintComment(comment.Raw) {
+			continue
+		}
+		l.emittedComment[index] = true
+		owned = append(owned, comment)
+	}
+	return owned
 }
 
 type loweredStatement struct {
@@ -1471,14 +1504,17 @@ func (l *lowerer) statementRange(statements []ast.Stmt, boundary, closing int) (
 		if err != nil {
 			return nil, err
 		}
-		if len(leading) > 0 {
-			lowered = l.arena.Concat(l.boundaryCommentsDocument(leading, statementStart), lowered)
-		}
 		statementEnd, found := l.source.PhysicalOffset(statement.End())
 		if !found {
 			return nil, errors.New("statement has no physical end offset")
 		}
 		trailing := l.trailingComments(statementEnd, limit)
+		if hasNolintComment(trailing) {
+			lowered = l.arena.Verbatim(string(l.physical[statementStart:statementEnd]))
+		}
+		if len(leading) > 0 {
+			lowered = l.arena.Concat(l.boundaryCommentsDocument(leading, statementStart), lowered)
+		}
 		lowered = l.withTrailingComments(lowered, trailing)
 		outdented := statementIsOutdented(statement)
 		loweredStatements = append(loweredStatements, loweredStatement{
@@ -1508,6 +1544,48 @@ func (l *lowerer) statementRange(statements []ast.Stmt, boundary, closing int) (
 		})
 	}
 	return loweredStatements, nil
+}
+
+func hasNolintComment(comments []source.Comment) bool {
+	for _, comment := range comments {
+		if isNolintComment(comment.Raw) {
+			return true
+		}
+	}
+	return false
+}
+
+func (l *lowerer) blockOpeningHasNolint(block *ast.BlockStmt) bool {
+	opening, openingFound := l.source.PhysicalOffset(block.Lbrace)
+	closing, closingFound := l.source.PhysicalOffset(block.Rbrace)
+	if !openingFound || !closingFound {
+		return false
+	}
+	limit := closing
+	if len(block.List) > 0 {
+		var found bool
+		limit, found = l.source.PhysicalOffset(block.List[0].Pos())
+		if !found {
+			return false
+		}
+	}
+	for _, comment := range l.comments {
+		if comment.Range.Start < opening+1 || comment.Range.Start >= limit {
+			continue
+		}
+		if l.samePhysicalLine(opening+1, comment.Range.Start) &&
+			isNolintComment(comment.Raw) {
+			return true
+		}
+	}
+	return false
+}
+
+func isNolintComment(raw string) bool {
+	return raw == "//nolint" ||
+		strings.HasPrefix(raw, "//nolint:") ||
+		strings.HasPrefix(raw, "//nolint ") ||
+		strings.HasPrefix(raw, "//nolint\t")
 }
 
 func statementIsOutdented(statement ast.Stmt) bool {
@@ -2766,11 +2844,16 @@ func (l *lowerer) ifStatement(statement *ast.IfStmt) (doc.ID, error) {
 			parts = []doc.ID{l.arena.Group(l.arena.Concat(parts...))}
 		}
 	}
+	preserveHeader := l.blockOpeningHasNolint(statement.Body)
 	tail, err := l.blockTail(statement.Body)
 	if err != nil {
 		return doc.ID{}, err
 	}
-	result := []doc.ID{l.arena.Concat(parts...), tail}
+	header := l.arena.Concat(parts...)
+	if preserveHeader {
+		header = l.arena.Verbatim(string(l.physical[ifOffset : braceOffset+1]))
+	}
+	result := []doc.ID{header, tail}
 	if statement.Else != nil {
 		alternative, err := l.statement(statement.Else)
 		if err != nil {

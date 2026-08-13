@@ -124,6 +124,14 @@ generated markers, and suppression directives MUST retain exact text, order,
 and required adjacency. Comment or directive accounting failure MUST reject the
 formatted result.
 
+External `//nolint` comments MUST retain their physical-line diagnostic
+ownership. If canonical breaking would move the governed token to another
+line, the formatter MUST preserve the affected statement line verbatim. A
+`//nolint` comment immediately after an `if` opening brace MUST keep the header
+through that brace verbatim while the block body remains formatter owned. An
+otherwise unsupported ownership change MUST reject formatting. These
+ownership-preserving layouts MAY exceed configured width.
+
 ## Physical Output
 
 Formatter-owned structural line endings MUST use LF regardless of whether the

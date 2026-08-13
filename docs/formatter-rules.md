@@ -185,6 +185,15 @@ as line suffixes, punctuation remains before them, and ambiguous comments force
 a stable broken layout rather than migration across an operand, element,
 declaration, statement, case, or field boundary.
 
+A trailing `//nolint` comment is also a physical-line ownership contract used
+by external analyzers. When a width-driven break would move the diagnostic
+token away from that line, Gox preserves the affected statement line verbatim.
+For a `//nolint` comment immediately after an `if` opening brace, the header
+through the brace remains verbatim while the block body is formatted normally.
+If another construct cannot retain the same physical-line token owner,
+equivalence validation rejects the output. These safety exceptions may exceed
+the configured width.
+
 These source anchors retain their text, order, ownership, and required
 adjacency:
 

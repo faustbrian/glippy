@@ -892,6 +892,24 @@ func TestFormatPreservesDeclarationDocumentationAndTrailingComments(t *testing.T
 	}
 }
 
+func TestFormatPreservesNolintLineOwnershipWhenLayoutWouldBreak(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package comments\nfunc run(){\n_,err=veryLongCall(nil,firstArgument,secondArgument,thirdArgument) //nolint:staticcheck // contract test\nif err:=veryLongCall(nil,firstArgument,secondArgument,thirdArgument);err!=nil { //nolint:staticcheck // contract test\npanic(err)\n}\nreturn 16 + 36*uint8((uint16(red)*5+127)/255) + //nolint:gosec\n\t6*uint8((uint16(green)*5+127)/255) + uint8((uint16(blue)*5+127)/255) //nolint:gosec\n}\n")
+	file, err := source.Load("nolint.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := goxformat.File(file, goxformat.Options{Width: 60, TabWidth: 8, FitBudget: 1_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nfunc run() {\n\t_,err=veryLongCall(nil,firstArgument,secondArgument,thirdArgument) //nolint:staticcheck // contract test\n\tif err:=veryLongCall(nil,firstArgument,secondArgument,thirdArgument);err!=nil { //nolint:staticcheck // contract test\n\t\tpanic(err)\n\t}\n\treturn 16 + 36*uint8((uint16(red)*5+127)/255) + //nolint:gosec\n\t6*uint8((uint16(green)*5+127)/255) + uint8((uint16(blue)*5+127)/255) //nolint:gosec\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant nolint comments on their original physical lines:\n%s", got, want)
+	}
+}
+
 func TestFormatPreservesStandaloneTopLevelDirectives(t *testing.T) {
 	t.Parallel()
 

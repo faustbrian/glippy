@@ -97,6 +97,7 @@ const (
 	DirectiveLine
 	DirectiveGenerated
 	DirectiveGoxSuppression
+	DirectiveExternalSuppression
 	DirectiveCgoPreamble
 )
 
@@ -108,8 +109,9 @@ type Directive struct {
 }
 
 type directiveLineAnchor struct {
-	Before uint8
-	After  uint8
+	Before     uint8
+	After      uint8
+	LineTokens string
 }
 
 // NewlineStyle is the physical line-ending policy observed in a source file.
@@ -459,7 +461,27 @@ func directiveLineAnchors(
 		if err != nil {
 			return nil, err
 		}
-		anchors = append(anchors, directiveLineAnchor{Before: beforeBreaks, After: afterBreaks})
+		lineTokens := ""
+		if directive.Kind == DirectiveExternalSuppression {
+			lineStart := bytes.LastIndexByte(physical[:directive.Range.Start], '\n') + 1
+			var fingerprint strings.Builder
+			for _, item := range tokens {
+				if item.Kind == token.COMMENT || item.Range.Start < lineStart ||
+					item.Range.End > directive.Range.Start {
+					continue
+				}
+				fingerprint.WriteString(item.Kind.String())
+				fingerprint.WriteByte(0)
+				fingerprint.WriteString(item.Raw)
+				fingerprint.WriteByte(0)
+			}
+			lineTokens = fingerprint.String()
+		}
+		anchors = append(anchors, directiveLineAnchor{
+			Before:     beforeBreaks,
+			After:      afterBreaks,
+			LineTokens: lineTokens,
+		})
 	}
 	return anchors, nil
 }
@@ -824,6 +846,8 @@ func directiveKind(raw string) (DirectiveKind, bool) {
 		return DirectiveLine, true
 	case strings.HasPrefix(raw, "//gox:"):
 		return DirectiveGoxSuppression, true
+	case isNolintDirective(raw):
+		return DirectiveExternalSuppression, true
 	case strings.HasPrefix(raw, "//go:"):
 		return DirectiveCompiler, true
 	case strings.HasPrefix(raw, "// Code generated ") && strings.HasSuffix(raw, " DO NOT EDIT."):
@@ -831,6 +855,13 @@ func directiveKind(raw string) (DirectiveKind, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func isNolintDirective(raw string) bool {
+	return raw == "//nolint" ||
+		strings.HasPrefix(raw, "//nolint:") ||
+		strings.HasPrefix(raw, "//nolint ") ||
+		strings.HasPrefix(raw, "//nolint\t")
 }
 
 func hasDirectivePrefix(raw, prefix string) bool {
