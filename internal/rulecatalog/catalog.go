@@ -28,9 +28,12 @@ func NewRegistry() (*rules.Registry, error) {
 		all,
 		rules.NewBadBitMaskRule(),
 		rules.NewContextCancelLeakRule(),
+		rules.NewDeferInLoopRule(),
+		rules.NewDiscardedErrorRule(),
 		rules.NewImpossibleComparisonRule(),
 		rules.NewLoopCaptureRule(),
 		rules.NewSubsumedConditionRule(),
+		rules.NewSuspiciousRangeRule(),
 	)
 	all = append(all, rules.NewAlmostSwappedRule())
 	registry, err := rules.NewRegistry(all...)

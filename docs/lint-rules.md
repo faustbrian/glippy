@@ -17,6 +17,8 @@ not stable release promises.
 - [contradictory-condition](#contradictory-condition)
 - [copied-lock](#copied-lock)
 - [defer-in-infinite-loop](#defer-in-infinite-loop)
+- [defer-in-loop](#defer-in-loop)
+- [discarded-error](#discarded-error)
 - [duplicate-condition](#duplicate-condition)
 - [errors-is-arguments](#errors-is-arguments)
 - [http-response-before-error](#http-response-before-error)
@@ -29,6 +31,7 @@ not stable release promises.
 - [redundant-bool-comparison](#redundant-bool-comparison)
 - [self-assignment](#self-assignment)
 - [subsumed-condition](#subsumed-condition)
+- [suspicious-range](#suspicious-range)
 
 ## almost-swapped
 
@@ -415,6 +418,104 @@ for {
 	work()
 	cleanup()
 }
+```
+
+## defer-in-loop
+
+detects defers accumulated across loop iterations
+
+A defer inside a finite or condition-controlled loop runs when the surrounding function returns, not
+when the current iteration ends. Repeated iterations can retain resources and defer cleanup much
+longer than intended. Conditionless loops remain covered by the more precise defer-in-infinite-loop
+control-flow rule.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: syntax
+- Node interests: `for-stmt`, `range-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: not applicable
+- Categories: `safety`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Conditionless for loops are delegated to defer-in-infinite-loop to avoid duplicate diagnostics.
+- The rule does not infer a statically single-iteration loop or a deliberate bounded accumulation
+  policy.
+- Defers inside nested function literals are scoped to that function and are excluded.
+
+### Example: Use an iteration helper for scoped cleanup
+
+**Incorrect**
+
+```go
+for _, path := range paths { file := open(path); defer file.Close() }
+```
+
+**Correct**
+
+```go
+for _, path := range paths { process(path) }
+```
+
+## discarded-error
+
+detects call statements that discard an error result
+
+A call used as a statement discards every returned value. When one result implements error, that can
+silently hide a failed operation. The rule intentionally remains opt-in because explicitly
+best-effort operations may need a narrow suppression.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `expr-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+- `include-tests` (`boolean`; optional, default `false`): report discarded errors in files whose
+  base name ends in _test.go
+
+### Known limitations
+
+- The rule covers direct call statements; errors explicitly assigned to a blank identifier remain
+  outside this rule.
+- Known in-memory writers whose error result is documented as always nil are excluded.
+- Test files are excluded by default because fixture-driving calls frequently discard deliberately
+  injected errors; include-tests enables them.
+- Best-effort calls must be handled explicitly or suppressed with a reason.
+
+### Example: Handle a returned error
+
+**Incorrect**
+
+```go
+persist(value)
+```
+
+**Correct**
+
+```go
+if err := persist(value); err != nil { return err }
 ```
 
 ## duplicate-condition
@@ -1030,4 +1131,53 @@ if value > 0 { use() } else if value > 10 { specialize() }
 
 ```go
 if value > 10 { specialize() } else if value > 0 { use() }
+```
+
+## suspicious-range
+
+detects mutations made only to a copied range value
+
+Range values are copies. Mutating a field or element reached only through a non-pointer struct or
+array range variable does not update the slice, array, or map element that produced it and is
+usually an ineffective update.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `range-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule reports assignments and increments rooted in the exact range value object and ignores
+  nested function literals.
+- Paths that cross a pointer, slice, map, interface, or channel are excluded because mutation can
+  reach shared state.
+- Direct reassignment or later storage of the range variable is not reported because it can be
+  intentional local computation followed by write-back.
+
+### Example: Mutate a slice element through its index
+
+**Incorrect**
+
+```go
+for _, value := range values { value.ready = true }
+```
+
+**Correct**
+
+```go
+for index := range values { values[index].ready = true }
 ```
