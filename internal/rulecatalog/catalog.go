@@ -23,6 +23,7 @@ func NewRegistry() (*rules.Registry, error) {
 	}
 	all := append(rules.DefaultRules(), standard...)
 	all = append(all, rules.NewContextCancelLeakRule(), rules.NewLoopCaptureRule())
+	all = append(all, rules.NewAlmostSwappedRule())
 	registry, err := rules.NewRegistry(all...)
 	if err != nil {
 		return nil, fmt.Errorf("construct product rule registry: %w", err)

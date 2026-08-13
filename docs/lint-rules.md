@@ -9,6 +9,7 @@ not stable release promises.
 
 ## Rules
 
+- [almost-swapped](#almost-swapped)
 - [atomic-update-assignment](#atomic-update-assignment)
 - [context-cancel-leak](#context-cancel-leak)
 - [context-key](#context-key)
@@ -24,6 +25,54 @@ not stable release promises.
 - [nilness](#nilness)
 - [redundant-bool-comparison](#redundant-bool-comparison)
 - [self-assignment](#self-assignment)
+
+## almost-swapped
+
+detects sequential assignments that fail to swap values
+
+Two consecutive assignments such as left = right followed by right = left do not exchange values:
+the first assignment overwrites the original left value before the second reads it. Go supports an
+explicit simultaneous assignment for swaps.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `block-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only consecutive simple identifier assignments are reported; selectors, indexing, dereferences,
+  compound assignments, and intervening statements are excluded because evaluation may have effects.
+- The rule does not claim the intended repair is a swap; assigning both variables the same value can
+  be deliberate and may require suppression.
+
+### Example: Use Go's simultaneous assignment for a swap
+
+**Incorrect**
+
+```go
+left = right
+right = left
+```
+
+**Correct**
+
+```go
+left, right = right, left
+```
 
 ## atomic-update-assignment
 

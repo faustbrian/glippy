@@ -5370,6 +5370,90 @@ func safe(values []int) {
 	}
 }
 
+func TestRunExposesAndBaselinesAlmostSwapped(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "sample.go")
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/almostswappedcli\n\ngo 1.25.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	input := `package sample
+
+func swap(left, right int) {
+	left = right
+	right = left
+}
+`
+	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".glippy.toml"),
+		[]byte("version = 1\n[lint.rules]\nalmost-swapped = \"warn\"\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"lint", "--reporter=json", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(lint almost-swapped) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	var result glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].RuleID != "almost-swapped" {
+		t.Fatalf("almost-swapped diagnostics = %#v", result.Diagnostics)
+	}
+
+	stdout.Reset()
+	baselinePath := filepath.Join(root, ".glippy-baseline.json")
+	exitCode = Run(
+		[]string{"lint", "--generate-baseline=.glippy-baseline.json", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitSuccess ||
+		stdout.String() !=
+			"glippy lint: wrote baseline " + baselinePath + " (1 diagnostics)\n" ||
+		stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(baseline almost-swapped) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	baseline, err := os.ReadFile(baselinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(baseline, []byte(`"rule_id": "almost-swapped"`)) {
+		t.Fatalf("almost-swapped baseline = %q", baseline)
+	}
+}
+
 func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 	t.Helper()
 	if err := os.WriteFile(
