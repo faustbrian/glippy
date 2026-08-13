@@ -2,15 +2,13 @@
 
 ## Decision
 
-The refreshed candidate satisfies the formatter, linter, fixer, platform,
-licensing, reproducibility, and performance gates. Overall progress remains 95%
-because public-name risk acceptance, maintainer review, and the authorized
-tag-driven provenance/publication transaction are still pending.
+Gox v0.1.0 satisfies the formatter, linter, fixer, platform, licensing,
+reproducibility, performance, naming, maintainer-review, provenance, and
+publication gates. The published release binds all six verified assets to
+reviewed commit `c0435d6`; overall progress is 100%.
 
-`Proven` means the current candidate has direct implementation, behavioral, or
-release evidence. `Ready` means the implementation is complete but its
-user-authorized external activation has deliberately not occurred. `Pending`
-means a required maintainer decision remains.
+`Proven` means the released candidate has direct implementation, behavioral, or
+release evidence.
 
 ## Formatter
 
@@ -69,13 +67,13 @@ means a required maintainer decision remains.
 | Cache keys and corruption recovery | Proven | ADR 0008, cache specification, invalidation/corruption suites, and cache fuzzing |
 | Editor and CI integrations use stable surfaces | Proven | Stdin/stdout editor guide, pinned CI/pre-commit contracts, and successful candidate CI |
 | Release artifacts are reproducible and checksummed | Proven | Native run `31697171821` produced byte-identical license-bearing six-file sets on all four supported targets |
-| Release provenance and publication | Ready | Tag-only pinned GitHub workflow uses OIDC artifact attestations and GitHub Releases; activation is prohibited before maintainer review |
-| Naming and module-path audit | Pending | Technical refresh documents substantial exact-name collisions; final maintainer risk acceptance is required |
+| Release provenance and publication | Proven | `v0.1.0` workflow run `31699926922` published six checksummed assets whose GitHub attestations all verify |
+| Naming and module-path audit | Proven | The maintainer accepted the documented collision and trademark-risk boundary and retained Gox for public release |
 | Project and third-party licensing | Proven | The tracked SPDX `0BSD` project license plus MIT, BSD, and Go patent notices are deterministic archive entries, and the builder rejects either license artifact when absent |
 | Supported-version and vulnerability policies | Proven | `docs/supported-go-versions.md`, `docs/support-policy.md`, and `SECURITY.md` |
-| Final corpus, fuzz, race, integration, and performance | Proven | Candidate CI `31697040231`, twelve fuzz campaigns, pinned corpus, and release-budget run `31697171821` |
+| Final corpus, fuzz, race, integration, and performance | Proven | Exact tagged-commit CI `31699074682`, twelve fuzz campaigns, pinned corpus, and release-budget run `31697171821` |
 | Multiple real repositories have documented dogfood adoption | Proven | Gox self-adoption and maintainer-approved `pkg/prompts` coordinated migration |
-| Public release candidate personally reviewed | Pending | The maintainer explicitly reserved this gate before any tag or release |
+| Public release candidate personally reviewed | Proven | The maintainer personally approved exact candidate `c0435d6` before authorizing `v0.1.0` |
 
 ## Architecture
 
@@ -94,8 +92,7 @@ means a required maintainer decision remains.
 
 ## Release Boundary
 
-This audit does not convert a development revision into a release. The final
-sequence remains: maintainer name-risk decision, maintainer candidate review,
-explicit tag authorization, then successful GitHub provenance and publication.
-Any code or contract change before that sequence invalidates the affected
-candidate evidence and requires a bounded rerun.
+The required sequence completed: maintainer name-risk acceptance, personal
+candidate review, explicit tag authorization, and successful GitHub provenance
+and publication. Release `v0.1.0` is the immutable result; later source or
+documentation changes do not rewrite its evidence.

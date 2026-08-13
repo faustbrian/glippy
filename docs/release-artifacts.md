@@ -125,17 +125,20 @@ gh attestation verify <artifact> --repo faustbrian/gox
 
 The builder's checksum file remains the portable offline integrity surface;
 the signed attestation proves repository and workflow provenance when GitHub is
-available. Installer metadata remains deferred until an installation channel
-is admitted. A signed Git tag is not part of this artifact-provenance claim.
+available. GitHub Release archives and version-pinned `go install` are the
+admitted v0.1.0 installation channels; package-manager metadata remains
+deferred. A signed Git tag is not part of this artifact-provenance claim.
 
-No public tag or GitHub Release may be created until the complete goal reaches
-100%, the release candidate passes its final evidence gates, and the maintainer
-personally verifies and reviews it. The final naming audit must pass before that
-authorization is requested. The tag is therefore both the activation event and
-the final publication authorization; ordinary pushes and manual workflow
-dispatches cannot invoke the release workflow.
+The first public release, `v0.1.0`, was built from reviewed commit `c0435d6` by
+successful workflow run
+[`31699926922`](https://github.com/faustbrian/gox/actions/runs/31699926922).
+The workflow published all six checksummed assets and GitHub attestations after
+the maintainer accepted the final naming risk, reviewed the candidate, and
+authorized the tag. Exact identities and post-publication verification are in
+the [v0.1.0 release evidence](research/release-v0.1.0-evidence-2026-08-13.md).
+Ordinary pushes and manual workflow dispatches still cannot invoke publication.
 
 Published releases use the support and vulnerability boundaries in the
 [product support policy](support-policy.md) and the repository
-[security policy](../SECURITY.md). Before the first tag, every artifact remains
-an unsupported development artifact even when it passed a release rehearsal.
+[security policy](../SECURITY.md). Untagged artifacts remain unsupported even
+when they passed a release rehearsal.

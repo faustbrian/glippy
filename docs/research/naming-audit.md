@@ -4,13 +4,16 @@
 - Candidate refresh: 2026-08-11
 - Maintainer development-name decision: 2026-08-12
 - Final-candidate technical refresh: 2026-08-13
+- Maintainer final public-release acceptance: 2026-08-13
 
 ## Conclusion
 
-`gox` has direct ecosystem collisions. The maintainer has chosen to retain Gox,
-binary `gox`, and module path `github.com/faustbrian/gox` during development and
-has rejected an immediate rename. This development decision does not constitute
-legal clearance or final public-release acceptance of the collisions.
+`gox` has direct ecosystem collisions. After reviewing the final-candidate
+technical evidence below, the maintainer explicitly accepted those naming and
+trademark-risk boundaries and retained **Gox**, binary `gox`, repository
+`github.com/faustbrian/gox`, and module path `github.com/faustbrian/gox` for the
+first public release. This is a product-risk decision, not legal clearance in
+any jurisdiction or trademark class.
 
 The earlier technical screen recommended **Gofettle**, binary `gofettle`, and
 module path `github.com/faustbrian/gofettle`. That proposal came from this
@@ -72,14 +75,12 @@ short mark used by multiple software projects, so absence of an automated
 record could not establish legal availability in any jurisdiction or class.
 
 The technical refresh is complete and demonstrates material collision risk.
-Before a public release, the maintainer must explicitly accept that risk for
-Gox or authorize a coherent rename. Jurisdiction- and class-specific trademark
-advice remains the recommended route to legal clearance; a negative automated
-search must not be treated as legal advice or clearance.
+The maintainer accepted that risk for Gox before v0.1.0. Jurisdiction- and
+class-specific trademark advice remains the recommended route to legal
+clearance; a negative automated search must not be treated as legal advice or
+clearance.
 
 ## Revisit Trigger
 
-Immediately before a public tag or installation contract, refresh the technical
-screen and record one final decision: retain Gox with explicit collision and
-trademark evidence, or rename the repository, module path, binary, CLI examples,
-configuration references, cache namespaces, and release metadata coherently.
+Refresh the technical screen before a later stable-identity expansion, package
+manager registration, or whenever a material new `gox` collision appears.

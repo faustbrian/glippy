@@ -11,11 +11,10 @@ here.
 
 ## Release Support
 
-Until the first public release, branch heads, commits, locally built binaries,
-workflow artifacts, rehearsal archives, and prerelease plans are development
-artifacts and are not supported releases.
-
-After the first public release, support follows this table:
+Gox v0.1.0 is the current stable release. Branch heads, commits, locally built
+binaries, workflow artifacts, rehearsal archives, and prerelease plans are
+development artifacts and are not supported releases. Release support follows
+this table:
 
 | Release line | Support state |
 | --- | --- |

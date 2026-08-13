@@ -78,18 +78,13 @@ observed budgets, manifest identity, and digests after those artifacts expire;
 the workflow URL identifies the original run and job logs while GitHub retains
 them.
 
-## Remaining Human And Publication Gates
+## Human And Publication Gates
 
-The candidate has no known correctness, source-fidelity, fix-safety,
-determinism, supported-platform, or release-budget failure. It is not yet a
-publicly distributable release because these legal and user-controlled gates
-remain:
-
-1. the maintainer must accept the refreshed Gox collision and trademark-risk
-   boundary as the final public-name decision;
-2. the maintainer must personally review and verify this complete candidate;
-3. only after those decisions may a version tag be authorized; and
-4. that tag must activate the GitHub Release and OIDC artifact-attestation
-   workflow successfully.
-
-No tag or release was created while collecting this evidence.
+The maintainer accepted the refreshed Gox collision and trademark-risk
+boundary, personally reviewed candidate `c0435d6`, and authorized `v0.1.0`.
+Publication workflow run `31699926922` built that exact commit, attested all six
+release assets, and published the non-draft, non-prerelease GitHub Release. The
+published checksums, manifest source binding, archive contents, native Darwin
+arm64 execution, and every GitHub attestation were independently reverified
+after publication. The durable publication record is
+[release v0.1.0 evidence](release-v0.1.0-evidence-2026-08-13.md).

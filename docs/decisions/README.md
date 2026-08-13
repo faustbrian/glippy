@@ -5,7 +5,7 @@ deferred status is an explicit gate, not silent approval.
 
 | Required decision | Record |
 | --- | --- |
-| Product, binary, and module name | ADR 0001, Gox retained for development; final public-release audit required |
+| Product, binary, and module name | ADR 0001; final collision risk accepted and Gox retained for public release |
 | Supported Go versions | ADR 0008 and supported-version policy; Go 1.25 and Go 1.26 accepted |
 | Source/trivia representation | ADR 0005 and source model specification |
 | Document IR and line breaking | ADR 0002 |

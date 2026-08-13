@@ -20,9 +20,9 @@ completed successfully on that exact revision.
 | Continuous integration | The repository-owned `CI` workflow uses pinned actions, Go 1.26.5, disposable Go caches, read-only permissions, full tests, race tests, vet, tidy-diff, a fresh build, and non-mutating `gox check ./...`. Run `31686057237` passed on the exact integration revision. | Complete |
 | Pre-commit | The versioned-hook contract uses the same non-mutating combined check, documents partial-staging behavior, and requires a pinned development build before release. | Complete |
 | Release artifacts | The clean-revision builder emits deterministic Darwin and Linux archives for amd64 and arm64 plus a versioned manifest and SHA-256 checksums. Rehearsals prove cross-environment reproduction and target execution within their recorded native or emulated boundaries. | Complete; the final-candidate native rerun passed |
-| Publication and provenance | The tag-only GitHub workflow rebuilds the exact tag with pinned actions, requests GitHub OIDC artifact attestations, and publishes checksummed artifacts through GitHub Releases. Ordinary pushes and workflow dispatches cannot publish. | Complete integration; activation requires the authorized final tag |
+| Publication and provenance | The tag-only GitHub workflow rebuilds the exact tag with pinned actions, requests GitHub OIDC artifact attestations, and publishes checksummed artifacts through GitHub Releases. Ordinary pushes and workflow dispatches cannot publish. | Complete; v0.1.0 publication and attestations verified |
 | Formatter migration | The gofmt, gofumpt, and golines divergence classes, rehearsal, cutover, rollback, and sole-formatter requirements are documented. The approved `pkg/prompts` migration and Gox self-adoption exercise the contract. | Complete |
-| Shell and installation surfaces | Bash, Zsh, and Fish completion generation is implemented and documented. Development evaluation remains revision-pinned; the supported release installation path is intentionally withheld until the first authorized GitHub Release. | Complete for the pre-release boundary |
+| Shell and installation surfaces | Bash, Zsh, and Fish completion generation is implemented and documented. GitHub Release archives and version-pinned source installation are supported for v0.1.0. | Complete |
 | Support and compatibility | Supported Go versions, macOS/Linux targets, unsupported Windows and filesystem boundaries, vulnerability reporting, formatter changes, rule IDs, configuration migration, machine schemas, and deprecation policy are published. | Complete |
 
 GitHub- and SARIF-specific diagnostic reporters remain unnecessary because no
@@ -46,11 +46,9 @@ successful four-runner release-budget and cross-runner reproducibility run
 `31697171821`. The requirement-level result is recorded in the
 [final acceptance audit](final-acceptance-audit-2026-08-13.md).
 
-The technical naming search is refreshed, but the documented exact-name and
-trademark-risk boundary still needs the maintainer's final public-name
-acceptance. Deterministic dependency-notice packaging is now implemented, while
-the selected 0BSD project license is also required and packaged. Refreshed
-candidate evidence is complete; the maintainer's personal candidate review
-remains pending. Only after the remaining human gates may a tag be authorized
-to activate GitHub publication and provenance. No tag or release exists, so
-progress remains 95%.
+The maintainer accepted the documented exact-name and trademark-risk boundary,
+personally approved candidate `c0435d6`, and authorized `v0.1.0`. Publication
+workflow run `31699926922` built that exact commit, created and attested all six
+release assets, and published the GitHub Release. Post-publication checksum,
+manifest, archive, native-execution, and attestation verification passed, so
+Phase 5 and overall progress reach 100%.

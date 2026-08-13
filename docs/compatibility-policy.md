@@ -210,9 +210,11 @@ policy and record every formatter, rule, fix, configuration, schema, CLI,
 platform, and support change since the previous public release. The audit MUST
 bind its claims to the release candidate and current corpus evidence.
 
-No public tag or release may be created until the complete Gox goal reaches
-100%, every final acceptance gate passes, and the maintainer personally
-verifies and reviews the candidate. This policy does not relax that boundary.
+A public tag or release MUST NOT be created until every pre-publication final
+acceptance gate passes and the maintainer personally verifies, reviews, and
+authorizes the exact candidate. Publication and provenance are themselves the
+final acceptance transaction; their successful verification advances a
+candidate from the 95% pre-tag state to 100%.
 
 The normative architecture decision is
 [ADR 0008](decisions/0008-version-cache-and-compatibility-policy.md). The

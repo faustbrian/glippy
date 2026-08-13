@@ -106,10 +106,10 @@ Each developer enables the repository-owned hook once:
 git config core.hooksPath .githooks
 ```
 
-Before the public release, set `GOX_BIN` explicitly to the repository's
-reviewed pinned build; leaving it unset resolves `gox` from `PATH`. The hook
-uses the same non-mutating command as CI and must not use `fmt --write`, `lint
---fix`, suggestion fixes, or unsafe fixes. Developers can run those commands
+Install or provision the repository's pinned Gox release before enabling the
+hook; leaving `GOX_BIN` unset resolves `gox` from `PATH`. The hook uses the same
+non-mutating command as CI and must not use `fmt --write`, `lint --fix`,
+suggestion fixes, or unsafe fixes. Developers can run those commands
 deliberately before committing and review the resulting source changes.
 
 Gox checks filesystem content, not staged Git blobs. With partially staged

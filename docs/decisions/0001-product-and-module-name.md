@@ -1,6 +1,6 @@
 # ADR 0001: Product And Module Name
 
-- Status: accepted for development; final public-release risk acceptance required
+- Status: accepted for public release
 - Date: 2026-08-09
 - Refreshed: 2026-08-13
 
@@ -14,19 +14,12 @@ The complete evidence and candidate screen are recorded in
 
 ## Decision
 
-The maintainer has selected **Gox**, binary `gox`, repository
-`github.com/faustbrian/gox`, and module path `github.com/faustbrian/gox` for
-continued development. The earlier **Gofettle** recommendation is rejected for
-the current development identity; no repository or namespace rename is
-authorized.
-
-This is not final public-release clearance. The final-candidate technical audit
-has now been refreshed and confirms exact binary, repository, package-manager,
-social-name, and domain collisions. Before the first public tag or installation
-contract, the maintainer must either retain Gox with explicit acceptance of
-those collision and trademark-risk boundaries or select a replacement. Until
-that gate passes, the current module path must not be presented as a stable
-public import contract.
+The maintainer selected **Gox**, binary `gox`, repository
+`github.com/faustbrian/gox`, and module path `github.com/faustbrian/gox`, and
+explicitly accepted the final-candidate collision and trademark-risk evidence
+for the first public release. The earlier **Gofettle** recommendation is
+rejected; no repository or namespace rename is authorized. This product-risk
+acceptance is not jurisdiction- or class-specific legal clearance.
 
 ## Alternatives Rejected
 
@@ -42,12 +35,10 @@ public import contract.
 ## Consequences
 
 Internal implementation packages remain unexported. Documentation may use Gox
-as the current product identity but must not claim final trademark clearance or
-a stable public module contract. No rename work is pending during ordinary
-development; the final release audit remains mandatory.
+as the public product identity but must not claim trademark clearance. No rename
+work is pending during ordinary development.
 
 ## Revisit Trigger
 
-Immediately before the first public tag, installation instructions, external
-integration, or exported package contract, and whenever a material new `gox`
-collision appears.
+Before a later stable-identity expansion or package-manager registration, and
+whenever a material new `gox` collision appears.

@@ -23,12 +23,12 @@ Rule metadata declares the earliest supported language family for each rule.
 The scheduler omits a rule when the selected source version is older than that
 minimum. The current built-in rules support both Go 1.25 and Go 1.26.
 
-Release archives will be built with Go 1.26.5 for macOS and Linux on amd64 and
-arm64. They will not require a separately installed Go runtime. Installing
-from source requires the toolchain selected by the module's `go 1.26.0`
-directive; the Go command may choose a newer compatible toolchain according to
-the user's toolchain policy. Windows and other operating systems are
-unsupported.
+Gox v0.1.0 release archives were built with Go 1.26.5 for macOS and Linux on
+amd64 and arm64. They do not require a separately installed Go runtime.
+Installing from source requires the toolchain selected by the module's
+`go 1.26.0` directive; the Go command may choose a newer compatible toolchain
+according to the user's toolchain policy. Windows and other operating systems
+are unsupported.
 
 Newer Go source is rejected until Gox is rebuilt with a frontend that
 understands it and the formatter, lint, corpus, and compatibility gates for

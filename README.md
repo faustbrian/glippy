@@ -6,10 +6,11 @@ deterministic width-aware layout decisions. Its linter keeps correctness-focused
 defaults, pays only for the analysis tiers enabled rules require, and routes
 all source changes through an explicit conflict-safe transaction.
 
-Gox is in pre-release development. The name, binary, repository, and module
-path are the selected development identity, but the final collision and
-trademark audit has not cleared a stable installation contract. Untagged
-commits and locally built binaries are unsupported development artifacts.
+Gox v0.1.0 is the first supported release. The maintainer accepted the
+documented ecosystem-collision and trademark-risk boundary for the Gox name,
+binary, repository, and module path. That decision is not legal clearance for
+any jurisdiction or trademark class. Untagged commits and locally built
+binaries remain unsupported development artifacts.
 
 ## Why Gox
 
@@ -79,10 +80,27 @@ selected with `lint --fix`; suggestion and unsafe classes require their own
 explicit flags. See the [command reference](docs/command-reference.md) for
 inputs, reporters, exit categories, and write behavior.
 
-## Development Evaluation
+## Installation
 
-There is no supported release or stable installation path yet. To evaluate an
-exact reviewed checkout with Go 1.26, build a disposable development binary:
+Download the archive for a supported target from the
+[v0.1.0 GitHub Release](https://github.com/faustbrian/gox/releases/tag/v0.1.0),
+verify its checksum, and extract `gox` into a directory on `PATH`. The release
+provides macOS and Linux archives for amd64 and arm64, a checksum file, and a
+versioned manifest. GitHub-hosted provenance can be verified with:
+
+```sh
+gh attestation verify <downloaded-artifact> --repo faustbrian/gox
+```
+
+For source installation, pin the released module version:
+
+```sh
+go install github.com/faustbrian/gox/cmd/gox@v0.1.0
+gox version
+```
+
+To evaluate an untagged checkout with Go 1.26, build a disposable development
+binary:
 
 ```sh
 task_root=$(mktemp -d "${TMPDIR:-/tmp}/gox-eval.XXXXXX")
@@ -135,9 +153,7 @@ precise scope.
 - [Architecture decisions](docs/decisions/README.md)
 - [Performance methodology and results](benchmarks/README.md)
 
-Security reports follow [SECURITY.md](SECURITY.md). The first public release
-remains gated on the final naming audit, complete acceptance evidence, and the
-maintainer's personal verification and review. Gox is licensed under the
+Security reports follow [SECURITY.md](SECURITY.md). Gox is licensed under the
 [BSD Zero Clause License](LICENSE), and release archives reproduce that license
-and all applicable third-party notices. No tag or release is created by
-ordinary development pushes.
+and all applicable third-party notices. Ordinary development pushes cannot
+create a tag or release.

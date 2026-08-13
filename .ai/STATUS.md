@@ -1151,3 +1151,15 @@ The requirement-level acceptance audit now leaves only the final public-name
 collision/trademark-risk decision, the maintainer's personal candidate review,
 and the subsequently authorized tag-driven attestation/publication transaction
 open. No tag or release exists, so overall progress remains 95%.
+
+The maintainer accepted the documented Gox naming and trademark-collision risk,
+personally approved exact candidate `c0435d6`, and authorized the first public
+release. Annotated tag `v0.1.0` resolves to that commit. GitHub Actions run
+`31699926922` rebuilt the exact tag with Go 1.26.5, produced the four supported
+archives plus manifest and checksums, attested all six assets through GitHub
+OIDC provenance, and published a non-draft, non-prerelease GitHub Release.
+Independent post-publication verification downloaded every asset, passed every
+checksum, confirmed manifest source revision `c0435d6`, required the exact
+`gox`, `LICENSE`, and `THIRD_PARTY_LICENSES.txt` archive entries, executed the
+Darwin arm64 binary as `gox v0.1.0`, and verified all six attestations. Every
+final acceptance gate is satisfied; Phase 5 and overall progress reach 100%.
