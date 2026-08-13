@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -5454,6 +5455,112 @@ func swap(left, right int) {
 	}
 }
 
+func TestRunExposesAndBaselinesComparisonCatalog(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "sample.go")
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/comparisoncatalogcli\n\ngo 1.25.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	input := `package sample
+
+func checks(value uint8) (bool, bool, bool) {
+	return value > 255, value&2 == 1, value == 1 && value == 2
+}
+
+func branch(value int) int {
+	if value > 0 { return 1 } else if value > 10 { return 2 }
+	return 0
+}
+`
+	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".glippy.toml"),
+		[]byte(
+			"version = 1\n[lint.rules]\n" +
+				"bad-bit-mask = \"warn\"\n" +
+				"contradictory-condition = \"warn\"\n" +
+				"impossible-comparison = \"warn\"\n" +
+				"subsumed-condition = \"warn\"\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"lint", "--reporter=json", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(lint comparison catalog) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	var result glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"impossible-comparison",
+		"bad-bit-mask",
+		"contradictory-condition",
+		"subsumed-condition",
+	}
+	got := make([]string, len(result.Diagnostics))
+	for index, diagnostic := range result.Diagnostics {
+		got[index] = diagnostic.RuleID
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("comparison catalog diagnostics = %q, want %q", got, want)
+	}
+
+	stdout.Reset()
+	baselinePath := filepath.Join(root, ".glippy-baseline.json")
+	exitCode = Run(
+		[]string{"lint", "--generate-baseline=.glippy-baseline.json", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitSuccess ||
+		stdout.String() !=
+			"glippy lint: wrote baseline " + baselinePath + " (4 diagnostics)\n" ||
+		stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(baseline comparison catalog) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	baseline, err := os.ReadFile(baselinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ruleID := range want {
+		if !bytes.Contains(baseline, []byte(`"rule_id": "` + ruleID + `"`)) {
+			t.Fatalf("comparison baseline omits %s: %q", ruleID, baseline)
+		}
+	}
+}
+
 func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 	t.Helper()
 	if err := os.WriteFile(
@@ -5469,9 +5576,12 @@ func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 		[]byte(
 			"version = 1\n[lint.rules]\n" +
 				"atomic-update-assignment = \"off\"\n" +
+				"bad-bit-mask = \"off\"\n" +
 				"context-cancel-leak = \"off\"\n" +
+				"contradictory-condition = \"off\"\n" +
 				"copied-lock = \"off\"\n" +
 				"http-response-before-error = \"off\"\n" +
+				"impossible-comparison = \"off\"\n" +
 				"impossible-type-assertion = \"off\"\n" +
 				"loop-capture = \"off\"\n" +
 				"self-assignment = \"off\"\n",

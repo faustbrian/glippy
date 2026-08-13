@@ -3,10 +3,12 @@ package rulecatalog
 
 import (
 	"fmt"
+	"strings"
 
 	goanalysis "golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/assign"
 	atomicanalyzer "golang.org/x/tools/go/analysis/passes/atomic"
+	"golang.org/x/tools/go/analysis/passes/bools"
 	"golang.org/x/tools/go/analysis/passes/copylock"
 	"golang.org/x/tools/go/analysis/passes/httpresponse"
 	"golang.org/x/tools/go/analysis/passes/ifaceassert"
@@ -22,7 +24,14 @@ func NewRegistry() (*rules.Registry, error) {
 		return nil, err
 	}
 	all := append(rules.DefaultRules(), standard...)
-	all = append(all, rules.NewContextCancelLeakRule(), rules.NewLoopCaptureRule())
+	all = append(
+		all,
+		rules.NewBadBitMaskRule(),
+		rules.NewContextCancelLeakRule(),
+		rules.NewImpossibleComparisonRule(),
+		rules.NewLoopCaptureRule(),
+		rules.NewSubsumedConditionRule(),
+	)
 	all = append(all, rules.NewAlmostSwappedRule())
 	registry, err := rules.NewRegistry(all...)
 	if err != nil {
@@ -41,6 +50,7 @@ func standardAnalyzerRules() ([]rules.Rule, error) {
 		impossibleTypeAssertionRule,
 		httpResponseBeforeErrorRule,
 		atomicUpdateAssignmentRule,
+		contradictoryConditionRule,
 	}
 	result := make([]rules.Rule, 0, len(constructors))
 	for _, construct := range constructors {
@@ -51,6 +61,65 @@ func standardAnalyzerRules() ([]rules.Rule, error) {
 		result = append(result, rule)
 	}
 	return result, nil
+}
+
+func contradictoryConditionRule() (rules.Rule, error) {
+	analyzer := filterAnalyzerDiagnostics(
+		"contradictorycondition",
+		bools.Analyzer,
+		func(diagnostic goanalysis.Diagnostic) bool {
+			return strings.HasPrefix(diagnostic.Message, "suspect ")
+		},
+	)
+	return adaptStandardAnalyzer(
+		analyzer,
+		rules.Metadata{
+			ID: "contradictory-condition",
+			Summary: "detects boolean chains that are always true or false",
+			Documentation: "Comparing the same side-effect-free value to different constants with equality joined by && can never succeed; using inequality joined by || can never fail. Glippy exposes the contradictory subset of the standard Go bools analyzer through its deterministic rule contract.",
+			DefaultSeverity: rules.SeverityWarn,
+			Presets: []rules.Preset{rules.PresetCorrectness},
+			MinimumGoVersion: "1.25",
+			Requirement: rules.RequireTypes,
+			NodeInterests: []rules.NodeKind{rules.NodeFile},
+			Categories: []rules.Category{rules.CategoryCorrectness},
+			KnownLimitations: []string{
+				"The standard bools analyzer restricts reports to side-effect-free expression groups with a compile-time constant on one side of each comparison.",
+				"Equivalent expressions written in syntactically different forms are not matched.",
+			},
+			Examples: []rules.Example{
+				{
+					Title: "Use a satisfiable comparison chain",
+					Incorrect: "value == 1 && value == 2",
+					Correct: "value == 1 || value == 2",
+				},
+			},
+		},
+		nil,
+	)
+}
+
+func filterAnalyzerDiagnostics(
+	name string,
+	upstream *goanalysis.Analyzer,
+	keep func(goanalysis.Diagnostic) bool,
+) *goanalysis.Analyzer {
+	return &goanalysis.Analyzer{
+		Name: name,
+		Doc: upstream.Doc,
+		URL: upstream.URL,
+		Requires: upstream.Requires,
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			filtered := *pass
+			filtered.Analyzer = upstream
+			filtered.Report = func(diagnostic goanalysis.Diagnostic) {
+				if keep(diagnostic) {
+					pass.Report(diagnostic)
+				}
+			}
+			return upstream.Run(&filtered)
+		},
+	}
 }
 
 func selfAssignmentRule() (rules.Rule, error) {

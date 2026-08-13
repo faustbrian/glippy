@@ -362,7 +362,7 @@ func validateMetadata(metadata Metadata, packageWide bool) error {
 			metadata.MinimumGoVersion,
 		)
 	}
-	if metadata.Requirement < RequireLexical || metadata.Requirement > RequireSSA {
+	if metadata.Requirement > RequireSSA {
 		return fmt.Errorf(
 			"%s: invalid analysis requirement %d",
 			metadata.ID,

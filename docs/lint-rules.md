@@ -11,20 +11,24 @@ not stable release promises.
 
 - [almost-swapped](#almost-swapped)
 - [atomic-update-assignment](#atomic-update-assignment)
+- [bad-bit-mask](#bad-bit-mask)
 - [context-cancel-leak](#context-cancel-leak)
 - [context-key](#context-key)
+- [contradictory-condition](#contradictory-condition)
 - [copied-lock](#copied-lock)
 - [defer-in-infinite-loop](#defer-in-infinite-loop)
 - [duplicate-condition](#duplicate-condition)
 - [errors-is-arguments](#errors-is-arguments)
 - [http-response-before-error](#http-response-before-error)
 - [identical-branches](#identical-branches)
+- [impossible-comparison](#impossible-comparison)
 - [impossible-type-assertion](#impossible-type-assertion)
 - [ineffective-break](#ineffective-break)
 - [loop-capture](#loop-capture)
 - [nilness](#nilness)
 - [redundant-bool-comparison](#redundant-bool-comparison)
 - [self-assignment](#self-assignment)
+- [subsumed-condition](#subsumed-condition)
 
 ## almost-swapped
 
@@ -119,6 +123,53 @@ None.
 
 ```go
 atomic.AddUint64(value, 1)
+```
+
+## bad-bit-mask
+
+detects masked comparisons that cannot change result
+
+A bitwise AND cannot produce bits absent from its mask, while a bitwise OR cannot remove bits
+required by its mask. Comparing either result with an incompatible constant is therefore always true
+or false and usually indicates a mistaken mask or comparison value.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `binary-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule currently covers equality and inequality checks around integer AND and OR expressions
+  with compile-time masks and comparison values.
+- Ordered masked comparisons and ineffective masks that do not force a constant result are outside
+  this rule's current scope.
+
+### Example: Compare only bits allowed by the mask
+
+**Incorrect**
+
+```go
+value&0b0010 == 0b0001
+```
+
+**Correct**
+
+```go
+value&0b0010 == 0b0010
 ```
 
 ## context-cancel-leak
@@ -219,6 +270,52 @@ context.WithValue(ctx, "request-id", requestID)
 ```go
 type requestIDKey struct{}
 context.WithValue(ctx, requestIDKey{}, requestID)
+```
+
+## contradictory-condition
+
+detects boolean chains that are always true or false
+
+Comparing the same side-effect-free value to different constants with equality joined by && can
+never succeed; using inequality joined by || can never fail. Glippy exposes the contradictory subset
+of the standard Go bools analyzer through its deterministic rule contract.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The standard bools analyzer restricts reports to side-effect-free expression groups with a
+  compile-time constant on one side of each comparison.
+- Equivalent expressions written in syntactically different forms are not matched.
+
+### Example: Use a satisfiable comparison chain
+
+**Incorrect**
+
+```go
+value == 1 && value == 2
+```
+
+**Correct**
+
+```go
+value == 1 || value == 2
 ```
 
 ## copied-lock
@@ -510,6 +607,53 @@ if ready { run() } else { run() }
 
 ```go
 if ready { run() } else { wait() }
+```
+
+## impossible-comparison
+
+detects comparisons outside an integer type's value range
+
+Ordered comparisons against an integer type's minimum or maximum value can be constant regardless of
+the runtime operand. Such conditions commonly leave dead branches or accidentally invert a boundary
+check.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `binary-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Architecture-sized int and uint maximum and minimum comparisons are excluded because source
+  selection may target an architecture different from the running Glippy binary.
+- The rule reports only comparisons with a compile-time integer constant and does not infer ranges
+  from preceding control flow.
+
+### Example: Use a reachable unsigned boundary
+
+**Incorrect**
+
+```go
+value < 0
+```
+
+**Correct**
+
+```go
+value == 0
 ```
 
 ## impossible-type-assertion
@@ -839,4 +983,51 @@ value = value
 
 ```go
 value = replacement
+```
+
+## subsumed-condition
+
+detects else-if conditions covered by an earlier branch
+
+An else-if branch is unreachable when its ordered comparison can only be true in cases already
+accepted by the preceding branch. The later condition commonly contains a reversed bound or branches
+ordered from broadest to narrowest.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `if-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `suspicious`, `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule currently compares adjacent ordered integer conditions over the same plain identifier and
+  a compile-time constant.
+- Chains with an initializer or compound conditions are excluded because their value and evaluation
+  relationships require broader control-flow reasoning.
+
+### Example: Order branches from narrowest to broadest
+
+**Incorrect**
+
+```go
+if value > 0 { use() } else if value > 10 { specialize() }
+```
+
+**Correct**
+
+```go
+if value > 10 { specialize() } else if value > 0 { use() }
 ```
