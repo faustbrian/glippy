@@ -38,25 +38,16 @@ Go 1.26.5 and task-owned disposable build caches. The pushed commit then passed
 the repository-owned GitHub workflow from a fresh checkout and empty Go caches.
 The self-formatted tree is a zero-difference Gox fixed point.
 
-## Remaining 100% Gates
+## Release Candidate Refresh
 
-The following remain release-candidate gates rather than missing integration
-design:
+Exact candidate `ccd1e29` now has successful CI run `31690175325`, a complete
+5,138-file corpus result with no errors, twelve passing fuzz campaigns, and
+successful four-runner release-budget and cross-runner reproducibility run
+`31690694813`. The requirement-level result is recorded in the
+[final acceptance audit](final-acceptance-audit-2026-08-13.md).
 
-1. refresh the technical name, module, binary, package-manager, domain, social,
-   and trademark audit immediately before the public tag decision;
-2. run the final corpus, fuzz, race, integration, reproducibility, and
-   performance suite against one exact release-candidate revision;
-3. rerun the four native Darwin/Linux amd64/arm64 release budgets and retain
-   their raw evidence;
-4. complete the requirement-by-requirement final acceptance audit and resolve
-   every contradictory, missing, or indirect item;
-5. obtain the maintainer's personal review and verification of the complete
-   candidate; and
-6. only after the project is at 100% and that review is complete, obtain final
-   tag authorization and activate publication and provenance.
-
-The current GitHub CLI credential returns HTTP 401. Public workflow results are
-readable without it, but a fresh manual release-budget dispatch and repository
-security-settings audit require restored GitHub authority or an equivalent
-authenticated channel.
+The technical naming search is refreshed, but the documented exact-name and
+trademark-risk boundary still needs the maintainer's final public-name
+acceptance. The maintainer's personal candidate review also remains pending.
+Only after those gates may a tag be authorized to activate GitHub publication
+and provenance. No tag or release exists, so progress remains 95%.

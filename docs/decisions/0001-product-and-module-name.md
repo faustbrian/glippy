@@ -1,8 +1,8 @@
 # ADR 0001: Product And Module Name
 
-- Status: accepted for development; final public-release audit required
+- Status: accepted for development; final public-release risk acceptance required
 - Date: 2026-08-09
-- Refreshed: 2026-08-12
+- Refreshed: 2026-08-13
 
 ## Context And Evidence
 
@@ -20,12 +20,13 @@ continued development. The earlier **Gofettle** recommendation is rejected for
 the current development identity; no repository or namespace rename is
 authorized.
 
-This is not final public-release clearance. Before the first public tag or
-installation contract, the project must refresh the ecosystem-collision audit,
-obtain appropriate trademark advice, and either retain Gox with an explicit
-acceptance of the documented collisions or select a replacement. Until that
-gate passes, the current module path must not be presented as a stable public
-import contract.
+This is not final public-release clearance. The final-candidate technical audit
+has now been refreshed and confirms exact binary, repository, package-manager,
+social-name, and domain collisions. Before the first public tag or installation
+contract, the maintainer must either retain Gox with explicit acceptance of
+those collision and trademark-risk boundaries or select a replacement. Until
+that gate passes, the current module path must not be presented as a stable
+public import contract.
 
 ## Alternatives Rejected
 

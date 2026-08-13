@@ -3,6 +3,7 @@
 - Initial audit: 2026-08-09
 - Candidate refresh: 2026-08-11
 - Maintainer development-name decision: 2026-08-12
+- Final-candidate technical refresh: 2026-08-13
 
 ## Conclusion
 
@@ -20,17 +21,22 @@ development identity. It remains historical candidate evidence only.
 
 | Project | Current evidence | Collision |
 | --- | --- | --- |
-| [mitchellh/gox](https://github.com/mitchellh/gox) | 4,577 GitHub stars; archived but still installed as `gox` | Established Go cross-compiler using the exact binary name |
+| [mitchellh/gox](https://github.com/mitchellh/gox) | 4,576 GitHub stars; archived but still installed as `gox` | Established Go cross-compiler using the exact binary name |
 | [mentasystems/gox](https://github.com/mentasystems/gox) | Active experimental Go linter with direct `go install` instructions | Exact binary plus overlapping `check` and `explain` commands |
 | [germtb/gox](https://github.com/germtb/gox) | Active Go/JSX tool distributed through Go install, GitHub releases, and Homebrew | Exact binary plus overlapping `fmt` and `version` commands |
 | [icza/gox](https://github.com/icza/gox), [8byt/gox](https://github.com/8byt/gox), [topxeq/gox](https://github.com/topxeq/gox) | Existing Go repositories and modules | Repository, module, and search ambiguity |
 
-The 2026-08-11 GitHub repository search for `gox in:name language:Go`
-returned 621 results. The Go proxy confirmed published versions for the
-Mitchell, Menta Systems, and Icza module paths. The npm registry also contains
-`gox` 0.1.0, and `gox.io` is registered and parked for sale. No Homebrew core
-formula or Arch AUR package named `gox` was found, but Germ distributes its
-binary through a tap.
+The 2026-08-13 final-candidate GitHub repository search for
+`gox in:name language:Go` returned 620 results. Exact repository names include
+the projects above plus active `icza/gox`, `topxeq/gox`, `doors-dev/gox`, and
+others. The Go proxy confirms published versions for the Mitchell, Menta
+Systems, and Germ module paths. The exact GitHub user `gox` is occupied.
+
+Package and domain checks add further collisions: npm contains `gox` 0.1.0,
+crates.io contains `gox` 0.4.0, and both `gox.io` and `gox.dev` are registered.
+No Homebrew core formula, Arch AUR package, PyPI project, or Docker user named
+`gox` was found at the refresh time, but Germ distributes its binary through a
+tap. These negative results are not reservations and can change independently.
 
 ## Replacement Candidate Screen
 
@@ -57,17 +63,19 @@ secured.
 
 ## Search Record And Limits
 
-Queries covered authenticated GitHub repository and code search, GitHub and
-Docker user lookups, pkg.go.dev, the Go module proxy, Homebrew's formula API,
-AUR RPC, npm, PyPI, crates.io, and RDAP for candidate `.com` and `.dev`
-domains. Search results are point-in-time evidence dated above. USPTO, TMview,
-and WIPO search entry points did not produce a reliable automated exact-mark
-result, so this audit makes no legal-clearance claim.
+Queries covered authenticated GitHub repository search, GitHub and Docker user
+lookups, pkg.go.dev, the Go module proxy, Homebrew's formula API, AUR RPC, npm,
+PyPI, crates.io, WHOIS, and RDAP. Search results are point-in-time evidence
+dated above. USPTO, TMview, and WIPO entry points still do not provide a
+reliable automated exact-mark clearance result for this audit. `Gox` is a very
+short mark used by multiple software projects, so absence of an automated
+record could not establish legal availability in any jurisdiction or class.
 
-Before a public release under any name, obtain jurisdiction- and class-specific
-trademark advice and repeat the repository, module, binary, package-manager,
-domain, and social-name checks. A negative automated search must not be treated
-as legal clearance.
+The technical refresh is complete and demonstrates material collision risk.
+Before a public release, the maintainer must explicitly accept that risk for
+Gox or authorize a coherent rename. Jurisdiction- and class-specific trademark
+advice remains the recommended route to legal clearance; a negative automated
+search must not be treated as legal advice or clearance.
 
 ## Revisit Trigger
 

@@ -91,6 +91,12 @@ requires every file to be byte-identical across runners. Any missing runner,
 different archive, manifest, or checksum, or non-native version execution fails
 the workflow.
 
+Candidate run
+[`31690694813`](https://github.com/faustbrian/gox/actions/runs/31690694813)
+passed this complete matrix and comparison for revision `ccd1e29`. The raw
+budgets and artifact digests are recorded in the
+[release-candidate evidence](research/release-candidate-evidence-2026-08-13.md).
+
 GitHub Releases is the selected publication channel. A push of a canonical
 semantic-version tag invokes the repository's `Publish release` workflow. It
 checks out the exact tag, builds the complete deterministic target set with Go

@@ -14,7 +14,7 @@ outweigh the repository's partly stale `ARCHITECTURE.md`.
 ## Final Readiness Refresh
 
 The Phase 5 comparison was refreshed on 2026-08-13 against Oxc commit
-[`76b19f5`](https://github.com/oxc-project/oxc/commit/76b19f503b2b68a942924c74fa0bd1f0e64570e3)
+[`6e040e4`](https://github.com/oxc-project/oxc/commit/6e040e494eb7607a481afff11944f41e01e0e41b)
 and website commit
 [`7c4f077`](https://github.com/oxc-project/website/commit/7c4f07766d992c1a8dd7bc8db1274aca46b36d73).
 The audited packages report Oxfmt 0.63.0 and Oxlint 1.78.0. This is the final
@@ -29,7 +29,7 @@ Current Oxfmt source and documentation confirm:
 - a language-neutral document IR with line modes, groups, fill, line suffixes,
   conditionals, and best-fitting variants, plus iterative printing with
   reusable fit stacks and queues; and
-- ordinary [`fs::write`](https://github.com/oxc-project/oxc/blob/76b19f503b2b68a942924c74fa0bd1f0e64570e3/apps/oxfmt/src/cli/service.rs#L79-L96)
+- ordinary [`fs::write`](https://github.com/oxc-project/oxc/blob/6e040e494eb7607a481afff11944f41e01e0e41b/apps/oxfmt/src/cli/service.rs#L79-L96)
   for changed files rather than a validated atomic replacement transaction.
 
 Gox deliberately retains a smaller Go-native configuration dialect, explicit
@@ -56,7 +56,7 @@ includes runtime-dependent `threads_count` and `start_time`. SARIF uses its
 standard 2.1.0 schema. The current batch fixer still sorts candidate edits,
 keeps the first eligible fix, silently leaves later overlapping or adjacent
 fixes unapplied, reparses only in debug builds, and writes through ordinary
-[`fs::write`](https://github.com/oxc-project/oxc/blob/76b19f503b2b68a942924c74fa0bd1f0e64570e3/crates/oxc_linter/src/service/runtime.rs#L198-L205).
+[`fs::write`](https://github.com/oxc-project/oxc/blob/6e040e494eb7607a481afff11944f41e01e0e41b/crates/oxc_linter/src/service/runtime.rs#L198-L205).
 The LSP similarly drops later overlapping edits.
 
 Gox therefore retains versioned deterministic machine records without runtime

@@ -1136,3 +1136,17 @@ and compatibility surfaces are implemented and documented. This advances
 overall progress to 95%. Final naming, release-candidate corpus and fuzz gates,
 fresh four-runner performance evidence, the requirement-level acceptance audit,
 and the maintainer's final pre-tag review remain open.
+
+The release candidate is now exact revision `ccd1e29` on pushed `main`.
+GitHub CI run `31690175325` passed the full test, race, vet, tidy-diff, build,
+and combined-check gate. The pinned 5,138-file corpus completed with 4,807
+expected differences and no errors, and all twelve owned fuzz targets passed
+fresh 10-second campaigns. Release-budget run `31690694813` passed natively on
+Darwin and Linux amd64 and arm64: editor latency remained below 17.261 ms,
+formatter checks remained below 86.380 seconds and 1,932,156,928 bytes peak
+RSS, every native archive executed, and all six release files were
+byte-identical across the four independent builders. The requirement-level
+acceptance audit now leaves only the final public-name collision/trademark-risk
+decision, the maintainer's personal candidate review, and the subsequently
+authorized tag-driven attestation/publication transaction open. No tag or
+release exists, so overall progress remains 95%.
