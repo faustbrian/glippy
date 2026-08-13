@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"debug/buildinfo"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
@@ -67,9 +69,14 @@ func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
 	if len(wantTargets) != 0 {
 		t.Fatalf("manifest is missing targets %#v", wantTargets)
 	}
+	notices, err := os.ReadFile(filepath.Join(root, thirdPartyNoticesName))
+	if err != nil {
+		t.Fatal(err)
+	}
 	names := []string{"gox_v0.0.0-test_manifest.json", "gox_v0.0.0-test_checksums.txt"}
 	for _, artifact := range manifests[0].Artifacts {
 		names = append(names, artifact.File)
+		verifyArchiveNotices(t, filepath.Join(outputs[0], artifact.File), notices)
 	}
 	for _, name := range names {
 		first, err := os.ReadFile(filepath.Join(outputs[0], name))
@@ -113,7 +120,7 @@ func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
 	if current == (Artifact{}) {
 		t.Fatal("manifest does not contain the current runtime target")
 	}
-	binary := extractBinary(t, filepath.Join(outputs[0], current.File))
+	binary := extractBinary(t, filepath.Join(outputs[0], current.File), notices)
 	command := exec.Command(binary, "version")
 	got, err := command.CombinedOutput()
 	if err != nil {
@@ -188,6 +195,52 @@ func TestBuildRemovesOwnedOutputAfterBuildFailure(t *testing.T) {
 	}
 	if _, statErr := os.Lstat(output); !os.IsNotExist(statErr) {
 		t.Fatalf("failed build retained output: %v", statErr)
+	}
+}
+
+func TestBuildRejectsSourceWithoutThirdPartyNotices(t *testing.T) {
+	root, revision := committedFixture(t, filepath.Clean(filepath.Join("..", "..")))
+	notices := filepath.Join(root, "THIRD_PARTY_LICENSES.txt")
+	if err := os.Remove(notices); err == nil {
+		runFixtureGit(t, root, "add", "THIRD_PARTY_LICENSES.txt")
+		runFixtureGit(
+			t,
+			root,
+			"-c",
+			"user.name=Gox Release Test",
+			"-c",
+			"user.email=gox-release-test@example.invalid",
+			"commit",
+			"--quiet",
+			"-m",
+			"remove third-party notices",
+		)
+		revisionCommand := exec.Command("git", "-C", root, "rev-parse", "HEAD")
+		revisionOutput, revisionErr := revisionCommand.Output()
+		if revisionErr != nil {
+			t.Fatal(revisionErr)
+		}
+		revision = strings.TrimSpace(string(revisionOutput))
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+
+	output := filepath.Join(t.TempDir(), "release")
+	_, err := Build(
+		context.Background(),
+		Options{
+			Root: root,
+			Output: output,
+			Version: "v0.0.0-test",
+			SourceRevision: revision,
+			Targets: []Target{{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH}},
+		},
+	)
+	if err == nil {
+		t.Fatal("Build() accepted a source snapshot without third-party notices")
+	}
+	if _, statErr := os.Lstat(output); !os.IsNotExist(statErr) {
+		t.Fatalf("rejected source created output: %v", statErr)
 	}
 }
 
@@ -587,7 +640,85 @@ func verifyChecksums(t *testing.T, output string) {
 	}
 }
 
-func extractBinary(t *testing.T, archive string) string {
+func verifyArchiveNotices(t *testing.T, archivePath string, notices []byte) {
+	t.Helper()
+
+	file, err := os.Open(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	compressed, err := gzip.NewReader(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compressed.Close()
+	if !compressed.ModTime.IsZero() || compressed.OS != 255 {
+		t.Fatalf("gzip header = %#v", compressed.Header)
+	}
+	reader := tar.NewReader(compressed)
+	want := []struct {
+		name string
+		mode int64
+		content []byte
+	}{{name: "gox", mode: 0o755}, {name: thirdPartyNoticesName, mode: 0o644, content: notices}}
+	for _, expected := range want {
+		header, err := reader.Next()
+		if err != nil {
+			t.Fatalf("read archive entry %q: %v", expected.name, err)
+		}
+		if header.Name != expected.name ||
+			header.Mode != expected.mode ||
+			header.Typeflag != tar.TypeReg ||
+			header.Format != tar.FormatUSTAR ||
+			header.Uid != 0 ||
+			header.Gid != 0 ||
+			header.Uname != "" ||
+			header.Gname != "" ||
+			!header.ModTime.Equal(time.Unix(0, 0).UTC()) {
+			t.Fatalf("archive header for %q = %#v", expected.name, header)
+		}
+		content, err := io.ReadAll(reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if expected.name == "gox" {
+			verifyBinaryNoticeCoverage(t, content, notices)
+		}
+		if expected.content != nil && !bytes.Equal(content, expected.content) {
+			t.Fatalf(
+				"archive content for %q differs from source notices",
+				expected.name,
+			)
+		}
+	}
+	if _, err := reader.Next(); err != io.EOF {
+		t.Fatalf("archive contains unexpected entry: %v", err)
+	}
+}
+
+func verifyBinaryNoticeCoverage(t *testing.T, binary, notices []byte) {
+	t.Helper()
+
+	information, err := buildinfo.Read(bytes.NewReader(binary))
+	if err != nil {
+		t.Fatalf("read released binary build information: %v", err)
+	}
+	if !bytes.Contains(notices, []byte("The Go toolchain and standard library")) {
+		t.Fatal("third-party notices do not identify the Go toolchain")
+	}
+	for _, dependency := range information.Deps {
+		if dependency.Replace != nil {
+			dependency = dependency.Replace
+		}
+		identity := dependency.Path + " " + dependency.Version
+		if !bytes.Contains(notices, []byte(identity)) {
+			t.Fatalf("third-party notices do not identify linked module %s", identity)
+		}
+	}
+}
+
+func extractBinary(t *testing.T, archive string, notices []byte) string {
 	t.Helper()
 
 	file, err := os.Open(archive)
@@ -615,6 +746,20 @@ func extractBinary(t *testing.T, archive string) string {
 	}
 	if err := os.WriteFile(binary, contents, 0o755); err != nil {
 		t.Fatal(err)
+	}
+	header, err = reader.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != thirdPartyNoticesName || header.Mode != 0o644 {
+		t.Fatalf("notice archive header = %#v", header)
+	}
+	gotNotices, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(gotNotices, notices) {
+		t.Fatal("released notices differ from source notices")
 	}
 	if _, err := reader.Next(); err != io.EOF {
 		t.Fatalf("archive contains unexpected entry: %v", err)

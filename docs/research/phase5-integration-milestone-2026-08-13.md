@@ -48,6 +48,8 @@ successful four-runner release-budget and cross-runner reproducibility run
 
 The technical naming search is refreshed, but the documented exact-name and
 trademark-risk boundary still needs the maintainer's final public-name
-acceptance. The maintainer's personal candidate review also remains pending.
-Only after those gates may a tag be authorized to activate GitHub publication
-and provenance. No tag or release exists, so progress remains 95%.
+acceptance. Deterministic dependency-notice packaging is now implemented, while
+project-license selection and packaging plus the maintainer's personal
+candidate review remain pending. Only after those gates and refreshed candidate
+evidence may a tag be authorized to activate GitHub publication and provenance.
+No tag or release exists, so progress remains 95%.

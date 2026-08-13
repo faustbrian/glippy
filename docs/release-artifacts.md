@@ -57,11 +57,20 @@ gox_v0.1.0_manifest.json
 gox_v0.1.0_checksums.txt
 ```
 
-Each archive contains one executable named `gox`. Archive ownership, modes,
-timestamps, ordering, and compression metadata are normalized. The versioned
-JSON manifest binds the product name, release version, verified complete source
-revision, exact Go toolchain version, target, size, and SHA-256 digest of every
-archive. The sorted checksum file covers every archive and the manifest.
+Each archive contains the executable `gox` and the exact tracked
+`THIRD_PARTY_LICENSES.txt`. The builder rejects a source revision without that
+notice. Archive ownership, modes, timestamps, ordering, and compression
+metadata are normalized, and the reproducibility tests verify every entry and
+its content. The versioned JSON manifest binds the product name, release
+version, verified complete source revision, exact Go toolchain version, target,
+size, and SHA-256 digest of every archive. The sorted checksum file covers every
+archive and the manifest.
+
+The repository still requires a maintainer-selected project license before
+public distribution. Once selected, the deterministic builder must also
+require and reproduce `LICENSE` in every archive. The third-party notice already
+reproduces the MIT terms for go-toml and the BSD terms and patent grant for Go
+and the linked `golang.org/x` modules.
 
 Two builds are reproducible only when their source tree, explicit revision,
 version, Go toolchain, module inputs, and target set are identical. The tests

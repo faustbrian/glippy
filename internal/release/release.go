@@ -26,6 +26,7 @@ import (
 
 const (
 	productName = "gox"
+	thirdPartyNoticesName = "THIRD_PARTY_LICENSES.txt"
 	manifestSchema = 1
 	linkedVersion = "github.com/faustbrian/gox/internal/version.linked"
 )
@@ -73,6 +74,17 @@ type Manifest struct {
 	Artifacts []Artifact `json:"artifacts"`
 }
 
+type releaseMaterials struct {
+	thirdPartyNotices []byte
+}
+
+type archiveEntry struct {
+	name string
+	mode int64
+	path string
+	content []byte
+}
+
 // DefaultTargets returns the admitted prototype release targets.
 func DefaultTargets() []Target {
 	return append([]Target(nil), defaultTargets...)
@@ -109,6 +121,10 @@ func Build(ctx context.Context, options Options) (manifest Manifest, resultErr e
 	}()
 	options.Root = sourceRoot
 	if err := verifyModuleBoundary(sourceRoot); err != nil {
+		return manifest, err
+	}
+	materials, err := loadReleaseMaterials(sourceRoot)
+	if err != nil {
 		return manifest, err
 	}
 	cacheRoot, err := os.MkdirTemp("", "gox-release-cache-")
@@ -155,7 +171,7 @@ func Build(ctx context.Context, options Options) (manifest Manifest, resultErr e
 		Artifacts: make([]Artifact, 0, len(options.Targets)),
 	}
 	for _, target := range options.Targets {
-		artifact, err := buildTarget(ctx, options, output, target, cacheRoot)
+		artifact, err := buildTarget(ctx, options, output, target, cacheRoot, materials)
 		if err != nil {
 			return Manifest{}, err
 		}
@@ -219,6 +235,33 @@ func Build(ctx context.Context, options Options) (manifest Manifest, resultErr e
 	}
 	complete = true
 	return manifest, nil
+}
+
+func loadReleaseMaterials(root string) (releaseMaterials, error) {
+	path := filepath.Join(root, thirdPartyNoticesName)
+	information, err := os.Lstat(path)
+	if err != nil {
+		return releaseMaterials{}, fmt.Errorf(
+			"inspect release material %s: %w",
+			thirdPartyNoticesName,
+			err,
+		)
+	}
+	if !information.Mode().IsRegular() {
+		return releaseMaterials{}, fmt.Errorf(
+			"release material %s is not a regular file",
+			thirdPartyNoticesName,
+		)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return releaseMaterials{}, fmt.Errorf(
+			"read release material %s: %w",
+			thirdPartyNoticesName,
+			err,
+		)
+	}
+	return releaseMaterials{thirdPartyNotices: contents}, nil
 }
 
 func exportSource(ctx context.Context, options Options) (result string, resultErr error) {
@@ -654,6 +697,7 @@ func buildTarget(
 	output *ownedOutput,
 	target Target,
 	cacheRoot string,
+	materials releaseMaterials,
 ) (artifact Artifact, resultErr error) {
 	temporary, err := os.MkdirTemp("", "gox-release-build-")
 	if err != nil {
@@ -695,7 +739,18 @@ func buildTarget(
 		target.GOARCH,
 	)
 	var encoded bytes.Buffer
-	if err := archiveBinary(&encoded, binary); err != nil {
+	if err := archiveFiles(
+		&encoded,
+		[]archiveEntry{
+			{name: productName, mode: 0o755, path: binary},
+			{
+				name: thirdPartyNoticesName,
+				mode: 0o644,
+				content: materials.thirdPartyNotices,
+			},
+		},
+	);
+		err != nil {
 		return Artifact{}, fmt.Errorf(
 			"archive release target %s/%s: %w",
 			target.GOOS,
@@ -783,16 +838,7 @@ func gitEnvironment() []string {
 	return environment
 }
 
-func archiveBinary(output io.Writer, binary string) (resultErr error) {
-	input, err := os.Open(binary)
-	if err != nil {
-		return err
-	}
-	defer input.Close()
-	information, err := input.Stat()
-	if err != nil {
-		return err
-	}
+func archiveFiles(output io.Writer, entries []archiveEntry) (resultErr error) {
 	compressed, err := gzip.NewWriterLevel(output, gzip.BestCompression)
 	if err != nil {
 		return err
@@ -800,24 +846,56 @@ func archiveBinary(output io.Writer, binary string) (resultErr error) {
 	compressed.Header.ModTime = time.Unix(0, 0).UTC()
 	compressed.Header.OS = 255
 	archiveWriter := tar.NewWriter(compressed)
-	header := &tar.Header{
-		Name: productName,
-		Mode: 0o755,
-		Size: information.Size(),
-		ModTime: time.Unix(0, 0).UTC(),
-		Typeflag: tar.TypeReg,
-		Format: tar.FormatUSTAR,
-	}
-	if err := archiveWriter.WriteHeader(header); err != nil {
-		return err
-	}
-	if _, err := io.Copy(archiveWriter, input); err != nil {
-		return err
+	for _, entry := range entries {
+		if err := writeArchiveEntry(archiveWriter, entry); err != nil {
+			return err
+		}
 	}
 	if err := archiveWriter.Close(); err != nil {
 		return err
 	}
 	if err := compressed.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeArchiveEntry(writer *tar.Writer, entry archiveEntry) (resultErr error) {
+	var input io.Reader
+	var size int64
+	if entry.path != "" {
+		file, err := os.Open(entry.path)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			resultErr = errors.Join(resultErr, file.Close())
+		}()
+		information, err := file.Stat()
+		if err != nil {
+			return err
+		}
+		if !information.Mode().IsRegular() {
+			return fmt.Errorf("archive source %s is not a regular file", entry.path)
+		}
+		input = file
+		size = information.Size()
+	} else {
+		input = bytes.NewReader(entry.content)
+		size = int64(len(entry.content))
+	}
+	header := &tar.Header{
+		Name: entry.name,
+		Mode: entry.mode,
+		Size: size,
+		ModTime: time.Unix(0, 0).UTC(),
+		Typeflag: tar.TypeReg,
+		Format: tar.FormatUSTAR,
+	}
+	if err := writer.WriteHeader(header); err != nil {
+		return err
+	}
+	if _, err := io.Copy(writer, input); err != nil {
 		return err
 	}
 	return nil

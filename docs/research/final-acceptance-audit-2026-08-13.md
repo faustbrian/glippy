@@ -2,10 +2,13 @@
 
 ## Decision
 
-The implementation and release-candidate evidence satisfy every technical
-pre-tag gate that can run without activating publication. Overall progress
-remains 95% because the public-name risk acceptance, maintainer review, and
-authorized tag-driven provenance/publication transaction are still pending.
+The previously recorded candidate satisfies the formatter, linter, fixer,
+platform, and performance gates. Overall progress remains 95% because
+project-license selection and packaging, refreshed native reproducibility
+evidence, public-name risk acceptance, maintainer review, and the authorized
+tag-driven provenance/publication transaction are still pending. Deterministic
+third-party notice packaging is implemented but requires fresh candidate
+evidence with the eventual project license.
 
 `Proven` means the current candidate has direct implementation, behavioral, or
 release evidence. `Ready` means the implementation is complete but its
@@ -68,9 +71,10 @@ means a required maintainer decision remains.
 | Cancellation and bounded concurrency | Proven | Scheduler, loader, analysis, write, and CLI cancellation tests plus explicit limits |
 | Cache keys and corruption recovery | Proven | ADR 0008, cache specification, invalidation/corruption suites, and cache fuzzing |
 | Editor and CI integrations use stable surfaces | Proven | Stdin/stdout editor guide, pinned CI/pre-commit contracts, and successful candidate CI |
-| Release artifacts are reproducible and checksummed | Proven | Four independent native builders produced byte-identical six-file sets |
+| Release artifacts are reproducible and checksummed | Pending | Local release tests prove deterministic notice-bearing archives and complete checksums; the earlier four-runner result predates the archive-content change and must be refreshed |
 | Release provenance and publication | Ready | Tag-only pinned GitHub workflow uses OIDC artifact attestations and GitHub Releases; activation is prohibited before maintainer review |
 | Naming and module-path audit | Pending | Technical refresh documents substantial exact-name collisions; final maintainer risk acceptance is required |
+| Project and third-party licensing | Pending | Release archives deterministically reproduce the tracked MIT, BSD, and Go patent notices and reject their absence; the repository still has no maintainer-selected project `LICENSE` |
 | Supported-version and vulnerability policies | Proven | `docs/supported-go-versions.md`, `docs/support-policy.md`, and `SECURITY.md` |
 | Final corpus, fuzz, race, integration, and performance | Proven | Candidate CI `31690175325`, twelve fuzz campaigns, pinned corpus, and release-budget run `31690694813` |
 | Multiple real repositories have documented dogfood adoption | Proven | Gox self-adoption and maintainer-approved `pkg/prompts` coordinated migration |
@@ -94,7 +98,8 @@ means a required maintainer decision remains.
 ## Release Boundary
 
 This audit does not convert a development revision into a release. The final
-sequence remains: maintainer name-risk decision, maintainer candidate review,
-explicit tag authorization, then successful GitHub provenance and publication.
-Any code or contract change before that sequence invalidates the affected
-candidate evidence and requires a bounded rerun.
+sequence remains: project-license decision and packaging, refreshed candidate
+evidence, maintainer name-risk decision, maintainer candidate review, explicit
+tag authorization, then successful GitHub provenance and publication. Any code
+or contract change before that sequence invalidates the affected candidate
+evidence and requires a bounded rerun.

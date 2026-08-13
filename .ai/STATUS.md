@@ -1147,6 +1147,9 @@ formatter checks remained below 86.380 seconds and 1,932,156,928 bytes peak
 RSS, every native archive executed, and all six release files were
 byte-identical across the four independent builders. The requirement-level
 acceptance audit now leaves only the final public-name collision/trademark-risk
-decision, the maintainer's personal candidate review, and the subsequently
-authorized tag-driven attestation/publication transaction open. No tag or
-release exists, so overall progress remains 95%.
+decision, project-license selection and packaging, the maintainer's personal
+candidate review, and the subsequently authorized tag-driven
+attestation/publication transaction open. Deterministic archives now reproduce
+the tracked MIT, BSD, and Go patent notices and reject their absence; this
+post-candidate change requires fresh evidence after the project license is
+packaged. No tag or release exists, so overall progress remains 95%.
