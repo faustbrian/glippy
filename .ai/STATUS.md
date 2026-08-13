@@ -1091,3 +1091,11 @@ release-candidate gates, broader adoption, and the maintainer's final pre-tag
 review remain open. Stable native release-scale budgets were already
 established by GitHub Actions run `31611653501` and remain release-candidate
 rerun gates rather than missing policy decisions.
+
+The post-foundation rule roadmap now prioritizes admitted-rule precision,
+correctness defects, cautious suspicious-rule growth, and explicitly opt-in
+policy groups. It defines eight investigation tracks without reserving IDs or
+promising a count, retains candidate-specific real-defect, toolchain-boundary,
+false-positive, tier, fix-safety, cost, and dogfood evidence, and rejects
+formatter-layout duplication or catalog copying. This closes the Phase 5 rule
+roadmap deliverable without changing the 90% release gate.

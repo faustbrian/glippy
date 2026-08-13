@@ -106,6 +106,10 @@ it so callers cannot mutate the active registry.
 
 ## Rule Admission Workflow
 
+The [rule roadmap](rule-roadmap.md) defines the post-foundation investigation
+order and evidence queue. A roadmap entry is not an accepted rule ID; the
+candidate-specific admission record below remains the implementation gate.
+
 Before implementation, add an evidence record under `docs/research` that
 states:
 
