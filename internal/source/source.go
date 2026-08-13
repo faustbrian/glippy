@@ -769,6 +769,7 @@ func buildPieces(input []byte, tokens []Token) ([]Piece, error) {
 	cursor := 0
 	for _, item := range tokens {
 		if item.Range.End < item.Range.Start || item.Range.End > len(input) {
+			result = appendRemainingTrivia(result, input, cursor)
 			return result, fmt.Errorf(
 				"invalid or overlapping token range [%d,%d)",
 				item.Range.Start,
@@ -779,6 +780,7 @@ func buildPieces(input []byte, tokens []Token) ([]Piece, error) {
 			continue
 		}
 		if item.Range.Start < cursor {
+			result = appendRemainingTrivia(result, input, cursor)
 			return result, fmt.Errorf(
 				"invalid or overlapping token range [%d,%d)",
 				item.Range.Start,
@@ -799,10 +801,15 @@ func buildPieces(input []byte, tokens []Token) ([]Piece, error) {
 			cursor = item.Range.End
 		}
 	}
+	result = appendRemainingTrivia(result, input, cursor)
+	return result, nil
+}
+
+func appendRemainingTrivia(result []Piece, input []byte, cursor int) []Piece {
 	if cursor < len(input) {
 		result = append(result, physicalPiece(PieceTrivia, input, cursor, len(input)))
 	}
-	return result, nil
+	return result
 }
 
 func physicalPiece(kind PieceKind, input []byte, start, end int) Piece {

@@ -287,16 +287,36 @@ func TestFilePositionUsesPhysicalByteLinesAndColumns(t *testing.T) {
 func TestLoadReturnsDiagnosticOnlyStateForInvalidSource(t *testing.T) {
 	t.Parallel()
 
-	input := []byte("package invalid\nfunc broken( {\n")
-	file, err := source.Load("invalid.go", input)
-	if err == nil {
-		t.Fatal("Load() must report invalid Go")
-	}
-	if file == nil || file.CanFormat() {
-		t.Fatalf("Load() file = %#v, want a diagnostic-only source unit", file)
-	}
-	if got := reconstruct(file.Pieces()); !bytes.Equal(got, input) {
-		t.Fatalf("invalid-source ledger reconstructed %q, want %q", got, input)
+	for name, input := range
+		map[string][]byte{
+			"syntax error": []byte("package invalid\nfunc broken( {\n"),
+			"escaped newline in quoted literal": []byte(
+				"0\"000000000000000000000000000000000\\\n0\"0",
+			),
+		} {
+		t.Run(
+			name,
+			func(t *testing.T) {
+				t.Parallel()
+				file, err := source.Load("invalid.go", input)
+				if err == nil {
+					t.Fatal("Load() must report invalid Go")
+				}
+				if file == nil || file.CanFormat() {
+					t.Fatalf(
+						"Load() file = %#v, want a diagnostic-only source unit",
+						file,
+					)
+				}
+				if got := reconstruct(file.Pieces()); !bytes.Equal(got, input) {
+					t.Fatalf(
+						"invalid-source ledger reconstructed %q, want %q",
+						got,
+						input,
+					)
+				}
+			},
+		)
 	}
 }
 
