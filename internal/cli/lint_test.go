@@ -5007,7 +5007,7 @@ func TestRunBaselinesStandardSelfAssignmentDeterministically(t *testing.T) {
 	}
 }
 
-func TestRunBaselinesStandardAnalyzerCatalogDeterministically(t *testing.T) {
+func TestRunBaselinesCorrectnessAnalyzerCatalogDeterministically(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -5049,6 +5049,10 @@ func fetched() error {
 	return nil
 }
 func incremented(value *uint64) { *value = atomic.AddUint64(value, 1) }
+func captured(values []int) {
+	var value int
+	for _, value = range values { go func() { _ = value }() }
+}
 `,
 		),
 		0o600,
@@ -5080,10 +5084,10 @@ func incremented(value *uint64) { *value = atomic.AddUint64(value, 1) }
 			stdout.String() !=
 				"glippy lint: wrote baseline " +
 					baselinePath +
-					" (5 diagnostics)\n" ||
+					" (6 diagnostics)\n" ||
 			stderr.Len() != 0 {
 			t.Fatalf(
-				"Run(generate standard catalog baseline) = exit %d, stdout %q, stderr %q",
+				"Run(generate correctness catalog baseline) = exit %d, stdout %q, stderr %q",
 				exitCode,
 				stdout.String(),
 				stderr.String(),
@@ -5098,7 +5102,7 @@ func incremented(value *uint64) { *value = atomic.AddUint64(value, 1) }
 	first := generate()
 	second := generate()
 	if !bytes.Equal(first, second) {
-		t.Fatal("standard analyzer baseline generation is not deterministic")
+		t.Fatal("correctness analyzer baseline generation is not deterministic")
 	}
 	for _, ruleID := range
 		[]string{
@@ -5107,9 +5111,10 @@ func incremented(value *uint64) { *value = atomic.AddUint64(value, 1) }
 			"copied-lock",
 			"http-response-before-error",
 			"impossible-type-assertion",
+			"loop-capture",
 		} {
 		if !bytes.Contains(first, []byte(`"rule_id": "` + ruleID + `"`)) {
-			t.Fatalf("standard analyzer baseline omits %s: %q", ruleID, first)
+			t.Fatalf("correctness analyzer baseline omits %s: %q", ruleID, first)
 		}
 	}
 	if err := os.WriteFile(
@@ -5129,7 +5134,7 @@ func incremented(value *uint64) { *value = atomic.AddUint64(value, 1) }
 	exitCode := Run([]string{"lint", path}, strings.NewReader(""), &stdout, &stderr)
 	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
 		t.Fatalf(
-			"Run(lint baselined standard catalog) = exit %d, stdout %q, stderr %q",
+			"Run(lint baselined correctness catalog) = exit %d, stdout %q, stderr %q",
 			exitCode,
 			stdout.String(),
 			stderr.String(),
@@ -5137,7 +5142,7 @@ func incremented(value *uint64) { *value = atomic.AddUint64(value, 1) }
 	}
 }
 
-func TestRunExposesStandardAnalyzerCatalog(t *testing.T) {
+func TestRunExposesCorrectnessAnalyzerCatalog(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -5262,6 +5267,29 @@ func incrementSafely(value *uint64) {
 }
 `,
 		},
+		{
+			name: "loop capture",
+			ruleID: "loop-capture",
+			message: "loop variable value captured by func literal",
+			needle: "value }()",
+			rangeLength: len("value"),
+			help: "declare the iteration variable in the loop or pass it as a closure argument",
+			source: `package sample
+
+func capture(values []int) {
+	var value int
+	for _, value = range values {
+		go func() { _ = value }()
+	}
+}
+
+func safe(values []int) {
+	for _, value := range values {
+		go func() { _ = value }()
+	}
+}
+`,
+		},
 	}
 
 	for _, test := range tests {
@@ -5361,6 +5389,7 @@ func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 				"copied-lock = \"off\"\n" +
 				"http-response-before-error = \"off\"\n" +
 				"impossible-type-assertion = \"off\"\n" +
+				"loop-capture = \"off\"\n" +
 				"self-assignment = \"off\"\n",
 		),
 		0o600,

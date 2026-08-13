@@ -65,6 +65,14 @@ func incremented(value *uint64) {
 	//glippy:ignore atomic-update-assignment -- legacy atomic wrapper
 	*value = atomic.AddUint64(value, 1)
 }
+
+func captured(values []int) {
+	var value int
+	for _, value = range values {
+		//glippy:ignore loop-capture -- synchronized by the caller
+		go func() { _ = value }()
+	}
+}
 `,
 	)
 	registry, err := rulecatalog.NewRegistry()
@@ -86,7 +94,7 @@ func incremented(value *uint64) {
 	}
 	if len(result.Files) != 1 ||
 		len(result.Files[0].Diagnostics) != 0 ||
-		len(result.Files[0].Suppressed) != 5 {
+		len(result.Files[0].Suppressed) != 6 {
 		t.Fatalf("suppression result = %#v", result)
 	}
 	want := []string{
@@ -95,6 +103,7 @@ func incremented(value *uint64) {
 		"copied-lock",
 		"http-response-before-error",
 		"impossible-type-assertion",
+		"loop-capture",
 	}
 	got := make([]string, len(result.Files[0].Suppressed))
 	for index, suppressed := range result.Files[0].Suppressed {
@@ -130,6 +139,10 @@ import (
 type generatedState struct { lock sync.Mutex }
 func generatedCopy(value *generatedState) generatedState { return *value }
 func generatedAtomic(value *uint64) { *value = atomic.AddUint64(value, 1) }
+func generatedCapture(values []int) {
+	var value int
+	for _, value = range values { go func() { _ = value }() }
+}
 `,
 	)
 	invalidPath := filepath.Join(root, "invalid", "invalid.go")
@@ -160,6 +173,11 @@ func run(value *state, count *uint64, parent context.Context, item reader) state
 	var invalid string = 1
 	_ = invalid
 	return copy
+}
+
+func captured(values []int) {
+	var value int
+	for _, value = range values { go func() { _ = value }() }
 }
 `,
 	)

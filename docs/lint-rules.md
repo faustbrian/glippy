@@ -20,6 +20,7 @@ not stable release promises.
 - [identical-branches](#identical-branches)
 - [impossible-type-assertion](#impossible-type-assertion)
 - [ineffective-break](#ineffective-break)
+- [loop-capture](#loop-capture)
 - [nilness](#nilness)
 - [redundant-bool-comparison](#redundant-bool-comparison)
 - [self-assignment](#self-assignment)
@@ -564,6 +565,59 @@ for {
 		break loop
 	}
 }
+```
+
+## loop-capture
+
+detects reused loop variables captured by escaping closures
+
+Go 1.22 gives iteration-local identity to variables declared by a loop, but variables declared
+outside the loop and assigned by it remain shared across iterations. Capturing one of those reused
+variables in a goroutine, defer, errgroup task, or parallel subtest can observe a later value or
+race with the loop. Glippy follows the conservative standard loopclosure escape patterns while
+retaining the modern-Go cases that the standard analyzer no longer reports.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `for-stmt`, `range-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule deliberately reports only loop variables declared outside the loop; variables declared by
+  Go 1.22 and later loop syntax have per-iteration identity.
+- As in the standard loopclosure analyzer, ordinary goroutine and defer captures are checked only
+  when the launch is the loop body's recursively last statement, avoiding cases that may synchronize
+  before the next iteration.
+- Closures passed through arbitrary helpers are outside the recognized go, defer, errgroup.Group.Go,
+  and testing.T.Run patterns.
+
+### Example: Declare the iteration variable in the range clause
+
+**Incorrect**
+
+```go
+var value item
+for _, value = range values { go func() { use(value) }() }
+```
+
+**Correct**
+
+```go
+for _, value := range values { go func() { use(value) }() }
 ```
 
 ## nilness

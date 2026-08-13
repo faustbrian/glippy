@@ -37,7 +37,7 @@ func TestRegistryIncludesSelfAssignmentContract(t *testing.T) {
 	}
 }
 
-func TestRegistryIncludesStandardAnalyzerContracts(t *testing.T) {
+func TestRegistryIncludesCorrectnessAnalyzerContracts(t *testing.T) {
 	t.Parallel()
 
 	registry, err := rulecatalog.NewRegistry()
@@ -72,6 +72,11 @@ func TestRegistryIncludesStandardAnalyzerContracts(t *testing.T) {
 			id: "impossible-type-assertion",
 			requirement: rules.RequireTypes,
 			nodeInterests: []rules.NodeKind{rules.NodeFile},
+		},
+		{
+			id: "loop-capture",
+			requirement: rules.RequireTypes,
+			nodeInterests: []rules.NodeKind{rules.NodeForStmt, rules.NodeRangeStmt},
 		},
 	}
 	for _, test := range tests {
@@ -297,7 +302,7 @@ func BenchmarkSelfAssignmentPackageAnalysis(b *testing.B) {
 	)
 }
 
-func BenchmarkStandardAnalyzerCatalogPackageAnalysis(b *testing.B) {
+func BenchmarkCorrectnessAnalyzerCatalogPackageAnalysis(b *testing.B) {
 	root := b.TempDir()
 	writeFixture(
 		b,
@@ -333,6 +338,10 @@ func fetched() error {
 	return nil
 }
 func incremented(value *uint64) { *value = atomic.AddUint64(value, 1) }
+func captured(values []int) {
+	var value int
+	for _, value = range values { go func() { _ = value }() }
+}
 `,
 	)
 	registry, err := rulecatalog.NewRegistry()
@@ -364,7 +373,7 @@ func incremented(value *uint64) { *value = atomic.AddUint64(value, 1) }
 		},
 	)
 	b.Run(
-		"with-standard-analyzers",
+		"with-correctness-analyzers",
 		func(b *testing.B) {
 			benchmarkPackageRuns(
 				b,
@@ -374,7 +383,7 @@ func incremented(value *uint64) { *value = atomic.AddUint64(value, 1) }
 					SourceGoVersion: "go1.26",
 				},
 				load,
-				5,
+				6,
 			)
 		},
 	)
@@ -385,6 +394,7 @@ func incremented(value *uint64) { *value = atomic.AddUint64(value, 1) }
 			"copied-lock",
 			"http-response-before-error",
 			"impossible-type-assertion",
+			"loop-capture",
 		} {
 		ruleID := ruleID
 		b.Run(
