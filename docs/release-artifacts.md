@@ -99,8 +99,8 @@ different archive, manifest, or checksum, or non-native version execution fails
 the workflow.
 
 Candidate run
-[`31690694813`](https://github.com/faustbrian/gox/actions/runs/31690694813)
-passed this complete matrix and comparison for revision `ccd1e29`. The raw
+[`31697171821`](https://github.com/faustbrian/gox/actions/runs/31697171821)
+passed this complete matrix and comparison for revision `06cce4a`. The raw
 budgets and artifact digests are recorded in the
 [release-candidate evidence](research/release-candidate-evidence-2026-08-13.md).
 

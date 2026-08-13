@@ -3,13 +3,13 @@
 ## Candidate
 
 This record is bound to clean `main` revision
-`ccd1e290ee4f385198e3d40e6fc451111300e475` and Go 1.26.5. It is release
+`06cce4a9e352be98751bafdbc4fa7a9835da947a` and Go 1.26.5. It is release
 candidate evidence, not a tag, public release, or publication authorization.
 
 ## Source And Behavior Gates
 
 GitHub Actions CI run
-[`31690175325`](https://github.com/faustbrian/gox/actions/runs/31690175325)
+[`31697040231`](https://github.com/faustbrian/gox/actions/runs/31697040231)
 checked out the exact candidate with empty task-owned Go caches and passed:
 
 - all package tests;
@@ -46,17 +46,17 @@ scanner token.
 ## Native Performance And Artifact Gates
 
 Manual workflow run
-[`31690694813`](https://github.com/faustbrian/gox/actions/runs/31690694813)
+[`31697171821`](https://github.com/faustbrian/gox/actions/runs/31697171821)
 passed on the exact candidate. Each supported native target stayed below the
 250-millisecond editor budget, 90-second formatter-corpus budget, and 2-GiB
 formatter peak-RSS budget:
 
 | Native target | Maximum editor latency | Maximum formatter time | Maximum formatter RSS |
 | --- | ---: | ---: | ---: |
-| Darwin amd64 | 17.261 ms | 86.380 s | 1,932,156,928 bytes |
-| Darwin arm64 | 5.140 ms | 19.250 s | 1,741,996,032 bytes |
-| Linux amd64 | 4.953 ms | 32.390 s | 1,567,236,096 bytes |
-| Linux arm64 | 3.622 ms | 17.000 s | 1,308,467,200 bytes |
+| Darwin amd64 | 13.615 ms | 41.700 s | 1,731,592,192 bytes |
+| Darwin arm64 | 10.984 ms | 29.280 s | 1,512,849,408 bytes |
+| Linux amd64 | 4.548 ms | 31.510 s | 1,635,545,088 bytes |
+| Linux arm64 | 3.815 ms | 17.400 s | 1,413,726,208 bytes |
 
 Each runner independently built the four target archives, manifest, and
 checksum file, then executed the archive matching its native operating system
@@ -66,12 +66,12 @@ artifact digests were:
 
 | Artifact | SHA-256 |
 | --- | --- |
-| Darwin amd64 archive | `4f05a3bdc32a0212cf10009f3977d4aa12f5ec091285de71e05391e5cdede3d2` |
-| Darwin arm64 archive | `f821bfe31436be6597258634ba2056ad2093d12ef6db31985ec82a4ac8c24450` |
-| Linux amd64 archive | `3341a17700faf4de9b19dbe4f7e5b6f5aca792190b6bddd3ac4be6a6b5685bac` |
-| Linux arm64 archive | `7a7bfc52e3c7efa2737d2c684b35e8cd0e4b229bf12a3b88ce2f6e000bb7b190` |
-| Manifest | `ca04df0a8b4d94c2c98a50bcb2b839923a4268ee7c94aa87f5a15458c1557117` |
-| Checksum file | `3b7bcc49bb67ab5fc8eff3f7ca5582faf4e5577a76d1ad0ca7f0e6709ead8622` |
+| Darwin amd64 archive | `13595ffd74deb62a47836bfd17737d2ba1cfecad996189d0a002364d92143fbc` |
+| Darwin arm64 archive | `7e8ff01fbaf1f1288e9be923cf92ce67b242b9a8b30db4a095a0b124b704d45d` |
+| Linux amd64 archive | `e45dbefa254ba2b9fb72a1f6038864350717bdb448f64181d58db27dc3f4fef3` |
+| Linux arm64 archive | `5988ef1a667bfa5a1397a6def90496bcc9da9709045ef0f70b1c93693aa8392f` |
+| Manifest | `e84302429f66bb108b7a9fbd9a0de428f75f42dae281ae86a02c18ef1061ca53` |
+| Checksum file | `6ab1cbd7e24f74bec989802e92d1afec5036ffda3c9bc2f625408d312cb2e6f4` |
 
 The retained GitHub artifacts expire after 14 days. This record preserves the
 observed budgets, manifest identity, and digests after those artifacts expire;
@@ -93,7 +93,3 @@ remain:
    workflow successfully.
 
 No tag or release was created while collecting this evidence.
-
-The selected 0BSD project license and deterministic third-party notice
-implementation postdate the candidate revision recorded above. The complete
-candidate evidence must be refreshed against the new archive contract.

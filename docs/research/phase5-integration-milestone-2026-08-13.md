@@ -19,7 +19,7 @@ completed successfully on that exact revision.
 | Editor formatting | Standard input, `--stdin-filepath`, and fragment modes use the same formatter and configuration contracts. Conform.nvim and Helix setup, failure behavior, and the deliberate no-LSP boundary are documented; ADR 0013 records code-action ordering for any later editor action. | Complete for the initial release |
 | Continuous integration | The repository-owned `CI` workflow uses pinned actions, Go 1.26.5, disposable Go caches, read-only permissions, full tests, race tests, vet, tidy-diff, a fresh build, and non-mutating `gox check ./...`. Run `31686057237` passed on the exact integration revision. | Complete |
 | Pre-commit | The versioned-hook contract uses the same non-mutating combined check, documents partial-staging behavior, and requires a pinned development build before release. | Complete |
-| Release artifacts | The clean-revision builder emits deterministic Darwin and Linux archives for amd64 and arm64 plus a versioned manifest and SHA-256 checksums. Rehearsals prove cross-environment reproduction and target execution within their recorded native or emulated boundaries. | Complete integration; final-candidate rerun remains |
+| Release artifacts | The clean-revision builder emits deterministic Darwin and Linux archives for amd64 and arm64 plus a versioned manifest and SHA-256 checksums. Rehearsals prove cross-environment reproduction and target execution within their recorded native or emulated boundaries. | Complete; the final-candidate native rerun passed |
 | Publication and provenance | The tag-only GitHub workflow rebuilds the exact tag with pinned actions, requests GitHub OIDC artifact attestations, and publishes checksummed artifacts through GitHub Releases. Ordinary pushes and workflow dispatches cannot publish. | Complete integration; activation requires the authorized final tag |
 | Formatter migration | The gofmt, gofumpt, and golines divergence classes, rehearsal, cutover, rollback, and sole-formatter requirements are documented. The approved `pkg/prompts` migration and Gox self-adoption exercise the contract. | Complete |
 | Shell and installation surfaces | Bash, Zsh, and Fish completion generation is implemented and documented. Development evaluation remains revision-pinned; the supported release installation path is intentionally withheld until the first authorized GitHub Release. | Complete for the pre-release boundary |
@@ -40,16 +40,17 @@ The self-formatted tree is a zero-difference Gox fixed point.
 
 ## Release Candidate Refresh
 
-Exact candidate `ccd1e29` now has successful CI run `31690175325`, a complete
+Exact candidate `06cce4a` now has successful CI run `31697040231`, a complete
 5,138-file corpus result with no errors, twelve passing fuzz campaigns, and
 successful four-runner release-budget and cross-runner reproducibility run
-`31690694813`. The requirement-level result is recorded in the
+`31697171821`. The requirement-level result is recorded in the
 [final acceptance audit](final-acceptance-audit-2026-08-13.md).
 
 The technical naming search is refreshed, but the documented exact-name and
 trademark-risk boundary still needs the maintainer's final public-name
 acceptance. Deterministic dependency-notice packaging is now implemented, while
 the selected 0BSD project license is also required and packaged. Refreshed
-candidate evidence and the maintainer's personal candidate review remain
-pending. Only after those gates may a tag be authorized to activate GitHub
-publication and provenance. No tag or release exists, so progress remains 95%.
+candidate evidence is complete; the maintainer's personal candidate review
+remains pending. Only after the remaining human gates may a tag be authorized
+to activate GitHub publication and provenance. No tag or release exists, so
+progress remains 95%.
