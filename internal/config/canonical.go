@@ -62,6 +62,13 @@ func (c Config) CanonicalBytes() []byte {
 		encoded = append(encoded, 0)
 	}
 	encoded = appendCanonicalString(encoded, c.Lint.Suppressions.ExpiryCutoff)
+	encoded = appendCanonicalString(encoded, c.Lint.Baseline.Path)
+	if c.Lint.Baseline.ReportStale {
+		encoded = append(encoded, 1)
+	} else {
+		encoded = append(encoded, 0)
+	}
+	encoded = appendCanonicalString(encoded, c.Lint.Baseline.ExpiryCutoff)
 	return encoded
 }
 

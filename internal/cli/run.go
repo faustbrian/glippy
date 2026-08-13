@@ -146,6 +146,9 @@ func RunContext(
 				err,
 			)
 		}
+		if invocation.generateBaseline != "" {
+			return runLintGenerateBaseline(ctx, invocation, stdout, stderr, registry)
+		}
 		if invocation.fixEnabled() {
 			return runLintFix(ctx, invocation, stdout, stderr, registry)
 		}

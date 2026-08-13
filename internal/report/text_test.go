@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/faustbrian/gox/internal/analysis"
+	"github.com/faustbrian/gox/internal/baseline"
 	fixengine "github.com/faustbrian/gox/internal/fix"
 	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
@@ -84,6 +85,42 @@ func TestRenderLintTextUsesPhysicalLocationsAndNoSourceExcerpt(t *testing.T) {
 	}
 	if strings.Contains(string(got), "target()") {
 		t.Fatal("RenderLintText() disclosed a source excerpt")
+	}
+}
+
+func TestRenderLintTextDistinguishesStaleAndExpiredBaselineEntries(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("/project/source.go", []byte("package sample\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := baseline.Entry{
+		RuleID: "call-rule",
+		Path: "source.go",
+		MessageKey: "call",
+		SourceFingerprint: strings.Repeat("a", 64),
+		Count: 2,
+	}
+	expired := entry
+	expired.ExpiresOn = "2026-08-13"
+	result := analysis.Result{
+		Path: file.Path(),
+		Digest: file.Digest(),
+		BaselineProblems: []baseline.Problem{
+			{Kind: baseline.ProblemStale, Entry: entry, Remaining: 1},
+			{Kind: baseline.ProblemExpired, Entry: expired, Remaining: 2},
+		},
+	}
+
+	got, err := RenderLintText([]LintTextInput{{File: file, Result: result}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "/project/source.go: baseline[stale]: call-rule/call has 1 unmatched occurrence(s)\n" +
+		"/project/source.go: baseline[expired]: call-rule/call expired on 2026-08-13 (2 configured occurrence(s))\n"
+	if string(got) != want {
+		t.Fatalf("RenderLintText() =\n%s\nwant:\n%s", got, want)
 	}
 }
 

@@ -15,6 +15,7 @@ the first public tag or stable installation path.
 | `gox fmt --write [paths...]` | Validate and replace changed files | Yes |
 | `gox lint [paths...]` | Report enabled lint diagnostics | No |
 | `gox lint --fix [paths...]` | Apply safe fixes | Yes |
+| `gox lint --generate-baseline=<path> [paths...]` | Write a deterministic adoption baseline | Baseline only |
 | `gox check [paths...]` | Check formatting and lint diagnostics together | No |
 | `gox explain <rule>` | Print canonical rule documentation | No |
 | `gox version` | Print the resolved Gox version | No |
@@ -109,7 +110,8 @@ gox lint ./...
 gox lint --reporter=json ./...
 ```
 
-Lint is non-writing unless a fix-class flag is present. The default
+Ordinary lint is non-writing. Fix-class flags may write source, while
+`--generate-baseline` writes only its named baseline document. The default
 `correctness` preset group enables the current high-signal default rules.
 Projects compose additional groups with `lint.presets`, escalate every
 resolved warning with `lint.warnings-as-errors`, and retain final per-rule
@@ -140,6 +142,11 @@ Lint accepts `--config=<path>` and `--reporter=text|json`. Text is the default.
 Machine output is schema version 1 and omits source snippets and replacement
 text. See the [machine output reference](machine-output.md) for field, range,
 completeness, ordering, and fix-provenance semantics.
+
+`--generate-baseline=<path>` writes a strict source-free JSON adoption
+baseline relative to one project root. It analyzes visible diagnostics before
+baseline application and cannot be combined with fix flags or the JSON
+reporter. See the [lint baseline reference](baselines.md).
 
 ## Combined Check
 

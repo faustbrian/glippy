@@ -112,6 +112,89 @@ func ReadWithin(root, path string) (*Snapshot, error) {
 	}, nil
 }
 
+// CreateWithin atomically creates one regular file without replacing an
+// existing path.
+func CreateWithin(root, path string, output []byte, mode os.FileMode) error {
+	if err := source.ValidateSize(int64(len(output))); err != nil {
+		return fmt.Errorf("create path %q: %w", path, err)
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve create path %q: %w", path, err)
+	}
+	rootAbsolute, err := filepath.Abs(root)
+	if err != nil {
+		return fmt.Errorf("resolve create root %q: %w", root, err)
+	}
+	name, err := filepath.Rel(rootAbsolute, absolute)
+	if err != nil ||
+		name == "." ||
+		name == ".." ||
+		strings.HasPrefix(name, ".." + string(filepath.Separator)) {
+		return fmt.Errorf(
+			"create path %q is outside authorized root %q",
+			absolute,
+			rootAbsolute,
+		)
+	}
+	boundary, err := os.OpenRoot(rootAbsolute)
+	if err != nil {
+		return fmt.Errorf("open create root %q: %w", rootAbsolute, err)
+	}
+	defer boundary.Close()
+	if _, err := boundary.Lstat(name); err == nil {
+		return fmt.Errorf("create path %q: %w", absolute, ErrStale)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect create path %q: %w", absolute, err)
+	}
+
+	directory := filepath.Dir(name)
+	temporaryPath, temporary, err := createTemporary(boundary, directory, filepath.Base(name))
+	if err != nil {
+		return fmt.Errorf("create file for %q: %w", absolute, err)
+	}
+	keepTemporary := true
+	defer func() {
+		if keepTemporary {
+			_ = boundary.Remove(temporaryPath)
+		}
+	}()
+	if _, err := temporary.Write(output); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("write file for %q: %w", absolute, err)
+	}
+	if err := temporary.Chmod(mode.Perm()); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("set file permissions for %q: %w", absolute, err)
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("sync file for %q: %w", absolute, err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close file for %q: %w", absolute, err)
+	}
+	if err := boundary.Link(temporaryPath, name); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("create write path %q: %w", absolute, ErrStale)
+		}
+		return fmt.Errorf("create write path %q: %w", absolute, err)
+	}
+	if err := boundary.Remove(temporaryPath); err != nil {
+		return fmt.Errorf("remove temporary file for %q: %w", absolute, err)
+	}
+	keepTemporary = false
+	directoryHandle, err := boundary.Open(directory)
+	if err != nil {
+		return fmt.Errorf("open write directory %q: %w", directory, err)
+	}
+	defer directoryHandle.Close()
+	if err := directoryHandle.Sync(); err != nil {
+		return fmt.Errorf("sync write directory %q: %w", directory, err)
+	}
+	return nil
+}
+
 // Path returns the normalized source identity.
 func (s *Snapshot) Path() string {
 	return s.path

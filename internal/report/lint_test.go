@@ -98,6 +98,8 @@ func TestNewLintResultEmitsStableVersionedDiagnostics(t *testing.T) {
 		"    \"files\": 1,\n" +
 		"    \"diagnostics\": 1,\n" +
 		"    \"suppressed\": 1,\n" +
+		"    \"baselined\": 0,\n" +
+		"    \"baseline_problems\": 0,\n" +
 		"    \"suppression_problems\": 1,\n" +
 		"    \"unused_suppressions\": 1,\n" +
 		"    \"complete\": true\n" +
@@ -180,6 +182,7 @@ func TestNewLintResultEmitsStableVersionedDiagnostics(t *testing.T) {
 		"      \"expires_on\": \"2026-09-01\"\n" +
 		"    }\n" +
 		"  ],\n" +
+		"  \"baseline_problems\": [],\n" +
 		"  \"errors\": []\n" +
 		"}\n"
 	if string(encoded) != want {

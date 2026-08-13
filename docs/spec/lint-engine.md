@@ -324,6 +324,22 @@ conflict, failed, and possibly fixed files. A stale replacement MUST retain the
 original analysis result; a possible post-rename failure MAY retain the
 validated result digest but MUST NOT be presented as confirmed disk state.
 
+## Baselines
+
+Baseline application MUST occur after source suppression and before reporting
+or fix selection. It MUST use exact rule IDs, stable message keys, portable
+project-relative paths, exact source-span fingerprints, and occurrence counts.
+It MUST NOT use message wording, absolute offsets, source snippets, or the wall
+clock as identity. Matched diagnostics MUST remain separately countable and
+MUST NOT participate in fix selection.
+
+Stale and expired entries MUST be findings when their source file participates
+in the current analysis. An entry outside the selected files MUST remain
+unexamined rather than being reported stale. Generation MUST operate on visible
+unsuppressed diagnostics for one root and configuration and MUST use the shared
+safe filesystem writer. The public [baseline reference](../baselines.md) owns
+the concrete schema and CLI behavior.
+
 ## Suppressions
 
 Suppressions MUST name exact rule IDs. The grammar MUST define line, next-line,

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/faustbrian/gox/internal/baseline"
 	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
 	"github.com/faustbrian/gox/internal/suppressions"
@@ -30,6 +31,8 @@ type Result struct {
 	Requirement rules.Requirement
 	Selection []rules.Selection
 	Diagnostics []rules.Diagnostic
+	Baselined []rules.Diagnostic
+	BaselineProblems []baseline.Problem
 	Suppressed []suppressions.SuppressedDiagnostic
 	UnusedSuppressions []suppressions.Directive
 	SuppressionProblems []suppressions.Problem
@@ -68,6 +71,8 @@ func Run(
 		Requirement: rules.MaximumRequirement(selection),
 		Selection: slices.Clone(selection),
 		Diagnostics: []rules.Diagnostic{},
+		Baselined: []rules.Diagnostic{},
+		BaselineProblems: []baseline.Problem{},
 		Suppressed: []suppressions.SuppressedDiagnostic{},
 		UnusedSuppressions: []suppressions.Directive{},
 		SuppressionProblems: []suppressions.Problem{},

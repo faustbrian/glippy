@@ -15,6 +15,8 @@ type CheckSummary struct {
 	FormattingDifferences int `json:"formatting_differences"`
 	Diagnostics int `json:"diagnostics"`
 	Suppressed int `json:"suppressed"`
+	Baselined int `json:"baselined"`
+	BaselineProblems int `json:"baseline_problems"`
 	SuppressionProblems int `json:"suppression_problems"`
 	UnusedSuppressions int `json:"unused_suppressions"`
 	PackageDiagnostics int `json:"package_diagnostics,omitempty"`
@@ -52,6 +54,7 @@ type CheckResult struct {
 	Diagnostics []LintDiagnostic `json:"diagnostics"`
 	SuppressionProblems []SuppressionProblem `json:"suppression_problems"`
 	UnusedSuppressions []UnusedSuppression `json:"unused_suppressions"`
+	BaselineProblems []BaselineProblem `json:"baseline_problems"`
 	PackageDiagnostics []LintPackageDiagnostic `json:"package_diagnostics,omitempty"`
 	SourceProblems []LintSourceProblem `json:"source_problems,omitempty"`
 	Errors []Error `json:"errors"`
@@ -122,6 +125,8 @@ func newCheckResult(lintResult LintResult, formats []CheckFormatOutcome) (CheckR
 			Files: lintResult.Summary.Files,
 			Diagnostics: lintResult.Summary.Diagnostics,
 			Suppressed: lintResult.Summary.Suppressed,
+			Baselined: lintResult.Summary.Baselined,
+			BaselineProblems: lintResult.Summary.BaselineProblems,
 			SuppressionProblems: lintResult.Summary.SuppressionProblems,
 			UnusedSuppressions: lintResult.Summary.UnusedSuppressions,
 			PackageDiagnostics: lintResult.Summary.PackageDiagnostics,
@@ -132,6 +137,7 @@ func newCheckResult(lintResult LintResult, formats []CheckFormatOutcome) (CheckR
 		Diagnostics: lintResult.Diagnostics,
 		SuppressionProblems: lintResult.SuppressionProblems,
 		UnusedSuppressions: lintResult.UnusedSuppressions,
+		BaselineProblems: lintResult.BaselineProblems,
 		PackageDiagnostics: lintResult.PackageDiagnostics,
 		SourceProblems: lintResult.SourceProblems,
 		Errors: lintResult.Errors,

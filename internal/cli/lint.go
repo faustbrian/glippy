@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/faustbrian/gox/internal/analysis"
+	"github.com/faustbrian/gox/internal/baseline"
 	"github.com/faustbrian/gox/internal/cache"
 	"github.com/faustbrian/gox/internal/config"
 	"github.com/faustbrian/gox/internal/discovery"
@@ -24,13 +25,14 @@ import (
 	"github.com/faustbrian/gox/internal/source"
 )
 
-const lintUsage = "gox: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--reporter=text|json] [--config=<path>] [path...]'\n"
+const lintUsage = "gox: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--generate-baseline=<path>] [--reporter=text|json] [--config=<path>] [path...]'\n"
 
 type lintInvocation struct {
 	configPath string
 	fix bool
 	fixSuggestions bool
 	fixUnsafe bool
+	generateBaseline string
 	paths []string
 	reporter goxreport.Format
 }
@@ -42,6 +44,7 @@ type lintTaskOptions struct {
 	cache config.Cache
 	configurationDigest cache.Digest
 	sourceGoVersion string
+	baseline config.Baseline
 }
 
 type lintTask struct {
@@ -69,11 +72,23 @@ type lintPackageValidationError struct {
 	err error
 }
 
+type lintBaselineFilesystemError struct {
+	err error
+}
+
 func (e *lintPackageValidationError) Error() string {
 	return e.err.Error()
 }
 
 func (e *lintPackageValidationError) Unwrap() error {
+	return e.err
+}
+
+func (e *lintBaselineFilesystemError) Error() string {
+	return e.err.Error()
+}
+
+func (e *lintBaselineFilesystemError) Unwrap() error {
 	return e.err
 }
 
@@ -105,6 +120,24 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 			result.fixSuggestions = true
 		case argument == "--fix-unsafe" && !result.fixUnsafe:
 			result.fixUnsafe = true
+		case strings.HasPrefix(argument, "--generate-baseline=") &&
+			result.generateBaseline == "":
+			result.generateBaseline = strings.TrimPrefix(
+				argument,
+				"--generate-baseline=",
+			)
+			if !baseline.ValidPath(result.generateBaseline) {
+				return lintInvocation{}, false
+			}
+		case argument == "--generate-baseline" &&
+			result.generateBaseline == "" &&
+			index + 1 < len(arguments) &&
+			!strings.HasPrefix(arguments[index + 1], "--"):
+			index++
+			result.generateBaseline = arguments[index]
+			if !baseline.ValidPath(result.generateBaseline) {
+				return lintInvocation{}, false
+			}
 		case strings.HasPrefix(argument, "--reporter=") && !reporterSet:
 			reporter, valid := parseReporter(
 				strings.TrimPrefix(argument, "--reporter="),
@@ -147,6 +180,10 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 	}
 	if len(result.paths) == 0 {
 		result.paths = []string{"."}
+	}
+	if result.generateBaseline != "" &&
+		(result.fixEnabled() || result.reporter != goxreport.Text) {
+		return lintInvocation{}, false
 	}
 	return result, true
 }
@@ -277,6 +314,19 @@ func runLintCheck(
 		results = append(results, analyzed)
 		inputs = append(inputs, goxreport.LintTextInput{File: file, Result: analyzed})
 	}
+	if err := applyConfiguredBaselines(tasks, inputs, results, registry); err != nil {
+		return reportLintFailure(
+			invocation,
+			stdout,
+			stderr,
+			lintBaselineErrorExitCode(err),
+			results,
+			err,
+		)
+	}
+	for index := range inputs {
+		inputs[index].Result = results[index]
+	}
 	if err := ctx.Err(); err != nil {
 		return reportLintFailure(invocation, stdout, stderr, ExitCanceled, results, err)
 	}
@@ -301,6 +351,193 @@ func runLintCheck(
 	return exitCode
 }
 
+func runLintGenerateBaseline(
+	ctx context.Context,
+	invocation lintInvocation,
+	stdout, stderr io.Writer,
+	registry *rules.Registry,
+) int {
+	if ctx == nil || registry == nil {
+		return report(
+			stderr,
+			ExitInternalError,
+			"gox lint: generate baseline: context and rule registry are required\n",
+		)
+	}
+	if err := ctx.Err(); err != nil {
+		return report(stderr, ExitCanceled, "gox lint: generate baseline: %v\n", err)
+	}
+	if !baseline.ValidPath(invocation.generateBaseline) {
+		return report(
+			stderr,
+			ExitInvalidInvocation,
+			"gox lint: generate baseline: path must be portable and relative\n",
+		)
+	}
+	plans, exitCode, err := prepareLintInputPlans(ctx, invocation, registry)
+	if err != nil {
+		return report(stderr, exitCode, "gox lint: generate baseline: %v\n", err)
+	}
+	if len(plans) == 0 || plans[0].selection.Root == "" {
+		return report(
+			stderr,
+			ExitInvalidInvocation,
+			"gox lint: generate baseline: a project root is required\n",
+		)
+	}
+	root := plans[0].selection.Root
+	configurationPath := plans[0].selection.Path
+	for _, plan := range plans[1:] {
+		if plan.selection.Root != root || plan.selection.Path != configurationPath {
+			return report(
+				stderr,
+				ExitInvalidInvocation,
+				"gox lint: generate baseline: inputs must resolve to one project root and configuration\n",
+			)
+		}
+	}
+	baselinePath := filepath.Join(root, filepath.FromSlash(invocation.generateBaseline))
+	var baselineSnapshot *filesystem.Snapshot
+	if _, err := os.Lstat(baselinePath); err == nil {
+		baselineSnapshot, err = filesystem.ReadWithin(root, baselinePath)
+		if err != nil {
+			return report(
+				stderr,
+				exitCodeForError(ExitFilesystemError, err),
+				"gox lint: generate baseline: %v\n",
+				err,
+			)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return report(
+			stderr,
+			exitCodeForError(ExitFilesystemError, err),
+			"gox lint: generate baseline: inspect %q: %v\n",
+			baselinePath,
+			err,
+		)
+	}
+	packageTask, packageMode, exitCode, err := prepareLintPackageTask(plans)
+	if err != nil {
+		return report(stderr, exitCode, "gox lint: generate baseline: %v\n", err)
+	}
+	inputs := make([]baseline.InputFile, 0)
+	if packageMode {
+		result, err := runPackageAnalysis(ctx, registry, packageTask)
+		if err != nil {
+			return report(
+				stderr,
+				packageAnalysisErrorExitCode(err),
+				"gox lint: generate baseline: %v\n",
+				err,
+			)
+		}
+		for _, analyzed := range result.Files {
+			file, found := result.Sources.Lookup(analyzed.Path)
+			if !found {
+				return report(
+					stderr,
+					ExitInternalError,
+					"gox lint: generate baseline: source %q is missing\n",
+					analyzed.Path,
+				)
+			}
+			inputs = append(
+				inputs,
+				baseline.InputFile{File: file, Diagnostics: analyzed.Diagnostics},
+			)
+		}
+	} else {
+		tasks, exitCode, err := prepareLintTasksFromPlans(
+			ctx,
+			plans,
+			invocation.configPath,
+			registry,
+		)
+		if err != nil {
+			return report(stderr, exitCode, "gox lint: generate baseline: %v\n", err)
+		}
+		for _, task := range tasks {
+			input, err := source.ReadFile(task.file.Path)
+			if err != nil {
+				return report(
+					stderr,
+					exitCodeForError(ExitFilesystemError, err),
+					"gox lint: generate baseline: read %q: %v\n",
+					task.file.Path,
+					err,
+				)
+			}
+			file, err := source.Load(task.file.Path, input)
+			if err != nil {
+				return report(
+					stderr,
+					ExitSourceError,
+					"gox lint: generate baseline: %v\n",
+					err,
+				)
+			}
+			analyzed, err := analysis.Run(ctx, file, registry, task.options.analysis)
+			if err != nil {
+				return report(
+					stderr,
+					exitCodeForError(ExitInternalError, err),
+					"gox lint: generate baseline: %v\n",
+					err,
+				)
+			}
+			inputs = append(
+				inputs,
+				baseline.InputFile{File: file, Diagnostics: analyzed.Diagnostics},
+			)
+		}
+	}
+	document, err := baseline.Generate(root, inputs)
+	if err != nil {
+		return report(stderr, ExitInternalError, "gox lint: generate baseline: %v\n", err)
+	}
+	encoded, err := baseline.Encode(document)
+	if err != nil {
+		return report(stderr, ExitInternalError, "gox lint: generate baseline: %v\n", err)
+	}
+	if baselineSnapshot != nil {
+		err = baselineSnapshot.Replace(encoded)
+	} else {
+		err = filesystem.CreateWithin(root, baselinePath, encoded, 0o600)
+	}
+	if err != nil {
+		return report(
+			stderr,
+			exitCodeForError(ExitFilesystemError, err),
+			"gox lint: generate baseline: %v\n",
+			err,
+		)
+	}
+	count := 0
+	for _, entry := range document.Entries {
+		count += entry.Count
+	}
+	if err := write(
+		stdout,
+		[]byte(
+			fmt.Sprintf(
+				"gox lint: wrote baseline %s (%d diagnostics)\n",
+				baselinePath,
+				count,
+			),
+		),
+	);
+		err != nil {
+		return report(
+			stderr,
+			ExitFilesystemError,
+			"gox lint: write standard output: %v\n",
+			err,
+		)
+	}
+	return ExitSuccess
+}
+
 func runLintPackageCheck(
 	ctx context.Context,
 	invocation lintInvocation,
@@ -315,6 +552,16 @@ func runLintPackageCheck(
 			stdout,
 			stderr,
 			packageAnalysisErrorExitCode(err),
+			result,
+			err,
+		)
+	}
+	if err := applyConfiguredPackageBaseline(task, &result, registry); err != nil {
+		return reportLintPackageFailure(
+			invocation,
+			stdout,
+			stderr,
+			lintBaselineErrorExitCode(err),
 			result,
 			err,
 		)
@@ -366,6 +613,128 @@ func runLintPackageCheck(
 		}
 	}
 	return exitCode
+}
+
+func applyConfiguredBaselines(
+	tasks []lintTask,
+	inputs []goxreport.LintTextInput,
+	results []analysis.Result,
+	registry *rules.Registry,
+) error {
+	if len(tasks) != len(inputs) || len(tasks) != len(results) {
+		return errors.New("baseline inputs do not match lint results")
+	}
+	type group struct {
+		root string
+		policy config.Baseline
+		indices []int
+	}
+	groups := make(map[string]*group)
+	keys := make([]string, 0)
+	for index, task := range tasks {
+		policy := task.options.baseline
+		if policy.Path == "" {
+			continue
+		}
+		key := task.root +
+			"\x00" +
+			policy.Path +
+			"\x00" +
+			policy.ExpiryCutoff +
+			"\x00" +
+			fmt.Sprint(policy.ReportStale)
+		current, found := groups[key]
+		if !found {
+			current = &group{root: task.root, policy: policy}
+			groups[key] = current
+			keys = append(keys, key)
+		}
+		current.indices = append(current.indices, index)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		current := groups[key]
+		baselinePath := filepath.Join(current.root, filepath.FromSlash(current.policy.Path))
+		snapshot, err := filesystem.ReadWithin(current.root, baselinePath)
+		if err != nil {
+			return &lintBaselineFilesystemError{
+				err: fmt.Errorf("read lint baseline %q: %w", baselinePath, err),
+			}
+		}
+		document, err := baseline.Parse(
+			baselinePath,
+			snapshot.Bytes(),
+			baseline.ParseOptions{KnownRules: registry.IDs()},
+		)
+		if err != nil {
+			return err
+		}
+		baselineInputs := make([]baseline.InputFile, 0, len(current.indices))
+		for _, index := range current.indices {
+			baselineInputs = append(
+				baselineInputs,
+				baseline.InputFile{
+					File: inputs[index].File,
+					Diagnostics: results[index].Diagnostics,
+				},
+			)
+		}
+		applied, err := baseline.Apply(
+			current.root,
+			document,
+			baselineInputs,
+			baseline.ApplyOptions{
+				ReportStale: current.policy.ReportStale,
+				ExpiryCutoff: current.policy.ExpiryCutoff,
+			},
+		)
+		if err != nil {
+			return err
+		}
+		indexByPath := make(map[string]int, len(current.indices))
+		for offset, appliedFile := range applied.Files {
+			index := current.indices[offset]
+			results[index].Diagnostics = appliedFile.Diagnostics
+			results[index].Baselined = appliedFile.Baselined
+			indexByPath[appliedFile.Path] = index
+		}
+		for _, problem := range applied.Problems {
+			path := filepath.Join(current.root, filepath.FromSlash(problem.Entry.Path))
+			index, found := indexByPath[path]
+			if !found {
+				return fmt.Errorf(
+					"baseline problem references unanalyzed path %q",
+					path,
+				)
+			}
+			results[index].BaselineProblems = append(
+				results[index].BaselineProblems,
+				problem,
+			)
+		}
+	}
+	return nil
+}
+
+func applyConfiguredPackageBaseline(
+	task lintPackageTask,
+	result *analysis.PackageResult,
+	registry *rules.Registry,
+) error {
+	if task.options.baseline.Path == "" {
+		return nil
+	}
+	inputs := make([]goxreport.LintTextInput, 0, len(result.Files))
+	tasks := make([]lintTask, 0, len(result.Files))
+	for _, analyzed := range result.Files {
+		file, found := result.Sources.Lookup(analyzed.Path)
+		if !found {
+			return fmt.Errorf("typed lint result source %q is missing", analyzed.Path)
+		}
+		inputs = append(inputs, goxreport.LintTextInput{File: file, Result: analyzed})
+		tasks = append(tasks, lintTask{root: task.root, options: task.options})
+	}
+	return applyConfiguredBaselines(tasks, inputs, result.Files, registry)
 }
 
 func prepareLintInputPlans(
@@ -672,6 +1041,7 @@ func lintOptionsForSelection(
 		cache: loaded.Cache,
 		configurationDigest: cache.DigestOf(loaded.CanonicalBytes()),
 		sourceGoVersion: sourceGoVersion,
+		baseline: loaded.Lint.Baseline,
 	}, ExitSuccess, nil
 }
 
@@ -791,6 +1161,19 @@ func runLintFix(
 					execution.task.options.analysis,
 				)
 				analyzedFile = formatted
+				if err == nil {
+					inputs := []goxreport.LintTextInput{
+						{File: formatted, Result: analyzed},
+					}
+					results := []analysis.Result{analyzed}
+					err = applyConfiguredBaselines(
+						[]lintTask{execution.task},
+						inputs,
+						results,
+						registry,
+					)
+					analyzed = results[0]
+				}
 			} else {
 				analyzed, analyzedFile, err = validateLintPackageFix(
 					ctx,
@@ -923,6 +1306,9 @@ func prepareLintPackageFixExecutions(
 	if err != nil {
 		return nil, packageAnalysisErrorExitCode(err), err
 	}
+	if err := applyConfiguredPackageBaseline(task, &packageResult, registry); err != nil {
+		return nil, lintBaselineErrorExitCode(err), err
+	}
 	if err := validateLintPackagePrerequisites(packageResult); err != nil {
 		return nil, ExitSourceError, err
 	}
@@ -988,6 +1374,10 @@ func refreshLintPackageFixExecution(
 	if err != nil {
 		return packageAnalysisErrorExitCode(err), err
 	}
+	if err := applyConfiguredPackageBaseline(*execution.packageTask, &packageResult, registry);
+		err != nil {
+		return lintBaselineErrorExitCode(err), err
+	}
 	if err := validateLintPackagePrerequisites(packageResult); err != nil {
 		return ExitSourceError, err
 	}
@@ -1047,6 +1437,9 @@ func refreshFinalLintPackageResults(
 	packageResult, err := runUncachedPackageAnalysis(ctx, registry, task, nil)
 	if err != nil {
 		return packageAnalysisErrorExitCode(err), err
+	}
+	if err := applyConfiguredPackageBaseline(task, &packageResult, registry); err != nil {
+		return lintBaselineErrorExitCode(err), err
 	}
 	if err := validateLintPackagePrerequisites(packageResult); err != nil {
 		return ExitSourceError, err
@@ -1261,10 +1654,6 @@ func prepareLintFixExecutions(
 		if err != nil {
 			return executions, exitCodeForError(ExitInternalError, err), err
 		}
-		selections, err := fixengine.Select(analyzed.Diagnostics, selectionOptions)
-		if err != nil {
-			return executions, ExitInternalError, err
-		}
 		executions = append(
 			executions,
 			lintFixExecution{
@@ -1276,11 +1665,31 @@ func prepareLintFixExecutions(
 					SourceDigest: file.Digest(),
 					Status: goxreport.LintFilePending,
 				},
-				selections: selections,
+				selections: nil,
 				task: task,
 				snapshot: snapshot,
 			},
 		)
+	}
+	inputs := make([]goxreport.LintTextInput, len(executions))
+	results := make([]analysis.Result, len(executions))
+	for index, execution := range executions {
+		inputs[index] = goxreport.LintTextInput{
+			File: execution.file,
+			Result: execution.result,
+		}
+		results[index] = execution.result
+	}
+	if err := applyConfiguredBaselines(tasks, inputs, results, registry); err != nil {
+		return executions, lintBaselineErrorExitCode(err), err
+	}
+	for index := range executions {
+		executions[index].result = results[index]
+		selections, err := fixengine.Select(results[index].Diagnostics, selectionOptions)
+		if err != nil {
+			return executions, ExitInternalError, err
+		}
+		executions[index].selections = selections
 	}
 	return executions, ExitSuccess, nil
 }
@@ -1355,6 +1764,7 @@ func lintFixExitCode(executions []lintFixExecution) int {
 func lintResultExitCode(results []analysis.Result) int {
 	for _, result := range results {
 		if len(result.Diagnostics) > 0 ||
+			len(result.BaselineProblems) > 0 ||
 			len(result.SuppressionProblems) > 0 ||
 			len(result.UnusedSuppressions) > 0 {
 			return ExitFindings
@@ -1369,6 +1779,14 @@ func lintPackageResultExitCode(result analysis.PackageResult) int {
 		exitCode = moreSevereExitCode(exitCode, ExitSourceError)
 	}
 	return exitCode
+}
+
+func lintBaselineErrorExitCode(err error) int {
+	var filesystemError *lintBaselineFilesystemError
+	if errors.As(err, &filesystemError) {
+		return exitCodeForError(ExitFilesystemError, err)
+	}
+	return exitCodeForError(ExitInvalidInvocation, err)
 }
 
 func reportLintFailure(

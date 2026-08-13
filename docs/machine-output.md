@@ -154,7 +154,8 @@ read the file again before retrying or making a claim about disk state.
 ## Lint Reports
 
 Lint summaries always contain `files`, `diagnostics`, `suppressed`,
-`suppression_problems`, `unused_suppressions`, and `complete`. Typed runs add
+`baselined`, `baseline_problems`, `suppression_problems`,
+`unused_suppressions`, and `complete`. Typed runs add
 `package_diagnostics` and `source_problems` when nonzero. Fix runs add
 `fixed_files`, `applied_fixes`, and `rejected_fixes` when nonzero.
 
@@ -234,6 +235,13 @@ invalid-configuration
 `next-line`, `range`, or `file`. See the [suppression reference](suppressions.md)
 for ownership semantics.
 
+`baselined` counts diagnostics hidden by the configured adoption baseline.
+`baseline_problems` contains stale or expired entries with `kind`, portable
+`path`, `rule_id`, `message_key`, `source_fingerprint`, original `count`, and
+unmatched `remaining`; optional `reason` and `expires_on` preserve reviewed
+metadata. Baseline problems are actionable findings. Baseline files use the
+separate strict format documented in the [baseline reference](baselines.md).
+
 ### Typed Prerequisite Channels
 
 Typed, CFG, and SSA runs keep package-loader diagnostics and captured-source
@@ -307,6 +315,8 @@ typed prerequisite channels. Its summary replaces lint fix counts with
     "formatting_differences": 1,
     "diagnostics": 0,
     "suppressed": 0,
+    "baselined": 0,
+    "baseline_problems": 0,
     "suppression_problems": 0,
     "unused_suppressions": 0,
     "complete": true
@@ -321,6 +331,7 @@ typed prerequisite channels. Its summary replaces lint fix counts with
   "diagnostics": [],
   "suppression_problems": [],
   "unused_suppressions": [],
+  "baseline_problems": [],
   "errors": []
 }
 ```

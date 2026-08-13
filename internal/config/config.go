@@ -16,6 +16,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
+	"github.com/faustbrian/gox/internal/baseline"
 	"github.com/faustbrian/gox/internal/rules"
 )
 
@@ -89,6 +90,14 @@ type Lint struct {
 	Rules map[string]Severity
 	RuleOptions map[string]rules.OptionSet
 	Suppressions Suppressions
+	Baseline Baseline
+}
+
+// Baseline contains deterministic progressive-adoption policy.
+type Baseline struct {
+	Path string
+	ReportStale bool
+	ExpiryCutoff string
 }
 
 // Suppressions contains project policy for auditable lint waivers.
@@ -159,6 +168,13 @@ type lintConfig struct {
 	Rules map[string]string `toml:"rules"`
 	RuleOptions map[string]map[string]any `toml:"rule-options"`
 	Suppressions suppressionConfig `toml:"suppressions"`
+	Baseline baselineConfig `toml:"baseline"`
+}
+
+type baselineConfig struct {
+	Path *string `toml:"path"`
+	ReportStale *bool `toml:"report-stale"`
+	ExpiryCutoff *string `toml:"expiry-cutoff"`
 }
 
 type suppressionConfig struct {
@@ -186,6 +202,7 @@ func Defaults() Config {
 			Presets: []Preset{PresetCorrectness},
 			Rules: make(map[string]Severity),
 			RuleOptions: make(map[string]rules.OptionSet),
+			Baseline: Baseline{ReportStale: true},
 		},
 		Cache: Cache{MaxEntries: DefaultCacheMaxEntries, MaxBytes: DefaultCacheMaxBytes},
 	}
@@ -331,6 +348,41 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 	}
 	if decoded.Lint.WarningsAsErrors != nil {
 		result.Lint.WarningsAsErrors = *decoded.Lint.WarningsAsErrors
+	}
+	if decoded.Lint.Baseline.Path != nil {
+		if !baseline.ValidPath(*decoded.Lint.Baseline.Path) {
+			return Config{}, semanticError(
+				path,
+				"lint.baseline.path must be a portable relative path",
+			)
+		}
+		result.Lint.Baseline.Path = *decoded.Lint.Baseline.Path
+	}
+	if decoded.Lint.Baseline.ReportStale != nil {
+		if decoded.Lint.Baseline.Path == nil {
+			return Config{}, semanticError(
+				path,
+				"lint.baseline.report-stale requires lint.baseline.path",
+			)
+		}
+		result.Lint.Baseline.ReportStale = *decoded.Lint.Baseline.ReportStale
+	}
+	if decoded.Lint.Baseline.ExpiryCutoff != nil {
+		if decoded.Lint.Baseline.Path == nil {
+			return Config{}, semanticError(
+				path,
+				"lint.baseline.expiry-cutoff requires lint.baseline.path",
+			)
+		}
+		cutoff := *decoded.Lint.Baseline.ExpiryCutoff
+		parsed, parseErr := time.Parse(time.DateOnly, cutoff)
+		if parseErr != nil || parsed.Format(time.DateOnly) != cutoff {
+			return Config{}, semanticError(
+				path,
+				"lint.baseline.expiry-cutoff must use a valid YYYY-MM-DD date",
+			)
+		}
+		result.Lint.Baseline.ExpiryCutoff = cutoff
 	}
 	if decoded.Lint.Suppressions.RequireReason != nil {
 		result.Lint.Suppressions.RequireReason = *decoded.Lint.Suppressions.RequireReason

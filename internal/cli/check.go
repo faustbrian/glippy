@@ -243,6 +243,30 @@ func runCombinedCheck(
 			},
 		)
 	}
+	baselineInputs := make([]goxreport.LintTextInput, len(executions))
+	baselineResults := make([]analysis.Result, len(executions))
+	for index, execution := range executions {
+		baselineInputs[index] = goxreport.LintTextInput{
+			File: execution.file,
+			Result: execution.analysis,
+		}
+		baselineResults[index] = execution.analysis
+	}
+	if err := applyConfiguredBaselines(tasks, baselineInputs, baselineResults, registry);
+		err != nil {
+		return reportCombinedCheck(
+			invocation,
+			stdout,
+			stderr,
+			lintBaselineErrorExitCode(err),
+			false,
+			executions,
+			err,
+		)
+	}
+	for index := range executions {
+		executions[index].analysis = baselineResults[index]
+	}
 	if invocation.reporter == goxreport.JSON {
 		exitCode = ExitSuccess
 		for _, execution := range executions {
@@ -329,6 +353,18 @@ func runCombinedPackageCheck(
 			packageAnalysisErrorExitCode(err),
 			false,
 			packageCheckResult(result, nil),
+			nil,
+			err,
+		)
+	}
+	if err := applyConfiguredPackageBaseline(task, &result, registry); err != nil {
+		return reportCombinedPackageCheck(
+			invocation,
+			stdout,
+			stderr,
+			lintBaselineErrorExitCode(err),
+			false,
+			result,
 			nil,
 			err,
 		)

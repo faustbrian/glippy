@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/faustbrian/gox/internal/analysis"
+	"github.com/faustbrian/gox/internal/baseline"
 	fixengine "github.com/faustbrian/gox/internal/fix"
 	"github.com/faustbrian/gox/internal/source"
 )
@@ -166,6 +167,30 @@ func RenderLintText(inputs []LintTextInput) ([]byte, error) {
 				fmt.Fprintf(&output, ": %s", directive.Reason)
 			}
 			output.WriteByte('\n')
+		}
+		for _, problem := range input.Result.BaselineProblems {
+			if problem.Kind == baseline.ProblemExpired {
+				fmt.Fprintf(
+					&output,
+					"%s: baseline[%s]: %s/%s expired on %s (%d configured occurrence(s))\n",
+					input.Result.Path,
+					problem.Kind,
+					problem.Entry.RuleID,
+					problem.Entry.MessageKey,
+					problem.Entry.ExpiresOn,
+					problem.Remaining,
+				)
+				continue
+			}
+			fmt.Fprintf(
+				&output,
+				"%s: baseline[%s]: %s/%s has %d unmatched occurrence(s)\n",
+				input.Result.Path,
+				problem.Kind,
+				problem.Entry.RuleID,
+				problem.Entry.MessageKey,
+				problem.Remaining,
+			)
 		}
 	}
 	return []byte(output.String()), nil

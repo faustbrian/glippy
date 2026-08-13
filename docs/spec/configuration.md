@@ -40,6 +40,11 @@ warnings-as-errors = false
 [lint.suppressions]
 require-reason = false
 
+[lint.baseline]
+path = ".gox-baseline.json"
+report-stale = true
+expiry-cutoff = "2026-08-13"
+
 [lint.rules]
 no-unexplained-suppression = "error"
 
@@ -104,6 +109,13 @@ reproducible; advancing the cutoff is a project policy decision.
 [lint.suppressions]
 expiry-cutoff = "2026-08-11"
 ```
+
+`lint.baseline.path` MAY select one portable path relative to the discovered
+project root. When omitted, no baseline is loaded. `report-stale` defaults to
+`true` and `expiry-cutoff` is optional. The cutoff has the same deterministic
+calendar-date contract as suppression expiry and does not read the wall clock.
+The baseline path, stale policy, and cutoff contribute to canonical
+configuration and cache identity. See the [baseline reference](../baselines.md).
 
 Formatter configuration MUST remain limited to adoption-significant choices.
 Brace placement, individual whitespace rules, and alternative layout dialects

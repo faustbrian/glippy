@@ -7,6 +7,7 @@ import (
 	"errors"
 	"go/ast"
 	"go/types"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1118,6 +1119,320 @@ func TestRunLintCheckAnalyzesConfiguredSyntaxRulesWithoutMutation(t *testing.T) 
 	}
 	if !bytes.Equal(got, input) {
 		t.Fatalf("runLintCheck() mutated source: %q", got)
+	}
+}
+
+func TestRunLintGenerateBaselineWritesVisibleDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	invocation, valid := parseLintInvocation(
+		[]string{"lint", "--generate-baseline=.gox-baseline.json", "source.go"},
+	)
+	if !valid ||
+		invocation.generateBaseline != ".gox-baseline.json" ||
+		len(invocation.paths) != 1 {
+		t.Fatalf("parseLintInvocation() = %#v, %t", invocation, valid)
+	}
+	if _, valid := parseLintInvocation(
+		[]string{"lint", "--generate-baseline=.gox-baseline.json", "--fix", "source.go"},
+	);
+		valid {
+		t.Fatal("parseLintInvocation() accepted baseline generation with fixes")
+	}
+	if _, valid := parseLintInvocation(
+		[]string{
+			"lint",
+			"--generate-baseline=.gox-baseline.json",
+			"--reporter=json",
+			"source.go",
+		},
+	);
+		valid {
+		t.Fatal("parseLintInvocation() accepted JSON baseline generation")
+	}
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/sample\n\ngo 1.25\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){target()}\n"), 0o600);
+		err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n[lint.rules]\ncall-rule = \"error\"\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	invocation.configPath = configurationPath
+	invocation.paths = []string{path}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintGenerateBaseline(
+		context.Background(),
+		invocation,
+		&stdout,
+		&stderr,
+		newCLISyntaxRegistry(t),
+	)
+
+	baselinePath := filepath.Join(root, ".gox-baseline.json")
+	encoded, err := os.ReadFile(baselinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitSuccess ||
+		stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "wrote baseline") ||
+		!bytes.Contains(encoded, []byte(`"rule_id": "call-rule"`)) ||
+		bytes.Contains(encoded, []byte("target()")) {
+		t.Fatalf(
+			"runLintGenerateBaseline() = exit %d, stdout %q, stderr %q, baseline %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			encoded,
+		)
+	}
+}
+
+func TestRunLintCheckAppliesConfiguredBaselineAndReportsStaleEntries(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/sample\n\ngo 1.25\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(){target()}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n[lint.rules]\ncall-rule = \"error\"\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	registry := newCLISyntaxRegistry(t)
+	invocation := lintInvocation{
+		configPath: configurationPath,
+		generateBaseline: ".gox-baseline.json",
+		paths: []string{path},
+		reporter: goxreport.Text,
+	}
+	if exitCode := runLintGenerateBaseline(
+		context.Background(),
+		invocation,
+		io.Discard,
+		io.Discard,
+		registry,
+	);
+		exitCode != ExitSuccess {
+		t.Fatalf("runLintGenerateBaseline() exit = %d", exitCode)
+	}
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte(
+			"version = 1\n" +
+				"[lint.rules]\ncall-rule = \"error\"\n" +
+				"[lint.baseline]\npath = \".gox-baseline.json\"\nreport-stale = true\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	invocation.generateBaseline = ""
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := runLintCheck(context.Background(), invocation, &stdout, &stderr, registry);
+		exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(baselined) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := runCombinedCheck(
+		context.Background(),
+		checkInvocation{
+			configPath: configurationPath,
+			paths: []string{path},
+			reporter: goxreport.Text,
+		},
+		&stdout,
+		&stderr,
+		registry,
+	);
+		exitCode != ExitFindings ||
+			strings.Contains(stdout.String(), "call-rule") ||
+			!strings.Contains(stdout.String(), "format differs") ||
+			stderr.Len() != 0 {
+		t.Fatalf(
+			"runCombinedCheck(baselined) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+
+	if err := os.WriteFile(path, []byte("package sample\nfunc run() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := runLintCheck(context.Background(), invocation, &stdout, &stderr, registry);
+		exitCode != ExitFindings ||
+			!strings.Contains(stdout.String(), "baseline[stale]") ||
+			stderr.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(stale baseline) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
+func TestRunLintFixDoesNotApplyBaselinedFixes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/sample\n\ngo 1.25\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(){target()}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	writeConfig := func(baselined bool) {
+		t.Helper()
+		contents := "version = 1\n[lint.rules]\nfix-rule = \"error\"\n"
+		if baselined {
+			contents += "[lint.baseline]\npath = \".gox-baseline.json\"\n"
+		}
+		if err := os.WriteFile(configurationPath, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeConfig(false)
+	registry := newCLIFixRegistry(t, rules.FixSafe)
+	invocation := lintInvocation{
+		configPath: configurationPath,
+		generateBaseline: ".gox-baseline.json",
+		paths: []string{path},
+		reporter: goxreport.Text,
+	}
+	if exitCode := runLintGenerateBaseline(
+		context.Background(),
+		invocation,
+		io.Discard,
+		io.Discard,
+		registry,
+	);
+		exitCode != ExitSuccess {
+		t.Fatalf("runLintGenerateBaseline() exit = %d", exitCode)
+	}
+	writeConfig(true)
+	invocation.generateBaseline = ""
+	invocation.fix = true
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := runLintFix(context.Background(), invocation, &stdout, &stderr, registry);
+		exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf(
+			"runLintFix() = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("runLintFix() applied baselined fix: %q", got)
+	}
+}
+
+func TestRunLintCheckReportsMissingBaselineAsFilesystemFailure(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/sample\n\ngo 1.25\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n" + "[lint.baseline]\npath = \".gox-baseline.json\"\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{path},
+			reporter: goxreport.Text,
+		},
+		&stdout,
+		&stderr,
+		newCLISyntaxRegistry(t),
+	)
+	if exitCode != ExitFilesystemError ||
+		stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "read lint baseline") {
+		t.Fatalf(
+			"runLintCheck() = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
 	}
 }
 

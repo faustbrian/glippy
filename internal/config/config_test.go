@@ -530,6 +530,11 @@ cgo-enabled = true
 presets = ["suspicious", "pedantic"]
 warnings-as-errors = true
 
+[lint.baseline]
+path = ".gox-baseline.json"
+report-stale = true
+expiry-cutoff = "2026-08-13"
+
 [lint.rules]
 known-rule = "warn"
 disabled-rule = "off"
@@ -552,6 +557,11 @@ disabled-rule = "off"
 	) ||
 		!got.Lint.WarningsAsErrors {
 		t.Fatalf("Parse() lint = %#v", got.Lint)
+	}
+	if got.Lint.Baseline.Path != ".gox-baseline.json" ||
+		!got.Lint.Baseline.ReportStale ||
+		got.Lint.Baseline.ExpiryCutoff != "2026-08-13" {
+		t.Fatalf("Parse() baseline = %#v", got.Lint.Baseline)
 	}
 	if strings.Join(got.Analysis.BuildTags, ",") != "integration,selected" ||
 		got.Analysis.GOOS != "linux" ||

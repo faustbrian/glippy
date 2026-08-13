@@ -21,6 +21,7 @@ func TestRenderProducesDeterministicShellCompletions(t *testing.T) {
 			markers: []string{
 				"complete -F _gox_completion gox",
 				"--fix-suggestions",
+				"--generate-baseline=",
 				"--fragment=declaration --fragment=statement --fragment=expression",
 				"duplicate-condition ineffective-break",
 			},
@@ -31,6 +32,7 @@ func TestRenderProducesDeterministicShellCompletions(t *testing.T) {
 			markers: []string{
 				"#compdef gox",
 				"--stdin-filepath",
+				"--generate-baseline",
 				"duplicate-condition ineffective-break",
 			},
 		},
@@ -40,6 +42,7 @@ func TestRenderProducesDeterministicShellCompletions(t *testing.T) {
 				"complete -c gox -f",
 				"__fish_seen_subcommand_from fmt lint check' -F",
 				" -l fix-unsafe ",
+				" -l generate-baseline ",
 				"-a '--fragment=declaration --fragment=statement --fragment=expression'",
 				"duplicate-condition",
 				"ineffective-break",

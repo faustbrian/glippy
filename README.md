@@ -70,6 +70,7 @@ gox fmt --check [paths...]
 gox fmt --diff [paths...]
 gox lint [paths...]
 gox lint --fix [paths...]
+gox lint --generate-baseline=<path> [paths...]
 gox check [paths...]
 gox explain <rule>
 gox version
@@ -78,7 +79,9 @@ gox completion <bash|zsh|fish>
 
 `gox check ./...` is the non-mutating combined CI entry point. Safe fixes are
 selected with `lint --fix`; suggestion and unsafe classes require their own
-explicit flags. See the [command reference](docs/command-reference.md) for
+explicit flags. Existing findings can be captured without weakening new-code
+policy through a [deterministic lint baseline](docs/baselines.md). See the
+[command reference](docs/command-reference.md) for
 inputs, reporters, exit categories, and write behavior.
 
 ## Installation

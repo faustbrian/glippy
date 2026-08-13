@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/faustbrian/gox/internal/analysis"
+	"github.com/faustbrian/gox/internal/baseline"
 	fixengine "github.com/faustbrian/gox/internal/fix"
 	"github.com/faustbrian/gox/internal/rules"
 	"github.com/faustbrian/gox/internal/source"
@@ -19,6 +20,8 @@ type LintSummary struct {
 	Files int `json:"files"`
 	Diagnostics int `json:"diagnostics"`
 	Suppressed int `json:"suppressed"`
+	Baselined int `json:"baselined"`
+	BaselineProblems int `json:"baseline_problems"`
 	SuppressionProblems int `json:"suppression_problems"`
 	UnusedSuppressions int `json:"unused_suppressions"`
 	PackageDiagnostics int `json:"package_diagnostics,omitempty"`
@@ -123,6 +126,18 @@ type UnusedSuppression struct {
 	ExpiresOn string `json:"expires_on,omitempty"`
 }
 
+type BaselineProblem struct {
+	Kind baseline.ProblemKind `json:"kind"`
+	Path string `json:"path"`
+	RuleID string `json:"rule_id"`
+	MessageKey string `json:"message_key"`
+	SourceFingerprint string `json:"source_fingerprint"`
+	Count int `json:"count"`
+	Remaining int `json:"remaining"`
+	Reason string `json:"reason,omitempty"`
+	ExpiresOn string `json:"expires_on,omitempty"`
+}
+
 type LintResult struct {
 	SchemaVersion int `json:"schema_version"`
 	Command string `json:"command"`
@@ -133,6 +148,7 @@ type LintResult struct {
 	Diagnostics []LintDiagnostic `json:"diagnostics"`
 	SuppressionProblems []SuppressionProblem `json:"suppression_problems"`
 	UnusedSuppressions []UnusedSuppression `json:"unused_suppressions"`
+	BaselineProblems []BaselineProblem `json:"baseline_problems"`
 	PackageDiagnostics []LintPackageDiagnostic `json:"package_diagnostics,omitempty"`
 	SourceProblems []LintSourceProblem `json:"source_problems,omitempty"`
 	AppliedFixes []LintAppliedFix `json:"applied_fixes,omitempty"`
@@ -165,6 +181,7 @@ func NewLintResult(
 		Diagnostics: make([]LintDiagnostic, 0),
 		SuppressionProblems: make([]SuppressionProblem, 0),
 		UnusedSuppressions: make([]UnusedSuppression, 0),
+		BaselineProblems: make([]BaselineProblem, 0),
 		Errors: slices.Clone(errs),
 	}
 	if result.Errors == nil {
@@ -240,8 +257,26 @@ func NewLintResult(
 				},
 			)
 		}
+		for _, problem := range analyzed.BaselineProblems {
+			result.BaselineProblems = append(
+				result.BaselineProblems,
+				BaselineProblem{
+					Kind: problem.Kind,
+					Path: problem.Entry.Path,
+					RuleID: problem.Entry.RuleID,
+					MessageKey: problem.Entry.MessageKey,
+					SourceFingerprint: problem.Entry.SourceFingerprint,
+					Count: problem.Entry.Count,
+					Remaining: problem.Remaining,
+					Reason: problem.Entry.Reason,
+					ExpiresOn: problem.Entry.ExpiresOn,
+				},
+			)
+		}
 		result.Summary.Diagnostics += len(analyzed.Diagnostics)
 		result.Summary.Suppressed += len(analyzed.Suppressed)
+		result.Summary.Baselined += len(analyzed.Baselined)
+		result.Summary.BaselineProblems += len(analyzed.BaselineProblems)
 		result.Summary.SuppressionProblems += len(analyzed.SuppressionProblems)
 		result.Summary.UnusedSuppressions += len(analyzed.UnusedSuppressions)
 	}

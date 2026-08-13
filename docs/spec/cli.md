@@ -23,6 +23,7 @@ gox fmt --check [paths...]
 gox fmt --diff [paths...]
 gox lint [paths...]
 gox lint --fix [paths...]
+gox lint --generate-baseline=<path> [paths...]
 gox check [paths...]
 gox explain <rule>
 gox version
@@ -129,7 +130,16 @@ failure. Invalid configuration, filesystem failures, cancellation, and reporting
 their common exit categories. JSON remains valid and incomplete for invalid
 invocations and failures.
 
-`lint` never writes unless a fix flag is present. Ordinary `--fix` applies safe
+`lint --generate-baseline=<path>` MUST analyze normally visible diagnostics
+before baseline application and write one deterministic strict JSON document
+relative to one project root. It MUST reject heterogeneous roots,
+non-portable output paths, all fix flags, and JSON reporting. It writes only
+the baseline, never source, and MUST use the shared rooted atomic writer. The
+[baseline reference](../baselines.md) defines identity, stale, expiry, and
+machine-reporting behavior.
+
+`lint` never writes source unless a fix flag is present. Baseline generation
+writes only its explicitly named baseline document. Ordinary `--fix` applies safe
 fixes only, `--fix-suggestions` applies suggestion fixes only, and
 `--fix-unsafe` applies unsafe fixes only. The flags are independently
 composable; unsafe authorization MUST NOT implicitly authorize suggestions or

@@ -1176,3 +1176,13 @@ tests, vet, and Gox's own combined check pass. ADR 0014 records the Clippy and
 PHPStan boundary. Baseline support and the admitted v0.2 rule catalog remain
 subsequent implementation batches; this checkpoint does not declare v0.2
 complete or published.
+
+The deterministic v0.2 baseline batch now adds strict source-free JSON
+generation, rooted atomic create/update, exact source-span matching, count
+aggregation, stale and explicit-cutoff expiry findings, and additive human and
+schema-version-1 machine reporting. Configured baselines apply after source
+suppressions across syntax, typed, combined-check, and fix-planning paths;
+baselined diagnostics cannot be fixed. ADR 0015 and the public baseline
+reference record the contract. Prioritized bug-catching and pedantic/style rule
+admission, complete dogfood, and final v0.2 release evidence remain open, so
+v0.2 is not complete or published.

@@ -84,7 +84,7 @@ _gox_completion() {
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		lint)
-			COMPREPLY=( $(compgen -W "--fix --fix-suggestions --fix-unsafe --reporter --reporter=text --reporter=json --config" -- "$current") )
+			COMPREPLY=( $(compgen -W "--fix --fix-suggestions --fix-unsafe --generate-baseline= --reporter --reporter=text --reporter=json --config" -- "$current") )
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		check)
@@ -132,6 +132,7 @@ _gox() {
 				'--fix[apply safe fixes]' \
 				'--fix-suggestions[apply suggestion fixes]' \
 				'--fix-unsafe[apply unsafe fixes]' \
+				'--generate-baseline=[write lint baseline]:baseline path:_files' \
 				'--reporter=[select reporter]:reporter:(text json)' \
 				'--config=[use an explicit configuration]:configuration file:_files' \
 				'*:path:_files'
@@ -180,6 +181,7 @@ complete -c gox -n '__fish_seen_subcommand_from fmt' -a '--fragment=declaration 
 complete -c gox -n '__fish_seen_subcommand_from lint' -l fix -d 'Apply safe fixes'
 complete -c gox -n '__fish_seen_subcommand_from lint' -l fix-suggestions -d 'Apply suggestion fixes'
 complete -c gox -n '__fish_seen_subcommand_from lint' -l fix-unsafe -d 'Apply unsafe fixes'
+complete -c gox -n '__fish_seen_subcommand_from lint' -l generate-baseline -r -F -d 'Write lint baseline'
 
 `,
 	)

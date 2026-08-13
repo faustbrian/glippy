@@ -111,6 +111,75 @@ func TestSnapshotReplaceUnchangedBytesDoesNotTouchFile(t *testing.T) {
 	}
 }
 
+func TestCreateWithinCreatesRegularFile(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, ".gox-baseline.json")
+	if err := filesystem.CreateWithin(root, path, []byte("first\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+		t.Fatalf("created baseline mode = %v", info.Mode())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "first\n" {
+		t.Fatalf("CreateWithin() content = %q", got)
+	}
+}
+
+func TestCreateWithinRejectsSymlinkTarget(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	external := filepath.Join(t.TempDir(), "external.json")
+	if err := os.WriteFile(external, []byte("preserve\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, ".gox-baseline.json")
+	if err := os.Symlink(external, path); err != nil {
+		t.Fatal(err)
+	}
+	if err := filesystem.CreateWithin(root, path, []byte("replace\n"), 0o600); err == nil {
+		t.Fatal("CreateWithin() error = nil, want symlink refusal")
+	}
+	got, err := os.ReadFile(external)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "preserve\n" {
+		t.Fatalf("external content = %q", got)
+	}
+}
+
+func TestCreateWithinDoesNotReplaceExistingFile(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, ".gox-baseline.json")
+	if err := os.WriteFile(path, []byte("existing\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := filesystem.CreateWithin(root, path, []byte("new\n"), 0o600);
+		!errors.Is(err, filesystem.ErrStale) {
+		t.Fatalf("CreateWithin() error = %v, want ErrStale", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "existing\n" {
+		t.Fatalf("CreateWithin() replaced existing file: %q", got)
+	}
+}
+
 func TestSnapshotReplaceRejectsChangedSourceBytes(t *testing.T) {
 	t.Parallel()
 
