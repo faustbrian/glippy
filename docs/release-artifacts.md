@@ -80,7 +80,16 @@ all six files byte-for-byte, and executed every target binary on its declared
 operating system and architecture. The amd64 executions used Rosetta and Docker
 architecture emulation, while both arm64 executions were native to their host
 architecture. Both build environments ran on one physical Darwin host, so
-separate-host reproduction remains open.
+that rehearsal alone does not establish separate-host reproduction.
+
+The manual `Release budget evidence` workflow closes that boundary for a
+release candidate. Its native Darwin and Linux amd64 and arm64 runners each
+build the complete six-file target set and execute the archive matching their
+own operating system and architecture. A separate Linux job downloads all four
+retained candidates, verifies their manifest identity and checksums, and
+requires every file to be byte-identical across runners. Any missing runner,
+different archive, manifest, or checksum, or non-native version execution fails
+the workflow.
 
 GitHub Releases is the selected publication channel. A push of a canonical
 semantic-version tag invokes the repository's `Publish release` workflow. It
