@@ -134,6 +134,38 @@ func TestRunRefusesUnsupportedRuleTiersBeforeExecution(t *testing.T) {
 	}
 }
 
+func TestRunRejectsAmbiguousSingularAndPluralPresetPolicy(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("sample.go", []byte("package sample\nfunc run(){target()}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(
+		syntaxRule{
+			metadata: analysisMetadata("call-rule", rules.NodeCallExpr, false),
+			run: func(*rules.Context, ast.Node) ([]rules.Finding, error) {
+				return nil, nil
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = analysis.Run(
+		context.Background(),
+		file,
+		registry,
+		analysis.RunOptions{
+			Preset: rules.PresetCorrectness,
+			Presets: []rules.Preset{rules.PresetStyle},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "singular and plural preset policy") {
+		t.Fatalf("Run() error = %v, want ambiguous preset policy rejection", err)
+	}
+}
+
 func TestRunEmptyRegistryProducesOneCompleteEmptyResult(t *testing.T) {
 	t.Parallel()
 

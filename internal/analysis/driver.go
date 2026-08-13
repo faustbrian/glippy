@@ -14,6 +14,8 @@ import (
 type RunOptions struct {
 	SourceGoVersion string
 	Preset rules.Preset
+	Presets []rules.Preset
+	WarningsAsErrors bool
 	Overrides map[string]rules.Severity
 	RuleOptions map[string]rules.OptionSet
 	RequireSuppressionReason bool
@@ -52,12 +54,11 @@ func Run(
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	selection, err := registry.ResolveConfiguredForGoVersion(
-		options.Preset,
-		options.Overrides,
-		options.RuleOptions,
-		options.SourceGoVersion,
-	)
+	resolution, err := options.RuleResolution()
+	if err != nil {
+		return Result{}, fmt.Errorf("resolve analysis rules: %w", err)
+	}
+	selection, err := registry.ResolveOptions(resolution)
 	if err != nil {
 		return Result{}, fmt.Errorf("resolve analysis rules: %w", err)
 	}
@@ -99,4 +100,24 @@ func Run(
 	result.UnusedSuppressions = application.Unused
 	result.SuppressionProblems = problems
 	return result, nil
+}
+
+// RuleResolution returns the canonical registry selection bound to this run.
+func (options RunOptions) RuleResolution() (rules.ResolveOptions, error) {
+	if options.Presets != nil && options.Preset != "" {
+		return rules.ResolveOptions{}, fmt.Errorf(
+			"singular and plural preset policy cannot both be configured",
+		)
+	}
+	presets := options.Presets
+	if presets == nil {
+		presets = []rules.Preset{options.Preset}
+	}
+	return rules.ResolveOptions{
+		Presets: presets,
+		Overrides: options.Overrides,
+		RuleOptions: options.RuleOptions,
+		SourceGoVersion: options.SourceGoVersion,
+		WarningsAsErrors: options.WarningsAsErrors,
+	}, nil
 }

@@ -209,6 +209,65 @@ func target() {}
 	}
 }
 
+func TestRunPackagesComposesPresetGroupsAndEscalatesWarnings(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/presets\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "presets.go"),
+		"package presets\nfunc run(){target()}\nfunc target(){}\n",
+	)
+	metadata := typesMetadata("typed-suspicious", rules.NodeCallExpr)
+	metadata.Presets = []rules.Preset{rules.PresetSuspicious}
+	registry, err := rules.NewRegistry(
+		typesRule{
+			metadata: metadata,
+			run: func(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
+				range_, rangeErr := ctx.Range(node)
+				if rangeErr != nil {
+					return nil, rangeErr
+				}
+				return []rules.Finding{
+					{
+						MessageKey: "typed-suspicious",
+						Message: "typed suspicious call",
+						Range: range_,
+					},
+				}, nil
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{rules.PresetCorrectness, rules.PresetSuspicious},
+			WarningsAsErrors: true,
+		},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Selection) != 1 ||
+		result.Selection[0].ID != "typed-suspicious" ||
+		result.Selection[0].Severity != rules.SeverityError ||
+		len(result.Files) != 1 ||
+		len(result.Files[0].Diagnostics) != 1 ||
+		result.Files[0].Diagnostics[0].Severity != rules.SeverityError {
+		t.Fatalf("RunPackages() = %#v", result)
+	}
+}
+
 func TestRunPackagesRoutesTypedOptionsAcrossEveryTier(t *testing.T) {
 	t.Parallel()
 

@@ -1163,3 +1163,16 @@ checksum, confirmed manifest source revision `c0435d6`, required the exact
 `gox`, `LICENSE`, and `THIRD_PARTY_LICENSES.txt` archive entries, executed the
 Darwin arm64 binary as `gox v0.1.0`, and verified all six attestations. Every
 final acceptance gate is satisfied; Phase 5 and overall progress reach 100%.
+
+Post-v0.1 development now begins the v0.2 Clippy-style lint-policy expansion.
+Schema version 1 accepts order-independent composable `lint.presets`, retains
+the singular v0.1 compatibility form, and supports deterministic
+`lint.warnings-as-errors` after per-rule overrides. `pedantic` is selectable;
+restriction rules remain exact-ID opt-ins; migration remains target-gated.
+Syntax and typed package paths share the same selection contract, and
+configuration/cache identity includes normalized groups and escalation.
+Focused red-green evidence, the complete test suite, focused analysis/CLI race
+tests, vet, and Gox's own combined check pass. ADR 0014 records the Clippy and
+PHPStan boundary. Baseline support and the admitted v0.2 rule catalog remain
+subsequent implementation batches; this checkpoint does not declare v0.2
+complete or published.

@@ -1121,6 +1121,57 @@ func TestRunLintCheckAnalyzesConfiguredSyntaxRulesWithoutMutation(t *testing.T) 
 	}
 }
 
+func TestRunLintCheckComposesPresetsAndEscalatesWarnings(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package sample\nfunc run(){target()}\n"), 0o600);
+		err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".gox.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte(
+			"version = 1\n[lint]\npresets = [\"style\", \"pedantic\"]\nwarnings-as-errors = true\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	style, found := newCLISyntaxRegistry(t).Lookup("call-rule")
+	if !found {
+		t.Fatal("call-rule is not registered")
+	}
+	metadata := style.Metadata()
+	metadata.Presets = []rules.Preset{rules.PresetStyle}
+	registry, err := rules.NewRegistry(cliSyntaxRule{metadata: metadata})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{configPath: configurationPath, paths: []string{path}},
+		&stdout,
+		&stderr,
+		registry,
+	)
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "error[call-rule]") {
+		t.Fatalf(
+			"runLintCheck() = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
 func TestRunLintRejectsUnsupportedSourceVersion(t *testing.T) {
 	t.Parallel()
 

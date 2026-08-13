@@ -7,8 +7,9 @@ foundation boundary. This roadmap therefore starts rule-growth planning; it
 does not reserve rule IDs, promise a rule count, or weaken the admission gate.
 
 The current catalog remains intentionally small. `correctness` is the default
-preset, while `suspicious`, `performance`, `complexity`, `style`, and
-`migration` remain explicit adoption choices.
+preset group. `suspicious`, `performance`, `complexity`, `style`, and
+`pedantic` are composable adoption choices. Restriction rules are enabled
+individually, and migration rules require an explicit target.
 
 ## Priorities
 
@@ -23,9 +24,11 @@ Work proceeds in this order:
 3. **Grow the suspicious preset cautiously.** Admit likely defects only after
    reviewed positive examples and broad negative dogfood establish a useful
    boundary.
-4. **Add opt-in policy groups.** Performance, complexity, style, and migration
-   rules require an explicit consumer and preset-specific cost and noise
-   evidence. They do not justify increasing default analysis cost.
+4. **Add opt-in policy groups.** Performance, complexity, style, pedantic,
+   restriction, and migration rules require an explicit consumer and
+   group-specific cost and noise evidence. Restriction remains rule-by-rule;
+   migration requires a target. None justifies increasing default analysis
+   cost.
 
 Formatter-owned layout never enters this queue. A semantic transformation is
 considered through the fix coordinator, not hidden inside formatting.

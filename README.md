@@ -45,8 +45,9 @@ inside formatting, and layout policy is not duplicated as lint noise.
   checker, package loader, CFG, SSA, and `go/analysis` ecosystem.
 - **Deterministic layout:** a document IR selects one flat or canonical broken
   form with bounded fit work.
-- **High-signal linting:** correctness is the default preset; suspicious,
-  performance, complexity, style, and migration policy remain explicit.
+- **High-signal linting:** correctness is the default preset group;
+  suspicious, performance, complexity, style, and pedantic groups are
+  composable opt-ins, while restriction rules remain individually selected.
 - **Demand-driven analysis:** syntax-only work does not construct types, CFG,
   or SSA; deeper representations are shared within one package run.
 - **Safe source changes:** fixes carry source identity and safety class;

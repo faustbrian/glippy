@@ -24,7 +24,15 @@ func (c Config) CanonicalBytes() []byte {
 	} else {
 		encoded = append(encoded, 0)
 	}
-	encoded = appendCanonicalString(encoded, string(c.Lint.Preset))
+	encoded = binary.AppendUvarint(encoded, uint64(len(c.Lint.Presets)))
+	for _, preset := range c.Lint.Presets {
+		encoded = appendCanonicalString(encoded, string(preset))
+	}
+	if c.Lint.WarningsAsErrors {
+		encoded = append(encoded, 1)
+	} else {
+		encoded = append(encoded, 0)
+	}
 
 	ruleIDs := make([]string, 0, len(c.Lint.Rules))
 	for ruleID := range c.Lint.Rules {

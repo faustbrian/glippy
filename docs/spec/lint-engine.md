@@ -217,18 +217,21 @@ with network access enabled. The standard Go command invoked by `go/packages`,
 including its selected cgo behavior, is the only subprocess boundary currently
 admitted; cache ownership remains the caller's responsibility.
 
-The default `correctness` preset is limited to incorrect, unsafe, ineffective,
-misleading, or highly suspicious behavior with measured signal. Suspicious,
-performance, complexity, style, and migration groups are opt-in until their
-admission evidence supports a compatibility change.
+The default `correctness` preset group is limited to incorrect, unsafe,
+ineffective, misleading, or highly suspicious behavior with measured signal.
+Suspicious, performance, complexity, style, and pedantic groups are composable
+opt-ins. Restriction rules are selected individually rather than as a group;
+migration rules require an explicit target contract.
 
-The Phase 3 file driver MUST resolve the preset and overrides once, record the
-maximum enabled requirement, execute the shared syntax runner once, and apply
-the source-versioned suppression index before returning reporter-facing
-records. Unsuppressed diagnostics, suppressed diagnostics, unused directives,
-and suppression problems MUST remain distinct outcomes. The file driver MUST
-reject every enabled non-syntax rule rather than skip it or construct a
-representation speculatively; typed work uses the separate package driver.
+The file driver MUST union selected preset groups, apply explicit rule
+overrides, escalate warnings when configured, and resolve typed options once.
+It MUST then record the maximum enabled requirement, execute the shared syntax
+runner once, and apply the source-versioned suppression index before returning
+reporter-facing records. Unsuppressed diagnostics, suppressed diagnostics,
+unused directives, and suppression problems MUST remain distinct outcomes.
+The file driver MUST reject every enabled non-syntax rule rather than skip it
+or construct a representation speculatively; typed work uses the separate
+package driver.
 
 The syntax-only CLI check MUST bind every discovered file to its selected typed
 configuration before analysis, process normalized file paths deterministically,

@@ -26,6 +26,15 @@ type Registry struct {
 	entries map[string]registryEntry
 }
 
+// ResolveOptions is one complete, immutable rule-selection policy.
+type ResolveOptions struct {
+	Presets []Preset
+	Overrides map[string]Severity
+	RuleOptions map[string]OptionSet
+	SourceGoVersion string
+	WarningsAsErrors bool
+}
+
 // CloneMetadata returns an independent copy of rule metadata.
 func CloneMetadata(metadata Metadata) Metadata {
 	return cloneMetadata(metadata)
@@ -134,17 +143,47 @@ func (r *Registry) ResolveConfiguredForGoVersion(
 	options map[string]OptionSet,
 	sourceGoVersion string,
 ) ([]Selection, error) {
+	return r.ResolveOptions(
+		ResolveOptions{
+			Presets: []Preset{preset},
+			Overrides: overrides,
+			RuleOptions: options,
+			SourceGoVersion: sourceGoVersion,
+		},
+	)
+}
+
+// ResolveOptions composes preset groups, applies explicit rule policy, and
+// returns one ID-ordered selection. Restriction rules remain individually
+// selectable through overrides, while migration requires a separate target
+// contract before its group can be selected.
+func (r *Registry) ResolveOptions(options ResolveOptions) ([]Selection, error) {
 	if r == nil {
 		return nil, fmt.Errorf("resolve requires a registry")
 	}
+	sourceGoVersion := options.SourceGoVersion
 	if sourceGoVersion != "" &&
 		(!version.IsValid(sourceGoVersion) ||
 			version.Lang(sourceGoVersion) != sourceGoVersion) {
 		return nil, fmt.Errorf("invalid source Go version %q", sourceGoVersion)
 	}
-	if !validPreset(preset) {
-		return nil, fmt.Errorf("unknown preset %q", preset)
+	selectedPresets := make(map[Preset]struct{}, len(options.Presets))
+	for _, preset := range options.Presets {
+		if !validPreset(preset) {
+			return nil, fmt.Errorf("unknown preset %q", preset)
+		}
+		if preset == PresetRestriction {
+			return nil, fmt.Errorf("restriction preset must be enabled rule by rule")
+		}
+		if preset == PresetMigration {
+			return nil, fmt.Errorf("migration preset requires an explicit target")
+		}
+		if _, duplicate := selectedPresets[preset]; duplicate {
+			return nil, fmt.Errorf("duplicate preset %q", preset)
+		}
+		selectedPresets[preset] = struct{}{}
 	}
+	overrides := options.Overrides
 	overrideIDs := make([]string, 0, len(overrides))
 	for id := range overrides {
 		overrideIDs = append(overrideIDs, id)
@@ -159,8 +198,9 @@ func (r *Registry) ResolveConfiguredForGoVersion(
 			return nil, fmt.Errorf("invalid severity %q for rule %q", severity, id)
 		}
 	}
-	optionRuleIDs := make([]string, 0, len(options))
-	for id := range options {
+	ruleOptions := options.RuleOptions
+	optionRuleIDs := make([]string, 0, len(ruleOptions))
+	for id := range ruleOptions {
 		optionRuleIDs = append(optionRuleIDs, id)
 	}
 	sort.Strings(optionRuleIDs)
@@ -169,7 +209,7 @@ func (r *Registry) ResolveConfiguredForGoVersion(
 		if !found {
 			return nil, fmt.Errorf("unknown rule %q in rule options", id)
 		}
-		if err := validateOptionSet(entry.metadata, options[id]); err != nil {
+		if err := validateOptionSet(entry.metadata, ruleOptions[id]); err != nil {
 			return nil, err
 		}
 	}
@@ -177,8 +217,11 @@ func (r *Registry) ResolveConfiguredForGoVersion(
 	for _, id := range r.ids {
 		metadata := r.entries[id].metadata
 		severity := SeverityOff
-		if slices.Contains(metadata.Presets, preset) {
-			severity = metadata.DefaultSeverity
+		for _, preset := range metadata.Presets {
+			if _, enabled := selectedPresets[preset]; enabled {
+				severity = metadata.DefaultSeverity
+				break
+			}
 		}
 		if override, found := overrides[id]; found {
 			severity = override
@@ -186,11 +229,14 @@ func (r *Registry) ResolveConfiguredForGoVersion(
 		if severity == SeverityOff {
 			continue
 		}
+		if options.WarningsAsErrors && severity == SeverityWarn {
+			severity = SeverityError
+		}
 		if sourceGoVersion != "" &&
 			version.Compare(sourceGoVersion, "go" + metadata.MinimumGoVersion) < 0 {
 			continue
 		}
-		configured := options[id]
+		configured := ruleOptions[id]
 		resolvedValues := make(map[string]OptionValue, len(metadata.Options))
 		for _, option := range metadata.Options {
 			value, found := configured.values[option.Name]
@@ -474,6 +520,8 @@ func validPreset(value Preset) bool {
 		PresetPerformance,
 		PresetComplexity,
 		PresetStyle,
+		PresetPedantic,
+		PresetRestriction,
 		PresetMigration:
 		return true
 	default:

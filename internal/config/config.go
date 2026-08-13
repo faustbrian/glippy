@@ -45,6 +45,9 @@ const (
 	PresetPerformance = rules.PresetPerformance
 	PresetComplexity = rules.PresetComplexity
 	PresetStyle = rules.PresetStyle
+	PresetPedantic = rules.PresetPedantic
+	PresetRestriction = rules.PresetRestriction
+	PresetMigration = rules.PresetMigration
 )
 
 // Severity controls whether and how a lint rule reports.
@@ -79,9 +82,10 @@ type Analysis struct {
 	CGOEnabled bool
 }
 
-// Lint contains the selected preset and explicit rule overrides.
+// Lint contains the selected preset groups and explicit rule policy.
 type Lint struct {
-	Preset Preset
+	Presets []Preset
+	WarningsAsErrors bool
 	Rules map[string]Severity
 	RuleOptions map[string]rules.OptionSet
 	Suppressions Suppressions
@@ -150,6 +154,8 @@ type analysisConfig struct {
 
 type lintConfig struct {
 	Preset *string `toml:"preset"`
+	Presets []string `toml:"presets"`
+	WarningsAsErrors *bool `toml:"warnings-as-errors"`
 	Rules map[string]string `toml:"rules"`
 	RuleOptions map[string]map[string]any `toml:"rule-options"`
 	Suppressions suppressionConfig `toml:"suppressions"`
@@ -177,7 +183,7 @@ func Defaults() Config {
 			CGOEnabled: build.Default.CgoEnabled,
 		},
 		Lint: Lint{
-			Preset: PresetCorrectness,
+			Presets: []Preset{PresetCorrectness},
 			Rules: make(map[string]Severity),
 			RuleOptions: make(map[string]rules.OptionSet),
 		},
@@ -266,12 +272,65 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 	if decoded.Analysis.CGOEnabled != nil {
 		result.Analysis.CGOEnabled = *decoded.Analysis.CGOEnabled
 	}
+	if decoded.Lint.Preset != nil && decoded.Lint.Presets != nil {
+		return Config{}, semanticError(
+			path,
+			"lint.preset and lint.presets cannot both be configured",
+		)
+	}
 	if decoded.Lint.Preset != nil {
 		preset := Preset(*decoded.Lint.Preset)
-		if !validPreset(preset) {
+		if !validSelectablePreset(preset) {
 			return Config{}, semanticError(path, "unknown lint preset %q", preset)
 		}
-		result.Lint.Preset = preset
+		result.Lint.Presets = []Preset{preset}
+	}
+	if decoded.Lint.Presets != nil {
+		result.Lint.Presets = make([]Preset, 0, len(decoded.Lint.Presets))
+		seen := make(map[Preset]struct{}, len(decoded.Lint.Presets))
+		for _, configured := range decoded.Lint.Presets {
+			preset := Preset(configured)
+			switch preset {
+			case PresetRestriction:
+				return Config{}, semanticError(
+					path,
+					"lint preset %q must be enabled rule by rule",
+					preset,
+				)
+			case PresetMigration:
+				return Config{}, semanticError(
+					path,
+					"lint preset %q requires an explicit migration target",
+					preset,
+				)
+			}
+			if !validSelectablePreset(preset) {
+				return Config{}, semanticError(
+					path,
+					"unknown lint preset %q",
+					preset,
+				)
+			}
+			if _, duplicate := seen[preset]; duplicate {
+				return Config{}, semanticError(
+					path,
+					"duplicate lint preset %q",
+					preset,
+				)
+			}
+			seen[preset] = struct{}{}
+			result.Lint.Presets = append(result.Lint.Presets, preset)
+		}
+		sort.Slice(
+			result.Lint.Presets,
+			func(first, second int) bool {
+				return presetOrder(result.Lint.Presets[first]) <
+					presetOrder(result.Lint.Presets[second])
+			},
+		)
+	}
+	if decoded.Lint.WarningsAsErrors != nil {
+		result.Lint.WarningsAsErrors = *decoded.Lint.WarningsAsErrors
 	}
 	if decoded.Lint.Suppressions.RequireReason != nil {
 		result.Lint.Suppressions.RequireReason = *decoded.Lint.Suppressions.RequireReason
@@ -464,12 +523,36 @@ func locatedDecodeError(path string, cause error) error {
 	return result
 }
 
-func validPreset(value Preset) bool {
+func validSelectablePreset(value Preset) bool {
 	switch value {
-	case PresetCorrectness, PresetSuspicious, PresetPerformance, PresetComplexity, PresetStyle:
+	case PresetCorrectness,
+		PresetSuspicious,
+		PresetPerformance,
+		PresetComplexity,
+		PresetStyle,
+		PresetPedantic:
 		return true
 	default:
 		return false
+	}
+}
+
+func presetOrder(value Preset) int {
+	switch value {
+	case PresetCorrectness:
+		return 0
+	case PresetSuspicious:
+		return 1
+	case PresetPerformance:
+		return 2
+	case PresetComplexity:
+		return 3
+	case PresetStyle:
+		return 4
+	case PresetPedantic:
+		return 5
+	default:
+		return 6
 	}
 }
 

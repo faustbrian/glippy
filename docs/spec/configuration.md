@@ -34,7 +34,8 @@ goarch = "amd64"
 cgo-enabled = true
 
 [lint]
-preset = "correctness"
+presets = ["correctness"]
+warnings-as-errors = false
 
 [lint.suppressions]
 require-reason = false
@@ -50,6 +51,26 @@ enabled = false
 max-entries = 4096
 max-bytes = 536870912
 ```
+
+`lint.presets` MUST be an order-independent list of unique preset groups. Gox
+MUST canonicalize configured groups in this order: `correctness`, `suspicious`,
+`performance`, `complexity`, `style`, then `pedantic`. Omission defaults to
+`["correctness"]`; an explicitly empty list selects no group and permits only
+rules enabled through `lint.rules`. A rule belonging to any selected group is
+enabled once at its metadata severity before explicit rule overrides apply.
+
+`lint.preset` remains a compatibility alias for selecting one group. A
+configuration MUST NOT specify both singular and plural fields. A `restriction`
+rule MUST be enabled only through its exact ID in `lint.rules`; the restriction
+group MUST NOT be selected wholesale. The `migration` group remains unavailable
+until configuration supplies an explicit migration target. Unknown groups,
+duplicates, wholesale `restriction`, and untargeted `migration` MUST fail.
+
+`lint.warnings-as-errors` MUST default to `false`. When `true`, Gox MUST
+escalate every enabled rule whose final severity after group selection and
+per-rule overrides is `warn` to `error`. It MUST NOT enable an `off` rule or
+alter an existing `error`. The resolved escalation policy and normalized group
+set MUST contribute to configuration and cache identity.
 
 `lint.rule-options` MUST use one rule-ID table per configured rule. The
 documented canonical spelling quotes the rule ID even where TOML also permits a

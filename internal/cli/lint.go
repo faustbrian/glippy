@@ -410,12 +410,11 @@ func prepareLintInputPlans(
 			if err != nil {
 				return nil, exitCode, err
 			}
-			selected, err := registry.ResolveConfiguredForGoVersion(
-				options.analysis.Preset,
-				options.analysis.Overrides,
-				options.analysis.RuleOptions,
-				options.sourceGoVersion,
-			)
+			resolution, err := options.analysis.RuleResolution()
+			if err != nil {
+				return nil, ExitInvalidInvocation, err
+			}
+			selected, err := registry.ResolveOptions(resolution)
 			if err != nil {
 				return nil, ExitInvalidInvocation, err
 			}
@@ -657,7 +656,8 @@ func lintOptionsForSelection(
 	return lintTaskOptions{
 		analysis: analysis.RunOptions{
 			SourceGoVersion: sourceGoVersion,
-			Preset: loaded.Lint.Preset,
+			Presets: loaded.Lint.Presets,
+			WarningsAsErrors: loaded.Lint.WarningsAsErrors,
 			Overrides: loaded.Lint.Rules,
 			RuleOptions: loaded.Lint.RuleOptions,
 			RequireSuppressionReason: loaded.Lint.Suppressions.RequireReason,

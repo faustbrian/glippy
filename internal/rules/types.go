@@ -59,6 +59,8 @@ const (
 	PresetPerformance Preset = "performance"
 	PresetComplexity Preset = "complexity"
 	PresetStyle Preset = "style"
+	PresetPedantic Preset = "pedantic"
+	PresetRestriction Preset = "restriction"
 	PresetMigration Preset = "migration"
 )
 

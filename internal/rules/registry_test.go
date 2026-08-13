@@ -321,6 +321,62 @@ func TestRegistryResolvesPresetOverridesAndMaximumRequirement(t *testing.T) {
 	}
 }
 
+func TestRegistryComposesPresetGroupsAndEscalatesWarnings(t *testing.T) {
+	t.Parallel()
+
+	correctness := validMetadata("correctness-rule")
+	style := validMetadata("style-rule")
+	style.Presets = []rules.Preset{rules.PresetStyle}
+	pedantic := validMetadata("pedantic-rule")
+	pedantic.Presets = []rules.Preset{rules.PresetPedantic}
+	restriction := validMetadata("restriction-rule")
+	restriction.Presets = []rules.Preset{rules.PresetRestriction}
+	registry, err := rules.NewRegistry(
+		metadataRule{metadata: restriction},
+		metadataRule{metadata: style},
+		metadataRule{metadata: pedantic},
+		metadataRule{metadata: correctness},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	selection, err := registry.ResolveOptions(
+		rules.ResolveOptions{
+			Presets: []rules.Preset{rules.PresetCorrectness, rules.PresetPedantic},
+			Overrides: map[string]rules.Severity{
+				"restriction-rule": rules.SeverityWarn,
+				"style-rule": rules.SeverityOff,
+			},
+			WarningsAsErrors: true,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selection) != 3 ||
+		selection[0].ID != "correctness-rule" ||
+		selection[0].Severity != rules.SeverityError ||
+		selection[1].ID != "pedantic-rule" ||
+		selection[1].Severity != rules.SeverityError ||
+		selection[2].ID != "restriction-rule" ||
+		selection[2].Severity != rules.SeverityError {
+		t.Fatalf("ResolveOptions() = %#v", selection)
+	}
+
+	for _, presets := range
+		[][]rules.Preset{
+			{rules.PresetRestriction},
+			{rules.PresetMigration},
+			{rules.PresetStyle, rules.PresetStyle},
+		} {
+		if _, err := registry.ResolveOptions(rules.ResolveOptions{Presets: presets});
+			err == nil {
+			t.Fatalf("ResolveOptions() accepted preset selection %v", presets)
+		}
+	}
+}
+
 func TestRegistryReportsInvalidOverridesInRuleIDOrder(t *testing.T) {
 	t.Parallel()
 

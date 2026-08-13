@@ -110,8 +110,12 @@ gox lint --reporter=json ./...
 ```
 
 Lint is non-writing unless a fix-class flag is present. The default
-`correctness` preset enables the current high-signal default rules. Other
-presets and per-rule severities are selected in `.gox.toml`. Use
+`correctness` preset group enables the current high-signal default rules.
+Projects compose additional groups with `lint.presets`, escalate every
+resolved warning with `lint.warnings-as-errors`, and retain final per-rule
+control through `lint.rules`. The legacy singular `lint.preset` remains
+accepted for v0.1 configuration compatibility but cannot be combined with
+`lint.presets`. Use
 `gox explain <rule>` to inspect a rule's prerequisites, configuration, fix
 safety, examples, and known limitations. The
 [suppression reference](suppressions.md) defines exact-rule waivers, scopes,

@@ -5,4 +5,4 @@ line-width = 100
 tab-width = 8
 
 [lint]
-preset = "correctness"
+presets = ["correctness"]

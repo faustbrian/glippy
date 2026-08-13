@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -126,7 +127,11 @@ func TestParseRequiresVersionAndUsesOptionalDefaults(t *testing.T) {
 						config.DefaultTabWidth,
 					)
 				}
-				if got.Lint.Preset != config.PresetCorrectness ||
+				if !slices.Equal(
+					got.Lint.Presets,
+					[]config.Preset{config.PresetCorrectness},
+				) ||
+					got.Lint.WarningsAsErrors ||
 					len(got.Lint.Rules) != 0 {
 					t.Fatalf(
 						"Parse() lint defaults = %#v, want correctness with no overrides",
@@ -143,6 +148,122 @@ func TestParseRequiresVersionAndUsesOptionalDefaults(t *testing.T) {
 					got.Cache.MaxEntries != config.DefaultCacheMaxEntries ||
 					got.Cache.MaxBytes != config.DefaultCacheMaxBytes {
 					t.Fatalf("Parse() cache defaults = %#v", got.Cache)
+				}
+			},
+		)
+	}
+}
+
+func TestParseSupportsComposablePresetsAndWarningEscalation(t *testing.T) {
+	t.Parallel()
+
+	configured, err := config.Parse(
+		"project/.gox.toml",
+		[]byte(
+			`version = 1
+
+[lint]
+presets = ["pedantic", "correctness", "suspicious"]
+warnings-as-errors = true
+`,
+		),
+		config.ParseOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []config.Preset{
+		config.PresetCorrectness,
+		config.PresetSuspicious,
+		config.PresetPedantic,
+	}
+	if !slices.Equal(configured.Lint.Presets, want) || !configured.Lint.WarningsAsErrors {
+		t.Fatalf(
+			"Parse() lint = %#v, want presets %v with warning escalation",
+			configured.Lint,
+			want,
+		)
+	}
+
+	legacy, err := config.Parse(
+		"legacy/.gox.toml",
+		[]byte("version = 1\n[lint]\npreset = \"style\"\n"),
+		config.ParseOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(legacy.Lint.Presets, []config.Preset{config.PresetStyle}) {
+		t.Fatalf("legacy preset resolved to %v, want style", legacy.Lint.Presets)
+	}
+}
+
+func TestParseExplicitEmptyPresetSetDisablesAllGroups(t *testing.T) {
+	t.Parallel()
+
+	configured, err := config.Parse(
+		"project/.gox.toml",
+		[]byte("version = 1\n[lint]\npresets = []\n"),
+		config.ParseOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if configured.Lint.Presets == nil || len(configured.Lint.Presets) != 0 {
+		t.Fatalf("Parse() presets = %#v, want explicit empty set", configured.Lint.Presets)
+	}
+}
+
+func TestParseRejectsAmbiguousOrInvalidPresetGroups(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		input string
+		want string
+	}{
+		{
+			name: "singular and plural",
+			input: "version = 1\n[lint]\npreset = \"correctness\"\npresets = [\"style\"]\n",
+			want: "lint.preset and lint.presets cannot both be configured",
+		},
+		{
+			name: "duplicate",
+			input: "version = 1\n[lint]\npresets = [\"style\", \"style\"]\n",
+			want: "duplicate lint preset \"style\"",
+		},
+		{
+			name: "restriction wholesale",
+			input: "version = 1\n[lint]\npresets = [\"restriction\"]\n",
+			want: "lint preset \"restriction\" must be enabled rule by rule",
+		},
+		{
+			name: "migration without target",
+			input: "version = 1\n[lint]\npresets = [\"migration\"]\n",
+			want: "lint preset \"migration\" requires an explicit migration target",
+		},
+		{
+			name: "unknown",
+			input: "version = 1\n[lint]\npresets = [\"everything\"]\n",
+			want: "unknown lint preset \"everything\"",
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				_, err := config.Parse(
+					"project/.gox.toml",
+					[]byte(test.input),
+					config.ParseOptions{},
+				)
+				if err == nil || !strings.Contains(err.Error(), test.want) {
+					t.Fatalf(
+						"Parse() error = %v, want containing %q",
+						err,
+						test.want,
+					)
 				}
 			},
 		)
@@ -349,6 +470,34 @@ enabled = true
 	}
 }
 
+func TestCanonicalBytesNormalizePresetOrderAndRetainWarningEscalation(t *testing.T) {
+	t.Parallel()
+
+	first, err := config.Parse(
+		"first.toml",
+		[]byte("version = 1\n[lint]\npresets = [\"style\", \"correctness\"]\n"),
+		config.ParseOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := config.Parse(
+		"second.toml",
+		[]byte("version = 1\n[lint]\npresets = [\"correctness\", \"style\"]\n"),
+		config.ParseOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first.CanonicalBytes(), second.CanonicalBytes()) {
+		t.Fatal("preset source order changed canonical configuration identity")
+	}
+	second.Lint.WarningsAsErrors = true
+	if bytes.Equal(first.CanonicalBytes(), second.CanonicalBytes()) {
+		t.Fatal("warning escalation was omitted from canonical configuration identity")
+	}
+}
+
 func TestParseReportsRuleErrorsDeterministically(t *testing.T) {
 	t.Parallel()
 
@@ -378,7 +527,8 @@ goarch = "amd64"
 cgo-enabled = true
 
 [lint]
-preset = "suspicious"
+presets = ["suspicious", "pedantic"]
+warnings-as-errors = true
 
 [lint.rules]
 known-rule = "warn"
@@ -396,8 +546,12 @@ disabled-rule = "off"
 	if got.Version != 1 || got.Format.LineWidth != 88 || got.Format.TabWidth != 4 {
 		t.Fatalf("Parse() format = %#v, want version 1, width 88, tab width 4", got)
 	}
-	if got.Lint.Preset != config.PresetSuspicious {
-		t.Fatalf("Parse() preset = %q, want %q", got.Lint.Preset, config.PresetSuspicious)
+	if !slices.Equal(
+		got.Lint.Presets,
+		[]config.Preset{config.PresetSuspicious, config.PresetPedantic},
+	) ||
+		!got.Lint.WarningsAsErrors {
+		t.Fatalf("Parse() lint = %#v", got.Lint)
 	}
 	if strings.Join(got.Analysis.BuildTags, ",") != "integration,selected" ||
 		got.Analysis.GOOS != "linux" ||
