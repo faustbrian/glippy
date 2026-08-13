@@ -6,7 +6,7 @@ The maintainer must decide whether the output below is an acceptable canonical
 layout for `go-libraries/pkg/prompts`. Approval means:
 
 1. accept the Gox dialect for this module;
-2. apply the formatter-only migration as one reviewable change; and
+2. approve the dedicated migration commit as one reviewable change; and
 3. replace the module's gofmt-based formatting authority with Gox in CI,
    editor, and contributor workflows.
 
@@ -16,19 +16,23 @@ hunk so the formatter contract can be corrected before another migration.
 
 ## Review Artifact
 
-The baseline is immutable `go-libraries` revision
-`c60393a86b17b070b699805d1b8df99b87a7bfa6`. The formatter selects 77 Go files
+The baseline is immutable local `go-libraries` `main` revision
+`8c9c1e7abb3d3d99bf7c950f1acc771fcd0dcabf`. The formatter selects 77 Go files
 and changes 65: 29 production files, 34 test files, and two Go maintenance
-scripts. The patch contains 7,625 insertions and 3,599 deletions and has
-SHA-256:
+scripts. The Go-only patch contains 7,596 insertions and 3,591 deletions and
+has SHA-256:
 
 ```text
-14b23895b77a43531833bd11f5ec2428e878e26d98a81ab649d8822e392a0c1e
+1510f2002a6ac0599741d5a35f875ea40aeb1f34de3c237d550c3d59d6078638
 ```
 
-The patch is intentionally not committed into Gox: it contains a large copy of
-external source and remains a disposable adoption artifact. The live
-`go-libraries` worktree has not been modified.
+The coordinated migration also changes the module Makefile, lint configuration,
+README, and changelog. The complete 69-file patch contains 7,608 insertions and
+3,598 deletions and has SHA-256
+`f89e966a6ab29aabb244afc8dcc6124e57ff7c29fd004e612aa5c762beb072d6`.
+It is committed as `d6b0fba81ec31b7ea9134d8aa6acaf481c933e38` on the isolated
+`feature/gox-prompts-adoption` branch. The original dirty `go-libraries`
+checkout was not modified.
 
 ## Intentional Layout Classes
 
@@ -137,23 +141,31 @@ remain present in the formatted result.
 
 ## Current Verification
 
-Gox revision `88c01b7` reproduced every one of the 77 formatted files
-byte-for-byte from the immutable baseline. The formatted snapshot currently
+Gox revision `d84842b08ff9009a778edf7d7f5924abda6cb52d` produced a clean
+second-format fixed point from the immutable baseline. The migration currently
 passes:
 
-- `go test ./... -count=1`;
-- `go test -race ./... -count=1`;
-- `go vet ./...`; and
-- `go mod tidy -diff`.
+- the pinned module `format-check`;
+- module tests, race tests, vet, and `go mod tidy -diff`;
+- the module documentation gate;
+- the configured golangci-lint gate with zero findings; and
+- the nested comparison module tests through the repository workspace.
 
-The output is a clean Gox fixed point. Sixty-three of the 77 files are not
-gofmt fixed points, so adoption must replace the existing gofmt-based
-`format-check`; running both formatters would create perpetual diffs.
+The first lint run found that width-driven breaks changed physical-line
+ownership for eight external `//nolint` suppressions. Gox revision `d84842b`
+fixes that source-fidelity defect and rejects unsupported ownership movement;
+the refreshed migration preserves all eight suppressions and the lint gate now
+passes. Sixty-three of the 77 files are not gofmt fixed points, so the commit
+replaces the previous gofmt and goimports authorities rather than running
+competing formatters.
 
 These checks prove deterministic reproduction, the module's current executable
-contracts, race instrumentation, vet acceptance, and unchanged module
-metadata. They do not replace the required human judgment that this amount and
-shape of vertical expansion is readable enough for daily use.
+contracts, race instrumentation, analyzer acceptance, and unchanged module
+metadata. The nested comparison module's standalone tidy command cannot resolve
+its unreleased `pkg/prompts v0.0.0` dependency without the repository workspace;
+no module metadata changed. None of this replaces the required human judgment
+that this amount and shape of vertical expansion is readable enough for daily
+use.
 
 ## Suggested Review Order
 

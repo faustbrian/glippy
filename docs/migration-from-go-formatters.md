@@ -101,19 +101,20 @@ leave Gox-formatted source under a gofmt, gofumpt, or golines gate.
 
 ## Current Dogfood Evidence
 
-A disposable migration of the external `pkg/prompts` module changed 65 of 77
-files and reached a zero-difference second Gox check. Its tests, race tests,
-vet, and module-metadata check passed. The current formatter retains one
-source-authored blank line between statement groups, including all 168 exact
-`t.Parallel()` grouping gaps in this snapshot. The repository's existing
-gofmt-based format check remains incompatible with the migration by the
-documented fixed-point decision.
+A dedicated migration of the external `pkg/prompts` module changes 65 of 77 Go
+files and reaches a zero-difference second Gox check. Its tests, race tests,
+vet, module-metadata, documentation, lint, and nested comparison test gates
+pass. The current formatter retains one source-authored blank line between
+statement groups, including all 168 exact `t.Parallel()` grouping gaps in this
+snapshot. Sixty-three files are not gofmt fixed points, so the migration
+replaces the module's gofmt and goimports authorities.
 
 The maintainer has selected `go-libraries/pkg/prompts` as the adoption target,
-but has not reviewed or approved that disposable diff. The migration must be
-reproduced from a current immutable revision and presented as a dedicated
-reviewable change. The earlier rehearsal demonstrates why passing code gates
-does not resolve competing formatter authority. See the
+but has not reviewed or approved the dedicated
+`feature/gox-prompts-adoption` commit. The first lint run exposed and drove a
+Gox fix for external `//nolint` physical-line ownership; the refreshed lint
+gate passes. Passing code gates still does not establish that the output is
+readable enough for daily use. See the
 [external dogfood record](research/external-dogfood-2026-08-11.md) for the
 bounded evidence.
 The dedicated
