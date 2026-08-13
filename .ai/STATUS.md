@@ -1,6 +1,6 @@
 # Gox Development Status
 
-- Progress: 90%
+- Progress: 95%
 - Current phase: Phase 5, ecosystem integration and stable release
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
@@ -1125,3 +1125,14 @@ second documented repository adoption alongside the maintainer-approved
 part of the maintainer's pre-tag release-candidate review rather than a reopened
 Phase 2 gate. Overall progress remains 90% until the complete Phase 5
 integration and release-candidate audit is recorded.
+
+The Phase 5 integration milestone is now complete at exact revision `aa07ff4`.
+Repository-owned GitHub Actions run `31686057237` passed the full test, race,
+vet, tidy-diff, build, and non-mutating combined-check sequence from a fresh
+checkout and empty Go caches. Editor stdin/stdout behavior, CI and pre-commit
+adoption, deterministic release construction, tag-only GitHub publication and
+artifact attestation, shell completion, formatter migration, support, security,
+and compatibility surfaces are implemented and documented. This advances
+overall progress to 95%. Final naming, release-candidate corpus and fuzz gates,
+fresh four-runner performance evidence, the requirement-level acceptance audit,
+and the maintainer's final pre-tag review remain open.
