@@ -26,6 +26,7 @@ import (
 
 const (
 	productName = "gox"
+	projectLicenseName = "LICENSE"
 	thirdPartyNoticesName = "THIRD_PARTY_LICENSES.txt"
 	manifestSchema = 1
 	linkedVersion = "github.com/faustbrian/gox/internal/version.linked"
@@ -75,6 +76,7 @@ type Manifest struct {
 }
 
 type releaseMaterials struct {
+	projectLicense []byte
 	thirdPartyNotices []byte
 }
 
@@ -238,30 +240,34 @@ func Build(ctx context.Context, options Options) (manifest Manifest, resultErr e
 }
 
 func loadReleaseMaterials(root string) (releaseMaterials, error) {
-	path := filepath.Join(root, thirdPartyNoticesName)
+	projectLicense, err := loadReleaseMaterial(root, projectLicenseName)
+	if err != nil {
+		return releaseMaterials{}, err
+	}
+	thirdPartyNotices, err := loadReleaseMaterial(root, thirdPartyNoticesName)
+	if err != nil {
+		return releaseMaterials{}, err
+	}
+	return releaseMaterials{
+		projectLicense: projectLicense,
+		thirdPartyNotices: thirdPartyNotices,
+	}, nil
+}
+
+func loadReleaseMaterial(root, name string) ([]byte, error) {
+	path := filepath.Join(root, name)
 	information, err := os.Lstat(path)
 	if err != nil {
-		return releaseMaterials{}, fmt.Errorf(
-			"inspect release material %s: %w",
-			thirdPartyNoticesName,
-			err,
-		)
+		return nil, fmt.Errorf("inspect release material %s: %w", name, err)
 	}
 	if !information.Mode().IsRegular() {
-		return releaseMaterials{}, fmt.Errorf(
-			"release material %s is not a regular file",
-			thirdPartyNoticesName,
-		)
+		return nil, fmt.Errorf("release material %s is not a regular file", name)
 	}
 	contents, err := os.ReadFile(path)
 	if err != nil {
-		return releaseMaterials{}, fmt.Errorf(
-			"read release material %s: %w",
-			thirdPartyNoticesName,
-			err,
-		)
+		return nil, fmt.Errorf("read release material %s: %w", name, err)
 	}
-	return releaseMaterials{thirdPartyNotices: contents}, nil
+	return contents, nil
 }
 
 func exportSource(ctx context.Context, options Options) (result string, resultErr error) {
@@ -743,6 +749,7 @@ func buildTarget(
 		&encoded,
 		[]archiveEntry{
 			{name: productName, mode: 0o755, path: binary},
+			{name: projectLicenseName, mode: 0o644, content: materials.projectLicense},
 			{
 				name: thirdPartyNoticesName,
 				mode: 0o644,

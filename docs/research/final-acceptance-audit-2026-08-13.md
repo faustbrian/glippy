@@ -3,12 +3,11 @@
 ## Decision
 
 The previously recorded candidate satisfies the formatter, linter, fixer,
-platform, and performance gates. Overall progress remains 95% because
-project-license selection and packaging, refreshed native reproducibility
-evidence, public-name risk acceptance, maintainer review, and the authorized
-tag-driven provenance/publication transaction are still pending. Deterministic
-third-party notice packaging is implemented but requires fresh candidate
-evidence with the eventual project license.
+platform, and performance gates. Overall progress remains 95% because refreshed
+native reproducibility evidence, public-name risk acceptance, maintainer
+review, and the authorized tag-driven provenance/publication transaction are
+still pending. The selected 0BSD project license and deterministic third-party
+notices are packaged but require fresh candidate evidence.
 
 `Proven` means the current candidate has direct implementation, behavioral, or
 release evidence. `Ready` means the implementation is complete but its
@@ -74,7 +73,7 @@ means a required maintainer decision remains.
 | Release artifacts are reproducible and checksummed | Pending | Local release tests prove deterministic notice-bearing archives and complete checksums; the earlier four-runner result predates the archive-content change and must be refreshed |
 | Release provenance and publication | Ready | Tag-only pinned GitHub workflow uses OIDC artifact attestations and GitHub Releases; activation is prohibited before maintainer review |
 | Naming and module-path audit | Pending | Technical refresh documents substantial exact-name collisions; final maintainer risk acceptance is required |
-| Project and third-party licensing | Pending | Release archives deterministically reproduce the tracked MIT, BSD, and Go patent notices and reject their absence; the repository still has no maintainer-selected project `LICENSE` |
+| Project and third-party licensing | Proven | The tracked SPDX `0BSD` project license plus MIT, BSD, and Go patent notices are deterministic archive entries, and the builder rejects either license artifact when absent |
 | Supported-version and vulnerability policies | Proven | `docs/supported-go-versions.md`, `docs/support-policy.md`, and `SECURITY.md` |
 | Final corpus, fuzz, race, integration, and performance | Proven | Candidate CI `31690175325`, twelve fuzz campaigns, pinned corpus, and release-budget run `31690694813` |
 | Multiple real repositories have documented dogfood adoption | Proven | Gox self-adoption and maintainer-approved `pkg/prompts` coordinated migration |
@@ -98,8 +97,7 @@ means a required maintainer decision remains.
 ## Release Boundary
 
 This audit does not convert a development revision into a release. The final
-sequence remains: project-license decision and packaging, refreshed candidate
-evidence, maintainer name-risk decision, maintainer candidate review, explicit
-tag authorization, then successful GitHub provenance and publication. Any code
-or contract change before that sequence invalidates the affected candidate
-evidence and requires a bounded rerun.
+sequence remains: refreshed candidate evidence, maintainer name-risk decision,
+maintainer candidate review, explicit tag authorization, then successful GitHub
+provenance and publication. Any code or contract change before that sequence
+invalidates the affected candidate evidence and requires a bounded rerun.

@@ -73,10 +73,19 @@ func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	license, err := os.ReadFile(filepath.Join(root, projectLicenseName))
+	if err != nil {
+		t.Fatal(err)
+	}
 	names := []string{"gox_v0.0.0-test_manifest.json", "gox_v0.0.0-test_checksums.txt"}
 	for _, artifact := range manifests[0].Artifacts {
 		names = append(names, artifact.File)
-		verifyArchiveNotices(t, filepath.Join(outputs[0], artifact.File), notices)
+		verifyArchiveMaterials(
+			t,
+			filepath.Join(outputs[0], artifact.File),
+			license,
+			notices,
+		)
 	}
 	for _, name := range names {
 		first, err := os.ReadFile(filepath.Join(outputs[0], name))
@@ -120,7 +129,7 @@ func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
 	if current == (Artifact{}) {
 		t.Fatal("manifest does not contain the current runtime target")
 	}
-	binary := extractBinary(t, filepath.Join(outputs[0], current.File), notices)
+	binary := extractBinary(t, filepath.Join(outputs[0], current.File), license, notices)
 	command := exec.Command(binary, "version")
 	got, err := command.CombinedOutput()
 	if err != nil {
@@ -238,6 +247,52 @@ func TestBuildRejectsSourceWithoutThirdPartyNotices(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("Build() accepted a source snapshot without third-party notices")
+	}
+	if _, statErr := os.Lstat(output); !os.IsNotExist(statErr) {
+		t.Fatalf("rejected source created output: %v", statErr)
+	}
+}
+
+func TestBuildRejectsSourceWithoutProjectLicense(t *testing.T) {
+	root, revision := committedFixture(t, filepath.Clean(filepath.Join("..", "..")))
+	license := filepath.Join(root, projectLicenseName)
+	if err := os.Remove(license); err == nil {
+		runFixtureGit(t, root, "add", projectLicenseName)
+		runFixtureGit(
+			t,
+			root,
+			"-c",
+			"user.name=Gox Release Test",
+			"-c",
+			"user.email=gox-release-test@example.invalid",
+			"commit",
+			"--quiet",
+			"-m",
+			"remove project license",
+		)
+		revisionCommand := exec.Command("git", "-C", root, "rev-parse", "HEAD")
+		revisionOutput, revisionErr := revisionCommand.Output()
+		if revisionErr != nil {
+			t.Fatal(revisionErr)
+		}
+		revision = strings.TrimSpace(string(revisionOutput))
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+
+	output := filepath.Join(t.TempDir(), "release")
+	_, err := Build(
+		context.Background(),
+		Options{
+			Root: root,
+			Output: output,
+			Version: "v0.0.0-test",
+			SourceRevision: revision,
+			Targets: []Target{{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH}},
+		},
+	)
+	if err == nil {
+		t.Fatal("Build() accepted a source snapshot without a project license")
 	}
 	if _, statErr := os.Lstat(output); !os.IsNotExist(statErr) {
 		t.Fatalf("rejected source created output: %v", statErr)
@@ -640,7 +695,7 @@ func verifyChecksums(t *testing.T, output string) {
 	}
 }
 
-func verifyArchiveNotices(t *testing.T, archivePath string, notices []byte) {
+func verifyArchiveMaterials(t *testing.T, archivePath string, license, notices []byte) {
 	t.Helper()
 
 	file, err := os.Open(archivePath)
@@ -661,7 +716,11 @@ func verifyArchiveNotices(t *testing.T, archivePath string, notices []byte) {
 		name string
 		mode int64
 		content []byte
-	}{{name: "gox", mode: 0o755}, {name: thirdPartyNoticesName, mode: 0o644, content: notices}}
+	}{
+		{name: "gox", mode: 0o755},
+		{name: projectLicenseName, mode: 0o644, content: license},
+		{name: thirdPartyNoticesName, mode: 0o644, content: notices},
+	}
 	for _, expected := range want {
 		header, err := reader.Next()
 		if err != nil {
@@ -718,7 +777,7 @@ func verifyBinaryNoticeCoverage(t *testing.T, binary, notices []byte) {
 	}
 }
 
-func extractBinary(t *testing.T, archive string, notices []byte) string {
+func extractBinary(t *testing.T, archive string, license, notices []byte) string {
 	t.Helper()
 
 	file, err := os.Open(archive)
@@ -746,6 +805,20 @@ func extractBinary(t *testing.T, archive string, notices []byte) string {
 	}
 	if err := os.WriteFile(binary, contents, 0o755); err != nil {
 		t.Fatal(err)
+	}
+	header, err = reader.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != projectLicenseName || header.Mode != 0o644 {
+		t.Fatalf("license archive header = %#v", header)
+	}
+	gotLicense, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(gotLicense, license) {
+		t.Fatal("released project license differs from source license")
 	}
 	header, err = reader.Next()
 	if err != nil {

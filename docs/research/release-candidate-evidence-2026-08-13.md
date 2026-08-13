@@ -85,18 +85,15 @@ determinism, supported-platform, or release-budget failure. It is not yet a
 publicly distributable release because these legal and user-controlled gates
 remain:
 
-1. the maintainer must select a project license; release archives already
-   reproduce the applicable Go, MIT, and BSD notices and must then also
-   reproduce the project license;
-2. the maintainer must accept the refreshed Gox collision and trademark-risk
+1. the maintainer must accept the refreshed Gox collision and trademark-risk
    boundary as the final public-name decision;
-3. the maintainer must personally review and verify this complete candidate;
-4. only after those decisions may a version tag be authorized; and
-5. that tag must activate the GitHub Release and OIDC artifact-attestation
+2. the maintainer must personally review and verify this complete candidate;
+3. only after those decisions may a version tag be authorized; and
+4. that tag must activate the GitHub Release and OIDC artifact-attestation
    workflow successfully.
 
 No tag or release was created while collecting this evidence.
 
-The deterministic third-party notice implementation postdates the candidate
-revision recorded above. The complete candidate evidence must be refreshed
-after the project license is selected and packaged.
+The selected 0BSD project license and deterministic third-party notice
+implementation postdate the candidate revision recorded above. The complete
+candidate evidence must be refreshed against the new archive contract.

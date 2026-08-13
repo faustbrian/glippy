@@ -136,7 +136,8 @@ precise scope.
 - [Performance methodology and results](benchmarks/README.md)
 
 Security reports follow [SECURITY.md](SECURITY.md). The first public release
-remains gated on a project license, the final naming audit, complete acceptance
-evidence, and the maintainer's personal verification and review. Release
-archives already reproduce the applicable third-party notices. No tag or
-release is created by ordinary development pushes.
+remains gated on the final naming audit, complete acceptance evidence, and the
+maintainer's personal verification and review. Gox is licensed under the
+[BSD Zero Clause License](LICENSE), and release archives reproduce that license
+and all applicable third-party notices. No tag or release is created by
+ordinary development pushes.
