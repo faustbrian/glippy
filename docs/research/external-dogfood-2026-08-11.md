@@ -87,25 +87,29 @@ large diff, or a repository-wide write result.
 
 ## Current Reviewable Migration
 
-The selected adoption target was reproduced from immutable source revision
-`c60393a86b17b070b699805d1b8df99b87a7bfa6` on 2026-08-12. Review exposed that
-the earlier formatter removed source-authored blank-line grouping between
-ordinary statements. The source model already retained the required physical
-gaps; statement lowering now preserves one blank separator, collapses repeats,
-does not invent a group after an explicit semicolon, and removes trailing blank
-padding before a closing brace. This matches current Oxfmt's source-gap policy
-at Oxc commit `dd3e4160a230d376e93b91fa9c2031d282ceefdd`.
+The selected adoption target was reproduced from immutable local `main`
+revision `8c9c1e7abb3d3d99bf7c950f1acc771fcd0dcabf`. The earlier reviews exposed
+both lost source-authored statement grouping and movement of external
+`//nolint` physical-line ownership. Gox revision
+`d84842b08ff9009a778edf7d7f5924abda6cb52d` preserves both boundaries.
 
-The refreshed 77-file snapshot changes 65 files with 7,625 insertions and 3,599
-deletions. All 168 exact `t.Parallel()` blank-line boundaries present in the
-baseline remain in the formatted result; the prior formatted snapshot retained
-none. A second Gox check is clean, and the snapshot passes `go test`, race,
-vet, and module-metadata gates. The reviewable patch has SHA-256
-`14b23895b77a43531833bd11f5ec2428e878e26d98a81ab649d8822e392a0c1e`.
-The live `go-libraries` repository remains unmodified. Maintainer review and
-approval of the complete migration, including replacement of the repository's
-gofmt authority, are still required before this counts as adoption.
-The compact
+The coordinated migration is committed as
+`d6b0fba81ec31b7ea9134d8aa6acaf481c933e38` on the isolated
+`feature/gox-prompts-adoption` branch. Gox selects 77 Go files and changes 65:
+29 production files, 34 test files, and two maintenance scripts. The complete
+69-file patch also pins Gox and replaces the module's gofmt and goimports
+formatter authority. It contains 7,608 insertions and 3,598 deletions with
+SHA-256 `f89e966a6ab29aabb244afc8dcc6124e57ff7c29fd004e612aa5c762beb072d6`.
+The Go-only patch has SHA-256
+`1510f2002a6ac0599741d5a35f875ea40aeb1f34de3c237d550c3d59d6078638`.
+
+The committed migration passes the pinned format check, module tests, race
+tests, vet, `go mod tidy -diff`, the documentation gate, golangci-lint with
+zero findings, and the nested comparison-module tests through the repository
+workspace. Sixty-three selected Go files intentionally remain outside gofmt's
+fixed point. The dedicated branch is not pushed or integrated, and maintainer
+approval of the complete layout is still required before this counts as
+adoption. The compact
 [`pkg/prompts` adoption review](prompts-adoption-review-2026-08-12.md)
 identifies the exact decision, representative layout classes, highest-value
 files, and current reproduction evidence.

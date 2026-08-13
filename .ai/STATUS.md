@@ -72,15 +72,16 @@ evidence, not completed adoption: generated-file refusal prevented a full-tree
 write rehearsal, and the 4,816-file migration diff has not received human
 readability approval.
 
-A bounded disposable write rehearsal on the external `pkg/prompts` module
-selected 77 files, changed 69, and produced a zero-difference second Gox check.
-The migrated snapshot passes its tests, race tests, vet, and tidy check. A
-total of 63 files remain non-fixed-points under gofmt, so the module's current
-formatting gate and the unapproved 7,611-insertion/4,077-deletion migration keep
-external adoption open. The migration guide now defines non-mutating and
-disposable rehearsals, sole-formatter cutover, human review, and coherent
-rollback for repositories replacing gofmt, gofumpt, or golines; it does not
-advance the 45% capability gate.
+The external `pkg/prompts` adoption is now a dedicated committed migration on
+the isolated `feature/gox-prompts-adoption` branch at `d6b0fba8`. From immutable
+baseline `8c9c1e7a`, Gox selects 77 files and changes 65 Go files; the complete
+coordinated patch changes 69 files with 7,608 insertions and 3,598 deletions.
+It pins Gox revision `d84842b`, makes Gox the sole formatter authority, and
+passes its pinned format check, tests, race tests, vet, tidy-diff,
+documentation, golangci-lint, and workspace-dependent comparison-module gates.
+Sixty-three selected Go files intentionally remain non-fixed-points under
+gofmt. The branch has not been pushed or integrated, and maintainer approval of
+the complete layout remains the sole Phase 2 exit blocker.
 
 The current formatter dialect is now published with evidence-linked examples
 covering width, indentation, blocks, semicolons, control flow, lists, binary
@@ -923,15 +924,17 @@ external adoption remains the sole Phase 2 exit blocker, so overall progress
 stays 45%.
 
 The `pkg/prompts` human-review boundary is now explicit rather than represented
-only by a 17,750-line patch. A compact review record defines what approval
+only by the complete patch. A compact review record defines what approval
 changes, shows the intentional alignment, signature, call, literal, function
 literal, condition, and blank-grouping classes, and orders the highest-value
-files for inspection. Current Gox revision `88c01b7` reproduces all 77
-formatted files byte-for-byte; fresh tests, race tests, vet, and tidy-diff pass
-on the disposable snapshot. Sixty-three files remain intentionally incompatible
-with gofmt, so approval must include replacing the module's existing formatter
-authority. The live external repository is still unmodified and human approval
-remains the Phase 2 exit gate; progress stays 45%.
+files for inspection. Current Gox revision `d84842b` produces the committed
+migration at `d6b0fba8` from baseline `8c9c1e7a`. The pinned format check,
+tests, race tests, vet, tidy-diff, documentation, golangci-lint, and nested
+workspace tests pass. Sixty-three selected files remain intentionally
+incompatible with gofmt, and the committed migration already removes the
+module's competing gofmt and goimports formatter authority. The isolated
+branch is not pushed or integrated; human approval of its complete layout
+remains the Phase 2 exit gate, so progress stays 45%.
 
 The binary now generates deterministic Bash, Zsh, and Fish completion scripts
 through `gox completion <shell>`. Generated scripts cover the complete command
