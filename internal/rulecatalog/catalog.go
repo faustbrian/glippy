@@ -32,6 +32,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewContextCancelLeakRule(),
 		rules.NewDeferInLoopRule(),
 		rules.NewDiscardedErrorRule(),
+		rules.NewHTTPCanonicalHeaderKeyRule(),
 		rules.NewImpossibleComparisonRule(),
 		rules.NewLockHeldAcrossBlockingCallRule(),
 		rules.NewLoopCaptureRule(),

@@ -22,6 +22,7 @@ not stable release promises.
 - [duplicate-condition](#duplicate-condition)
 - [errors-as-target](#errors-as-target)
 - [errors-is-arguments](#errors-is-arguments)
+- [http-canonical-header-key](#http-canonical-header-key)
 - [http-response-before-error](#http-response-before-error)
 - [identical-branches](#identical-branches)
 - [impossible-comparison](#impossible-comparison)
@@ -663,6 +664,55 @@ errors.Is(io.EOF, err)
 
 ```go
 errors.Is(err, io.EOF)
+```
+
+## http-canonical-header-key
+
+detects noncanonical keys used in direct http.Header access
+
+The methods on http.Header canonicalize header names, but direct map access does not. Reading or
+writing a constant noncanonical key can therefore miss an existing value or create a second entry
+whose spelling disagrees with values managed through Header.Get, Set, Add, or Del.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `index-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only compile-time string keys used through direct indexing of the standard library http.Header
+  type are checked.
+- Dynamic keys and values deliberately stored with noncanonical spelling require
+  application-specific ownership knowledge and are not inferred.
+- No fix is offered because changing a direct map key can change behavior when the map intentionally
+  contains noncanonical entries.
+
+### Example: Use canonical spelling for direct map access
+
+**Incorrect**
+
+```go
+value := header["content-type"]
+```
+
+**Correct**
+
+```go
+value := header["Content-Type"]
 ```
 
 ## http-response-before-error

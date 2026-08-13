@@ -5782,17 +5782,19 @@ func TestRunExposesAndBaselinesExpandedStandardLibraryCatalog(t *testing.T) {
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 )
 
 func accept(context.Context) {}
 
-func run(err error) {
+func run(err error, header http.Header) {
 	accept(nil)
 	time.Sleep(1)
 	time.Parse("2006-02-01", "2026-08-13")
 	var target error
 	errors.As(err, target)
+	_ = header["content-type"]
 }
 `
 	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
@@ -5803,6 +5805,7 @@ func run(err error) {
 		[]byte(
 			"version = 1\n[lint.rules]\n" +
 				"errors-as-target = \"warn\"\n" +
+				"http-canonical-header-key = \"warn\"\n" +
 				"nil-context = \"warn\"\n" +
 				"time-duration-unit = \"warn\"\n" +
 				"time-layout = \"warn\"\n",
@@ -5833,7 +5836,13 @@ func run(err error) {
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"nil-context", "time-duration-unit", "time-layout", "errors-as-target"}
+	want := []string{
+		"nil-context",
+		"time-duration-unit",
+		"time-layout",
+		"errors-as-target",
+		"http-canonical-header-key",
+	}
 	got := make([]string, len(result.Diagnostics))
 	for index, diagnostic := range result.Diagnostics {
 		got[index] = diagnostic.RuleID
@@ -5852,7 +5861,7 @@ func run(err error) {
 	)
 	if exitCode != ExitSuccess ||
 		stdout.String() !=
-			"glippy lint: wrote baseline " + baselinePath + " (4 diagnostics)\n" ||
+			"glippy lint: wrote baseline " + baselinePath + " (5 diagnostics)\n" ||
 		stderr.Len() != 0 {
 		t.Fatalf(
 			"Run(baseline expanded standard-library catalog) = exit %d, stdout %q, stderr %q",

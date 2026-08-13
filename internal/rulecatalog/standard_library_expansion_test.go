@@ -389,12 +389,13 @@ func TestExpandedStandardLibraryRulesHonorSharedPolicies(t *testing.T) {
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 )
 
 func accept(context.Context) {}
 
-func suppressed(err error) {
+func suppressed(err error, header http.Header) {
 	//glippy:ignore nil-context -- compatibility call
 	accept(nil)
 	//glippy:ignore time-duration-unit -- measured nanosecond delay
@@ -404,6 +405,8 @@ func suppressed(err error) {
 	var target error
 	//glippy:ignore errors-as-target -- compatibility target
 	errors.As(err, target)
+	//glippy:ignore http-canonical-header-key -- upstream preserves raw casing
+	_ = header["content-type"]
 }
 `,
 	)
@@ -416,17 +419,19 @@ package sample
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 )
 
 func generatedAccept(context.Context) {}
 
-func generated(err error) {
+func generated(err error, header http.Header) {
 	generatedAccept(nil)
 	time.Sleep(1)
 	time.Parse("2006-02-01", "2026-08-13")
 	var target error
 	errors.As(err, target)
+	_ = header["content-type"]
 }
 `,
 	)
@@ -438,17 +443,19 @@ func generated(err error) {
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 )
 
 func accept(context.Context) {}
 
-func invalid(err error) {
+func invalid(err error, header http.Header) {
 	accept(nil)
 	time.Sleep(1)
 	time.Parse("2006-02-01", "2026-08-13")
 	var target error
 	errors.As(err, target)
+	_ = header["content-type"]
 	var text string = 1
 	_ = text
 }
@@ -460,6 +467,7 @@ func invalid(err error) {
 	}
 	overrides := map[string]rules.Severity{
 		"errors-as-target": rules.SeverityWarn,
+		"http-canonical-header-key": rules.SeverityWarn,
 		"nil-context": rules.SeverityWarn,
 		"time-duration-unit": rules.SeverityWarn,
 		"time-layout": rules.SeverityWarn,
@@ -487,7 +495,7 @@ func invalid(err error) {
 	for _, file := range result.Files {
 		switch filepath.Base(file.Path) {
 		case "suppressed.go":
-			if len(file.Diagnostics) != 0 || len(file.Suppressed) != 4 {
+			if len(file.Diagnostics) != 0 || len(file.Suppressed) != 5 {
 				t.Fatalf("suppressed result = %#v", file)
 			}
 			got := make([]string, len(file.Suppressed))
@@ -497,6 +505,7 @@ func invalid(err error) {
 			slices.Sort(got)
 			want := []string{
 				"errors-as-target",
+				"http-canonical-header-key",
 				"nil-context",
 				"time-duration-unit",
 				"time-layout",
