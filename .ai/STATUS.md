@@ -1086,6 +1086,8 @@ and current cold and warm fact, types, CFG, and SSA probes retain zero callbacks
 on every warm restore. Non-mutating `suspicious`-preset lint passes without
 findings or prerequisite failures on Gox and the maintainer-approved
 `pkg/prompts` migration. Phase 4 is complete and overall progress advances to
-90%. Phase 5 is now active; stable release-scale budgets, final naming,
-publication and provenance, release-candidate gates, broader adoption, and the
-maintainer's final pre-tag review remain open.
+90%. Phase 5 is now active; final naming, publication and provenance,
+release-candidate gates, broader adoption, and the maintainer's final pre-tag
+review remain open. Stable native release-scale budgets were already
+established by GitHub Actions run `31611653501` and remain release-candidate
+rerun gates rather than missing policy decisions.

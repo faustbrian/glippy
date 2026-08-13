@@ -8,8 +8,8 @@ package path is deterministic, source-bound, cancellation-aware, cache-safe,
 and bounded across representative modules and workspaces.
 
 This decision advances overall progress from 75% to 90%. It does not establish
-the Phase 5 release gate, stable release-scale latency or memory budgets, final
-publication readiness, or release-candidate evidence.
+the Phase 5 release gate, final publication readiness, or release-candidate
+evidence.
 
 ## Required Capability Audit
 
@@ -67,8 +67,11 @@ ordinary linting.
 ## Remaining Boundary
 
 Phase 5 is active. It retains the final naming and collision audit,
-release-scale latency and memory budgets, editor and CI release integration,
-publication and provenance readiness, release-candidate corpus, fuzz, race,
-integration, and platform gates, broader human-reviewed dogfood adoption, and
-the maintainer's final pre-tag review. No tag or release is authorized before
-the complete goal reaches 100% and that review occurs.
+editor and CI release integration, publication and provenance readiness,
+release-candidate corpus, fuzz, race, integration, and platform gates, broader
+human-reviewed dogfood adoption, and the maintainer's final pre-tag review.
+Native GitHub Actions run `31611653501` already established the stable
+250-millisecond editor, 90-second formatter, and 2-GiB peak-RSS budgets across
+the supported OS and architecture matrix; the release candidate must rerun
+them. No tag or release is authorized before the complete goal reaches 100%
+and that review occurs.
