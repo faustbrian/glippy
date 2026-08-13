@@ -1,11 +1,12 @@
 # Gox Development Status
 
-- Progress: 75%
-- Current phase: Phase 4, typed, control-flow, and SSA analysis
+- Progress: 90%
+- Current phase: Phase 5, ecosystem integration and stable release
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
 - Phase 3 completed: 2026-08-13
+- Phase 4 completed: 2026-08-13
 
 Phase 0 established the reviewed product contracts, shared-frontend and edit
 boundaries, initial hostile-valid corpus, bounded document renderer, controlled
@@ -1076,3 +1077,15 @@ multi-repository noise audit. Phase 3 is complete and overall progress advances
 to 75%. Phase 4 is now active; isolated typed, CFG, SSA, and cache work does not
 advance progress until that phase's complete module, workspace, correctness,
 cost, and invalidation gate is audited.
+
+The Phase 4 exit audit now proves the complete typed, CFG, SSA, fact, cache,
+and package-loading foundation. Fresh full tests and vet pass; focused race
+checks pass for analysis, cache, CLI, and rules; module, workspace, replacement,
+vendor, build-selection, cgo, internal-package, and test-variant fixtures pass;
+and current cold and warm fact, types, CFG, and SSA probes retain zero callbacks
+on every warm restore. Non-mutating `suspicious`-preset lint passes without
+findings or prerequisite failures on Gox and the maintainer-approved
+`pkg/prompts` migration. Phase 4 is complete and overall progress advances to
+90%. Phase 5 is now active; stable release-scale budgets, final naming,
+publication and provenance, release-candidate gates, broader adoption, and the
+maintainer's final pre-tag review remain open.
