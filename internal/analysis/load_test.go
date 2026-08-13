@@ -347,6 +347,66 @@ func TestLoadPackagesLoadsMultipleWorkspaceModules(t *testing.T) {
 	}
 }
 
+func TestLoadPackagesHonorsLocalModuleReplacement(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeLoadFixture(t, filepath.Join(root, "go.mod"), `module example.com/project
+
+go 1.26.0
+
+require example.com/dependency v0.0.0
+replace example.com/dependency => ./dependency
+`)
+	dependencyPath := filepath.Join(root, "dependency", "dependency.go")
+	writeLoadFixture(t, filepath.Join(root, "dependency", "go.mod"), "module example.com/dependency\n\ngo 1.26.0\n")
+	writeLoadFixture(t, dependencyPath, "package dependency\nconst Value = 42\n")
+	writeLoadFixture(t, filepath.Join(root, "project.go"), "package project\nimport \"example.com/dependency\"\nconst Value = dependency.Value\n")
+
+	result, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes,
+		LoadDependencySyntax: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Packages) != 1 || len(result.Diagnostics) != 0 ||
+		result.Packages[0].Types.Scope().Lookup("Value") == nil {
+		t.Fatalf("LoadPackages(replace) = %#v", result)
+	}
+	if _, found := result.Sources.Lookup(dependencyPath); !found {
+		t.Fatalf("LoadPackages(replace) omitted dependency source %q", dependencyPath)
+	}
+}
+
+func TestLoadPackagesEnforcesInternalPackageBoundaryAcrossWorkspaceModules(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeLoadFixture(t, filepath.Join(root, "go.work"), "go 1.26.0\n\nuse (\n\t./owner\n\t./consumer\n)\n")
+	writeLoadFixture(t, filepath.Join(root, "owner", "go.mod"), "module example.com/owner\n\ngo 1.26.0\n")
+	writeLoadFixture(t, filepath.Join(root, "owner", "internal", "secret", "secret.go"), "package secret\nconst Value = 1\n")
+	writeLoadFixture(t, filepath.Join(root, "consumer", "go.mod"), "module example.com/consumer\n\ngo 1.26.0\n\nrequire example.com/owner v0.0.0\n")
+	writeLoadFixture(t, filepath.Join(root, "consumer", "consumer.go"), "package consumer\nimport \"example.com/owner/internal/secret\"\nconst Value = secret.Value\n")
+
+	result, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"./consumer"}, Requirement: rules.RequireTypes,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, diagnostic := range result.Diagnostics {
+		if strings.Contains(diagnostic.Message, "use of internal package") &&
+			strings.Contains(diagnostic.Message, "not allowed") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("LoadPackages(internal) diagnostics = %#v", result.Diagnostics)
+	}
+}
+
 func TestLoadPackagesUsesExplicitVendorMode(t *testing.T) {
 	t.Parallel()
 
@@ -368,6 +428,54 @@ func TestLoadPackagesUsesExplicitVendorMode(t *testing.T) {
 	if len(result.Packages) != 1 || len(result.Diagnostics) != 0 ||
 		result.Packages[0].Types.Scope().Lookup("Value") == nil {
 		t.Fatalf("LoadPackages(vendor) = %#v", result)
+	}
+}
+
+func TestLoadPackagesRetainsCgoSourceAndReportsDeepAnalysisBoundary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows is not a supported Gox runtime")
+	}
+
+	root := t.TempDir()
+	writeLoadFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "cgo.go")
+	writeLoadFixture(t, path, `package project
+
+/*
+int answer(void) { return 42; }
+*/
+import "C"
+
+func Answer() int { return int(C.answer()) }
+`)
+	writeLoadFixture(t, filepath.Join(root, "project_test.go"), "package project\nfunc TestValue() {}\n")
+
+	result, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes, Tests: true,
+		Env: append(os.Environ(),
+			"GOENV=off",
+			"GOTOOLCHAIN=local",
+			"CGO_ENABLED=1",
+			"GOCACHE="+t.TempDir(),
+			"GOMODCACHE="+t.TempDir(),
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, found := result.Sources.Lookup(path)
+	if !found || !file.CanFormat() {
+		t.Fatalf("LoadPackages() cgo source = %#v, %t", file, found)
+	}
+	boundaries := 0
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.Position == path &&
+			strings.Contains(diagnostic.Message, "typed analysis is unavailable for cgo source") {
+			boundaries++
+		}
+	}
+	if boundaries != 1 {
+		t.Fatalf("LoadPackages() cgo diagnostics = %#v", result.Diagnostics)
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode"
@@ -179,18 +180,28 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 	if err := validatePackageGraphLimit(loaded, limits.maxPackages); err != nil {
 		return PackageLoadResult{}, err
 	}
-	sources, err := sourceCollector.result()
-	if err != nil {
-		return PackageLoadResult{}, err
-	}
 	ordered, err := canonicalPackages(loaded)
 	if err != nil {
 		return PackageLoadResult{}, err
 	}
+	if err := capturePackageOriginalSources(ordered, options.Overlay, sourceCollector); err != nil {
+		return PackageLoadResult{}, err
+	}
+	sources, err := sourceCollector.result()
+	if err != nil {
+		return PackageLoadResult{}, err
+	}
+	diagnostics := packageDiagnostics(ordered)
+	cgoDiagnostics, err := cgoBoundaryDiagnostics(ordered, sources)
+	if err != nil {
+		return PackageLoadResult{}, err
+	}
+	diagnostics = append(diagnostics, cgoDiagnostics...)
+	orderPackageDiagnostics(diagnostics)
 	return PackageLoadResult{
 		Requirement: options.Requirement,
 		Packages:    ordered,
-		Diagnostics: packageDiagnostics(ordered),
+		Diagnostics: diagnostics,
 		Sources:     sources,
 	}, nil
 }
@@ -376,6 +387,54 @@ func (c *packageSourceCollector) admit(filename string, input []byte) error {
 	}
 	c.seen[path] = reservation
 	c.bytes += int64(len(input))
+	return nil
+}
+
+func (c *packageSourceCollector) captured(path string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, found := c.files[path]
+	return found
+}
+
+func capturePackageOriginalSources(
+	packages_ []*packages.Package,
+	overlay map[string][]byte,
+	collector *packageSourceCollector,
+) error {
+	paths := make(map[string]struct{})
+	for _, pkg := range packages_ {
+		for _, path := range pkg.GoFiles {
+			path = filepath.Clean(path)
+			if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+				return fmt.Errorf("package %q has non-normalized original source path %q", pkg.ID, path)
+			}
+			paths[path] = struct{}{}
+		}
+	}
+	ordered := make([]string, 0, len(paths))
+	for path := range paths {
+		ordered = append(ordered, path)
+	}
+	sort.Strings(ordered)
+	for _, path := range ordered {
+		if collector.captured(path) {
+			continue
+		}
+		input, found := overlay[path]
+		if !found {
+			var err error
+			input, err = source.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("read original package source %q: %w", path, err)
+			}
+		}
+		if err := collector.admit(path, input); err != nil {
+			return err
+		}
+		file, sourceErr := source.Load(path, input)
+		collector.add(path, file, sourceErr)
+	}
 	return nil
 }
 
@@ -645,6 +704,61 @@ func packageDiagnostics(roots []*packages.Package) []PackageDiagnostic {
 	for _, root := range roots {
 		visit(root)
 	}
+	orderPackageDiagnostics(diagnostics)
+	return diagnostics
+}
+
+func cgoBoundaryDiagnostics(
+	roots []*packages.Package,
+	sources PackageSourceSet,
+) ([]PackageDiagnostic, error) {
+	diagnostics := make([]PackageDiagnostic, 0)
+	owned, err := canonicalPackageSourceFiles(roots, sources)
+	if err != nil {
+		return nil, err
+	}
+	for _, work := range owned {
+		pkg, file := work.package_, work.source
+		compiled := make(map[string]struct{}, len(pkg.Syntax))
+		for _, syntax := range pkg.Syntax {
+			if syntax == nil || pkg.Fset == nil {
+				continue
+			}
+			compiled[filepath.Clean(pkg.Fset.PositionFor(syntax.Pos(), false).Filename)] = struct{}{}
+		}
+		if _, found := compiled[file.Path()]; found || !sourceImportsC(file) {
+			continue
+		}
+		diagnostics = append(diagnostics, PackageDiagnostic{
+			PackageID: pkg.ID,
+			Position:  file.Path(),
+			Message:   "typed analysis is unavailable for cgo source; syntax analysis remains available",
+			Kind:      packages.UnknownError,
+		})
+	}
+	orderPackageDiagnostics(diagnostics)
+	return diagnostics, nil
+}
+
+func sourceImportsC(file *source.File) bool {
+	if file == nil {
+		return false
+	}
+	found := false
+	_ = file.ReadSyntax(func(syntax *ast.File) error {
+		for _, imported := range syntax.Imports {
+			path, err := strconv.Unquote(imported.Path.Value)
+			if err == nil && path == "C" {
+				found = true
+				break
+			}
+		}
+		return nil
+	})
+	return found
+}
+
+func orderPackageDiagnostics(diagnostics []PackageDiagnostic) {
 	sort.Slice(diagnostics, func(left, right int) bool {
 		first, second := diagnostics[left], diagnostics[right]
 		if first.PackageID != second.PackageID {
@@ -658,5 +772,4 @@ func packageDiagnostics(roots []*packages.Package) []PackageDiagnostic {
 		}
 		return first.Kind < second.Kind
 	})
-	return diagnostics
 }

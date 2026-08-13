@@ -38,6 +38,11 @@ type typedPackageFile struct {
 	file     typedSyntaxFile
 }
 
+type ownedPackageSource struct {
+	package_ *packages.Package
+	source   *source.File
+}
+
 // RunTypes executes selected types-tier rules through one shared package AST
 // traversal over the exact source versions captured by LoadPackages.
 func RunTypes(
@@ -404,6 +409,14 @@ func packageDependencies(
 func packageSyntaxFiles(pkg *packages.Package, sources PackageSourceSet) ([]typedSyntaxFile, error) {
 	files := make([]typedSyntaxFile, 0, len(pkg.Syntax))
 	seen := make(map[string]struct{}, len(pkg.Syntax))
+	editable := make(map[string]struct{}, len(pkg.GoFiles))
+	for _, path := range pkg.GoFiles {
+		path = filepath.Clean(path)
+		if !filepath.IsAbs(path) || path == "" {
+			return nil, fmt.Errorf("typed package %q has invalid original source path %q", pkg.ID, path)
+		}
+		editable[path] = struct{}{}
+	}
 	for index, syntax := range pkg.Syntax {
 		if syntax == nil {
 			return nil, fmt.Errorf("typed package %q syntax file %d is nil", pkg.ID, index)
@@ -417,6 +430,9 @@ func packageSyntaxFiles(pkg *packages.Package, sources PackageSourceSet) ([]type
 			return nil, fmt.Errorf("typed package %q repeats source path %q", pkg.ID, path)
 		}
 		seen[path] = struct{}{}
+		if _, found := editable[path]; !found {
+			continue
+		}
 		physical, found := sources.Lookup(path)
 		if !found {
 			return nil, fmt.Errorf("typed package %q source %q was not captured", pkg.ID, path)
@@ -428,6 +444,43 @@ func packageSyntaxFiles(pkg *packages.Package, sources PackageSourceSet) ([]type
 	}
 	sort.Slice(files, func(left, right int) bool { return files[left].path < files[right].path })
 	return files, nil
+}
+
+func canonicalPackageSourceFiles(
+	packages_ []*packages.Package,
+	sources PackageSourceSet,
+) ([]ownedPackageSource, error) {
+	byPath := make(map[string]ownedPackageSource)
+	for _, pkg := range packages_ {
+		for _, path := range pkg.GoFiles {
+			path = filepath.Clean(path)
+			if !filepath.IsAbs(path) || path == "" {
+				return nil, fmt.Errorf("typed package %q has invalid original source path %q", pkg.ID, path)
+			}
+			physical, found := sources.Lookup(path)
+			if !found {
+				return nil, fmt.Errorf("typed package %q original source %q was not captured", pkg.ID, path)
+			}
+			if !physical.CanFormat() {
+				continue
+			}
+			candidate := ownedPackageSource{package_: pkg, source: physical}
+			current, found := byPath[path]
+			if !found || preferTypedPackage(candidate.package_, current.package_) {
+				byPath[path] = candidate
+			}
+		}
+	}
+	paths := make([]string, 0, len(byPath))
+	for path := range byPath {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	result := make([]ownedPackageSource, len(paths))
+	for index, path := range paths {
+		result[index] = byPath[path]
+	}
+	return result, nil
 }
 
 func canonicalTypedFiles(

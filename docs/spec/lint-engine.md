@@ -152,6 +152,18 @@ MUST be canonical. A synthetic test-main package and its Go-cache source MUST
 NOT become an analyzed file or a reporter target. Invalid selected inputs MUST
 remain available as diagnostic-only source units rather than being discarded.
 
+For cgo packages, the toolchain type-checks synthesized `CompiledGoFiles`
+rather than the editable file that imports `C`. Gox MUST capture that original
+`GoFiles` source as the syntax, formatting, reporting, and suppression target,
+and MUST NOT expose a synthesized Go-cache path as a diagnostic, formatting, or
+fix target. Because the generated AST has no lossless exact-byte mapping back
+to the original cgo source, types, CFG, SSA, and adapted analyzer callbacks MUST
+skip that source and emit one deterministic package prerequisite diagnostic.
+The run remains useful for syntax diagnostics and formatting but has a source
+error outcome; typed fixes MUST therefore refuse replacement. A future exact
+cgo position map MAY replace this conservative boundary only with source and
+edit fidelity evidence.
+
 Typed diagnostics and edits MUST resolve package positions against this
 captured source index. A typed consumer MUST NOT reread a file after package
 loading and treat the new bytes as the analyzed source version. The package AST

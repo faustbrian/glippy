@@ -5,8 +5,10 @@ import (
 	"errors"
 	"go/ast"
 	"maps"
+	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -561,6 +563,78 @@ func TestRunPackagesRetainsLoadErrorsAndValidPartialResults(t *testing.T) {
 		result.SourceProblems[0].Path != filepath.Join(root, "z_invalid.go") || len(result.Files) != 1 ||
 		result.Files[0].Path != validPath || len(result.Files[0].Diagnostics) != 1 {
 		t.Fatalf("RunPackages() partial result = %#v", result)
+	}
+}
+
+func TestRunPackagesKeepsCgoSourceSyntaxOnlyAndNeverTargetsGeneratedCacheFiles(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows is not a supported Gox runtime")
+	}
+
+	root := t.TempDir()
+	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	path := filepath.Join(root, "cgo.go")
+	writeTypesFixture(t, path, `package project
+
+/*
+int answer(void) { return 42; }
+*/
+import "C"
+
+func Answer() int { return int(C.answer()) }
+`)
+
+	syntax := syntaxRule{
+		metadata: analysisMetadata("syntax-function", rules.NodeFuncDecl, false),
+		run: func(ctx *rules.Context, node ast.Node) ([]rules.Finding, error) {
+			range_, err := ctx.Range(node)
+			if err != nil {
+				return nil, err
+			}
+			return []rules.Finding{{MessageKey: "syntax", Message: "syntax", Range: range_}}, nil
+		},
+	}
+	typed := typesRule{
+		metadata: typesMetadata("typed-function", rules.NodeFuncDecl),
+		run: func(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
+			range_, err := ctx.Range(node)
+			if err != nil {
+				return nil, err
+			}
+			return []rules.Finding{{MessageKey: "typed", Message: "typed", Range: range_}}, nil
+		},
+	}
+	registry, err := rules.NewRegistry(syntax, typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root, Patterns: []string{"."},
+			Env: append(os.Environ(),
+				"GOENV=off",
+				"GOTOOLCHAIN=local",
+				"CGO_ENABLED=1",
+				"GOCACHE="+t.TempDir(),
+				"GOMODCACHE="+t.TempDir(),
+			),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || result.Files[0].Path != path ||
+		len(result.Files[0].Diagnostics) != 1 ||
+		result.Files[0].Diagnostics[0].RuleID != "syntax-function" {
+		t.Fatalf("RunPackages() cgo files = %#v", result.Files)
+	}
+	if len(result.LoadDiagnostics) != 1 || result.LoadDiagnostics[0].Position != path ||
+		!strings.Contains(result.LoadDiagnostics[0].Message, "typed analysis is unavailable for cgo source") {
+		t.Fatalf("RunPackages() cgo load diagnostics = %#v", result.LoadDiagnostics)
 	}
 }
 

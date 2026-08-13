@@ -102,7 +102,7 @@ func RunPackages(
 	if err != nil {
 		return result, err
 	}
-	files, err := canonicalTypedFiles(packages_, loaded.Sources)
+	files, err := canonicalPackageSourceFiles(packages_, loaded.Sources)
 	if err != nil {
 		return result, err
 	}
@@ -154,7 +154,7 @@ func RunPackages(
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		file := work.file.source
+		file := work.source
 		diagnostics, err := RunSyntax(ctx, file, registry, syntaxSelection)
 		if err != nil {
 			return result, err

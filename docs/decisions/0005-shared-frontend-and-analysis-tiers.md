@@ -128,6 +128,16 @@ Native diagnostics remain root-package-only. Package-wide native rules inspect
 dependencies only through the explicit metadata contract and cannot turn
 dependency syntax into lint targets.
 
+Cgo is a distinct ownership boundary because the toolchain replaces a file
+that imports `C` with synthesized Go-cache `CompiledGoFiles` for type checking.
+Gox retains the original `GoFiles` bytes as the only syntax, formatting,
+reporting, suppression, and edit identity and excludes every synthesized path
+from rule ownership. The generated AST cannot be mapped losslessly back to
+exact original bytes, so the original cgo file receives syntax analysis plus a
+deterministic prerequisite diagnostic while deep callbacks and typed fixes are
+refused. Revisit only if the standard frontend exposes or Gox proves an exact
+generated-to-original range map.
+
 Suitable types-tier `go/analysis` analyzers may run package-wide over the same
 load-owned syntax and type state after all native types, CFG, and SSA consumers
 finish. Admission requires an explicit read-only audit because public Go APIs
