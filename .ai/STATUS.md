@@ -1,9 +1,10 @@
 # Gox Development Status
 
-- Progress: 45%
-- Current phase: Phase 2, production-usable formatter
+- Progress: 55%
+- Current phase: Phase 3, linter foundation and safe fixes
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
+- Phase 2 completed: 2026-08-13
 
 Phase 0 established the reviewed product contracts, shared-frontend and edit
 boundaries, initial hostile-valid corpus, bounded document renderer, controlled
@@ -1053,3 +1054,11 @@ performance budgets, and the remaining release-candidate rerun boundaries.
 Rule-noise adoption and the final name audit remain explicitly open; no engine
 or release-readiness capability is inferred from documentation alone. Overall
 progress remains 45% behind maintainer-approved external adoption.
+
+On 2026-08-13 the maintainer explicitly approved Phase 2, including the
+complete `pkg/prompts` layout and the migration's sole-formatter cutover. This
+satisfies the final Phase 2 human-adoption gate. The production-usable formatter
+phase is complete and overall progress advances to 55%. The isolated
+`feature/gox-prompts-adoption` branch remains unpushed and unintegrated; that is
+a delivery action requiring separate authority, not an unresolved layout or
+Phase 2 capability decision. Phase 3 is now the active exit gate.

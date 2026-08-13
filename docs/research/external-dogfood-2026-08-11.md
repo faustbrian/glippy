@@ -107,9 +107,10 @@ The committed migration passes the pinned format check, module tests, race
 tests, vet, `go mod tidy -diff`, the documentation gate, golangci-lint with
 zero findings, and the nested comparison-module tests through the repository
 workspace. Sixty-three selected Go files intentionally remain outside gofmt's
-fixed point. The dedicated branch is not pushed or integrated, and maintainer
-approval of the complete layout is still required before this counts as
-adoption. The compact
+fixed point. On 2026-08-13 the maintainer approved Phase 2 and the complete
+layout, so this counts as the required human-approved external adoption. The
+dedicated branch remains unpushed and unintegrated pending separate delivery
+authority. The compact
 [`pkg/prompts` adoption review](prompts-adoption-review-2026-08-12.md)
 identifies the exact decision, representative layout classes, highest-value
 files, and current reproduction evidence.

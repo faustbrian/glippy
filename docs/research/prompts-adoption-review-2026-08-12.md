@@ -1,18 +1,17 @@
 # `pkg/prompts` Adoption Review
 
-## Decision Requested
+## Decision
 
-The maintainer must decide whether the output below is an acceptable canonical
-layout for `go-libraries/pkg/prompts`. Approval means:
+The maintainer approved Phase 2 and this complete adoption layout on
+2026-08-13. The decision:
 
 1. accept the Gox dialect for this module;
 2. approve the dedicated migration commit as one reviewable change; and
 3. replace the module's gofmt-based formatting authority with Gox in CI,
    editor, and contributor workflows.
 
-Approval does not authorize semantic source changes, a Gox release, a tag, or
-publication. Rejection should identify an unacceptable layout class or exact
-hunk so the formatter contract can be corrected before another migration.
+Approval does not authorize semantic source changes, pushing or integrating the
+adoption branch, a Gox release, a tag, or publication.
 
 ## Review Artifact
 
@@ -163,9 +162,8 @@ These checks prove deterministic reproduction, the module's current executable
 contracts, race instrumentation, analyzer acceptance, and unchanged module
 metadata. The nested comparison module's standalone tidy command cannot resolve
 its unreleased `pkg/prompts v0.0.0` dependency without the repository workspace;
-no module metadata changed. None of this replaces the required human judgment
-that this amount and shape of vertical expansion is readable enough for daily
-use.
+no module metadata changed. The maintainer's 2026-08-13 approval supplies the
+separate human judgment that the complete layout is acceptable for daily use.
 
 ## Suggested Review Order
 
@@ -177,5 +175,4 @@ use.
 5. `select.go` and `interactive_test.go`: dense generics, callbacks, and tests.
 6. `theme.go`: the original line-comment-after-operator regression boundary.
 
-Approve only if the representative classes and the complete patch are
-acceptable as the module's canonical formatter output.
+This order remains the review map for the approved canonical formatter output.
