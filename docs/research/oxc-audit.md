@@ -11,6 +11,67 @@ and release
 (Oxlint 1.77.0, Oxfmt 0.62.0). Current source and product documentation
 outweigh the repository's partly stale `ARCHITECTURE.md`.
 
+## Final Readiness Refresh
+
+The Phase 5 comparison was refreshed on 2026-08-13 against Oxc commit
+[`76b19f5`](https://github.com/oxc-project/oxc/commit/76b19f503b2b68a942924c74fa0bd1f0e64570e3)
+and website commit
+[`7c4f077`](https://github.com/oxc-project/website/commit/7c4f07766d992c1a8dd7bc8db1274aca46b36d73).
+The audited packages report Oxfmt 0.63.0 and Oxlint 1.78.0. This is the final
+readiness review required by Phase 5; another review remains necessary only if
+the release candidate materially changes the corresponding Gox subsystem or
+the reference products materially change before release.
+
+Current Oxfmt source and documentation confirm:
+
+- default write mode, separate `--check` and `--list-different` modes, stdin
+  through `--stdin-filepath`, nested configuration, and LSP integration;
+- a language-neutral document IR with line modes, groups, fill, line suffixes,
+  conditionals, and best-fitting variants, plus iterative printing with
+  reusable fit stacks and queues; and
+- ordinary [`fs::write`](https://github.com/oxc-project/oxc/blob/76b19f503b2b68a942924c74fa0bd1f0e64570e3/apps/oxfmt/src/cli/service.rs#L79-L96)
+  for changed files rather than a validated atomic replacement transaction.
+
+Gox deliberately retains a smaller Go-native configuration dialect, explicit
+stdout/check/write behavior, immutable source and trivia ownership, bounded
+canonical layouts, and prevalidated atomic writes. It continues to defer an
+LSP because the proven stdin/stdout editor path does not yet show a latency,
+diagnostic, fix, or cache requirement that needs a resident service.
+
+Current Oxlint source and documentation confirm:
+
+- independent `--fix`, `--fix-suggestions`, and `--fix-dangerously` switches;
+  the last authorizes its combined dangerous-fix-or-suggestion class;
+- type-aware and type-check modes, shared type-program use, and fixes from
+  type-aware rules;
+- default, agent, Checkstyle, GitHub, GitLab, JSON, JUnit, SARIF, stylish, and
+  Unix reporters;
+- ESLint- and Oxlint-compatible line, next-line, range, multi-rule, and
+  disable-all suppressions; and
+- separate safe and dangerous LSP fix-all actions, with suggestions remaining
+  individual quick fixes.
+
+The current JSON envelope still has no explicit schema-version field and still
+includes runtime-dependent `threads_count` and `start_time`. SARIF uses its
+standard 2.1.0 schema. The current batch fixer still sorts candidate edits,
+keeps the first eligible fix, silently leaves later overlapping or adjacent
+fixes unapplied, reparses only in debug builds, and writes through ordinary
+[`fs::write`](https://github.com/oxc-project/oxc/blob/76b19f503b2b68a942924c74fa0bd1f0e64570e3/crates/oxc_linter/src/service/runtime.rs#L198-L205).
+The LSP similarly drops later overlapping edits.
+
+Gox therefore retains versioned deterministic machine records without runtime
+timing or worker identity, exact source-version checks, rejection of every
+participant in an edit conflict, release-build reparsing and validation,
+formatter normalization, and atomic replacement. It also retains exact-rule
+auditable suppressions and separate safe, suggestion, and unsafe authorization.
+Reporter breadth remains consumer-driven: Gox does not add formats merely to
+match a reference catalog.
+
+No current Oxfmt, Oxlint, or Oxc evidence invalidates the shared frontend,
+separate formatter and linter engines, document renderer, tiered Go analysis,
+diagnostic model, or fix coordinator. The refresh changes no Gox architecture;
+it reconfirms the deliberate Go- and safety-specific differences above.
+
 Reporting was refreshed on 2026-08-10 against Oxc commit
 [`8e9b95f`](https://github.com/oxc-project/oxc/commit/8e9b95f3b61534b220bc6577a2fa3552c91433a4).
 Oxfmt still separates check and list-different output and has no machine result

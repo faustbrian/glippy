@@ -8,6 +8,10 @@
 - Phase 3 completed: 2026-08-13
 - Phase 4 completed: 2026-08-13
 
+The sections below retain chronological evidence from earlier checkpoints.
+Embedded progress statements describe those checkpoints; the summary above is
+the current state.
+
 Phase 0 established the reviewed product contracts, shared-frontend and edit
 boundaries, initial hostile-valid corpus, bounded document renderer, controlled
 baseline harness, and working-name replacement requirement.
@@ -53,10 +57,10 @@ receiver repair reduces 20 receiver-prefix breaks to zero. The selector repair
 separates terminal call arguments from callee fit decisions and reduces 193
 selector-pattern targets to two lines belonging to one intentionally broken,
 deeply indented indexed chain. The complete migration snapshot is classified,
-valid, and idempotent, restoring the Phase 1 exit gate. Existing safe
-filesystem, configuration, and CLI proof supports 45%. Stable release-scale
-performance budgets and approved external-repository adoption remain open
-before the 55% gate.
+valid, and idempotent, restoring the Phase 1 exit gate. At that checkpoint,
+safe filesystem, configuration, and CLI proof supported 45%; later native
+performance evidence and approved external adoption closed the remaining
+Phase 2 gates.
 
 The replacement integration suite now passes on Darwin 27.0.0 arm64 with APFS
 and Linux arm64 with overlayfs under Go 1.26.5. Gox supports macOS and Linux
@@ -83,14 +87,15 @@ It pins Gox revision `d84842b`, makes Gox the sole formatter authority, and
 passes its pinned format check, tests, race tests, vet, tidy-diff,
 documentation, golangci-lint, and workspace-dependent comparison-module gates.
 Sixty-three selected Go files intentionally remain non-fixed-points under
-gofmt. The branch has not been pushed or integrated, and maintainer approval of
-the complete layout remains the sole Phase 2 exit blocker.
+gofmt. The maintainer approved Phase 2 and the complete layout on 2026-08-13,
+closing the formatter exit gate. The branch has not been pushed or integrated;
+that delivery state does not reopen Phase 2 and requires separate authority.
 
 The current formatter dialect is now published with evidence-linked examples
 covering width, indentation, blocks, semicolons, control flow, lists, binary
 expressions, selectors, comments, directives, preserved source choices, and
-write refusal. This closes the Phase 2 formatter-rule documentation item but
-does not resolve the remaining stable-performance or external-adoption gates.
+write refusal. This closed the Phase 2 formatter-rule documentation item; later
+native performance evidence and approved adoption closed the other gates.
 
 Isolated Phase 3 foundation work now defines validated canonical rule metadata,
 an immutable ordered registry, preset and override resolution, maximum-tier
@@ -886,9 +891,9 @@ the typed side-workload, and artifact retention. Editor maxima were 3.257 to
 and peak RSS maxima were 1,305,530,368 to 1,713,582,080 bytes. This establishes
 stable release budgets of 250 milliseconds for editor formatting, 90 seconds
 for the pinned large formatter corpus, and 2 GiB peak formatter RSS across
-native Darwin/Linux amd64/arm64. Stable performance is no longer a Phase 2
-blocker; maintainer approval of the external `pkg/prompts` adoption remains
-open, so overall progress stays 45%.
+native Darwin/Linux amd64/arm64. Stable performance was no longer a Phase 2
+blocker; at that checkpoint, maintainer approval of the external `pkg/prompts`
+adoption remained open, so overall progress remained 45%.
 
 Publication and signing readiness now use one dormant tag-triggered GitHub
 Actions workflow. An authorized canonical semantic-version tag builds the
@@ -901,8 +906,8 @@ credentials are absent from the build tree. Ordinary pushes and manual
 dispatches cannot invoke publication. No tag or release was created, and the
 100%-plus-maintainer-review gate remains mandatory. Live tag-triggered
 publication and attestation verification cannot be proven before that gate, so
-they remain final release-candidate evidence. Approved external adoption is
-still the Phase 2 blocker and overall progress stays 45%.
+they remain final release-candidate evidence. At that checkpoint, approved
+external adoption still blocked Phase 2 and overall progress remained 45%.
 
 The supported-source contract now admits Go 1.25 and Go 1.26, normalizes patch
 directives to their language family, and resolves the nearest owning `go.mod`
@@ -912,9 +917,9 @@ older or newer source versions fail before formatting, linting, or writes;
 each rule's minimum Go version, and typed cache identity uses the resolved
 source version instead of a constant. Release artifacts remain targeted as Go
 1.26.5 Darwin/Linux amd64/arm64 builds with no external Go runtime; Windows
-remains unsupported. This closes the supported-version policy item without
-changing the 45% phase gate: maintainer approval of the external `pkg/prompts`
-adoption remains open.
+remains unsupported. At that checkpoint, this closed the supported-version
+policy item without changing the 45% phase gate because maintainer approval of
+the external `pkg/prompts` adoption remained open.
 
 Native release-budget workflow run `31615360856` passed all four supported
 platform and architecture jobs against source-version revision `d0df995`.
@@ -922,9 +927,9 @@ Fresh-process editor maxima were 3.704 to 21.374 milliseconds; five-sample
 repository formatter maxima were 16.970 to 45.630 seconds; and formatter peak
 RSS maxima were 1,408,126,976 to 1,732,407,296 bytes. The existing 250
 millisecond editor, 90 second large-corpus, and 2 GiB formatter RSS budgets
-therefore remain valid after adding per-path Go-version resolution. Approved
-external adoption remains the sole Phase 2 exit blocker, so overall progress
-stays 45%.
+therefore remain valid after adding per-path Go-version resolution. At that
+checkpoint, approved external adoption was the sole Phase 2 exit blocker, so
+overall progress remained 45%.
 
 The `pkg/prompts` human-review boundary is now explicit rather than represented
 only by the complete patch. A compact review record defines what approval
@@ -935,9 +940,9 @@ migration at `d6b0fba8` from baseline `8c9c1e7a`. The pinned format check,
 tests, race tests, vet, tidy-diff, documentation, golangci-lint, and nested
 workspace tests pass. Sixty-three selected files remain intentionally
 incompatible with gofmt, and the committed migration already removes the
-module's competing gofmt and goimports formatter authority. The isolated
-branch is not pushed or integrated; human approval of its complete layout
-remains the Phase 2 exit gate, so progress stays 45%.
+module's competing gofmt and goimports formatter authority. At this checkpoint,
+the isolated branch was not pushed or integrated and human approval of its
+complete layout was the Phase 2 exit gate, so progress remained 45%.
 
 The binary now generates deterministic Bash, Zsh, and Fish completion scripts
 through `gox completion <shell>`. Generated scripts cover the complete command
@@ -946,8 +951,9 @@ shells, and the current compiled rule IDs. Generation reads no standard input,
 project, configuration, package state, or network resource and preserves
 cancellation, invalid-invocation, and output-failure exit categories. The
 installation guide documents each supported shell and requires regeneration
-after upgrades. This closes the Phase 5 shell-completion implementation item
-without advancing the incomplete Phase 2 adoption gate; progress stays 45%.
+after upgrades. At this checkpoint, this closed the Phase 5 shell-completion
+implementation item without advancing the then-incomplete Phase 2 adoption
+gate; progress remained 45%.
 
 The repository now publishes a normative vulnerability-reporting and product
 support contract. Private GitHub vulnerability reports are the canonical
