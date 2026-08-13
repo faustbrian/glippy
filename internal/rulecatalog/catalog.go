@@ -31,7 +31,9 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewDeferInLoopRule(),
 		rules.NewDiscardedErrorRule(),
 		rules.NewImpossibleComparisonRule(),
+		rules.NewLockHeldAcrossBlockingCallRule(),
 		rules.NewLoopCaptureRule(),
+		rules.NewResourceNotClosedRule(),
 		rules.NewSubsumedConditionRule(),
 		rules.NewSuspiciousRangeRule(),
 	)

@@ -26,9 +26,11 @@ not stable release promises.
 - [impossible-comparison](#impossible-comparison)
 - [impossible-type-assertion](#impossible-type-assertion)
 - [ineffective-break](#ineffective-break)
+- [lock-held-across-blocking-call](#lock-held-across-blocking-call)
 - [loop-capture](#loop-capture)
 - [nilness](#nilness)
 - [redundant-bool-comparison](#redundant-bool-comparison)
+- [resource-not-closed](#resource-not-closed)
 - [self-assignment](#self-assignment)
 - [subsumed-condition](#subsumed-condition)
 - [suspicious-range](#suspicious-range)
@@ -861,6 +863,60 @@ for {
 }
 ```
 
+## lock-held-across-blocking-call
+
+detects known blocking calls made while a sync lock is held
+
+Sleeping or waiting while holding a mutex or read lock can stall every competing goroutine and turn
+an ordinary external delay into lock contention or deadlock pressure. The rule recognizes sync lock
+methods and a deliberately small set of APIs whose contract is to wait.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `block-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `safety`, `suspicious`, `performance`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The initial contract tracks direct identifier receivers through one lexical statement list; locks
+  held across nested control-flow blocks require a later CFG expansion.
+- Known blocking APIs are time.Sleep, sync.Cond.Wait, sync.WaitGroup.Wait, and os/exec.Cmd.Wait;
+  arbitrary calls are not guessed to block.
+- A blocking call may be deliberate coordination, so this rule remains opt-in suspicious and offers
+  no automatic fix.
+
+### Example: Release a lock before waiting
+
+**Incorrect**
+
+```go
+mu.Lock()
+time.Sleep(delay)
+mu.Unlock()
+```
+
+**Correct**
+
+```go
+mu.Lock()
+update()
+mu.Unlock()
+time.Sleep(delay)
+```
+
 ## loop-capture
 
 detects reused loop variables captured by escaping closures
@@ -1034,6 +1090,60 @@ if ready == true {
 if ready {
 	run()
 }
+```
+
+## resource-not-closed
+
+detects locally owned closers that are neither closed nor transferred
+
+A call result with a conventional Close method usually owns a file, connection, compressor, or
+similar resource. A local result that is never closed and never transferred can retain descriptors,
+connections, buffers, or other external state until process termination or garbage collection.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The initial contract treats a direct argument, return, send, composite-literal insertion, closure
+  capture, or assignment to another variable as an ownership transfer and does not analyze the
+  callee.
+- Any direct Close call counts as cleanup; path-sensitive proof that cleanup runs on every
+  successful path is deferred to a control-flow expansion.
+- Only call results whose static type has Close() error are considered resources; zero-result Close
+  methods are too broad for the initial ownership contract.
+
+### Example: Close an opened resource after the error check
+
+**Incorrect**
+
+```go
+file, err := os.Open(path)
+if err != nil { return err }
+use(file)
+```
+
+**Correct**
+
+```go
+file, err := os.Open(path)
+if err != nil { return err }
+defer file.Close()
 ```
 
 ## self-assignment
