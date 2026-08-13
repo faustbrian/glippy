@@ -283,6 +283,11 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 			return doc.ID{}, errors.New("declaration has no physical end offset")
 		}
 		trailing := l.trailingComments(declarationEnd, limit)
+		if hasNolintComment(trailing) {
+			lowered = l.arena.Verbatim(
+				string(l.physical[declarationStart:declarationEnd]),
+			)
+		}
 		lowered = l.withTrailingComments(lowered, trailing)
 		parts = append(parts, l.arena.HardLine(), l.arena.HardLine(), lowered)
 		boundary = declarationEnd
@@ -337,7 +342,13 @@ func (l *lowerer) fragmentDeclarations(declarations []ast.Decl) (doc.ID, error) 
 				"fragment declaration has no physical end offset",
 			)
 		}
-		lowered = l.withTrailingComments(lowered, l.trailingComments(declarationEnd, limit))
+		trailing := l.trailingComments(declarationEnd, limit)
+		if hasNolintComment(trailing) {
+			lowered = l.arena.Verbatim(
+				string(l.physical[declarationStart:declarationEnd]),
+			)
+		}
+		lowered = l.withTrailingComments(lowered, trailing)
 		if index > 0 {
 			parts = append(parts, l.arena.HardLine(), l.arena.HardLine())
 		}
@@ -1252,8 +1263,9 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 		parts = append(parts, beforeResults, l.arena.Text(" "), results)
 		boundary = resultsEnd
 	}
+	var bodyTail doc.ID
 	if function.Body != nil {
-		body, err := l.block(function.Body)
+		bodyTail, err = l.blockTail(function.Body)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -1265,19 +1277,27 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, beforeBody, l.arena.Text(" "), body)
+		parts = append(parts, beforeBody, l.arena.Text(" {"))
 	}
 	firstStart, found := l.source.PhysicalOffset(first.Pos())
 	if !found {
 		return doc.ID{}, errors.New("function declaration has no physical first operand")
 	}
-	return l.keywordHeader(
+	header, err := l.keywordHeader(
 		function.Type.Func,
 		"func",
 		" ",
 		firstStart,
 		l.arena.Concat(parts...),
 	)
+	if err != nil || function.Body == nil {
+		return header, err
+	}
+	header, err = l.preserveNolintHeader(header, function.Type.Func, function.Body)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	return l.arena.Concat(header, bodyTail), nil
 }
 
 func (l *lowerer) receiverList(keywordPosition token.Pos, fields *ast.FieldList) (doc.ID, error) {
@@ -1411,7 +1431,11 @@ func (l *lowerer) delimitedCommaList(
 		}
 		trailing := l.trailingComments(item.end, limit)
 		hasComments = hasComments || len(leading) > 0 || len(trailing) > 0
-		row := l.withTrailingComments(item.document, trailing)
+		row := item.document
+		if hasNolintComment(trailing) {
+			row = l.arena.Verbatim(string(l.physical[item.start:item.end]))
+		}
+		row = l.withTrailingComments(row, trailing)
 		row = l.arena.Concat(row, l.arena.Text(","))
 		if len(leading) > 0 {
 			row = l.arena.Concat(l.boundaryCommentsDocument(leading, item.start), row)
@@ -1430,6 +1454,9 @@ func (l *lowerer) delimitedCommaList(
 			return l.arena.Text(open + close), nil
 		}
 		return l.commaList(open, close, plain), nil
+	}
+	if l.hasNolintCommentBetween(opening, closing) {
+		return l.arena.Verbatim(string(l.physical[opening:closing + len(close)])), nil
 	}
 	return l.arena.Concat(
 		l.arena.Text(open),
@@ -1810,6 +1837,33 @@ func hasNolintComment(comments []source.Comment) bool {
 	return false
 }
 
+func (l *lowerer) hasNolintCommentBetween(start, end int) bool {
+	for _, comment := range l.comments {
+		if comment.Range.Start >= start &&
+			comment.Range.End <= end &&
+			isNolintComment(comment.Raw) {
+			return true
+		}
+	}
+	return false
+}
+
+func (l *lowerer) preserveNolintHeader(
+	header doc.ID,
+	keyword token.Pos,
+	block *ast.BlockStmt,
+) (doc.ID, error) {
+	start, startFound := l.source.PhysicalOffset(keyword)
+	brace, braceFound := l.source.PhysicalOffset(block.Lbrace)
+	if !startFound || !braceFound {
+		return doc.ID{}, errors.New("header has no physical boundary")
+	}
+	if !l.hasNolintCommentBetween(start, brace) && !l.blockOpeningHasNolint(block) {
+		return header, nil
+	}
+	return l.arena.Verbatim(string(l.physical[start:brace + 1])), nil
+}
+
 func (l *lowerer) blockOpeningHasNolint(block *ast.BlockStmt) bool {
 	opening, openingFound := l.source.PhysicalOffset(block.Lbrace)
 	closing, closingFound := l.source.PhysicalOffset(block.Rbrace)
@@ -2059,6 +2113,13 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
+	withTail := func(header doc.ID) (doc.ID, error) {
+		header, err = l.preserveNolintHeader(header, statement.For, statement.Body)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(header, tail), nil
+	}
 	if classicClause {
 		forOffset, forFound := l.source.PhysicalOffset(statement.For)
 		braceOffset, braceFound := l.source.PhysicalOffset(statement.Body.Lbrace)
@@ -2213,19 +2274,19 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 					),
 					l.arena.Text("{"),
 				)
-				return l.arena.Concat(l.arena.Concat(header...), tail), nil
+				return withTail(l.arena.Concat(header...))
 			} else {
 				rows = append(rows, trailingPostDocument, l.arena.Text(" {"))
 			}
 			header = append(header, l.arena.Indent(l.arena.Concat(rows...)))
-			return l.arena.Concat(l.arena.Concat(header...), tail), nil
+			return withTail(l.arena.Concat(header...))
 		}
 		parts = append(
 			parts,
 			l.arena.Indent(l.arena.Concat(continuation...)),
 			l.arena.Text(" {"),
 		)
-		return l.arena.Concat(l.arena.Group(l.arena.Concat(parts...)), tail), nil
+		return withTail(l.arena.Group(l.arena.Concat(parts...)))
 	}
 	if statement.Cond != nil {
 		condition, err := l.expression(statement.Cond)
@@ -2269,7 +2330,7 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 				l.arena.Text(" {"),
 			)
 		}
-		return l.arena.Concat(header, tail), nil
+		return withTail(header)
 	}
 	forOffset, forFound := l.source.PhysicalOffset(statement.For)
 	braceOffset, braceFound := l.source.PhysicalOffset(statement.Body.Lbrace)
@@ -2287,14 +2348,14 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 			if err != nil {
 				return doc.ID{}, err
 			}
-			return l.arena.Concat(
+			header := l.arena.Concat(
 				l.arena.Text("for"),
 				commentsDocument,
 				l.arena.Text(" {"),
-				tail,
-			), nil
+			)
+			return withTail(header)
 		}
-		return l.arena.Concat(
+		header := l.arena.Concat(
 			l.arena.Text("for"),
 			l.arena.Indent(
 				l.arena.Concat(
@@ -2307,10 +2368,10 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 				braceOffset,
 			),
 			l.arena.Text("{"),
-			tail,
-		), nil
+		)
+		return withTail(header)
 	}
-	return l.arena.Concat(l.arena.Text("for {"), tail), nil
+	return withTail(l.arena.Text("for {"))
 }
 
 func (l *lowerer) classicForSemicolons(statement *ast.ForStmt) ([2]source.Token, bool, error) {
@@ -2486,6 +2547,10 @@ func (l *lowerer) rangeStatement(statement *ast.RangeStmt) (doc.ID, error) {
 			),
 		)
 	}
+	header, err = l.preserveNolintHeader(header, statement.For, statement.Body)
+	if err != nil {
+		return doc.ID{}, err
+	}
 	return l.arena.Concat(header, tail), nil
 }
 
@@ -2592,6 +2657,10 @@ func (l *lowerer) switchStatement(statement *ast.SwitchStmt) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
+	header, err = l.preserveNolintHeader(header, statement.Switch, statement.Body)
+	if err != nil {
+		return doc.ID{}, err
+	}
 	return l.arena.Concat(header, tail), nil
 }
 
@@ -2611,6 +2680,10 @@ func (l *lowerer) typeSwitchStatement(statement *ast.TypeSwitchStmt) (doc.ID, er
 		return doc.ID{}, err
 	}
 	tail, err := l.blockTail(statement.Body)
+	if err != nil {
+		return doc.ID{}, err
+	}
+	header, err = l.preserveNolintHeader(header, statement.Switch, statement.Body)
 	if err != nil {
 		return doc.ID{}, err
 	}
@@ -2858,15 +2931,45 @@ func (l *lowerer) caseClause(clause *ast.CaseClause, _ int) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	parts := []doc.ID{header}
 	end, found := l.source.PhysicalOffset(clause.End())
 	if !found {
 		return doc.ID{}, errors.New("case clause has no physical end offset")
 	}
-	body, err := l.statementRange(clause.Body, colon + 1, end)
+	return l.clauseWithNolintHeader(header, clause.Case, colon, clause.Body, end)
+}
+
+func (l *lowerer) clauseWithNolintHeader(
+	header doc.ID,
+	keyword token.Pos,
+	colon int,
+	statements []ast.Stmt,
+	end int,
+) (doc.ID, error) {
+	openingLimit := end
+	if len(statements) > 0 {
+		var found bool
+		openingLimit, found = l.source.PhysicalOffset(statements[0].Pos())
+		if !found {
+			return doc.ID{}, errors.New("first clause statement has no physical offset")
+		}
+	}
+	openingTrailing := l.openingNolintComments(colon + 1, openingLimit)
+	boundary := colon + 1
+	if len(openingTrailing) > 0 {
+		boundary = openingTrailing[len(openingTrailing) - 1].Range.End
+	}
+	body, err := l.statementRange(statements, boundary, end)
 	if err != nil {
 		return doc.ID{}, err
 	}
+	start, found := l.source.PhysicalOffset(keyword)
+	if !found {
+		return doc.ID{}, errors.New("clause header has no physical start offset")
+	}
+	if l.hasNolintCommentBetween(start, colon) || len(openingTrailing) > 0 {
+		header = l.arena.Verbatim(string(l.physical[start:colon + 1]))
+	}
+	parts := []doc.ID{header, l.withTrailingComments(l.arena.Empty(), openingTrailing)}
 	if len(body) > 0 {
 		parts = append(parts, l.statementSequence(body))
 	}
@@ -3035,19 +3138,11 @@ func (l *lowerer) communicationClause(clause *ast.CommClause, _ int) (doc.ID, er
 	if err != nil {
 		return doc.ID{}, err
 	}
-	parts := []doc.ID{header}
 	end, found := l.source.PhysicalOffset(clause.End())
 	if !found {
 		return doc.ID{}, errors.New("communication clause has no physical end offset")
 	}
-	body, err := l.statementRange(clause.Body, colon + 1, end)
-	if err != nil {
-		return doc.ID{}, err
-	}
-	if len(body) > 0 {
-		parts = append(parts, l.statementSequence(body))
-	}
-	return l.arena.Concat(parts...), nil
+	return l.clauseWithNolintHeader(header, clause.Case, colon, clause.Body, end)
 }
 
 func (l *lowerer) communicationClauseHeader(clause *ast.CommClause, colon int) (doc.ID, error) {
@@ -3344,14 +3439,14 @@ func (l *lowerer) ifStatement(statement *ast.IfStmt) (doc.ID, error) {
 			parts = []doc.ID{l.arena.Group(l.arena.Concat(parts...))}
 		}
 	}
-	preserveHeader := l.blockOpeningHasNolint(statement.Body)
 	tail, err := l.blockTail(statement.Body)
 	if err != nil {
 		return doc.ID{}, err
 	}
 	header := l.arena.Concat(parts...)
-	if preserveHeader {
-		header = l.arena.Verbatim(string(l.physical[ifOffset:braceOffset + 1]))
+	header, err = l.preserveNolintHeader(header, statement.If, statement.Body)
+	if err != nil {
+		return doc.ID{}, err
 	}
 	result := []doc.ID{header, tail}
 	if statement.Else != nil {
@@ -3755,7 +3850,7 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		body, err := l.block(value.Body)
+		bodyTail, err := l.blockTail(value.Body)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -3773,7 +3868,12 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(signature, beforeBody, l.arena.Text(" "), body), nil
+		header := l.arena.Concat(signature, beforeBody, l.arena.Text(" {"))
+		header, err = l.preserveNolintHeader(header, value.Type.Func, value.Body)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		return l.arena.Concat(header, bodyTail), nil
 	case *ast.StructType:
 		return l.aggregateType(value.Struct, "struct", value.Fields, false)
 	case *ast.InterfaceType:

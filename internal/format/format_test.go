@@ -1091,6 +1091,57 @@ func TestFormatPreservesNolintLineOwnershipWhenLayoutWouldBreak(t *testing.T) {
 	}
 }
 
+func TestFormatPreservesNolintOwnershipAcrossBreakableBoundaries(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"if initializer": "package comments\n\nfunc run() {\n\t//lint:ignore SA1012 Public boundary must reject a nil context safely.\n\tif err := drain(); !errors.Is(err, first) || //nolint:staticcheck // Explicit nil rejection.\n\t\t!errors.Is(err, second) {\n\t\tpanic(err)\n\t}\n}\n",
+		"classic for": "package comments\n\nfunc run() {\n\tfor index := 0; index < firstLimit || //nolint:staticcheck\n\t\tindex < secondLimit; index++ {\n\t\twork()\n\t}\n}\n",
+		"range": "package comments\n\nfunc run() {\n\tfor _, value := range firstCollection || //nolint:staticcheck\n\t\tsecondCollection {\n\t\twork(value)\n\t}\n}\n",
+		"expression switch": "package comments\n\nfunc run() {\n\tswitch value := read(); value == firstValue || //nolint:staticcheck\n\t\tvalue == secondValue {\n\tdefault:\n\t\twork()\n\t}\n}\n",
+		"type switch opening": "package comments\n\nfunc run() {\n\tswitch prepared := longInitializerCall(firstArgument, secondArgument); value := candidate.(type) { //nolint:staticcheck\n\tcase string:\n\t\twork(prepared, value)\n\t}\n}\n",
+		"case expressions": "package comments\n\nfunc run() {\n\tswitch {\n\tcase firstCondition, secondCondition || //nolint:staticcheck\n\t\tthirdCondition:\n\t\twork()\n\t}\n}\n",
+		"case opening": "package comments\n\nfunc run() {\n\tswitch {\n\tcase longFirstCondition || longSecondCondition: //nolint:staticcheck\n\t\twork()\n\t}\n}\n",
+		"communication expression": "package comments\n\nfunc run() {\n\tselect {\n\tcase outputChannel <- longValueCall(firstArgument, secondArgument) + //nolint:staticcheck\n\t\tthirdArgument:\n\t\twork()\n\t}\n}\n",
+		"communication opening": "package comments\n\nfunc run() {\n\tselect {\n\tcase outputChannel <- longValueCall(firstArgument, secondArgument): //nolint:staticcheck\n\t\twork()\n\t}\n}\n",
+		"call argument": "package comments\n\nfunc run() {\n\tcall(\n\t\tfirst,\n\t\tlongConversion(sequence), //nolint:gosec\n\t\tlast,\n\t)\n}\n",
+		"composite element blank line": "package comments\n\nfunc run() {\n\t_ = Config{\n\t\tUnsafe: true, //nolint:gosec\n\n\t}\n}\n",
+		"composite opening": "package comments\n\nfunc run() {\n\tvalue := Config{ //nolint:gosec\n\t\tField: true,\n\t}\n\t_ = value\n}\n",
+		"function opening": "package comments\n\nfunc longFunction(firstArgument string, secondArgument string, thirdArgument string) int { //nolint:unused\n\treturn 0\n}\n",
+		"function literal opening": "package comments\n\nfunc run() {\n\thandler := func(firstArgument string, secondArgument string, thirdArgument string) int { //nolint:unused\n\t\treturn 0\n\t}\n\t_ = handler\n}\n",
+	}
+	for name, input := range tests {
+		t.Run(
+			name,
+			func(t *testing.T) {
+				t.Parallel()
+				file, err := source.Load("nolint.go", []byte(input))
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := goxformat.File(
+					file,
+					goxformat.Options{
+						Width: 100,
+						TabWidth: 8,
+						FitBudget: 1_000,
+					},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(got) != input {
+					t.Fatalf(
+						"File() =\n%s\nwant preserved directive ownership:\n%s",
+						got,
+						input,
+					)
+				}
+			},
+		)
+	}
+}
+
 func TestFormatPreservesStandaloneTopLevelDirectives(t *testing.T) {
 	t.Parallel()
 
