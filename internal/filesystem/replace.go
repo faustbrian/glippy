@@ -20,12 +20,12 @@ var ErrStale = errors.New("source changed since it was read")
 
 // Snapshot is one immutable regular-file version eligible for replacement.
 type Snapshot struct {
-	path     string
-	root     string
-	name     string
-	bytes    []byte
-	digest   [sha256.Size]byte
-	info     os.FileInfo
+	path string
+	root string
+	name string
+	bytes []byte
+	digest [sha256.Size]byte
+	info os.FileInfo
 	rootInfo os.FileInfo
 }
 
@@ -54,8 +54,14 @@ func ReadWithin(root, path string) (*Snapshot, error) {
 		}
 	}
 	name, err := filepath.Rel(rootAbsolute, absolute)
-	if err != nil || name == ".." || strings.HasPrefix(name, ".."+string(filepath.Separator)) {
-		return nil, fmt.Errorf("source path %q is outside authorized root %q", absolute, rootAbsolute)
+	if err != nil ||
+		name == ".." ||
+		strings.HasPrefix(name, ".." + string(filepath.Separator)) {
+		return nil, fmt.Errorf(
+			"source path %q is outside authorized root %q",
+			absolute,
+			rootAbsolute,
+		)
 	}
 	boundary, err := os.OpenRoot(rootAbsolute)
 	if err != nil {
@@ -70,7 +76,7 @@ func ReadWithin(root, path string) (*Snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("inspect source path %q: %w", absolute, err)
 	}
-	if listed.Mode()&os.ModeSymlink != 0 {
+	if listed.Mode() & os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("source path %q is a symlink", absolute)
 	}
 	if !listed.Mode().IsRegular() {
@@ -96,21 +102,25 @@ func ReadWithin(root, path string) (*Snapshot, error) {
 		return nil, fmt.Errorf("read source path %q: %w", absolute, err)
 	}
 	return &Snapshot{
-		path:     absolute,
-		root:     rootAbsolute,
-		name:     name,
-		bytes:    input,
-		digest:   sha256.Sum256(input),
-		info:     opened,
+		path: absolute,
+		root: rootAbsolute,
+		name: name,
+		bytes: input,
+		digest: sha256.Sum256(input),
+		info: opened,
 		rootInfo: rootInfo,
 	}, nil
 }
 
 // Path returns the normalized source identity.
-func (s *Snapshot) Path() string { return s.path }
+func (s *Snapshot) Path() string {
+	return s.path
+}
 
 // Bytes returns an independent copy of the captured source bytes.
-func (s *Snapshot) Bytes() []byte { return bytes.Clone(s.bytes) }
+func (s *Snapshot) Bytes() []byte {
+	return bytes.Clone(s.bytes)
+}
 
 // Replace validates the source version and atomically replaces changed bytes.
 func (s *Snapshot) Replace(output []byte) error {
@@ -181,7 +191,7 @@ func (s *Snapshot) validateCurrent(boundary *os.Root) error {
 	if err != nil {
 		return fmt.Errorf("validate source path %q: %w (%v)", s.path, ErrStale, err)
 	}
-	if listed.Mode()&os.ModeSymlink != 0 ||
+	if listed.Mode() & os.ModeSymlink != 0 ||
 		!listed.Mode().IsRegular() ||
 		!os.SameFile(s.info, listed) ||
 		listed.Mode().Perm() != s.info.Mode().Perm() {
@@ -196,7 +206,9 @@ func (s *Snapshot) validateCurrent(boundary *os.Root) error {
 	if err != nil {
 		return fmt.Errorf("inspect current source %q: %w", s.path, err)
 	}
-	if !os.SameFile(listed, opened) || !os.SameFile(s.info, opened) || opened.Mode().Perm() != s.info.Mode().Perm() {
+	if !os.SameFile(listed, opened) ||
+		!os.SameFile(s.info, opened) ||
+		opened.Mode().Perm() != s.info.Mode().Perm() {
 		return fmt.Errorf("validate source path %q: %w", s.path, ErrStale)
 	}
 	if opened.Size() != s.info.Size() {
@@ -218,8 +230,11 @@ func createTemporary(boundary *os.Root, directory, base string) (string, *os.Fil
 		if _, err := rand.Read(random[:]); err != nil {
 			return "", nil, err
 		}
-		name := filepath.Join(directory, "."+base+".gox-"+hex.EncodeToString(random[:]))
-		file, err := boundary.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		name := filepath.Join(
+			directory,
+			"." + base + ".gox-" + hex.EncodeToString(random[:]),
+		)
+		file, err := boundary.OpenFile(name, os.O_WRONLY | os.O_CREATE | os.O_EXCL, 0o600)
 		if err == nil {
 			return name, file, nil
 		}

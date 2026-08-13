@@ -32,24 +32,30 @@ func TestRenderUsesBoundedArenaCapacityHint(t *testing.T) {
 	}
 
 	allocatedBytes := func(renderOne func() error) int64 {
-		result := testing.Benchmark(func(b *testing.B) {
-			for b.Loop() {
-				if err := renderOne(); err != nil {
-					b.Fatal(err)
+		result := testing.Benchmark(
+			func(b *testing.B) {
+				for b.Loop() {
+					if err := renderOne(); err != nil {
+						b.Fatal(err)
+					}
 				}
-			}
-		})
+			},
+		)
 		return result.AllocedBytesPerOp()
 	}
-	baselineBytes := allocatedBytes(func() error {
-		_, err := renderFileWithCapacity(file, options, tokens, 1)
-		return err
-	})
-	hintedBytes := allocatedBytes(func() error {
-		_, err := render(file, options)
-		return err
-	})
-	if hintedBytes*100 > baselineBytes*80 {
+	baselineBytes := allocatedBytes(
+		func() error {
+			_, err := renderFileWithCapacity(file, options, tokens, 1)
+			return err
+		},
+	)
+	hintedBytes := allocatedBytes(
+		func() error {
+			_, err := render(file, options)
+			return err
+		},
+	)
+	if hintedBytes * 100 > baselineBytes * 80 {
 		t.Fatalf(
 			"capacity-aware render allocated %d bytes/op, want at most 80%% of %d",
 			hintedBytes,

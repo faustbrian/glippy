@@ -55,7 +55,11 @@ func TestResolveDefaultsWithoutDirective(t *testing.T) {
 		t.Fatal(err)
 	}
 	if selection.Language != goversion.Default || selection.Path != "" {
-		t.Fatalf("Resolve() = %#v, want default %q without a directive", selection, goversion.Default)
+		t.Fatalf(
+			"Resolve() = %#v, want default %q without a directive",
+			selection,
+			goversion.Default,
+		)
 	}
 }
 
@@ -67,7 +71,8 @@ func TestResolveRejectsUnsupportedSourceVersion(t *testing.T) {
 	writeFile(t, mod, "module example.com/project\n\ngo 1.24\n")
 
 	_, err := goversion.Resolve(filepath.Join(root, "source.go"), root)
-	if err == nil || !strings.Contains(err.Error(), "supports Go 1.25 through Go 1.26") ||
+	if err == nil ||
+		!strings.Contains(err.Error(), "supports Go 1.25 through Go 1.26") ||
 		!strings.Contains(err.Error(), mod) {
 		t.Fatalf("Resolve() error = %v, want located unsupported-version error", err)
 	}

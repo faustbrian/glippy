@@ -41,78 +41,78 @@ type Preset = rules.Preset
 
 const (
 	PresetCorrectness = rules.PresetCorrectness
-	PresetSuspicious  = rules.PresetSuspicious
+	PresetSuspicious = rules.PresetSuspicious
 	PresetPerformance = rules.PresetPerformance
-	PresetComplexity  = rules.PresetComplexity
-	PresetStyle       = rules.PresetStyle
+	PresetComplexity = rules.PresetComplexity
+	PresetStyle = rules.PresetStyle
 )
 
 // Severity controls whether and how a lint rule reports.
 type Severity = rules.Severity
 
 const (
-	SeverityOff   = rules.SeverityOff
-	SeverityWarn  = rules.SeverityWarn
+	SeverityOff = rules.SeverityOff
+	SeverityWarn = rules.SeverityWarn
 	SeverityError = rules.SeverityError
 )
 
 // Config is one fully defaulted and validated project configuration.
 type Config struct {
-	Version  int
-	Format   Format
+	Version int
+	Format Format
 	Analysis Analysis
-	Lint     Lint
-	Cache    Cache
+	Lint Lint
+	Cache Cache
 }
 
 // Format contains formatter policy that materially affects adoption.
 type Format struct {
 	LineWidth int
-	TabWidth  int
+	TabWidth int
 }
 
 // Analysis contains the resolved build selection for package-aware rules.
 type Analysis struct {
-	BuildTags  []string
-	GOOS       string
-	GOARCH     string
+	BuildTags []string
+	GOOS string
+	GOARCH string
 	CGOEnabled bool
 }
 
 // Lint contains the selected preset and explicit rule overrides.
 type Lint struct {
-	Preset       Preset
-	Rules        map[string]Severity
-	RuleOptions  map[string]rules.OptionSet
+	Preset Preset
+	Rules map[string]Severity
+	RuleOptions map[string]rules.OptionSet
 	Suppressions Suppressions
 }
 
 // Suppressions contains project policy for auditable lint waivers.
 type Suppressions struct {
 	RequireReason bool
-	ExpiryCutoff  string
+	ExpiryCutoff string
 }
 
 // Cache contains the opt-in persistent analysis-cache lifecycle policy.
 type Cache struct {
-	Enabled    bool
+	Enabled bool
 	MaxEntries int
-	MaxBytes   int64
+	MaxBytes int64
 }
 
 // ParseOptions supplies registry state needed to validate rule identifiers.
 type ParseOptions struct {
-	KnownRules  []string
+	KnownRules []string
 	RuleOptions map[string][]rules.OptionMetadata
 }
 
 // Error is one path-aware configuration diagnostic.
 type Error struct {
-	Path    string
-	Line    int
-	Column  int
+	Path string
+	Line int
+	Column int
 	Message string
-	cause   error
+	cause error
 }
 
 // Error renders a source-located diagnostic when line information is known.
@@ -124,68 +124,64 @@ func (e *Error) Error() string {
 }
 
 // Unwrap returns the underlying TOML decoder failure when one exists.
-func (e *Error) Unwrap() error { return e.cause }
+func (e *Error) Unwrap() error {
+	return e.cause
+}
 
 type fileConfig struct {
-	Version  *int           `toml:"version"`
-	Format   formatConfig   `toml:"format"`
+	Version *int `toml:"version"`
+	Format formatConfig `toml:"format"`
 	Analysis analysisConfig `toml:"analysis"`
-	Lint     lintConfig     `toml:"lint"`
-	Cache    cacheConfig    `toml:"cache"`
+	Lint lintConfig `toml:"lint"`
+	Cache cacheConfig `toml:"cache"`
 }
 
 type formatConfig struct {
 	LineWidth *int `toml:"line-width"`
-	TabWidth  *int `toml:"tab-width"`
+	TabWidth *int `toml:"tab-width"`
 }
 
 type analysisConfig struct {
-	BuildTags  []string `toml:"build-tags"`
-	GOOS       *string  `toml:"goos"`
-	GOARCH     *string  `toml:"goarch"`
-	CGOEnabled *bool    `toml:"cgo-enabled"`
+	BuildTags []string `toml:"build-tags"`
+	GOOS *string `toml:"goos"`
+	GOARCH *string `toml:"goarch"`
+	CGOEnabled *bool `toml:"cgo-enabled"`
 }
 
 type lintConfig struct {
-	Preset       *string                   `toml:"preset"`
-	Rules        map[string]string         `toml:"rules"`
-	RuleOptions  map[string]map[string]any `toml:"rule-options"`
-	Suppressions suppressionConfig         `toml:"suppressions"`
+	Preset *string `toml:"preset"`
+	Rules map[string]string `toml:"rules"`
+	RuleOptions map[string]map[string]any `toml:"rule-options"`
+	Suppressions suppressionConfig `toml:"suppressions"`
 }
 
 type suppressionConfig struct {
-	RequireReason *bool   `toml:"require-reason"`
-	ExpiryCutoff  *string `toml:"expiry-cutoff"`
+	RequireReason *bool `toml:"require-reason"`
+	ExpiryCutoff *string `toml:"expiry-cutoff"`
 }
 
 type cacheConfig struct {
-	Enabled    *bool  `toml:"enabled"`
-	MaxEntries *int   `toml:"max-entries"`
-	MaxBytes   *int64 `toml:"max-bytes"`
+	Enabled *bool `toml:"enabled"`
+	MaxEntries *int `toml:"max-entries"`
+	MaxBytes *int64 `toml:"max-bytes"`
 }
 
 // Defaults returns an independent configuration containing built-in policy.
 func Defaults() Config {
 	return Config{
 		Version: Version,
-		Format: Format{
-			LineWidth: DefaultLineWidth,
-			TabWidth:  DefaultTabWidth,
-		},
+		Format: Format{LineWidth: DefaultLineWidth, TabWidth: DefaultTabWidth},
 		Analysis: Analysis{
-			GOOS:       runtime.GOOS,
-			GOARCH:     runtime.GOARCH,
+			GOOS: runtime.GOOS,
+			GOARCH: runtime.GOARCH,
 			CGOEnabled: build.Default.CgoEnabled,
 		},
 		Lint: Lint{
-			Preset:      PresetCorrectness,
-			Rules:       make(map[string]Severity),
+			Preset: PresetCorrectness,
+			Rules: make(map[string]Severity),
 			RuleOptions: make(map[string]rules.OptionSet),
 		},
-		Cache: Cache{
-			MaxEntries: DefaultCacheMaxEntries,
-			MaxBytes:   DefaultCacheMaxBytes,
-		},
+		Cache: Cache{MaxEntries: DefaultCacheMaxEntries, MaxBytes: DefaultCacheMaxBytes},
 	}
 }
 
@@ -197,9 +193,9 @@ func Load(selection Selection, options ParseOptions) (Config, error) {
 	input, err := os.ReadFile(selection.Path)
 	if err != nil {
 		return Config{}, &Error{
-			Path:    selection.Path,
+			Path: selection.Path,
 			Message: fmt.Sprintf("read configuration: %v", err),
-			cause:   err,
+			cause: err,
 		}
 	}
 	return Parse(selection.Path, input, options)
@@ -208,14 +204,19 @@ func Load(selection Selection, options ParseOptions) (Config, error) {
 // Parse strictly decodes, defaults, and validates one configuration source.
 func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 	var decoded fileConfig
-	if err := toml.NewDecoder(bytes.NewReader(input)).DisallowUnknownFields().Decode(&decoded); err != nil {
+	if err := toml.NewDecoder(bytes.NewReader(input)).DisallowUnknownFields().Decode(&decoded);
+		err != nil {
 		return Config{}, locatedDecodeError(path, err)
 	}
 	if decoded.Version == nil {
 		return Config{}, semanticError(path, "version is required")
 	}
 	if *decoded.Version != Version {
-		return Config{}, semanticError(path, "unsupported configuration version %d", *decoded.Version)
+		return Config{}, semanticError(
+			path,
+			"unsupported configuration version %d",
+			*decoded.Version,
+		)
 	}
 	result := Defaults()
 	if decoded.Format.LineWidth != nil {
@@ -234,7 +235,11 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 		result.Analysis.BuildTags = append([]string(nil), decoded.Analysis.BuildTags...)
 		for _, tag := range result.Analysis.BuildTags {
 			if !validBuildTag(tag) {
-				return Config{}, semanticError(path, "analysis.build-tags contains invalid tag %q", tag)
+				return Config{}, semanticError(
+					path,
+					"analysis.build-tags contains invalid tag %q",
+					tag,
+				)
 			}
 		}
 		sort.Strings(result.Analysis.BuildTags)
@@ -287,7 +292,10 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 	}
 	if decoded.Cache.MaxEntries != nil {
 		if *decoded.Cache.MaxEntries < 0 {
-			return Config{}, semanticError(path, "cache.max-entries must not be negative")
+			return Config{}, semanticError(
+				path,
+				"cache.max-entries must not be negative",
+			)
 		}
 		result.Cache.MaxEntries = *decoded.Cache.MaxEntries
 	}
@@ -318,7 +326,12 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 		}
 		severity := Severity(decoded.Lint.Rules[rule])
 		if !validSeverity(severity) {
-			return Config{}, semanticError(path, "invalid severity %q for lint rule %q", severity, rule)
+			return Config{}, semanticError(
+				path,
+				"invalid severity %q for lint rule %q",
+				severity,
+				rule,
+			)
 		}
 		result.Lint.Rules[rule] = severity
 	}
@@ -329,7 +342,11 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 	sort.Strings(optionRuleIDs)
 	for _, rule := range optionRuleIDs {
 		if _, found := knownRules[rule]; !found {
-			return Config{}, semanticError(path, "unknown lint rule %q in lint.rule-options", rule)
+			return Config{}, semanticError(
+				path,
+				"unknown lint rule %q in lint.rule-options",
+				rule,
+			)
 		}
 		schema := make(map[string]rules.OptionMetadata, len(options.RuleOptions[rule]))
 		for _, option := range options.RuleOptions[rule] {
@@ -344,9 +361,17 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 		for _, name := range names {
 			metadata, found := schema[name]
 			if !found {
-				return Config{}, semanticError(path, "unknown option %q for lint rule %q", name, rule)
+				return Config{}, semanticError(
+					path,
+					"unknown option %q for lint rule %q",
+					name,
+					rule,
+				)
 			}
-			value, err := decodeRuleOption(decoded.Lint.RuleOptions[rule][name], metadata.Kind)
+			value, err := decodeRuleOption(
+				decoded.Lint.RuleOptions[rule][name],
+				metadata.Kind,
+			)
 			if err != nil {
 				return Config{}, semanticError(
 					path,
@@ -368,8 +393,10 @@ func validBuildTag(tag string) bool {
 		return false
 	}
 	for _, character := range tag {
-		if !unicode.IsLetter(character) && !unicode.IsDigit(character) &&
-			character != '_' && character != '.' {
+		if !unicode.IsLetter(character) &&
+			!unicode.IsDigit(character) &&
+			character != '_' &&
+			character != '.' {
 			return false
 		}
 	}
@@ -439,8 +466,7 @@ func locatedDecodeError(path string, cause error) error {
 
 func validPreset(value Preset) bool {
 	switch value {
-	case PresetCorrectness, PresetSuspicious, PresetPerformance,
-		PresetComplexity, PresetStyle:
+	case PresetCorrectness, PresetSuspicious, PresetPerformance, PresetComplexity, PresetStyle:
 		return true
 	default:
 		return false

@@ -22,13 +22,13 @@ func TestNewCheckResultSortsFilesAndCountsFormattingDifferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	diagnostic := rules.Diagnostic{
-		RuleID:     "sample-rule",
-		Severity:   rules.SeverityWarn,
+		RuleID: "sample-rule",
+		Severity: rules.SeverityWarn,
 		MessageKey: "sample",
-		Message:    "sample finding",
-		Path:       second.Path(),
-		Digest:     second.Digest(),
-		Range:      source.Range{Start: 15, End: 18},
+		Message: "sample finding",
+		Path: second.Path(),
+		Digest: second.Digest(),
+		Range: source.Range{Start: 15, End: 18},
 	}
 
 	result, err := NewCheckResult(
@@ -36,7 +36,11 @@ func TestNewCheckResultSortsFilesAndCountsFormattingDifferences(t *testing.T) {
 		1,
 		true,
 		[]analysis.Result{
-			{Path: second.Path(), Digest: second.Digest(), Diagnostics: []rules.Diagnostic{diagnostic}},
+			{
+				Path: second.Path(),
+				Digest: second.Digest(),
+				Diagnostics: []rules.Diagnostic{diagnostic},
+			},
 			{Path: first.Path(), Digest: first.Digest()},
 		},
 		[]CheckFormatOutcome{
@@ -48,16 +52,21 @@ func TestNewCheckResultSortsFilesAndCountsFormattingDifferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Summary.Files != 2 || result.Summary.FormattingDifferences != 1 ||
-		result.Summary.Diagnostics != 1 || !result.Summary.Complete {
+	if result.Summary.Files != 2 ||
+		result.Summary.FormattingDifferences != 1 ||
+		result.Summary.Diagnostics != 1 ||
+		!result.Summary.Complete {
 		t.Fatalf("NewCheckResult() summary = %#v", result.Summary)
 	}
-	if len(result.Files) != 2 || result.Files[0].Path != first.Path() ||
+	if len(result.Files) != 2 ||
+		result.Files[0].Path != first.Path() ||
 		result.Files[0].FormatStatus != CheckFormatDifferent ||
-		result.Files[1].Path != second.Path() || result.Files[1].FormatStatus != CheckFormatUnchanged {
+		result.Files[1].Path != second.Path() ||
+		result.Files[1].FormatStatus != CheckFormatUnchanged {
 		t.Fatalf("NewCheckResult() files = %#v", result.Files)
 	}
-	if len(result.Diagnostics) != 1 || result.Diagnostics[0].Path != second.Path() ||
+	if len(result.Diagnostics) != 1 ||
+		result.Diagnostics[0].Path != second.Path() ||
 		result.Diagnostics[0].SourceDigest != result.Files[1].SourceDigest {
 		t.Fatalf("NewCheckResult() diagnostics = %#v", result.Diagnostics)
 	}
@@ -71,7 +80,8 @@ func TestNewCheckResultSortsFilesAndCountsFormattingDifferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(firstJSON, secondJSON) ||
-		bytes.Index(firstJSON, []byte(first.Path())) > bytes.Index(firstJSON, []byte(second.Path())) {
+		bytes.Index(firstJSON, []byte(first.Path())) >
+			bytes.Index(firstJSON, []byte(second.Path())) {
 		t.Fatalf("MarshalCheckJSON() is not stable or path ordered:\n%s", firstJSON)
 	}
 }
@@ -86,44 +96,53 @@ func TestNewCheckResultRejectsMissingOrMismatchedFormatOutcomes(t *testing.T) {
 	analysisResult := analysis.Result{Path: file.Path(), Digest: file.Digest()}
 
 	tests := []struct {
-		name    string
+		name string
 		formats []CheckFormatOutcome
 		message string
 	}{
 		{name: "missing", message: "want 1 analysis results"},
 		{
 			name: "path mismatch",
-			formats: []CheckFormatOutcome{{
-				Path:   "/project/other.go",
-				Digest: file.Digest(),
-			}},
+			formats: []CheckFormatOutcome{
+				{Path: "/project/other.go", Digest: file.Digest()},
+			},
 			message: "source identity",
 		},
 		{
 			name: "digest mismatch",
-			formats: []CheckFormatOutcome{{
-				Path:   file.Path(),
-				Digest: source.Digest{1},
-			}},
+			formats: []CheckFormatOutcome{
+				{Path: file.Path(), Digest: source.Digest{1}},
+			},
 			message: "source identity",
 		},
 		{
 			name: "relative path",
-			formats: []CheckFormatOutcome{{
-				Path:   "source.go",
-				Digest: file.Digest(),
-			}},
+			formats: []CheckFormatOutcome{{Path: "source.go", Digest: file.Digest()}},
 			message: "normalized absolute",
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			_, err := NewCheckResult("success", 0, true, []analysis.Result{analysisResult}, test.formats, nil)
-			if err == nil || !strings.Contains(err.Error(), test.message) {
-				t.Fatalf("NewCheckResult() error = %v, want %q", err, test.message)
-			}
-		})
+				_, err := NewCheckResult(
+					"success",
+					0,
+					true,
+					[]analysis.Result{analysisResult},
+					test.formats,
+					nil,
+				)
+				if err == nil || !strings.Contains(err.Error(), test.message) {
+					t.Fatalf(
+						"NewCheckResult() error = %v, want %q",
+						err,
+						test.message,
+					)
+				}
+			},
+		)
 	}
 }

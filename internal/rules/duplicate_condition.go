@@ -14,24 +14,26 @@ type duplicateConditionRule struct{}
 
 func (duplicateConditionRule) Metadata() Metadata {
 	return Metadata{
-		ID:               "duplicate-condition",
-		Summary:          "detects repeated conditions in an if/else-if chain",
-		Documentation:    "Repeated side-effect-free conditions make a later branch unreachable and commonly indicate a copied condition that was not updated. Chains with initializers or conditions whose evaluation may have effects are ignored because changing those branches requires more context.",
-		DefaultSeverity:  SeverityWarn,
-		Presets:          []Preset{PresetCorrectness},
+		ID: "duplicate-condition",
+		Summary: "detects repeated conditions in an if/else-if chain",
+		Documentation: "Repeated side-effect-free conditions make a later branch unreachable and commonly indicate a copied condition that was not updated. Chains with initializers or conditions whose evaluation may have effects are ignored because changing those branches requires more context.",
+		DefaultSeverity: SeverityWarn,
+		Presets: []Preset{PresetCorrectness},
 		MinimumGoVersion: "1.25",
-		Requirement:      RequireSyntax,
-		NodeInterests:    []NodeKind{NodeIfStmt},
-		Categories:       []Category{CategoryCorrectness},
+		Requirement: RequireSyntax,
+		NodeInterests: []NodeKind{NodeIfStmt},
+		Categories: []Category{CategoryCorrectness},
 		KnownLimitations: []string{
 			"Syntactically different expressions are not compared for semantic equivalence.",
 			"Calls, channel receives, address operations, and chains with initializers are excluded conservatively.",
 		},
-		Examples: []Example{{
-			Title:     "Repeated branch condition",
-			Incorrect: "if ready { use() } else if ready { retry() }",
-			Correct:   "if ready { use() } else if retryable { retry() }",
-		}},
+		Examples: []Example{
+			{
+				Title: "Repeated branch condition",
+				Incorrect: "if ready { use() } else if ready { retry() }",
+				Correct: "if ready { use() } else if retryable { retry() }",
+			},
+		},
 	}
 }
 
@@ -40,7 +42,8 @@ func (duplicateConditionRule) RunSyntax(ctx *Context, node ast.Node) ([]Finding,
 	if !ok {
 		return nil, fmt.Errorf("duplicate-condition requires an if statement")
 	}
-	if previous, found := ctx.PreviousSignificantToken(statement.If); found && previous.Kind == token.ELSE {
+	if previous, found := ctx.PreviousSignificantToken(statement.If);
+		found && previous.Kind == token.ELSE {
 		return nil, nil
 	}
 
@@ -75,35 +78,43 @@ func (duplicateConditionRule) RunSyntax(ctx *Context, node ast.Node) ([]Finding,
 			continue
 		}
 		reported[fingerprint] = struct{}{}
-		findings = append(findings, Finding{
-			MessageKey: "duplicate-condition",
-			Message:    "condition occurs more than once in this if/else-if chain",
-			Range:      conditionRange,
-			Related: []Related{{
-				Range:   firstRange,
-				Message: "first occurrence of this condition",
-			}},
-			Help: "change the repeated condition or remove the unreachable branch",
-		})
+		findings = append(
+			findings,
+			Finding{
+				MessageKey: "duplicate-condition",
+				Message: "condition occurs more than once in this if/else-if chain",
+				Range: conditionRange,
+				Related: []Related{
+					{
+						Range: firstRange,
+						Message: "first occurrence of this condition",
+					},
+				},
+				Help: "change the repeated condition or remove the unreachable branch",
+			},
+		)
 	}
 	return findings, nil
 }
 
 func conditionIsSideEffectFree(expression ast.Expr) bool {
 	safe := true
-	ast.Inspect(expression, func(node ast.Node) bool {
-		switch current := node.(type) {
-		case *ast.CallExpr:
-			safe = false
-			return false
-		case *ast.UnaryExpr:
-			if current.Op == token.ARROW || current.Op == token.AND {
+	ast.Inspect(
+		expression,
+		func(node ast.Node) bool {
+			switch current := node.(type) {
+			case *ast.CallExpr:
 				safe = false
 				return false
+			case *ast.UnaryExpr:
+				if current.Op == token.ARROW || current.Op == token.AND {
+					safe = false
+					return false
+				}
 			}
-		}
-		return safe
-	})
+			return safe
+		},
+	)
 	return safe
 }
 

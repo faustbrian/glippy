@@ -12,7 +12,9 @@ type failingReader struct {
 	err error
 }
 
-func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
+func (r failingReader) Read([]byte) (int, error) {
+	return 0, r.err
+}
 
 func TestReadAllLimitAcceptsBoundaryAndRejectsOverflow(t *testing.T) {
 	input, err := readAllLimit(strings.NewReader("four"), 4)
@@ -49,7 +51,7 @@ func TestSourceLoadersRejectOversizedPhysicalInputBeforeCloning(t *testing.T) {
 	if testing.Short() {
 		t.Skip("allocates one source-size boundary buffer")
 	}
-	input := make([]byte, MaxFileSize+1)
+	input := make([]byte, MaxFileSize + 1)
 
 	file, err := Load("oversized.go", input)
 	if file != nil || !errors.Is(err, ErrTooLarge) {

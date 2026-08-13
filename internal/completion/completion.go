@@ -13,7 +13,7 @@ type Shell string
 
 const (
 	Bash Shell = "bash"
-	Zsh  Shell = "zsh"
+	Zsh Shell = "zsh"
 	Fish Shell = "fish"
 )
 
@@ -28,7 +28,7 @@ func Render(shell Shell, ruleIDs []string) ([]byte, error) {
 		if !ruleIDPattern.MatchString(id) {
 			return nil, fmt.Errorf("invalid completion rule ID %q", id)
 		}
-		if index > 0 && ids[index-1] == id {
+		if index > 0 && ids[index - 1] == id {
 			return nil, fmt.Errorf("duplicate completion rule ID %q", id)
 		}
 	}
@@ -92,7 +92,9 @@ _gox_completion() {
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		explain)
-			COMPREPLY=( $(compgen -W "` + strings.Join(ruleIDs, " ") + `" -- "$current") )
+			COMPREPLY=( $(compgen -W "` +
+		strings.Join(ruleIDs, " ") +
+		`" -- "$current") )
 			;;
 		completion)
 			COMPREPLY=( $(compgen -W "bash zsh fish" -- "$current") )
@@ -141,7 +143,9 @@ _gox() {
 				'*:path:_files'
 			;;
 		explain)
-			_arguments '1:rule ID:(` + strings.Join(ruleIDs, " ") + `)'
+			_arguments '1:rule ID:(` +
+		strings.Join(ruleIDs, " ") +
+		`)'
 			;;
 		completion)
 			_arguments '1:shell:(bash zsh fish)'
@@ -155,7 +159,8 @@ _gox "$@"
 
 func renderFish(ruleIDs []string) string {
 	var output strings.Builder
-	output.WriteString(`complete -c gox -f
+	output.WriteString(
+		`complete -c gox -f
 complete -c gox -n '__fish_use_subcommand' -a fmt -d 'Format Go source'
 complete -c gox -n '__fish_use_subcommand' -a lint -d 'Lint Go source'
 complete -c gox -n '__fish_use_subcommand' -a check -d 'Check formatting and lint diagnostics'
@@ -176,7 +181,8 @@ complete -c gox -n '__fish_seen_subcommand_from lint' -l fix -d 'Apply safe fixe
 complete -c gox -n '__fish_seen_subcommand_from lint' -l fix-suggestions -d 'Apply suggestion fixes'
 complete -c gox -n '__fish_seen_subcommand_from lint' -l fix-unsafe -d 'Apply unsafe fixes'
 
-`)
+`,
+	)
 	for _, ruleID := range ruleIDs {
 		fmt.Fprintf(
 			&output,
@@ -184,7 +190,9 @@ complete -c gox -n '__fish_seen_subcommand_from lint' -l fix-unsafe -d 'Apply un
 			ruleID,
 		)
 	}
-	output.WriteString(`complete -c gox -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
-`)
+	output.WriteString(
+		`complete -c gox -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
+`,
+	)
 	return output.String()
 }

@@ -27,38 +27,37 @@ import (
 )
 
 const (
-	ExitSuccess           = 0
-	ExitFindings          = 1
-	ExitSourceError       = 2
+	ExitSuccess = 0
+	ExitFindings = 1
+	ExitSourceError = 2
 	ExitInvalidInvocation = 3
-	ExitConflict          = 4
-	ExitFilesystemError   = 5
-	ExitInternalError     = 6
-	ExitCanceled          = 130
+	ExitConflict = 4
+	ExitFilesystemError = 5
+	ExitInternalError = 6
+	ExitCanceled = 130
 )
 
-var defaultFormatOptions = goxformat.Options{
-	Width:     100,
-	TabWidth:  8,
-	FitBudget: 1_000,
-}
+var defaultFormatOptions = goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000}
 
 const formatUsage = "gox: expected 'fmt [--write|--check|--diff] [--reporter=text|json] [--config=<path>] [--stdin-filepath=<path>] [--fragment=declaration|statement|expression] [path...]'\n"
+
 const completionUsage = "gox: expected 'completion <bash|zsh|fish>'\n"
+
 const explainUsage = "gox: expected 'explain <rule>'\n"
+
 const versionUsage = "gox: expected 'version'\n"
 
 const maximumFormatWorkers = 8
 
 type formatInvocation struct {
-	fragmentKind  source.FragmentKind
+	fragmentKind source.FragmentKind
 	stdinFilepath string
-	configPath    string
-	paths         []string
-	reporter      goxreport.Format
-	check         bool
-	diff          bool
-	write         bool
+	configPath string
+	paths []string
+	reporter goxreport.Format
+	check bool
+	diff bool
+	write bool
 }
 
 // Run executes one Gox invocation against explicit process streams.
@@ -67,7 +66,12 @@ func Run(arguments []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 // RunContext executes one Gox invocation and observes cancellation between bounded operations.
-func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func RunContext(
+	ctx context.Context,
+	arguments []string,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+) int {
 	if stdin == nil || stdout == nil || stderr == nil {
 		if stderr == nil {
 			return ExitFilesystemError
@@ -80,14 +84,24 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 	if len(arguments) > 0 && arguments[0] == "completion" {
 		registry, err := rules.NewDefaultRegistry()
 		if err != nil {
-			return report(stderr, ExitInternalError, "gox completion: initialize rule registry: %v\n", err)
+			return report(
+				stderr,
+				ExitInternalError,
+				"gox completion: initialize rule registry: %v\n",
+				err,
+			)
 		}
 		return runCompletion(ctx, arguments, stdout, stderr, registry)
 	}
 	if len(arguments) > 0 && arguments[0] == "explain" {
 		registry, err := rules.NewDefaultRegistry()
 		if err != nil {
-			return report(stderr, ExitInternalError, "gox explain: initialize rule registry: %v\n", err)
+			return report(
+				stderr,
+				ExitInternalError,
+				"gox explain: initialize rule registry: %v\n",
+				err,
+			)
 		}
 		return runExplain(ctx, arguments, stdout, stderr, registry)
 	}
@@ -98,7 +112,12 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 		}
 		registry, err := rules.NewDefaultRegistry()
 		if err != nil {
-			return report(stderr, ExitInternalError, "gox check: initialize rule registry: %v\n", err)
+			return report(
+				stderr,
+				ExitInternalError,
+				"gox check: initialize rule registry: %v\n",
+				err,
+			)
 		}
 		return runCombinedCheck(ctx, invocation, stdout, stderr, registry)
 	}
@@ -120,7 +139,12 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 		}
 		registry, err := rules.NewDefaultRegistry()
 		if err != nil {
-			return report(stderr, ExitInternalError, "gox lint: initialize rule registry: %v\n", err)
+			return report(
+				stderr,
+				ExitInternalError,
+				"gox lint: initialize rule registry: %v\n",
+				err,
+			)
 		}
 		if invocation.fixEnabled() {
 			return runLintFix(ctx, invocation, stdout, stderr, registry)
@@ -178,7 +202,13 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 			return reportInvalidFormatInvocation(invocation, stdout, stderr)
 		}
 		if invocation.write {
-			return runFormatWriteReported(ctx, invocation, stdout, stderr, replaceFormatSnapshot)
+			return runFormatWriteReported(
+				ctx,
+				invocation,
+				stdout,
+				stderr,
+				replaceFormatSnapshot,
+			)
 		}
 		if invocation.diff {
 			if invocation.reporter == goxreport.JSON {
@@ -212,7 +242,12 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 	}
 	input, err := source.ReadAll(stdin)
 	if err != nil {
-		return report(stderr, exitCodeForError(ExitFilesystemError, err), "gox fmt: read standard input: %v\n", err)
+		return report(
+			stderr,
+			exitCodeForError(ExitFilesystemError, err),
+			"gox fmt: read standard input: %v\n",
+			err,
+		)
 	}
 	if err := ctx.Err(); err != nil {
 		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
@@ -221,7 +256,12 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 	if sourcePath == "" {
 		sourcePath = "stdin.go"
 	}
-	formatted, exitCode, err := formatStandardInput(input, sourcePath, invocation.fragmentKind, formatOptions)
+	formatted, exitCode, err := formatStandardInput(
+		input,
+		sourcePath,
+		invocation.fragmentKind,
+		formatOptions,
+	)
 	if err != nil {
 		return report(stderr, exitCode, "gox fmt: %v\n", err)
 	}
@@ -229,7 +269,12 @@ func RunContext(ctx context.Context, arguments []string, stdin io.Reader, stdout
 		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
 	}
 	if err := write(stdout, formatted); err != nil {
-		return report(stderr, ExitFilesystemError, "gox fmt: write standard output: %v\n", err)
+		return report(
+			stderr,
+			ExitFilesystemError,
+			"gox fmt: write standard output: %v\n",
+			err,
+		)
 	}
 	return ExitSuccess
 }
@@ -258,7 +303,11 @@ func runCompletion(
 		return report(stderr, ExitInternalError, "gox completion: context is required\n")
 	}
 	if registry == nil {
-		return report(stderr, ExitInternalError, "gox completion: rule registry is required\n")
+		return report(
+			stderr,
+			ExitInternalError,
+			"gox completion: rule registry is required\n",
+		)
 	}
 	if err := ctx.Err(); err != nil {
 		return report(stderr, ExitCanceled, "gox completion: %v\n", err)
@@ -271,7 +320,12 @@ func runCompletion(
 		return report(stderr, ExitCanceled, "gox completion: %v\n", err)
 	}
 	if err := write(stdout, output); err != nil {
-		return report(stderr, ExitFilesystemError, "gox completion: write standard output: %v\n", err)
+		return report(
+			stderr,
+			ExitFilesystemError,
+			"gox completion: write standard output: %v\n",
+			err,
+		)
 	}
 	return ExitSuccess
 }
@@ -296,13 +350,23 @@ func runExplain(
 	}
 	output, found := goxreport.RenderRuleText(registry, arguments[1])
 	if !found {
-		return report(stderr, ExitInvalidInvocation, "gox explain: unknown rule %q\n", arguments[1])
+		return report(
+			stderr,
+			ExitInvalidInvocation,
+			"gox explain: unknown rule %q\n",
+			arguments[1],
+		)
 	}
 	if err := ctx.Err(); err != nil {
 		return report(stderr, ExitCanceled, "gox explain: %v\n", err)
 	}
 	if err := write(stdout, output); err != nil {
-		return report(stderr, ExitFilesystemError, "gox explain: write standard output: %v\n", err)
+		return report(
+			stderr,
+			ExitFilesystemError,
+			"gox explain: write standard output: %v\n",
+			err,
+		)
 	}
 	return ExitSuccess
 }
@@ -317,8 +381,13 @@ func runVersion(ctx context.Context, arguments []string, stdout, stderr io.Write
 	if err := ctx.Err(); err != nil {
 		return report(stderr, ExitCanceled, "gox version: %v\n", err)
 	}
-	if err := write(stdout, []byte("gox "+goxversion.Current()+"\n")); err != nil {
-		return report(stderr, ExitFilesystemError, "gox version: write standard output: %v\n", err)
+	if err := write(stdout, []byte("gox " + goxversion.Current() + "\n")); err != nil {
+		return report(
+			stderr,
+			ExitFilesystemError,
+			"gox version: write standard output: %v\n",
+			err,
+		)
 	}
 	return ExitSuccess
 }
@@ -358,7 +427,9 @@ func requestsJSONReporter(arguments []string) bool {
 	}
 	for index, argument := range arguments {
 		if argument == "--reporter=json" ||
-			(argument == "--reporter" && index+1 < len(arguments) && arguments[index+1] == "json") {
+			(argument == "--reporter" &&
+				index + 1 < len(arguments) &&
+				arguments[index + 1] == "json") {
 			return true
 		}
 	}
@@ -400,19 +471,23 @@ func boolCount(values ...bool) int {
 }
 
 type formatTask struct {
-	file    discovery.File
-	root    string
+	file discovery.File
+	root string
 	options goxformat.Options
 }
 
 type formatTaskError struct {
 	exitCode int
-	err      error
+	err error
 }
 
-func (e *formatTaskError) Error() string { return e.err.Error() }
+func (e *formatTaskError) Error() string {
+	return e.err.Error()
+}
 
-func (e *formatTaskError) Unwrap() error { return e.err }
+func (e *formatTaskError) Unwrap() error {
+	return e.err
+}
 
 func newFormatTaskError(exitCode int, format string, arguments ...any) error {
 	return &formatTaskError{exitCode: exitCode, err: fmt.Errorf(format, arguments...)}
@@ -527,7 +602,7 @@ func formatTaskErrorSeverity(err error) int {
 }
 
 type preparedFormatCheck struct {
-	path    string
+	path string
 	changed bool
 }
 
@@ -543,27 +618,57 @@ func runFormatCheck(
 		}
 		return report(stderr, exitCode, "gox fmt: %v\n", err)
 	}
-	prepared, err := mapFormatTasks(ctx, tasks, formatWorkerLimit(len(tasks)), func(ctx context.Context, task formatTask) (preparedFormatCheck, error) {
-		input, err := source.ReadFile(task.file.Path)
-		if err != nil {
-			return preparedFormatCheck{}, newFormatTaskError(exitCodeForError(ExitFilesystemError, err), "read %q: %w", task.file.Path, err)
-		}
-		if err := ctx.Err(); err != nil {
-			return preparedFormatCheck{}, err
-		}
-		formatted, exitCode, err := formatStandardInput(input, task.file.Path, 0, task.options)
-		if err != nil {
-			return preparedFormatCheck{}, &formatTaskError{exitCode: exitCode, err: err}
-		}
-		if err := ctx.Err(); err != nil {
-			return preparedFormatCheck{}, err
-		}
-		return preparedFormatCheck{path: task.file.Path, changed: !bytes.Equal(input, formatted)}, nil
-	})
+	prepared, err := mapFormatTasks(
+		ctx,
+		tasks,
+		formatWorkerLimit(len(tasks)),
+		func(ctx context.Context, task formatTask) (preparedFormatCheck, error) {
+			input, err := source.ReadFile(task.file.Path)
+			if err != nil {
+				return preparedFormatCheck{}, newFormatTaskError(
+					exitCodeForError(ExitFilesystemError, err),
+					"read %q: %w",
+					task.file.Path,
+					err,
+				)
+			}
+			if err := ctx.Err(); err != nil {
+				return preparedFormatCheck{}, err
+			}
+			formatted, exitCode, err := formatStandardInput(
+				input,
+				task.file.Path,
+				0,
+				task.options,
+			)
+			if err != nil {
+				return preparedFormatCheck{}, &formatTaskError{
+					exitCode: exitCode,
+					err: err,
+				}
+			}
+			if err := ctx.Err(); err != nil {
+				return preparedFormatCheck{}, err
+			}
+			return preparedFormatCheck{
+				path: task.file.Path,
+				changed: !bytes.Equal(input, formatted),
+			}, nil
+		},
+	)
 	if err != nil {
 		if invocation.reporter == goxreport.JSON {
 			exitCode := formatTaskErrorExitCode(err)
-			return reportFormatJSON(stdout, stderr, "check", exitCode, len(tasks), 0, nil, err)
+			return reportFormatJSON(
+				stdout,
+				stderr,
+				"check",
+				exitCode,
+				len(tasks),
+				0,
+				nil,
+				err,
+			)
 		}
 		return reportFormatTaskError(stderr, err)
 	}
@@ -572,14 +677,29 @@ func runFormatCheck(
 	for _, item := range prepared {
 		if item.changed {
 			findings = append(findings, item.path)
-			files = append(files, goxreport.File{Path: item.path, Status: goxreport.FileDifferent})
+			files = append(
+				files,
+				goxreport.File{Path: item.path, Status: goxreport.FileDifferent},
+			)
 		} else {
-			files = append(files, goxreport.File{Path: item.path, Status: goxreport.FileUnchanged})
+			files = append(
+				files,
+				goxreport.File{Path: item.path, Status: goxreport.FileUnchanged},
+			)
 		}
 	}
 	if err := ctx.Err(); err != nil {
 		if invocation.reporter == goxreport.JSON {
-			return reportFormatJSON(stdout, stderr, "check", ExitCanceled, len(tasks), len(findings), files, err)
+			return reportFormatJSON(
+				stdout,
+				stderr,
+				"check",
+				ExitCanceled,
+				len(tasks),
+				len(findings),
+				files,
+				err,
+			)
 		}
 		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
 	}
@@ -588,7 +708,16 @@ func runFormatCheck(
 		if len(findings) > 0 {
 			exitCode = ExitFindings
 		}
-		return reportFormatJSON(stdout, stderr, "check", exitCode, len(tasks), len(findings), files, nil)
+		return reportFormatJSON(
+			stdout,
+			stderr,
+			"check",
+			exitCode,
+			len(tasks),
+			len(findings),
+			files,
+			nil,
+		)
 	}
 	if len(findings) == 0 {
 		return ExitSuccess
@@ -596,15 +725,20 @@ func runFormatCheck(
 	if err := ctx.Err(); err != nil {
 		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
 	}
-	if err := write(stdout, []byte(strings.Join(findings, "\n")+"\n")); err != nil {
-		return report(stderr, ExitFilesystemError, "gox fmt: write standard output: %v\n", err)
+	if err := write(stdout, []byte(strings.Join(findings, "\n") + "\n")); err != nil {
+		return report(
+			stderr,
+			ExitFilesystemError,
+			"gox fmt: write standard output: %v\n",
+			err,
+		)
 	}
 	return ExitFindings
 }
 
 type preparedFormatDiff struct {
-	path      string
-	input     []byte
+	path string
+	input []byte
 	formatted []byte
 }
 
@@ -613,20 +747,42 @@ func runFormatDiff(ctx context.Context, invocation formatInvocation, stdout, std
 	if err != nil {
 		return report(stderr, exitCode, "gox fmt: %v\n", err)
 	}
-	prepared, err := mapFormatTasks(ctx, tasks, formatWorkerLimit(len(tasks)), func(ctx context.Context, task formatTask) (preparedFormatDiff, error) {
-		input, err := source.ReadFile(task.file.Path)
-		if err != nil {
-			return preparedFormatDiff{}, newFormatTaskError(exitCodeForError(ExitFilesystemError, err), "read %q: %w", task.file.Path, err)
-		}
-		if err := ctx.Err(); err != nil {
-			return preparedFormatDiff{}, err
-		}
-		formatted, exitCode, err := formatStandardInput(input, task.file.Path, 0, task.options)
-		if err != nil {
-			return preparedFormatDiff{}, &formatTaskError{exitCode: exitCode, err: err}
-		}
-		return preparedFormatDiff{path: task.file.Path, input: input, formatted: formatted}, nil
-	})
+	prepared, err := mapFormatTasks(
+		ctx,
+		tasks,
+		formatWorkerLimit(len(tasks)),
+		func(ctx context.Context, task formatTask) (preparedFormatDiff, error) {
+			input, err := source.ReadFile(task.file.Path)
+			if err != nil {
+				return preparedFormatDiff{}, newFormatTaskError(
+					exitCodeForError(ExitFilesystemError, err),
+					"read %q: %w",
+					task.file.Path,
+					err,
+				)
+			}
+			if err := ctx.Err(); err != nil {
+				return preparedFormatDiff{}, err
+			}
+			formatted, exitCode, err := formatStandardInput(
+				input,
+				task.file.Path,
+				0,
+				task.options,
+			)
+			if err != nil {
+				return preparedFormatDiff{}, &formatTaskError{
+					exitCode: exitCode,
+					err: err,
+				}
+			}
+			return preparedFormatDiff{
+				path: task.file.Path,
+				input: input,
+				formatted: formatted,
+			}, nil
+		},
+	)
 	if err != nil {
 		return reportFormatTaskError(stderr, err)
 	}
@@ -636,7 +792,12 @@ func runFormatDiff(ctx context.Context, invocation formatInvocation, stdout, std
 		if err := ctx.Err(); err != nil {
 			return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
 		}
-		difference := goxdiff.Unified(item.path+".orig", item.path, item.input, item.formatted)
+		difference := goxdiff.Unified(
+			item.path + ".orig",
+			item.path,
+			item.input,
+			item.formatted,
+		)
 		if difference != "" {
 			changed = true
 			output.WriteString(difference)
@@ -647,7 +808,12 @@ func runFormatDiff(ctx context.Context, invocation formatInvocation, stdout, std
 	}
 	if output.Len() > 0 {
 		if err := write(stdout, []byte(output.String())); err != nil {
-			return report(stderr, ExitFilesystemError, "gox fmt: write standard output: %v\n", err)
+			return report(
+				stderr,
+				ExitFilesystemError,
+				"gox fmt: write standard output: %v\n",
+				err,
+			)
 		}
 	}
 	if changed {
@@ -656,7 +822,10 @@ func runFormatDiff(ctx context.Context, invocation formatInvocation, stdout, std
 	return ExitSuccess
 }
 
-func prepareFormatTasks(ctx context.Context, invocation formatInvocation) ([]formatTask, int, error) {
+func prepareFormatTasks(
+	ctx context.Context,
+	invocation formatInvocation,
+) ([]formatTask, int, error) {
 	selected := make(map[string]discovery.File)
 	optionsByConfiguration := make(map[string]goxformat.Options)
 	for _, input := range invocation.paths {
@@ -675,7 +844,11 @@ func prepareFormatTasks(ctx context.Context, invocation formatInvocation) ([]for
 			return nil, exitCode, err
 		}
 		optionsByConfiguration[selection.Path] = options
-		files, err := discovery.GoFiles(ctx, []string{input}, discovery.Options{Root: selection.Root})
+		files, err := discovery.GoFiles(
+			ctx,
+			[]string{input},
+			discovery.Options{Root: selection.Root},
+		)
 		if err != nil {
 			return nil, exitCodeForError(ExitFilesystemError, err), err
 		}
@@ -712,16 +885,19 @@ func prepareFormatTasks(ctx context.Context, invocation formatInvocation) ([]for
 			}
 			optionsByConfiguration[selection.Path] = options
 		}
-		tasks = append(tasks, formatTask{file: selected[path], root: selection.Root, options: options})
+		tasks = append(
+			tasks,
+			formatTask{file: selected[path], root: selection.Root, options: options},
+		)
 	}
 	return tasks, ExitSuccess, nil
 }
 
 type preparedFormatWrite struct {
 	snapshot *filesystem.Snapshot
-	path     string
-	output   []byte
-	changed  bool
+	path string
+	output []byte
+	changed bool
 }
 
 type formatSnapshotReplacer func(*filesystem.Snapshot, []byte) error
@@ -752,43 +928,75 @@ func runFormatWriteReported(
 		}
 		return report(stderr, exitCode, "gox fmt: %v\n", err)
 	}
-	prepared, err := mapFormatTasks(ctx, tasks, formatWorkerLimit(len(tasks)), func(ctx context.Context, task formatTask) (preparedFormatWrite, error) {
-		if task.file.TraversesSymlink {
-			return preparedFormatWrite{}, newFormatTaskError(ExitFilesystemError, "refusing to write symlink %q", task.file.Path)
-		}
-		snapshot, err := filesystem.ReadWithin(task.root, task.file.Path)
-		if err != nil {
-			return preparedFormatWrite{}, newFormatTaskError(ExitFilesystemError, "%w", err)
-		}
-		if err := ctx.Err(); err != nil {
-			return preparedFormatWrite{}, err
-		}
-		input := snapshot.Bytes()
-		file, err := source.Load(task.file.Path, input)
-		if err != nil {
-			return preparedFormatWrite{}, &formatTaskError{exitCode: ExitSourceError, err: err}
-		}
-		if file.Metadata().Generated {
-			return preparedFormatWrite{}, newFormatTaskError(ExitFilesystemError, "refusing to write generated file %q", task.file.Path)
-		}
-		formatted, err := goxformat.File(file, task.options)
-		if err != nil {
-			return preparedFormatWrite{}, &formatTaskError{exitCode: ExitInternalError, err: err}
-		}
-		if err := ctx.Err(); err != nil {
-			return preparedFormatWrite{}, err
-		}
-		return preparedFormatWrite{
-			snapshot: snapshot,
-			path:     task.file.Path,
-			output:   formatted,
-			changed:  !bytes.Equal(input, formatted),
-		}, nil
-	})
+	prepared, err := mapFormatTasks(
+		ctx,
+		tasks,
+		formatWorkerLimit(len(tasks)),
+		func(ctx context.Context, task formatTask) (preparedFormatWrite, error) {
+			if task.file.TraversesSymlink {
+				return preparedFormatWrite{}, newFormatTaskError(
+					ExitFilesystemError,
+					"refusing to write symlink %q",
+					task.file.Path,
+				)
+			}
+			snapshot, err := filesystem.ReadWithin(task.root, task.file.Path)
+			if err != nil {
+				return preparedFormatWrite{}, newFormatTaskError(
+					ExitFilesystemError,
+					"%w",
+					err,
+				)
+			}
+			if err := ctx.Err(); err != nil {
+				return preparedFormatWrite{}, err
+			}
+			input := snapshot.Bytes()
+			file, err := source.Load(task.file.Path, input)
+			if err != nil {
+				return preparedFormatWrite{}, &formatTaskError{
+					exitCode: ExitSourceError,
+					err: err,
+				}
+			}
+			if file.Metadata().Generated {
+				return preparedFormatWrite{}, newFormatTaskError(
+					ExitFilesystemError,
+					"refusing to write generated file %q",
+					task.file.Path,
+				)
+			}
+			formatted, err := goxformat.File(file, task.options)
+			if err != nil {
+				return preparedFormatWrite{}, &formatTaskError{
+					exitCode: ExitInternalError,
+					err: err,
+				}
+			}
+			if err := ctx.Err(); err != nil {
+				return preparedFormatWrite{}, err
+			}
+			return preparedFormatWrite{
+				snapshot: snapshot,
+				path: task.file.Path,
+				output: formatted,
+				changed: !bytes.Equal(input, formatted),
+			}, nil
+		},
+	)
 	if err != nil {
 		if invocation.reporter == goxreport.JSON {
 			exitCode := formatTaskErrorExitCode(err)
-			return reportFormatJSON(stdout, stderr, "write", exitCode, len(tasks), 0, nil, err)
+			return reportFormatJSON(
+				stdout,
+				stderr,
+				"write",
+				exitCode,
+				len(tasks),
+				0,
+				nil,
+				err,
+			)
 		}
 		return reportFormatTaskError(stderr, err)
 	}
@@ -804,7 +1012,16 @@ func runFormatWriteReported(
 	for index, item := range prepared {
 		if err := ctx.Err(); err != nil {
 			if invocation.reporter == goxreport.JSON {
-				return reportFormatJSON(stdout, stderr, "write", ExitCanceled, len(tasks), changedCount, files, err)
+				return reportFormatJSON(
+					stdout,
+					stderr,
+					"write",
+					ExitCanceled,
+					len(tasks),
+					changedCount,
+					files,
+					err,
+				)
 			}
 			return reportFormatWriteFailure(stderr, ExitCanceled, err, replaced, "")
 		}
@@ -812,9 +1029,24 @@ func runFormatWriteReported(
 			if errors.Is(err, filesystem.ErrStale) {
 				files[index].Status = goxreport.FileConflict
 				if invocation.reporter == goxreport.JSON {
-					return reportFormatJSON(stdout, stderr, "write", ExitConflict, len(tasks), changedCount, files, err)
+					return reportFormatJSON(
+						stdout,
+						stderr,
+						"write",
+						ExitConflict,
+						len(tasks),
+						changedCount,
+						files,
+						err,
+					)
 				}
-				return reportFormatWriteFailure(stderr, ExitConflict, err, replaced, "")
+				return reportFormatWriteFailure(
+					stderr,
+					ExitConflict,
+					err,
+					replaced,
+					"",
+				)
 			}
 			files[index].Status = goxreport.FileFailed
 			possiblyReplaced := ""
@@ -823,9 +1055,24 @@ func runFormatWriteReported(
 				files[index].Status = goxreport.FilePossiblyFormatted
 			}
 			if invocation.reporter == goxreport.JSON {
-				return reportFormatJSON(stdout, stderr, "write", ExitFilesystemError, len(tasks), changedCount, files, err)
+				return reportFormatJSON(
+					stdout,
+					stderr,
+					"write",
+					ExitFilesystemError,
+					len(tasks),
+					changedCount,
+					files,
+					err,
+				)
 			}
-			return reportFormatWriteFailure(stderr, ExitFilesystemError, err, replaced, possiblyReplaced)
+			return reportFormatWriteFailure(
+				stderr,
+				ExitFilesystemError,
+				err,
+				replaced,
+				possiblyReplaced,
+			)
 		}
 		if item.changed {
 			replaced = append(replaced, item.path)
@@ -836,12 +1083,30 @@ func runFormatWriteReported(
 	}
 	if err := ctx.Err(); err != nil {
 		if invocation.reporter == goxreport.JSON {
-			return reportFormatJSON(stdout, stderr, "write", ExitCanceled, len(tasks), changedCount, files, err)
+			return reportFormatJSON(
+				stdout,
+				stderr,
+				"write",
+				ExitCanceled,
+				len(tasks),
+				changedCount,
+				files,
+				err,
+			)
 		}
 		return reportFormatWriteFailure(stderr, ExitCanceled, err, replaced, "")
 	}
 	if invocation.reporter == goxreport.JSON {
-		return reportFormatJSON(stdout, stderr, "write", ExitSuccess, len(tasks), changedCount, files, nil)
+		return reportFormatJSON(
+			stdout,
+			stderr,
+			"write",
+			ExitSuccess,
+			len(tasks),
+			changedCount,
+			files,
+			nil,
+		)
 	}
 	return ExitSuccess
 }
@@ -862,7 +1127,14 @@ func reportFormatWriteFailure(
 		paths = append(paths, possiblyReplaced)
 		heading = "files replaced or possibly replaced before failure"
 	}
-	return report(stderr, exitCode, "gox fmt: %v\ngox fmt: %s:\n%s\n", err, heading, strings.Join(paths, "\n"))
+	return report(
+		stderr,
+		exitCode,
+		"gox fmt: %v\ngox fmt: %s:\n%s\n",
+		err,
+		heading,
+		strings.Join(paths, "\n"),
+	)
 }
 
 func reportFormatJSON(
@@ -888,7 +1160,12 @@ func reportFormatJSON(
 	)
 	encoded, err := goxreport.MarshalJSON(result)
 	if err != nil {
-		return report(stderr, moreSevereExitCode(exitCode, ExitInternalError), "gox fmt: encode JSON report: %v\n", err)
+		return report(
+			stderr,
+			moreSevereExitCode(exitCode, ExitInternalError),
+			"gox fmt: encode JSON report: %v\n",
+			err,
+		)
 	}
 	if err := write(stdout, encoded); err != nil {
 		outputExitCode := moreSevereExitCode(exitCode, ExitFilesystemError)
@@ -958,14 +1235,25 @@ func runFormatFile(ctx context.Context, invocation formatInvocation, stdout, std
 	}
 	info, err := os.Lstat(invocation.paths[0])
 	if err != nil {
-		return report(stderr, ExitFilesystemError, "gox fmt: inspect %q: %v\n", invocation.paths[0], err)
+		return report(
+			stderr,
+			ExitFilesystemError,
+			"gox fmt: inspect %q: %v\n",
+			invocation.paths[0],
+			err,
+		)
 	}
 	if info.IsDir() {
 		return report(stderr, ExitInvalidInvocation, formatUsage)
 	}
 	selection, err := config.Discover(invocation.paths[0], invocation.configPath)
 	if err != nil {
-		return report(stderr, exitCodeForError(ExitFilesystemError, err), "gox fmt: %v\n", err)
+		return report(
+			stderr,
+			exitCodeForError(ExitFilesystemError, err),
+			"gox fmt: %v\n",
+			err,
+		)
 	}
 	if _, err := goversion.Resolve(invocation.paths[0], selection.Root); err != nil {
 		return report(stderr, sourceVersionErrorExitCode(err), "gox fmt: %v\n", err)
@@ -976,7 +1264,12 @@ func runFormatFile(ctx context.Context, invocation formatInvocation, stdout, std
 		discovery.Options{Root: selection.Root},
 	)
 	if err != nil {
-		return report(stderr, exitCodeForError(ExitFilesystemError, err), "gox fmt: %v\n", err)
+		return report(
+			stderr,
+			exitCodeForError(ExitFilesystemError, err),
+			"gox fmt: %v\n",
+			err,
+		)
 	}
 	if len(files) != 1 {
 		return report(stderr, ExitInternalError, "gox fmt: expected one discovered file\n")
@@ -988,7 +1281,13 @@ func runFormatFile(ctx context.Context, invocation formatInvocation, stdout, std
 	}
 	input, err := source.ReadFile(path)
 	if err != nil {
-		return report(stderr, exitCodeForError(ExitFilesystemError, err), "gox fmt: read %q: %v\n", path, err)
+		return report(
+			stderr,
+			exitCodeForError(ExitFilesystemError, err),
+			"gox fmt: read %q: %v\n",
+			path,
+			err,
+		)
 	}
 	if err := ctx.Err(); err != nil {
 		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
@@ -1001,7 +1300,12 @@ func runFormatFile(ctx context.Context, invocation formatInvocation, stdout, std
 		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
 	}
 	if err := write(stdout, formatted); err != nil {
-		return report(stderr, ExitFilesystemError, "gox fmt: write standard output: %v\n", err)
+		return report(
+			stderr,
+			ExitFilesystemError,
+			"gox fmt: write standard output: %v\n",
+			err,
+		)
 	}
 	return ExitSuccess
 }
@@ -1010,7 +1314,10 @@ func resolveFormatOptions(invocation formatInvocation) (goxformat.Options, int, 
 	selection := config.Selection{}
 	var err error
 	if invocation.stdinFilepath != "" {
-		selection, err = config.DiscoverFileContext(invocation.stdinFilepath, invocation.configPath)
+		selection, err = config.DiscoverFileContext(
+			invocation.stdinFilepath,
+			invocation.configPath,
+		)
 	} else if invocation.configPath != "" {
 		selection = config.Selection{Path: invocation.configPath, Explicit: true}
 	}
@@ -1018,7 +1325,8 @@ func resolveFormatOptions(invocation formatInvocation) (goxformat.Options, int, 
 		return goxformat.Options{}, configurationErrorExitCode(err), err
 	}
 	if invocation.stdinFilepath != "" {
-		if _, err := goversion.Resolve(invocation.stdinFilepath, selection.Root); err != nil {
+		if _, err := goversion.Resolve(invocation.stdinFilepath, selection.Root);
+			err != nil {
 			return goxformat.Options{}, sourceVersionErrorExitCode(err), err
 		}
 	}
@@ -1035,17 +1343,24 @@ func sourceVersionErrorExitCode(err error) int {
 func formatOptionsForSelection(selection config.Selection) (goxformat.Options, int, error) {
 	registry, err := rules.NewDefaultRegistry()
 	if err != nil {
-		return goxformat.Options{}, ExitInternalError, fmt.Errorf("initialize rule registry: %w", err)
+		return goxformat.Options{}, ExitInternalError, fmt.Errorf(
+			"initialize rule registry: %w",
+			err,
+		)
 	}
-	loaded, err := config.Load(selection, config.ParseOptions{
-		KnownRules: registry.IDs(), RuleOptions: registry.OptionSchemas(),
-	})
+	loaded, err := config.Load(
+		selection,
+		config.ParseOptions{
+			KnownRules: registry.IDs(),
+			RuleOptions: registry.OptionSchemas(),
+		},
+	)
 	if err != nil {
 		return goxformat.Options{}, configurationErrorExitCode(err), err
 	}
 	return goxformat.Options{
-		Width:     loaded.Format.LineWidth,
-		TabWidth:  loaded.Format.TabWidth,
+		Width: loaded.Format.LineWidth,
+		TabWidth: loaded.Format.TabWidth,
 		FitBudget: defaultFormatOptions.FitBudget,
 	}, ExitSuccess, nil
 }
@@ -1096,14 +1411,18 @@ func parseFormatInvocation(arguments []string) (formatInvocation, bool) {
 		argument := arguments[index]
 		switch {
 		case strings.HasPrefix(argument, "--reporter=") && !reporterSet:
-			reporter, valid := parseReporter(strings.TrimPrefix(argument, "--reporter="))
+			reporter, valid := parseReporter(
+				strings.TrimPrefix(argument, "--reporter="),
+			)
 			if !valid {
 				return formatInvocation{}, false
 			}
 			result.reporter = reporter
 			reporterSet = true
-		case argument == "--reporter" && !reporterSet &&
-			index+1 < len(arguments) && !strings.HasPrefix(arguments[index+1], "--"):
+		case argument == "--reporter" &&
+			!reporterSet &&
+			index + 1 < len(arguments) &&
+			!strings.HasPrefix(arguments[index + 1], "--"):
 			index++
 			reporter, valid := parseReporter(arguments[index])
 			if !valid {
@@ -1127,8 +1446,10 @@ func parseFormatInvocation(arguments []string) (formatInvocation, bool) {
 			if result.stdinFilepath == "" {
 				return formatInvocation{}, false
 			}
-		case argument == "--stdin-filepath" && result.stdinFilepath == "" &&
-			index+1 < len(arguments) && !strings.HasPrefix(arguments[index+1], "--"):
+		case argument == "--stdin-filepath" &&
+			result.stdinFilepath == "" &&
+			index + 1 < len(arguments) &&
+			!strings.HasPrefix(arguments[index + 1], "--"):
 			index++
 			result.stdinFilepath = arguments[index]
 			if result.stdinFilepath == "" {
@@ -1145,8 +1466,10 @@ func parseFormatInvocation(arguments []string) (formatInvocation, bool) {
 			result.diff = true
 		case argument == "--write" && !result.write:
 			result.write = true
-		case argument == "--config" && result.configPath == "" &&
-			index+1 < len(arguments) && !strings.HasPrefix(arguments[index+1], "--"):
+		case argument == "--config" &&
+			result.configPath == "" &&
+			index + 1 < len(arguments) &&
+			!strings.HasPrefix(arguments[index + 1], "--"):
 			index++
 			result.configPath = arguments[index]
 			if result.configPath == "" {
@@ -1176,7 +1499,8 @@ func parseReporter(value string) (goxreport.Format, bool) {
 }
 
 func report(stderr io.Writer, exitCode int, format string, arguments ...any) int {
-	if err := write(stderr, []byte(fmt.Sprintf(format, arguments...))); err != nil && exitCode < ExitFilesystemError {
+	if err := write(stderr, []byte(fmt.Sprintf(format, arguments...)));
+		err != nil && exitCode < ExitFilesystemError {
 		return ExitFilesystemError
 	}
 	return exitCode

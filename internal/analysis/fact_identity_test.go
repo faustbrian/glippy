@@ -30,26 +30,37 @@ func TestFactObjectIdentitySurvivesIndependentTypeChecks(t *testing.T) {
 	secondObjects := persistentFixtureObjects(t, second)
 	encoder := newFactObjectEncoder()
 	for name, firstObject := range firstObjects {
-		t.Run(name, func(t *testing.T) {
-			identity, err := encoder.Identity(firstObject)
-			if err != nil {
-				t.Fatal(err)
-			}
-			resolved, err := identity.Resolve(second)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if resolved != secondObjects[name] {
-				t.Fatalf("Resolve() = %s, want %s", resolved, secondObjects[name])
-			}
-			reencoded, err := encoder.Identity(resolved)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if reencoded != identity {
-				t.Fatalf("identity after reload = %#v, want %#v", reencoded, identity)
-			}
-		})
+		t.Run(
+			name,
+			func(t *testing.T) {
+				identity, err := encoder.Identity(firstObject)
+				if err != nil {
+					t.Fatal(err)
+				}
+				resolved, err := identity.Resolve(second)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if resolved != secondObjects[name] {
+					t.Fatalf(
+						"Resolve() = %s, want %s",
+						resolved,
+						secondObjects[name],
+					)
+				}
+				reencoded, err := encoder.Identity(resolved)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if reencoded != identity {
+					t.Fatalf(
+						"identity after reload = %#v, want %#v",
+						reencoded,
+						identity,
+					)
+				}
+			},
+		)
 	}
 }
 
@@ -59,7 +70,7 @@ func TestFactObjectIdentityRejectsUnstableOrMismatchedObjects(t *testing.T) {
 	pkg, definitions := checkFactIdentityFixture(t)
 	encoder := newFactObjectEncoder()
 	tests := []struct {
-		name   string
+		name string
 		object types.Object
 	}{
 		{name: "nil", object: nil},
@@ -68,11 +79,14 @@ func TestFactObjectIdentityRejectsUnstableOrMismatchedObjects(t *testing.T) {
 		{name: "local variable", object: definitions["local"]},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if _, err := encoder.Identity(test.object); err == nil {
-				t.Fatalf("Identity(%v) succeeded", test.object)
-			}
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				if _, err := encoder.Identity(test.object); err == nil {
+					t.Fatalf("Identity(%v) succeeded", test.object)
+				}
+			},
+		)
 	}
 
 	identity, err := encoder.Identity(pkg.Scope().Lookup("Exported"))
@@ -102,7 +116,12 @@ func TestFactObjectIdentityRejectsUnstableOrMismatchedObjects(t *testing.T) {
 func checkFactIdentityFixture(t *testing.T) (*types.Package, map[string]types.Object) {
 	t.Helper()
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "fixture.go", factIdentityFixture, parser.SkipObjectResolution)
+	file, err := parser.ParseFile(
+		fset,
+		"fixture.go",
+		factIdentityFixture,
+		parser.SkipObjectResolution,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,11 +146,11 @@ func persistentFixtureObjects(t *testing.T, pkg *types.Package) map[string]types
 	signature := method.Type().(*types.Signature)
 	return map[string]types.Object{
 		"exported variable": pkg.Scope().Lookup("Exported"),
-		"named type":        box.Obj(),
-		"method":            method,
-		"field":             box.Underlying().(*types.Struct).Field(0),
-		"type parameter":    box.TypeParams().At(0).Obj(),
-		"parameter":         signature.Params().At(0),
-		"result":            signature.Results().At(0),
+		"named type": box.Obj(),
+		"method": method,
+		"field": box.Underlying().(*types.Struct).Field(0),
+		"type parameter": box.TypeParams().At(0).Obj(),
+		"parameter": signature.Params().At(0),
+		"result": signature.Results().At(0),
 	}
 }

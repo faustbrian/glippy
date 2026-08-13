@@ -25,13 +25,20 @@ const (
 // it. Path is empty when the documented default applies.
 type Selection struct {
 	Language string
-	Path     string
+	Path string
 }
 
-type filesystemError struct{ err error }
+type filesystemError struct {
+	err error
+}
 
-func (e *filesystemError) Error() string { return e.err.Error() }
-func (e *filesystemError) Unwrap() error { return e.err }
+func (e *filesystemError) Error() string {
+	return e.err.Error()
+}
+
+func (e *filesystemError) Unwrap() error {
+	return e.err
+}
 
 // IsFilesystemError reports whether resolving the source version failed while
 // inspecting or reading the filesystem rather than because of project policy.
@@ -54,14 +61,20 @@ func Resolve(inputPath, root string) (Selection, error) {
 		case readErr == nil:
 			parsed, parseErr := modfile.Parse(path, contents, nil)
 			if parseErr != nil {
-				return Selection{}, fmt.Errorf("parse source language file %q: %w", path, parseErr)
+				return Selection{}, fmt.Errorf(
+					"parse source language file %q: %w",
+					path,
+					parseErr,
+				)
 			}
 			if parsed.Go == nil {
 				return Selection{Language: Default}, nil
 			}
 			return validate(parsed.Go.Version, path)
 		case !os.IsNotExist(readErr):
-			return Selection{}, &filesystemError{err: fmt.Errorf("read source language file %q: %w", path, readErr)}
+			return Selection{}, &filesystemError{
+				err: fmt.Errorf("read source language file %q: %w", path, readErr),
+			}
 		}
 	}
 	if boundary != "" {
@@ -71,14 +84,20 @@ func Resolve(inputPath, root string) (Selection, error) {
 		case readErr == nil:
 			parsed, parseErr := modfile.ParseWork(path, contents, nil)
 			if parseErr != nil {
-				return Selection{}, fmt.Errorf("parse source language file %q: %w", path, parseErr)
+				return Selection{}, fmt.Errorf(
+					"parse source language file %q: %w",
+					path,
+					parseErr,
+				)
 			}
 			if parsed.Go == nil {
 				return Selection{Language: Default}, nil
 			}
 			return validate(parsed.Go.Version, path)
 		case !os.IsNotExist(readErr):
-			return Selection{}, &filesystemError{err: fmt.Errorf("read source language file %q: %w", path, readErr)}
+			return Selection{}, &filesystemError{
+				err: fmt.Errorf("read source language file %q: %w", path, readErr),
+			}
 		}
 	}
 	return Selection{Language: Default}, nil
@@ -93,7 +112,9 @@ func searchBounds(inputPath, root string) (string, string, error) {
 	if info, statErr := os.Stat(absoluteInput); statErr == nil && info.IsDir() {
 		start = absoluteInput
 	} else if statErr != nil && !os.IsNotExist(statErr) {
-		return "", "", &filesystemError{err: fmt.Errorf("inspect source path %q: %w", absoluteInput, statErr)}
+		return "", "", &filesystemError{
+			err: fmt.Errorf("inspect source path %q: %w", absoluteInput, statErr),
+		}
 	} else {
 		start = filepath.Dir(absoluteInput)
 	}
@@ -105,9 +126,15 @@ func searchBounds(inputPath, root string) (string, string, error) {
 		return "", "", fmt.Errorf("resolve project root %q: %w", root, err)
 	}
 	relative, err := filepath.Rel(absoluteRoot, start)
-	if err != nil || relative == ".." || filepath.IsAbs(relative) ||
-		(len(relative) > 3 && relative[:3] == ".."+string(filepath.Separator)) {
-		return "", "", fmt.Errorf("source path %q is outside project root %q", absoluteInput, absoluteRoot)
+	if err != nil ||
+		relative == ".." ||
+		filepath.IsAbs(relative) ||
+		(len(relative) > 3 && relative[:3] == ".." + string(filepath.Separator)) {
+		return "", "", fmt.Errorf(
+			"source path %q is outside project root %q",
+			absoluteInput,
+			absoluteRoot,
+		)
 	}
 	return start, absoluteRoot, nil
 }
@@ -126,7 +153,11 @@ func parentWithin(directory, boundary string) string {
 func validate(raw, path string) (Selection, error) {
 	language := version.Lang("go" + raw)
 	if !version.IsValid(language) {
-		return Selection{}, fmt.Errorf("source language file %q has invalid Go version %q", path, raw)
+		return Selection{}, fmt.Errorf(
+			"source language file %q has invalid Go version %q",
+			path,
+			raw,
+		)
 	}
 	if version.Compare(language, Minimum) < 0 || version.Compare(language, Maximum) > 0 {
 		return Selection{}, fmt.Errorf(

@@ -24,7 +24,7 @@ import (
 // Range is a half-open physical byte range.
 type Range struct {
 	Start int
-	End   int
+	End int
 }
 
 // SemicolonKind records whether a semicolon was present in source or inserted
@@ -39,9 +39,9 @@ const (
 
 // Token is one physical lexical token.
 type Token struct {
-	Kind      token.Token
-	Range     Range
-	Raw       string
+	Kind token.Token
+	Range Range
+	Raw string
 	Semicolon SemicolonKind
 }
 
@@ -55,9 +55,9 @@ const (
 
 // Piece is one non-overlapping physical source segment.
 type Piece struct {
-	Kind  PieceKind
+	Kind PieceKind
 	Range Range
-	Raw   []byte
+	Raw []byte
 }
 
 // TriviaKind identifies physical bytes between lexical tokens.
@@ -70,9 +70,9 @@ const (
 
 // Trivia is one exact physical token gap or accepted byte-order mark.
 type Trivia struct {
-	Kind  TriviaKind
+	Kind TriviaKind
 	Range Range
-	Raw   string
+	Raw string
 }
 
 // CommentID is a stable per-file comment identity.
@@ -80,9 +80,9 @@ type CommentID uint32
 
 // Comment is one exact physical source comment.
 type Comment struct {
-	ID    CommentID
+	ID CommentID
 	Range Range
-	Raw   string
+	Raw string
 }
 
 // DirectiveKind identifies comments whose placement has tool or language
@@ -103,14 +103,14 @@ const (
 
 // Directive is a classified physical source comment.
 type Directive struct {
-	Kind  DirectiveKind
+	Kind DirectiveKind
 	Range Range
-	Raw   string
+	Raw string
 }
 
 type directiveLineAnchor struct {
-	Before     uint8
-	After      uint8
+	Before uint8
+	After uint8
 	LineTokens string
 }
 
@@ -126,10 +126,10 @@ const (
 
 // Metadata describes physical file properties relevant to formatting.
 type Metadata struct {
-	HasBOM       bool
-	Newlines     NewlineStyle
+	HasBOM bool
+	Newlines NewlineStyle
 	FinalNewline bool
-	Generated    bool
+	Generated bool
 }
 
 // Digest identifies the exact bytes used to construct a File.
@@ -138,26 +138,26 @@ type Digest [sha256.Size]byte
 // Position is one 1-based physical byte location in immutable source.
 type Position struct {
 	Offset int
-	Line   int
+	Line int
 	Column int
 }
 
 // File is an immutable physical source unit.
 type File struct {
-	path       string
-	bytes      []byte
-	digest     Digest
-	fileSet    *token.FileSet
-	tokenFile  *token.File
-	syntax     *ast.File
-	tokens     []Token
-	pieces     []Piece
-	trivia     []Trivia
-	comments   []Comment
+	path string
+	bytes []byte
+	digest Digest
+	fileSet *token.FileSet
+	tokenFile *token.File
+	syntax *ast.File
+	tokens []Token
+	pieces []Piece
+	trivia []Trivia
+	comments []Comment
 	directives []Directive
-	metadata   Metadata
+	metadata Metadata
 	lineStarts []int
-	parseErr   error
+	parseErr error
 }
 
 // Load constructs a physical source unit. Invalid Go returns the lossless
@@ -173,7 +173,7 @@ func Load(path string, input []byte) (*File, error) {
 		fileSet,
 		cleanPath,
 		physical,
-		parser.ParseComments|parser.SkipObjectResolution,
+		parser.ParseComments | parser.SkipObjectResolution,
 	)
 	tokenFile := parsedTokenFile(fileSet, syntax)
 	if tokenFile == nil {
@@ -190,34 +190,42 @@ func Load(path string, input []byte) (*File, error) {
 	loadErr := errors.Join(parseErr, scanErr, ledgerErr, directiveErr)
 
 	return &File{
-		path:       cleanPath,
-		bytes:      physical,
-		digest:     sha256.Sum256(physical),
-		fileSet:    fileSet,
-		tokenFile:  tokenFile,
-		syntax:     syntax,
-		tokens:     tokens,
-		pieces:     pieces,
-		trivia:     trivia,
-		comments:   comments,
+		path: cleanPath,
+		bytes: physical,
+		digest: sha256.Sum256(physical),
+		fileSet: fileSet,
+		tokenFile: tokenFile,
+		syntax: syntax,
+		tokens: tokens,
+		pieces: pieces,
+		trivia: trivia,
+		comments: comments,
 		directives: directives,
-		metadata:   metadata,
+		metadata: metadata,
 		lineStarts: physicalLineStarts(physical),
-		parseErr:   loadErr,
+		parseErr: loadErr,
 	}, loadErr
 }
 
 // Path returns the normalized physical source identity supplied to Load.
-func (f *File) Path() string { return f.path }
+func (f *File) Path() string {
+	return f.path
+}
 
 // Digest returns the exact source digest.
-func (f *File) Digest() Digest { return f.digest }
+func (f *File) Digest() Digest {
+	return f.digest
+}
 
 // Bytes returns an independent copy of the physical source bytes.
-func (f *File) Bytes() []byte { return bytes.Clone(f.bytes) }
+func (f *File) Bytes() []byte {
+	return bytes.Clone(f.bytes)
+}
 
 // Tokens returns the physical token ledger.
-func (f *File) Tokens() []Token { return slices.Clone(f.tokens) }
+func (f *File) Tokens() []Token {
+	return slices.Clone(f.tokens)
+}
 
 // TokenRangeAtOffset returns the exact lexical token beginning at a physical
 // byte offset without exposing the immutable token ledger.
@@ -225,9 +233,13 @@ func (f *File) TokenRangeAtOffset(offset int) (Range, bool) {
 	if f == nil {
 		return Range{}, false
 	}
-	index, found := slices.BinarySearchFunc(f.tokens, offset, func(item Token, target int) int {
-		return item.Range.Start - target
-	})
+	index, found := slices.BinarySearchFunc(
+		f.tokens,
+		offset,
+		func(item Token, target int) int {
+			return item.Range.Start - target
+		},
+	)
 	if !found {
 		return Range{}, false
 	}
@@ -245,29 +257,41 @@ func (f *File) Pieces() []Piece {
 }
 
 // Trivia returns exact physical token gaps in source order.
-func (f *File) Trivia() []Trivia { return slices.Clone(f.trivia) }
+func (f *File) Trivia() []Trivia {
+	return slices.Clone(f.trivia)
+}
 
 // Comments returns exact source comments with stable per-file identities.
-func (f *File) Comments() []Comment { return slices.Clone(f.comments) }
+func (f *File) Comments() []Comment {
+	return slices.Clone(f.comments)
+}
 
 // Directives returns classified directive comments in physical order.
-func (f *File) Directives() []Directive { return slices.Clone(f.directives) }
+func (f *File) Directives() []Directive {
+	return slices.Clone(f.directives)
+}
 
 // Metadata returns physical file metadata.
-func (f *File) Metadata() Metadata { return f.metadata }
+func (f *File) Metadata() Metadata {
+	return f.metadata
+}
 
 // CanFormat reports whether parsing and physical reconstruction accepted the
 // complete file.
-func (f *File) CanFormat() bool { return f.parseErr == nil }
+func (f *File) CanFormat() bool {
+	return f.parseErr == nil
+}
 
 // ReadSyntax provides an isolated parsed syntax view to a run-owned consumer.
 func (f *File) ReadSyntax(read func(*ast.File) error) error {
 	if read == nil {
 		return errors.New("read syntax callback is required")
 	}
-	return f.ReadSyntaxView(func(_ *token.FileSet, syntax *ast.File) error {
-		return read(syntax)
-	})
+	return f.ReadSyntaxView(
+		func(_ *token.FileSet, syntax *ast.File) error {
+			return read(syntax)
+		},
+	)
 }
 
 // ReadSyntaxView provides one isolated syntax tree and its matching file set.
@@ -283,7 +307,7 @@ func (f *File) ReadSyntaxView(read func(*token.FileSet, *ast.File) error) error 
 		fileSet,
 		f.path,
 		f.bytes,
-		parser.ParseComments|parser.SkipObjectResolution,
+		parser.ParseComments | parser.SkipObjectResolution,
 	)
 	if err != nil {
 		return fmt.Errorf("construct immutable syntax view: %w", err)
@@ -294,9 +318,13 @@ func (f *File) ReadSyntaxView(read func(*token.FileSet, *ast.File) error) error 
 // RawToken returns the exact physical spelling of the token at position.
 func (f *File) RawToken(position token.Pos) (string, bool) {
 	offset := f.tokenFile.Offset(position)
-	index, found := slices.BinarySearchFunc(f.tokens, offset, func(item Token, target int) int {
-		return item.Range.Start - target
-	})
+	index, found := slices.BinarySearchFunc(
+		f.tokens,
+		offset,
+		func(item Token, target int) int {
+			return item.Range.Start - target
+		},
+	)
 	if !found {
 		return "", false
 	}
@@ -310,9 +338,12 @@ func (f *File) PreviousSignificantToken(position token.Pos) (Token, bool) {
 		return Token{}, false
 	}
 	offset := f.tokenFile.Offset(position)
-	index := sort.Search(len(f.tokens), func(index int) bool {
-		return f.tokens[index].Range.Start >= offset
-	})
+	index := sort.Search(
+		len(f.tokens),
+		func(index int) bool {
+			return f.tokens[index].Range.Start >= offset
+		},
+	)
 	for index--; index >= 0; index-- {
 		item := f.tokens[index]
 		if item.Kind == token.COMMENT || item.Semicolon == SemicolonInserted {
@@ -334,19 +365,25 @@ func (f *File) PhysicalOffset(position token.Pos) (int, bool) {
 
 // Position maps a UTF-8 byte boundary to a physical line and byte column.
 func (f *File) Position(offset int) (Position, bool) {
-	if f == nil || offset < 0 || offset > len(f.bytes) ||
+	if f == nil ||
+		offset < 0 ||
+		offset > len(f.bytes) ||
 		(offset < len(f.bytes) && !utf8.RuneStart(f.bytes[offset])) {
 		return Position{}, false
 	}
-	lineIndex := sort.Search(len(f.lineStarts), func(index int) bool {
-		return f.lineStarts[index] > offset
-	}) - 1
+	lineIndex := sort.Search(
+		len(f.lineStarts),
+		func(index int) bool {
+			return f.lineStarts[index] > offset
+		},
+	) -
+		1
 	if lineIndex < 0 {
 		return Position{}, false
 	}
 	return Position{
 		Offset: offset,
-		Line:   lineIndex + 1,
+		Line: lineIndex + 1,
 		Column: offset - f.lineStarts[lineIndex] + 1,
 	}, true
 }
@@ -355,7 +392,7 @@ func physicalLineStarts(input []byte) []int {
 	starts := []int{0}
 	for index, value := range input {
 		if value == '\n' {
-			starts = append(starts, index+1)
+			starts = append(starts, index + 1)
 		}
 	}
 	return starts
@@ -363,7 +400,9 @@ func physicalLineStarts(input []byte) []int {
 
 // Slice returns exact physical source text for a valid byte range.
 func (f *File) Slice(sourceRange Range) (string, bool) {
-	if sourceRange.Start < 0 || sourceRange.End < sourceRange.Start || sourceRange.End > len(f.bytes) {
+	if sourceRange.Start < 0 ||
+		sourceRange.End < sourceRange.Start ||
+		sourceRange.End > len(f.bytes) {
 		return "", false
 	}
 	return string(f.bytes[sourceRange.Start:sourceRange.End]), true
@@ -381,17 +420,28 @@ func ValidateEquivalent(before, after *File) error {
 	if !equivalentTokens(before.tokens, after.tokens) {
 		return errors.New("normalized lexical tokens changed")
 	}
-	if !slices.EqualFunc(before.comments, after.comments, func(left, right Comment) bool {
-		return left.Raw == right.Raw
-	}) {
+	if !slices.EqualFunc(
+		before.comments,
+		after.comments,
+		func(left, right Comment) bool {
+			return left.Raw == right.Raw
+		},
+	) {
 		return errors.New("comment identity or ordering changed")
 	}
-	if !slices.Equal(commentOwnershipFingerprint(before.tokens), commentOwnershipFingerprint(after.tokens)) {
+	if !slices.Equal(
+		commentOwnershipFingerprint(before.tokens),
+		commentOwnershipFingerprint(after.tokens),
+	) {
 		return errors.New("comment source ownership changed")
 	}
-	if !slices.EqualFunc(before.directives, after.directives, func(left, right Directive) bool {
-		return left.Kind == right.Kind && left.Raw == right.Raw
-	}) {
+	if !slices.EqualFunc(
+		before.directives,
+		after.directives,
+		func(left, right Directive) bool {
+			return left.Kind == right.Kind && left.Raw == right.Raw
+		},
+	) {
 		return errors.New("directive identity or ordering changed")
 	}
 	beforeAnchors, err := directiveLineAnchors(before.bytes, before.tokens, before.directives)
@@ -434,7 +484,10 @@ func directiveLineAnchors(
 	for _, directive := range directives {
 		index, found := tokenByRange[directive.Range]
 		if !found || tokens[index].Raw != directive.Raw {
-			return nil, fmt.Errorf("directive at byte %d has no physical comment token", directive.Range.Start)
+			return nil, fmt.Errorf(
+				"directive at byte %d has no physical comment token",
+				directive.Range.Start,
+			)
 		}
 		previousEnd := -1
 		for previous := index - 1; previous >= 0; previous-- {
@@ -466,7 +519,8 @@ func directiveLineAnchors(
 			lineStart := bytes.LastIndexByte(physical[:directive.Range.Start], '\n') + 1
 			var fingerprint strings.Builder
 			for _, item := range tokens {
-				if item.Kind == token.COMMENT || item.Range.Start < lineStart ||
+				if item.Kind == token.COMMENT ||
+					item.Range.Start < lineStart ||
 					item.Range.End > directive.Range.Start {
 					continue
 				}
@@ -477,11 +531,14 @@ func directiveLineAnchors(
 			}
 			lineTokens = fingerprint.String()
 		}
-		anchors = append(anchors, directiveLineAnchor{
-			Before:     beforeBreaks,
-			After:      afterBreaks,
-			LineTokens: lineTokens,
-		})
+		anchors = append(
+			anchors,
+			directiveLineAnchor{
+				Before: beforeBreaks,
+				After: afterBreaks,
+				LineTokens: lineTokens,
+			},
+		)
 	}
 	return anchors, nil
 }
@@ -529,9 +586,13 @@ func equivalentTokens(before, after []Token) bool {
 		}
 		return result
 	}
-	return slices.EqualFunc(filtered(before), filtered(after), func(left, right Token) bool {
-		return left.Kind == right.Kind && left.Raw == right.Raw
-	})
+	return slices.EqualFunc(
+		filtered(before),
+		filtered(after),
+		func(left, right Token) bool {
+			return left.Kind == right.Kind && left.Raw == right.Raw
+		},
+	)
 }
 
 func syntaxFingerprint(file *ast.File) (string, error) {
@@ -541,17 +602,22 @@ func syntaxFingerprint(file *ast.File) (string, error) {
 func syntaxNodeFingerprint(node ast.Node) (string, error) {
 	var output bytes.Buffer
 	positionType := reflect.TypeFor[token.Pos]()
-	err := ast.Fprint(&output, nil, node, func(name string, value reflect.Value) bool {
-		if value.IsValid() && value.Type() == positionType {
-			return false
-		}
-		switch name {
-		case "Doc", "Comment", "Comments", "Obj", "Scope", "Unresolved":
-			return false
-		default:
-			return true
-		}
-	})
+	err := ast.Fprint(
+		&output,
+		nil,
+		node,
+		func(name string, value reflect.Value) bool {
+			if value.IsValid() && value.Type() == positionType {
+				return false
+			}
+			switch name {
+			case "Doc", "Comment", "Comments", "Obj", "Scope", "Unresolved":
+				return false
+			default:
+				return true
+			}
+		},
+	)
 	if err != nil {
 		return "", fmt.Errorf("fingerprint normalized syntax: %w", err)
 	}
@@ -565,21 +631,28 @@ func parsedTokenFile(fileSet *token.FileSet, syntax *ast.File) *token.File {
 		}
 	}
 	var result *token.File
-	fileSet.Iterate(func(file *token.File) bool {
-		result = file
-		return false
-	})
+	fileSet.Iterate(
+		func(file *token.File) bool {
+			result = file
+			return false
+		},
+	)
 	return result
 }
 
 func scanTokens(file *token.File, input []byte) ([]Token, error) {
 	var scanErrors scanner.ErrorList
 	var lexer scanner.Scanner
-	lexer.Init(file, input, func(position token.Position, message string) {
-		scanErrors.Add(position, message)
-	}, scanner.ScanComments)
+	lexer.Init(
+		file,
+		input,
+		func(position token.Position, message string) {
+			scanErrors.Add(position, message)
+		},
+		scanner.ScanComments,
+	)
 
-	result := make([]Token, 0, len(input)/4)
+	result := make([]Token, 0, len(input) / 4)
 	for {
 		position, kind, literal := lexer.Scan()
 		if kind == token.EOF {
@@ -598,12 +671,15 @@ func scanTokens(file *token.File, input []byte) ([]Token, error) {
 				semicolon = SemicolonInserted
 			}
 		}
-		result = append(result, Token{
-			Kind:      kind,
-			Range:     Range{Start: start, End: end},
-			Raw:       string(input[start:end]),
-			Semicolon: semicolon,
-		})
+		result = append(
+			result,
+			Token{
+				Kind: kind,
+				Range: Range{Start: start, End: end},
+				Raw: string(input[start:end]),
+				Semicolon: semicolon,
+			},
+		)
 	}
 	return result, scanErrors.Err()
 }
@@ -657,7 +733,7 @@ func commentEnd(input []byte, start int) (int, error) {
 		return end, nil
 	}
 	if bytes.HasPrefix(input[start:], []byte("/*")) {
-		closing := bytes.Index(input[start+2:], []byte("*/"))
+		closing := bytes.Index(input[start + 2:], []byte("*/"))
 		if closing < 0 {
 			return len(input), errors.New("unterminated block comment")
 		}
@@ -667,7 +743,7 @@ func commentEnd(input []byte, start int) (int, error) {
 }
 
 func rawStringEnd(input []byte, start int) (int, error) {
-	closing := bytes.IndexByte(input[start+1:], '`')
+	closing := bytes.IndexByte(input[start + 1:], '`')
 	if closing < 0 {
 		return len(input), errors.New("unterminated raw string")
 	}
@@ -689,23 +765,37 @@ func quotedEnd(input []byte, start int, quote byte) (int, error) {
 }
 
 func buildPieces(input []byte, tokens []Token) ([]Piece, error) {
-	result := make([]Piece, 0, len(tokens)*2+1)
+	result := make([]Piece, 0, len(tokens) * 2 + 1)
 	cursor := 0
 	for _, item := range tokens {
 		if item.Range.End < item.Range.Start || item.Range.End > len(input) {
-			return result, fmt.Errorf("invalid or overlapping token range [%d,%d)", item.Range.Start, item.Range.End)
+			return result, fmt.Errorf(
+				"invalid or overlapping token range [%d,%d)",
+				item.Range.Start,
+				item.Range.End,
+			)
 		}
 		if item.Range.Start == item.Range.End {
 			continue
 		}
 		if item.Range.Start < cursor {
-			return result, fmt.Errorf("invalid or overlapping token range [%d,%d)", item.Range.Start, item.Range.End)
+			return result, fmt.Errorf(
+				"invalid or overlapping token range [%d,%d)",
+				item.Range.Start,
+				item.Range.End,
+			)
 		}
 		if item.Range.Start > cursor {
-			result = append(result, physicalPiece(PieceTrivia, input, cursor, item.Range.Start))
+			result = append(
+				result,
+				physicalPiece(PieceTrivia, input, cursor, item.Range.Start),
+			)
 		}
 		if item.Range.End > item.Range.Start {
-			result = append(result, physicalPiece(PieceToken, input, item.Range.Start, item.Range.End))
+			result = append(
+				result,
+				physicalPiece(PieceToken, input, item.Range.Start, item.Range.End),
+			)
 			cursor = item.Range.End
 		}
 	}
@@ -716,21 +806,39 @@ func buildPieces(input []byte, tokens []Token) ([]Piece, error) {
 }
 
 func physicalPiece(kind PieceKind, input []byte, start, end int) Piece {
-	return Piece{Kind: kind, Range: Range{Start: start, End: end}, Raw: bytes.Clone(input[start:end])}
+	return Piece{
+		Kind: kind,
+		Range: Range{Start: start, End: end},
+		Raw: bytes.Clone(input[start:end]),
+	}
 }
 
 func buildTrivia(input []byte, tokens []Token) []Trivia {
-	result := make([]Trivia, 0, len(tokens)+1)
+	result := make([]Trivia, 0, len(tokens) + 1)
 	appendGap := func(start, end int) {
 		if start == end {
 			return
 		}
 		if start == 0 && end >= 3 && bytes.Equal(input[:3], []byte{0xef, 0xbb, 0xbf}) {
-			result = append(result, Trivia{Kind: TriviaBOM, Range: Range{Start: 0, End: 3}, Raw: string(input[:3])})
+			result = append(
+				result,
+				Trivia{
+					Kind: TriviaBOM,
+					Range: Range{Start: 0, End: 3},
+					Raw: string(input[:3]),
+				},
+			)
 			start = 3
 		}
 		if start < end {
-			result = append(result, Trivia{Kind: TriviaWhitespace, Range: Range{Start: start, End: end}, Raw: string(input[start:end])})
+			result = append(
+				result,
+				Trivia{
+					Kind: TriviaWhitespace,
+					Range: Range{Start: start, End: end},
+					Raw: string(input[start:end]),
+				},
+			)
 		}
 	}
 
@@ -750,7 +858,14 @@ func buildComments(tokens []Token) []Comment {
 	result := make([]Comment, 0)
 	for _, item := range tokens {
 		if item.Kind == token.COMMENT {
-			result = append(result, Comment{ID: CommentID(len(result)), Range: item.Range, Raw: item.Raw})
+			result = append(
+				result,
+				Comment{
+					ID: CommentID(len(result)),
+					Range: item.Range,
+					Raw: item.Raw,
+				},
+			)
 		}
 	}
 	return result
@@ -764,22 +879,35 @@ func classifyDirectives(tokens []Token, syntax *ast.File, tokenFile *token.File)
 		}
 		kind, found := directiveKind(item.Raw)
 		if found {
-			result = append(result, Directive{Kind: kind, Range: item.Range, Raw: item.Raw})
+			result = append(
+				result,
+				Directive{Kind: kind, Range: item.Range, Raw: item.Raw},
+			)
 		}
 	}
-	result = append(result, cgoDirectives(tokens, syntax, func(position token.Pos) (int, bool) {
-		if !position.IsValid() || tokenFile == nil {
-			return 0, false
-		}
-		offset := tokenFile.Offset(position)
-		return offset, offset >= 0
-	})...)
-	sort.SliceStable(result, func(left, right int) bool {
-		if result[left].Range.Start != result[right].Range.Start {
-			return result[left].Range.Start < result[right].Range.Start
-		}
-		return result[left].Kind < result[right].Kind
-	})
+	result = append(
+		result,
+		cgoDirectives(
+			tokens,
+			syntax,
+			func(position token.Pos) (int, bool) {
+				if !position.IsValid() || tokenFile == nil {
+					return 0, false
+				}
+				offset := tokenFile.Offset(position)
+				return offset, offset >= 0
+			},
+		)...,
+	)
+	sort.SliceStable(
+		result,
+		func(left, right int) bool {
+			if result[left].Range.Start != result[right].Range.Start {
+				return result[left].Range.Start < result[right].Range.Start
+			}
+			return result[left].Kind < result[right].Kind
+		},
+	)
 	return result
 }
 
@@ -826,7 +954,14 @@ func cgoDirectives(
 				}
 				comment, found := commentsByStart[physicalStart]
 				if found {
-					result = append(result, Directive{Kind: DirectiveCgoPreamble, Range: comment.Range, Raw: comment.Raw})
+					result = append(
+						result,
+						Directive{
+							Kind: DirectiveCgoPreamble,
+							Range: comment.Range,
+							Raw: comment.Raw,
+						},
+					)
 				}
 			}
 		}
@@ -850,7 +985,8 @@ func directiveKind(raw string) (DirectiveKind, bool) {
 		return DirectiveExternalSuppression, true
 	case strings.HasPrefix(raw, "//go:"):
 		return DirectiveCompiler, true
-	case strings.HasPrefix(raw, "// Code generated ") && strings.HasSuffix(raw, " DO NOT EDIT."):
+	case strings.HasPrefix(raw, "// Code generated ") &&
+		strings.HasSuffix(raw, " DO NOT EDIT."):
 		return DirectiveGenerated, true
 	default:
 		return 0, false
@@ -865,7 +1001,9 @@ func isNolintDirective(raw string) bool {
 }
 
 func hasDirectivePrefix(raw, prefix string) bool {
-	return raw == prefix || strings.HasPrefix(raw, prefix+" ") || strings.HasPrefix(raw, prefix+"\t")
+	return raw == prefix ||
+		strings.HasPrefix(raw, prefix + " ") ||
+		strings.HasPrefix(raw, prefix + "\t")
 }
 
 func validateDirectives(directives []Directive) error {
@@ -875,7 +1013,14 @@ func validateDirectives(directives []Directive) error {
 			continue
 		}
 		if _, err := constraint.Parse(directive.Raw); err != nil {
-			result = errors.Join(result, fmt.Errorf("invalid build constraint at byte %d: %w", directive.Range.Start, err))
+			result = errors.Join(
+				result,
+				fmt.Errorf(
+					"invalid build constraint at byte %d: %w",
+					directive.Range.Start,
+					err,
+				),
+			)
 		}
 	}
 	return result
@@ -888,7 +1033,7 @@ func inspectMetadata(input []byte, directives []Directive) Metadata {
 		if value != '\n' {
 			continue
 		}
-		if index > 0 && input[index-1] == '\r' {
+		if index > 0 && input[index - 1] == '\r' {
 			crlf++
 		} else {
 			lf++
@@ -908,9 +1053,9 @@ func inspectMetadata(input []byte, directives []Directive) Metadata {
 		generated = generated || directive.Kind == DirectiveGenerated
 	}
 	return Metadata{
-		HasBOM:       bytes.HasPrefix(input, []byte{0xef, 0xbb, 0xbf}),
-		Newlines:     newlines,
-		FinalNewline: len(input) > 0 && input[len(input)-1] == '\n',
-		Generated:    generated,
+		HasBOM: bytes.HasPrefix(input, []byte{0xef, 0xbb, 0xbf}),
+		Newlines: newlines,
+		FinalNewline: len(input) > 0 && input[len(input) - 1] == '\n',
+		Generated: generated,
 	}
 }

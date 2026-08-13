@@ -17,8 +17,8 @@ import (
 
 // Options controls deterministic formatting.
 type Options struct {
-	Width     int
-	TabWidth  int
+	Width int
+	TabWidth int
 	FitBudget int
 }
 
@@ -33,7 +33,7 @@ type sourceUnit interface {
 }
 
 const (
-	documentsPerToken    = 3
+	documentsPerToken = 3
 	maximumArenaCapacity = 8_192
 )
 
@@ -116,18 +116,24 @@ func renderFileWithCapacity(
 	arena := doc.NewArenaWithCapacity(capacity)
 	lower := newLowerer(arena, file, tokens)
 	var document doc.ID
-	if err := file.ReadSyntax(func(syntax *ast.File) error {
-		var err error
-		document, err = lower.file(syntax)
-		return err
-	}); err != nil {
+	if err := file.ReadSyntax(
+		func(syntax *ast.File) error {
+			var err error
+			document, err = lower.file(syntax)
+			return err
+		},
+	);
+		err != nil {
 		return nil, err
 	}
-	formatted, err := arena.Render(document, doc.Options{
-		Width:     options.Width,
-		TabWidth:  options.TabWidth,
-		FitBudget: options.FitBudget,
-	})
+	formatted, err := arena.Render(
+		document,
+		doc.Options{
+			Width: options.Width,
+			TabWidth: options.TabWidth,
+			FitBudget: options.FitBudget,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -144,27 +150,33 @@ func renderFragment(fragment *source.Fragment, options Options) ([]byte, error) 
 	arena := doc.NewArenaWithCapacity(capacity)
 	lower := newLowerer(arena, fragment, tokens)
 	var document doc.ID
-	if err := fragment.ReadSyntax(func(syntax source.FragmentSyntax) error {
-		var err error
-		switch fragment.Kind() {
-		case source.FragmentDeclaration:
-			document, err = lower.fragmentDeclarations(syntax.Declarations)
-		case source.FragmentStatement:
-			document, err = lower.fragmentStatements(syntax.Statements)
-		case source.FragmentExpression:
-			document, err = lower.fragmentExpression(syntax.Expression)
-		default:
-			err = fmt.Errorf("unknown fragment kind %d", fragment.Kind())
-		}
-		return err
-	}); err != nil {
+	if err := fragment.ReadSyntax(
+		func(syntax source.FragmentSyntax) error {
+			var err error
+			switch fragment.Kind() {
+			case source.FragmentDeclaration:
+				document, err = lower.fragmentDeclarations(syntax.Declarations)
+			case source.FragmentStatement:
+				document, err = lower.fragmentStatements(syntax.Statements)
+			case source.FragmentExpression:
+				document, err = lower.fragmentExpression(syntax.Expression)
+			default:
+				err = fmt.Errorf("unknown fragment kind %d", fragment.Kind())
+			}
+			return err
+		},
+	);
+		err != nil {
 		return nil, err
 	}
-	formatted, err := arena.Render(document, doc.Options{
-		Width:     options.Width,
-		TabWidth:  options.TabWidth,
-		FitBudget: options.FitBudget,
-	})
+	formatted, err := arena.Render(
+		document,
+		doc.Options{
+			Width: options.Width,
+			TabWidth: options.TabWidth,
+			FitBudget: options.FitBudget,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -172,20 +184,20 @@ func renderFragment(fragment *source.Fragment, options Options) ([]byte, error) 
 }
 
 type lowerer struct {
-	arena          *doc.Arena
-	source         sourceUnit
-	physical       []byte
-	tokens         []source.Token
-	comments       []source.Comment
+	arena *doc.Arena
+	source sourceUnit
+	physical []byte
+	tokens []source.Token
+	comments []source.Comment
 	commentByStart map[int]int
 	emittedComment []bool
 }
 
 func arenaCapacity(tokenCount int) int {
-	if tokenCount >= maximumArenaCapacity/documentsPerToken {
+	if tokenCount >= maximumArenaCapacity / documentsPerToken {
 		return maximumArenaCapacity
 	}
-	return min(tokenCount*documentsPerToken+1, maximumArenaCapacity)
+	return min(tokenCount * documentsPerToken + 1, maximumArenaCapacity)
 }
 
 func newLowerer(arena *doc.Arena, file sourceUnit, tokens []source.Token) lowerer {
@@ -195,18 +207,18 @@ func newLowerer(arena *doc.Arena, file sourceUnit, tokens []source.Token) lowere
 		commentByStart[comment.Range.Start] = index
 	}
 	return lowerer{
-		arena:          arena,
-		source:         file,
-		physical:       file.Bytes(),
-		tokens:         tokens,
-		comments:       comments,
+		arena: arena,
+		source: file,
+		physical: file.Bytes(),
+		tokens: tokens,
+		comments: comments,
 		commentByStart: commentByStart,
 		emittedComment: make([]bool, len(comments)),
 	}
 }
 
 func (l *lowerer) file(file *ast.File) (doc.ID, error) {
-	parts := make([]doc.ID, 0, len(file.Decls)*3+3)
+	parts := make([]doc.ID, 0, len(file.Decls) * 3 + 3)
 	packageOffset, found := l.source.PhysicalOffset(file.Package)
 	if !found {
 		return doc.ID{}, errors.New("package clause has no physical offset")
@@ -233,7 +245,13 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 			return doc.ID{}, errors.New("first declaration has no physical offset")
 		}
 	}
-	parts = append(parts, l.withTrailingComments(l.arena.Empty(), l.trailingComments(boundary, firstDeclaration)))
+	parts = append(
+		parts,
+		l.withTrailingComments(
+			l.arena.Empty(),
+			l.trailingComments(boundary, firstDeclaration),
+		),
+	)
 	for index, declaration := range file.Decls {
 		declarationStart, found := l.source.PhysicalOffset(declaration.Pos())
 		if !found {
@@ -245,14 +263,19 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 			return doc.ID{}, err
 		}
 		if len(leading) > 0 {
-			lowered = l.arena.Concat(l.boundaryCommentsDocument(leading, declarationStart), lowered)
+			lowered = l.arena.Concat(
+				l.boundaryCommentsDocument(leading, declarationStart),
+				lowered,
+			)
 		}
 		limit := len(l.physical)
-		if index+1 < len(file.Decls) {
+		if index + 1 < len(file.Decls) {
 			var found bool
-			limit, found = l.source.PhysicalOffset(file.Decls[index+1].Pos())
+			limit, found = l.source.PhysicalOffset(file.Decls[index + 1].Pos())
 			if !found {
-				return doc.ID{}, errors.New("following declaration has no physical offset")
+				return doc.ID{}, errors.New(
+					"following declaration has no physical offset",
+				)
 			}
 		}
 		declarationEnd, found := l.source.PhysicalOffset(declaration.End())
@@ -265,7 +288,12 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 		boundary = declarationEnd
 	}
 	if suffix := l.commentsBetween(boundary, len(l.physical)); len(suffix) > 0 {
-		parts = append(parts, l.arena.HardLine(), l.arena.HardLine(), l.commentsDocument(suffix))
+		parts = append(
+			parts,
+			l.arena.HardLine(),
+			l.arena.HardLine(),
+			l.commentsDocument(suffix),
+		)
 	}
 	if err := l.validateCommentAccounting(); err != nil {
 		return doc.ID{}, err
@@ -274,12 +302,14 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 }
 
 func (l *lowerer) fragmentDeclarations(declarations []ast.Decl) (doc.ID, error) {
-	parts := make([]doc.ID, 0, len(declarations)*3)
+	parts := make([]doc.ID, 0, len(declarations) * 3)
 	boundary := 0
 	for index, declaration := range declarations {
 		declarationStart, found := l.source.PhysicalOffset(declaration.Pos())
 		if !found {
-			return doc.ID{}, errors.New("fragment declaration has no physical start offset")
+			return doc.ID{}, errors.New(
+				"fragment declaration has no physical start offset",
+			)
 		}
 		leading := l.commentsBetween(boundary, declarationStart)
 		lowered, err := l.declaration(declaration)
@@ -287,18 +317,25 @@ func (l *lowerer) fragmentDeclarations(declarations []ast.Decl) (doc.ID, error) 
 			return doc.ID{}, err
 		}
 		if len(leading) > 0 {
-			lowered = l.arena.Concat(l.boundaryCommentsDocument(leading, declarationStart), lowered)
+			lowered = l.arena.Concat(
+				l.boundaryCommentsDocument(leading, declarationStart),
+				lowered,
+			)
 		}
 		limit := len(l.physical)
-		if index+1 < len(declarations) {
-			limit, found = l.source.PhysicalOffset(declarations[index+1].Pos())
+		if index + 1 < len(declarations) {
+			limit, found = l.source.PhysicalOffset(declarations[index + 1].Pos())
 			if !found {
-				return doc.ID{}, errors.New("following fragment declaration has no physical offset")
+				return doc.ID{}, errors.New(
+					"following fragment declaration has no physical offset",
+				)
 			}
 		}
 		declarationEnd, found := l.source.PhysicalOffset(declaration.End())
 		if !found {
-			return doc.ID{}, errors.New("fragment declaration has no physical end offset")
+			return doc.ID{}, errors.New(
+				"fragment declaration has no physical end offset",
+			)
 		}
 		lowered = l.withTrailingComments(lowered, l.trailingComments(declarationEnd, limit))
 		if index > 0 {
@@ -324,7 +361,7 @@ func (l *lowerer) fragmentStatements(statements []ast.Stmt) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	parts := make([]doc.ID, 0, len(lowered)*3)
+	parts := make([]doc.ID, 0, len(lowered) * 3)
 	for index, statement := range lowered {
 		if index > 0 {
 			parts = append(parts, l.arena.HardLine())
@@ -370,7 +407,10 @@ func (l *lowerer) fragmentExpression(expression ast.Expr) (doc.ID, error) {
 func (l *lowerer) validateCommentAccounting() error {
 	for index, emitted := range l.emittedComment {
 		if !emitted {
-			return fmt.Errorf("comment %d has no proven output owner", l.comments[index].ID)
+			return fmt.Errorf(
+				"comment %d has no proven output owner",
+				l.comments[index].ID,
+			)
 		}
 	}
 	return nil
@@ -387,15 +427,18 @@ func (l *lowerer) commentsDocument(owned []source.Comment) doc.ID {
 func (l *lowerer) boundaryCommentsDocument(owned []source.Comment, following int) doc.ID {
 	return l.arena.Concat(
 		l.boundaryCommentsBody(owned),
-		l.commentGap(owned[len(owned)-1].Range.End, following),
+		l.commentGap(owned[len(owned) - 1].Range.End, following),
 	)
 }
 
 func (l *lowerer) boundaryCommentsBody(owned []source.Comment) doc.ID {
-	parts := make([]doc.ID, 0, len(owned)*3)
+	parts := make([]doc.ID, 0, len(owned) * 3)
 	for index, comment := range owned {
 		if index > 0 {
-			parts = append(parts, l.commentGap(owned[index-1].Range.End, comment.Range.Start))
+			parts = append(
+				parts,
+				l.commentGap(owned[index - 1].Range.End, comment.Range.Start),
+			)
 		}
 		parts = append(parts, l.arena.Verbatim(comment.Raw))
 	}
@@ -403,7 +446,10 @@ func (l *lowerer) boundaryCommentsBody(owned []source.Comment) doc.ID {
 }
 
 func (l *lowerer) commentGap(start, end int) doc.ID {
-	if start >= 0 && end >= start && end <= len(l.physical) && bytes.Count(l.physical[start:end], []byte{'\n'}) >= 2 {
+	if start >= 0 &&
+		end >= start &&
+		end <= len(l.physical) &&
+		bytes.Count(l.physical[start:end], []byte{'\n'}) >= 2 {
 		return l.arena.Concat(l.arena.HardLine(), l.arena.HardLine())
 	}
 	return l.arena.HardLine()
@@ -418,10 +464,16 @@ func (l *lowerer) consumeCommentGroup(group *ast.CommentGroup) ([]source.Comment
 		}
 		index, found := l.commentByStart[start]
 		if !found {
-			return nil, fmt.Errorf("attached comment at byte %d has no stable identity", start)
+			return nil, fmt.Errorf(
+				"attached comment at byte %d has no stable identity",
+				start,
+			)
 		}
 		if l.emittedComment[index] {
-			return nil, fmt.Errorf("comment %d has multiple output owners", l.comments[index].ID)
+			return nil, fmt.Errorf(
+				"comment %d has multiple output owners",
+				l.comments[index].ID,
+			)
 		}
 		l.emittedComment[index] = true
 		comments = append(comments, l.comments[index])
@@ -432,7 +484,9 @@ func (l *lowerer) consumeCommentGroup(group *ast.CommentGroup) ([]source.Comment
 func (l *lowerer) trailingComments(start, limit int) []source.Comment {
 	var trailing []source.Comment
 	for index, comment := range l.comments {
-		if l.emittedComment[index] || comment.Range.Start < start || comment.Range.Start >= limit {
+		if l.emittedComment[index] ||
+			comment.Range.Start < start ||
+			comment.Range.Start >= limit {
 			continue
 		}
 		if !l.samePhysicalLine(start, comment.Range.Start) {
@@ -447,7 +501,9 @@ func (l *lowerer) trailingComments(start, limit int) []source.Comment {
 func (l *lowerer) commentsBetween(start, end int) []source.Comment {
 	var owned []source.Comment
 	for index, comment := range l.comments {
-		if l.emittedComment[index] || comment.Range.Start < start || comment.Range.End > end {
+		if l.emittedComment[index] ||
+			comment.Range.Start < start ||
+			comment.Range.End > end {
 			continue
 		}
 		l.emittedComment[index] = true
@@ -460,7 +516,7 @@ func (l *lowerer) withTrailingComments(item doc.ID, comments []source.Comment) d
 	if len(comments) == 0 {
 		return item
 	}
-	suffix := make([]doc.ID, 0, len(comments)*2)
+	suffix := make([]doc.ID, 0, len(comments) * 2)
 	for _, comment := range comments {
 		suffix = append(suffix, l.arena.Text(" "), l.arena.Verbatim(comment.Raw))
 	}
@@ -478,9 +534,12 @@ func (l *lowerer) uniqueTokenBetween(kind token.Token, start, end int) (source.T
 	if start < 0 || end < start || end > len(l.physical) {
 		return source.Token{}, errors.New("token lookup has an invalid physical range")
 	}
-	first := sort.Search(len(l.tokens), func(index int) bool {
-		return l.tokens[index].Range.Start >= start
-	})
+	first := sort.Search(
+		len(l.tokens),
+		func(index int) bool {
+			return l.tokens[index].Range.Start >= start
+		},
+	)
 	var result source.Token
 	found := false
 	for _, item := range l.tokens[first:] {
@@ -491,7 +550,10 @@ func (l *lowerer) uniqueTokenBetween(kind token.Token, start, end int) (source.T
 			continue
 		}
 		if found {
-			return source.Token{}, fmt.Errorf("physical range contains multiple %s tokens", kind)
+			return source.Token{}, fmt.Errorf(
+				"physical range contains multiple %s tokens",
+				kind,
+			)
 		}
 		result = item
 		found = true
@@ -509,13 +571,23 @@ func (l *lowerer) matchingTokenBetween(
 	end int,
 ) (source.Token, error) {
 	if opening < 0 || end <= opening || end > len(l.physical) {
-		return source.Token{}, errors.New("matching token lookup has an invalid physical range")
+		return source.Token{}, errors.New(
+			"matching token lookup has an invalid physical range",
+		)
 	}
-	first := sort.Search(len(l.tokens), func(index int) bool {
-		return l.tokens[index].Range.Start >= opening
-	})
-	if first >= len(l.tokens) || l.tokens[first].Range.Start != opening || l.tokens[first].Kind != openingKind {
-		return source.Token{}, fmt.Errorf("physical range does not start with %s", openingKind)
+	first := sort.Search(
+		len(l.tokens),
+		func(index int) bool {
+			return l.tokens[index].Range.Start >= opening
+		},
+	)
+	if first >= len(l.tokens) ||
+		l.tokens[first].Range.Start != opening ||
+		l.tokens[first].Kind != openingKind {
+		return source.Token{}, fmt.Errorf(
+			"physical range does not start with %s",
+			openingKind,
+		)
 	}
 	depth := 0
 	for _, item := range l.tokens[first:] {
@@ -532,7 +604,10 @@ func (l *lowerer) matchingTokenBetween(
 			}
 		}
 	}
-	return source.Token{}, fmt.Errorf("physical range contains no matching %s token", closingKind)
+	return source.Token{}, fmt.Errorf(
+		"physical range contains no matching %s token",
+		closingKind,
+	)
 }
 
 func (l *lowerer) declaration(declaration ast.Decl) (doc.ID, error) {
@@ -550,13 +625,18 @@ func (l *lowerer) declaration(declaration ast.Decl) (doc.ID, error) {
 }
 
 func (l *lowerer) generalDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
-	if declaration.Tok != token.CONST && declaration.Tok != token.VAR && declaration.Tok != token.TYPE {
+	if declaration.Tok != token.CONST &&
+		declaration.Tok != token.VAR &&
+		declaration.Tok != token.TYPE {
 		return doc.ID{}, fmt.Errorf("unsupported declaration token %s", declaration.Tok)
 	}
 	keyword := declaration.Tok.String()
 	if !declaration.Lparen.IsValid() {
 		if len(declaration.Specs) != 1 {
-			return doc.ID{}, fmt.Errorf("ungrouped %s declaration must contain one spec", keyword)
+			return doc.ID{}, fmt.Errorf(
+				"ungrouped %s declaration must contain one spec",
+				keyword,
+			)
 		}
 		spec, err := l.generalSpec(declaration.Tok, declaration.Specs[0])
 		if err != nil {
@@ -568,9 +648,12 @@ func (l *lowerer) generalDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 	closing, closingFound := l.source.PhysicalOffset(declaration.Rparen)
 	keywordOffset, keywordFound := l.source.PhysicalOffset(declaration.TokPos)
 	if !openingFound || !closingFound || !keywordFound {
-		return doc.ID{}, fmt.Errorf("grouped %s declaration has no physical boundary", keyword)
+		return doc.ID{}, fmt.Errorf(
+			"grouped %s declaration has no physical boundary",
+			keyword,
+		)
 	}
-	beforeOpening := l.commentsBetween(keywordOffset+len(keyword), opening)
+	beforeOpening := l.commentsBetween(keywordOffset + len(keyword), opening)
 	hasLineComment := false
 	for _, comment := range beforeOpening {
 		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
@@ -579,11 +662,13 @@ func (l *lowerer) generalDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 	if hasLineComment {
 		header = l.arena.Concat(
 			l.arena.Text(keyword),
-			l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsBody(beforeOpening),
-			)),
-			l.commentGap(beforeOpening[len(beforeOpening)-1].Range.End, opening),
+			l.arena.Indent(
+				l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsBody(beforeOpening),
+				),
+			),
+			l.commentGap(beforeOpening[len(beforeOpening) - 1].Range.End, opening),
 			l.arena.Text("("),
 		)
 	} else {
@@ -591,21 +676,33 @@ func (l *lowerer) generalDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		header = l.arena.Concat(l.arena.Text(keyword), beforeOpeningDocument, l.arena.Text(" ("))
+		header = l.arena.Concat(
+			l.arena.Text(keyword),
+			beforeOpeningDocument,
+			l.arena.Text(" ("),
+		)
 	}
-	rows := make([]doc.ID, 0, len(declaration.Specs)+1)
+	rows := make([]doc.ID, 0, len(declaration.Specs) + 1)
 	boundary := opening + len("(")
 	for index, rawSpec := range declaration.Specs {
 		specStart, startFound := l.source.PhysicalOffset(rawSpec.Pos())
 		specEnd, endFound := l.source.PhysicalOffset(rawSpec.End())
 		if !startFound || !endFound {
-			return doc.ID{}, fmt.Errorf("%s declaration spec has no physical boundary", keyword)
+			return doc.ID{}, fmt.Errorf(
+				"%s declaration spec has no physical boundary",
+				keyword,
+			)
 		}
 		limit := closing
-		if index+1 < len(declaration.Specs) {
-			limit, startFound = l.source.PhysicalOffset(declaration.Specs[index+1].Pos())
+		if index + 1 < len(declaration.Specs) {
+			limit, startFound = l.source.PhysicalOffset(
+				declaration.Specs[index + 1].Pos(),
+			)
 			if !startFound {
-				return doc.ID{}, fmt.Errorf("%s declaration following spec has no physical boundary", keyword)
+				return doc.ID{}, fmt.Errorf(
+					"%s declaration following spec has no physical boundary",
+					keyword,
+				)
 			}
 		}
 		leading := l.commentsBetween(boundary, specStart)
@@ -615,7 +712,10 @@ func (l *lowerer) generalDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 		}
 		lowered = l.withTrailingComments(lowered, l.trailingComments(specEnd, limit))
 		if len(leading) > 0 {
-			lowered = l.arena.Concat(l.boundaryCommentsDocument(leading, specStart), lowered)
+			lowered = l.arena.Concat(
+				l.boundaryCommentsDocument(leading, specStart),
+				lowered,
+			)
 		}
 		rows = append(rows, lowered)
 		boundary = specEnd
@@ -628,7 +728,9 @@ func (l *lowerer) generalDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 	}
 	return l.arena.Concat(
 		header,
-		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.join(l.arena.HardLine(), rows))),
+		l.arena.Indent(
+			l.arena.Concat(l.arena.HardLine(), l.join(l.arena.HardLine(), rows)),
+		),
 		l.arena.HardLine(),
 		l.arena.Text(")"),
 	), nil
@@ -659,13 +761,18 @@ func (l *lowerer) valueSpec(spec *ast.ValueSpec) (doc.ID, error) {
 		nameStart, startFound := l.source.PhysicalOffset(name.Pos())
 		nameEnd, endFound := l.source.PhysicalOffset(name.End())
 		if !startFound || !endFound {
-			return doc.ID{}, errors.New("value specification name has no physical boundary")
+			return doc.ID{}, errors.New(
+				"value specification name has no physical boundary",
+			)
 		}
 		comma, err := l.uniqueTokenBetween(token.COMMA, boundary, nameStart)
 		if err != nil {
 			return doc.ID{}, fmt.Errorf("value specification name boundary: %w", err)
 		}
-		afterPrevious, err := l.inlineComments(l.commentsBetween(boundary, comma.Range.Start), true)
+		afterPrevious, err := l.inlineComments(
+			l.commentsBetween(boundary, comma.Range.Start),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -676,17 +783,27 @@ func (l *lowerer) valueSpec(spec *ast.ValueSpec) (doc.ID, error) {
 			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
 		}
 		if hasLineComment {
-			parts = append(parts, l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsDocument(beforeName, nameStart),
-				l.arena.Text(name.Name),
-			)))
+			parts = append(
+				parts,
+				l.arena.Indent(
+					l.arena.Concat(
+						l.arena.HardLine(),
+						l.boundaryCommentsDocument(beforeName, nameStart),
+						l.arena.Text(name.Name),
+					),
+				),
+			)
 		} else {
 			beforeNameDocument, err := l.inlineComments(beforeName, true)
 			if err != nil {
 				return doc.ID{}, err
 			}
-			parts = append(parts, beforeNameDocument, l.arena.Text(" "), l.arena.Text(name.Name))
+			parts = append(
+				parts,
+				beforeNameDocument,
+				l.arena.Text(" "),
+				l.arena.Text(name.Name),
+			)
 		}
 		boundary = nameEnd
 	}
@@ -698,7 +815,9 @@ func (l *lowerer) valueSpec(spec *ast.ValueSpec) (doc.ID, error) {
 		typeStart, startFound := l.source.PhysicalOffset(spec.Type.Pos())
 		typeEnd, endFound := l.source.PhysicalOffset(spec.Type.End())
 		if !startFound || !endFound {
-			return doc.ID{}, errors.New("value specification type has no physical boundary")
+			return doc.ID{}, errors.New(
+				"value specification type has no physical boundary",
+			)
 		}
 		beforeType, err := l.inlineComments(l.commentsBetween(boundary, typeStart), true)
 		if err != nil {
@@ -714,13 +833,21 @@ func (l *lowerer) valueSpec(spec *ast.ValueSpec) (doc.ID, error) {
 		}
 		valuesStart, found := l.source.PhysicalOffset(spec.Values[0].Pos())
 		if !found {
-			return doc.ID{}, errors.New("value specification values have no physical boundary")
+			return doc.ID{}, errors.New(
+				"value specification values have no physical boundary",
+			)
 		}
 		assign, err := l.uniqueTokenBetween(token.ASSIGN, boundary, valuesStart)
 		if err != nil {
-			return doc.ID{}, fmt.Errorf("value specification assignment boundary: %w", err)
+			return doc.ID{}, fmt.Errorf(
+				"value specification assignment boundary: %w",
+				err,
+			)
 		}
-		beforeAssign, err := l.inlineComments(l.commentsBetween(boundary, assign.Range.Start), true)
+		beforeAssign, err := l.inlineComments(
+			l.commentsBetween(boundary, assign.Range.Start),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -731,11 +858,19 @@ func (l *lowerer) valueSpec(spec *ast.ValueSpec) (doc.ID, error) {
 			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
 		}
 		if hasLineComment {
-			parts = append(parts, l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsDocument(afterAssign, valuesStart),
-				values,
-			)))
+			parts = append(
+				parts,
+				l.arena.Indent(
+					l.arena.Concat(
+						l.arena.HardLine(),
+						l.boundaryCommentsDocument(
+							afterAssign,
+							valuesStart,
+						),
+						values,
+					),
+				),
+			)
 		} else {
 			afterAssignDocument, err := l.inlineComments(afterAssign, true)
 			if err != nil {
@@ -761,9 +896,14 @@ func (l *lowerer) typeSpec(spec *ast.TypeSpec) (doc.ID, error) {
 		parametersStart, startFound := l.source.PhysicalOffset(spec.TypeParams.Pos())
 		parametersEnd, endFound := l.source.PhysicalOffset(spec.TypeParams.End())
 		if !startFound || !endFound {
-			return doc.ID{}, errors.New("type specification parameters have no physical boundary")
+			return doc.ID{}, errors.New(
+				"type specification parameters have no physical boundary",
+			)
 		}
-		beforeParameters, err := l.inlineComments(l.commentsBetween(boundary, parametersStart), true)
+		beforeParameters, err := l.inlineComments(
+			l.commentsBetween(boundary, parametersStart),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -776,29 +916,41 @@ func (l *lowerer) typeSpec(spec *ast.TypeSpec) (doc.ID, error) {
 	}
 	typeStart, startFound := l.source.PhysicalOffset(spec.Type.Pos())
 	if !startFound {
-		return doc.ID{}, errors.New("type specification underlying type has no physical boundary")
+		return doc.ID{}, errors.New(
+			"type specification underlying type has no physical boundary",
+		)
 	}
 	if spec.Assign.IsValid() {
 		assignOffset, assignFound := l.source.PhysicalOffset(spec.Assign)
 		if !assignFound {
-			return doc.ID{}, errors.New("type alias has no physical assignment boundary")
+			return doc.ID{}, errors.New(
+				"type alias has no physical assignment boundary",
+			)
 		}
-		beforeAssign, err := l.inlineComments(l.commentsBetween(boundary, assignOffset), true)
+		beforeAssign, err := l.inlineComments(
+			l.commentsBetween(boundary, assignOffset),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
 		parts = append(parts, beforeAssign, l.arena.Text(" ="))
-		afterAssign := l.commentsBetween(assignOffset+len("="), typeStart)
+		afterAssign := l.commentsBetween(assignOffset + len("="), typeStart)
 		hasLineComment := false
 		for _, comment := range afterAssign {
 			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
 		}
 		if hasLineComment {
-			parts = append(parts, l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsDocument(afterAssign, typeStart),
-				typeDocument,
-			)))
+			parts = append(
+				parts,
+				l.arena.Indent(
+					l.arena.Concat(
+						l.arena.HardLine(),
+						l.boundaryCommentsDocument(afterAssign, typeStart),
+						typeDocument,
+					),
+				),
+			)
 		} else {
 			afterAssignDocument, err := l.inlineComments(afterAssign, true)
 			if err != nil {
@@ -819,11 +971,16 @@ func (l *lowerer) typeSpec(spec *ast.TypeSpec) (doc.ID, error) {
 func (l *lowerer) importDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 	if !declaration.Lparen.IsValid() {
 		if len(declaration.Specs) != 1 {
-			return doc.ID{}, errors.New("ungrouped import declaration must contain one spec")
+			return doc.ID{}, errors.New(
+				"ungrouped import declaration must contain one spec",
+			)
 		}
 		spec, ok := declaration.Specs[0].(*ast.ImportSpec)
 		if !ok {
-			return doc.ID{}, fmt.Errorf("import declaration contains %T", declaration.Specs[0])
+			return doc.ID{}, fmt.Errorf(
+				"import declaration contains %T",
+				declaration.Specs[0],
+			)
 		}
 		item, err := l.importSpec(spec)
 		if err != nil {
@@ -831,7 +988,9 @@ func (l *lowerer) importDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 		}
 		start, found := l.source.PhysicalOffset(spec.Pos())
 		if !found {
-			return doc.ID{}, errors.New("import specification has no physical start offset")
+			return doc.ID{}, errors.New(
+				"import specification has no physical start offset",
+			)
 		}
 		return l.importHeader(declaration, start, item)
 	}
@@ -840,8 +999,8 @@ func (l *lowerer) importDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 	if !openingFound || !closingFound {
 		return doc.ID{}, errors.New("import group has no physical boundary")
 	}
-	rows := make([]doc.ID, 0, len(declaration.Specs)+1)
-	blankBefore := make([]bool, 0, len(declaration.Specs)+1)
+	rows := make([]doc.ID, 0, len(declaration.Specs) + 1)
+	blankBefore := make([]bool, 0, len(declaration.Specs) + 1)
 	boundary := opening + len("(")
 	for index, rawSpec := range declaration.Specs {
 		spec, ok := rawSpec.(*ast.ImportSpec)
@@ -867,10 +1026,14 @@ func (l *lowerer) importDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 			return doc.ID{}, err
 		}
 		limit := closing
-		if index+1 < len(declaration.Specs) {
-			limit, endFound = l.source.PhysicalOffset(declaration.Specs[index+1].Pos())
+		if index + 1 < len(declaration.Specs) {
+			limit, endFound = l.source.PhysicalOffset(
+				declaration.Specs[index + 1].Pos(),
+			)
 			if !endFound {
-				return doc.ID{}, errors.New("following import specification has no physical boundary")
+				return doc.ID{}, errors.New(
+					"following import specification has no physical boundary",
+				)
 			}
 		}
 		item = l.withTrailingComments(item, l.trailingComments(specEnd, limit))
@@ -889,7 +1052,7 @@ func (l *lowerer) importDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 		rows = append(rows, l.boundaryCommentsBody(closingComments))
 		blankBefore = append(blankBefore, blank)
 	}
-	body := make([]doc.ID, 0, len(rows)*3)
+	body := make([]doc.ID, 0, len(rows) * 3)
 	for index, row := range rows {
 		if index > 0 {
 			body = append(body, l.arena.HardLine())
@@ -938,7 +1101,11 @@ func (l *lowerer) importSpec(spec *ast.ImportSpec) (doc.ID, error) {
 	), nil
 }
 
-func (l *lowerer) importHeader(declaration *ast.GenDecl, following int, operand doc.ID) (doc.ID, error) {
+func (l *lowerer) importHeader(
+	declaration *ast.GenDecl,
+	following int,
+	operand doc.ID,
+) (doc.ID, error) {
 	return l.keywordHeader(declaration.TokPos, "import", " ", following, operand)
 }
 
@@ -966,7 +1133,7 @@ func (l *lowerer) physicalHeader(
 	boundary := keywordOffset + len(keyword)
 	comments := l.commentsBetween(boundary, following)
 	if len(comments) == 0 {
-		return l.arena.Concat(l.arena.Text(keyword+separator), operand)
+		return l.arena.Concat(l.arena.Text(keyword + separator), operand)
 	}
 	parts := []doc.ID{l.arena.Text(keyword)}
 	previousWasLineComment := false
@@ -1017,7 +1184,9 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 		receiverEnd, receiverFound := l.source.PhysicalOffset(function.Recv.End())
 		nameStart, nameFound := l.source.PhysicalOffset(function.Name.Pos())
 		if !receiverFound || !nameFound {
-			return doc.ID{}, errors.New("function receiver has no physical name boundary")
+			return doc.ID{}, errors.New(
+				"function receiver has no physical name boundary",
+			)
 		}
 		beforeName, err := l.inlineComments(l.commentsBetween(receiverEnd, nameStart), true)
 		if err != nil {
@@ -1030,10 +1199,15 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 		start, startFound := l.source.PhysicalOffset(function.Type.TypeParams.Pos())
 		end, endFound := l.source.PhysicalOffset(function.Type.TypeParams.End())
 		if !startFound || !endFound {
-			return doc.ID{}, errors.New("function type parameters have no physical boundary")
+			return doc.ID{}, errors.New(
+				"function type parameters have no physical boundary",
+			)
 		}
 		leadingComments := l.commentsBetween(boundary, start)
-		typeParameters, err := l.functionTypeParameterList(function.Type.TypeParams, leadingComments)
+		typeParameters, err := l.functionTypeParameterList(
+			function.Type.TypeParams,
+			leadingComments,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -1049,7 +1223,10 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 	if !startFound || !endFound {
 		return doc.ID{}, errors.New("function parameters have no physical boundary")
 	}
-	beforeParameters, err := l.inlineComments(l.commentsBetween(boundary, parametersStart), true)
+	beforeParameters, err := l.inlineComments(
+		l.commentsBetween(boundary, parametersStart),
+		true,
+	)
 	if err != nil {
 		return doc.ID{}, err
 	}
@@ -1065,7 +1242,10 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 		if !startFound || !endFound {
 			return doc.ID{}, errors.New("function results have no physical boundary")
 		}
-		beforeResults, err := l.inlineComments(l.commentsBetween(boundary, resultsStart), true)
+		beforeResults, err := l.inlineComments(
+			l.commentsBetween(boundary, resultsStart),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -1091,7 +1271,13 @@ func (l *lowerer) function(function *ast.FuncDecl) (doc.ID, error) {
 	if !found {
 		return doc.ID{}, errors.New("function declaration has no physical first operand")
 	}
-	return l.keywordHeader(function.Type.Func, "func", " ", firstStart, l.arena.Concat(parts...))
+	return l.keywordHeader(
+		function.Type.Func,
+		"func",
+		" ",
+		firstStart,
+		l.arena.Concat(parts...),
+	)
 }
 
 func (l *lowerer) receiverList(keywordPosition token.Pos, fields *ast.FieldList) (doc.ID, error) {
@@ -1105,7 +1291,8 @@ func (l *lowerer) receiverList(keywordPosition token.Pos, fields *ast.FieldList)
 		return doc.ID{}, errors.New("function receiver has no physical boundary")
 	}
 	for _, comment := range l.comments {
-		if comment.Range.Start >= keywordOffset+len("func") && comment.Range.End <= closing {
+		if comment.Range.Start >= keywordOffset + len("func") &&
+			comment.Range.End <= closing {
 			return l.fieldList(fields)
 		}
 	}
@@ -1119,19 +1306,27 @@ func (l *lowerer) receiverList(keywordPosition token.Pos, fields *ast.FieldList)
 	if !startFound || !endFound {
 		return doc.ID{}, errors.New("function receiver item has no physical range")
 	}
-	return l.delimitedSingle(fields.Opening, fields.Closing, "(", ")", delimitedItem{
-		document: item,
-		start:    start,
-		end:      end,
-	})
+	return l.delimitedSingle(
+		fields.Opening,
+		fields.Closing,
+		"(",
+		")",
+		delimitedItem{document: item, start: start, end: end},
+	)
 }
 
 func (l *lowerer) fieldList(fields *ast.FieldList) (doc.ID, error) {
 	return l.fieldListWithDelimiters(fields, "(", ")")
 }
 
-func (l *lowerer) functionTypeParameterList(fields *ast.FieldList, leadingComments []source.Comment) (doc.ID, error) {
-	if fields == nil || len(fields.List) != 1 || len(fields.List[0].Names) != 1 || len(leadingComments) != 0 {
+func (l *lowerer) functionTypeParameterList(
+	fields *ast.FieldList,
+	leadingComments []source.Comment,
+) (doc.ID, error) {
+	if fields == nil ||
+		len(fields.List) != 1 ||
+		len(fields.List[0].Names) != 1 ||
+		len(leadingComments) != 0 {
 		return l.fieldListWithDelimiters(fields, "[", "]")
 	}
 	opening, openingFound := l.source.PhysicalOffset(fields.Opening)
@@ -1140,7 +1335,7 @@ func (l *lowerer) functionTypeParameterList(fields *ast.FieldList, leadingCommen
 		return doc.ID{}, errors.New("type parameter list has no physical boundary")
 	}
 	for _, comment := range l.comments {
-		if comment.Range.Start >= opening+len("[") && comment.Range.End <= closing {
+		if comment.Range.Start >= opening + len("[") && comment.Range.End <= closing {
 			return l.fieldListWithDelimiters(fields, "[", "]")
 		}
 	}
@@ -1154,14 +1349,19 @@ func (l *lowerer) functionTypeParameterList(fields *ast.FieldList, leadingCommen
 	if !startFound || !endFound {
 		return doc.ID{}, errors.New("type parameter has no physical range")
 	}
-	return l.delimitedSingle(fields.Opening, fields.Closing, "[", "]", delimitedItem{
-		document: item,
-		start:    start,
-		end:      end,
-	})
+	return l.delimitedSingle(
+		fields.Opening,
+		fields.Closing,
+		"[",
+		"]",
+		delimitedItem{document: item, start: start, end: end},
+	)
 }
 
-func (l *lowerer) fieldListWithDelimiters(fields *ast.FieldList, open, close string) (doc.ID, error) {
+func (l *lowerer) fieldListWithDelimiters(
+	fields *ast.FieldList,
+	open, close string,
+) (doc.ID, error) {
 	if fields == nil {
 		return l.arena.Text(open + close), nil
 	}
@@ -1183,8 +1383,8 @@ func (l *lowerer) fieldListWithDelimiters(fields *ast.FieldList, open, close str
 
 type delimitedItem struct {
 	document doc.ID
-	start    int
-	end      int
+	start int
+	end int
 }
 
 func (l *lowerer) delimitedCommaList(
@@ -1200,14 +1400,14 @@ func (l *lowerer) delimitedCommaList(
 		return doc.ID{}, errors.New("delimited list has no physical boundary")
 	}
 	boundary := opening + len(open)
-	rows := make([]doc.ID, 0, len(items)+1)
+	rows := make([]doc.ID, 0, len(items) + 1)
 	plain := make([]doc.ID, 0, len(items))
 	hasComments := false
 	for index, item := range items {
 		leading := l.commentsBetween(boundary, item.start)
 		limit := closing
-		if index+1 < len(items) {
-			limit = items[index+1].start
+		if index + 1 < len(items) {
+			limit = items[index + 1].start
 		}
 		trailing := l.trailingComments(item.end, limit)
 		hasComments = hasComments || len(leading) > 0 || len(trailing) > 0
@@ -1233,7 +1433,9 @@ func (l *lowerer) delimitedCommaList(
 	}
 	return l.arena.Concat(
 		l.arena.Text(open),
-		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.join(l.arena.HardLine(), rows))),
+		l.arena.Indent(
+			l.arena.Concat(l.arena.HardLine(), l.join(l.arena.HardLine(), rows)),
+		),
 		l.arena.HardLine(),
 		l.arena.Text(close),
 	), nil
@@ -1251,14 +1453,15 @@ func (l *lowerer) delimitedSingle(
 	if !openingFound || !closingFound {
 		return doc.ID{}, errors.New("single-item delimited list has no physical boundary")
 	}
-	leading := l.commentsBetween(opening+len(open), item.start)
+	leading := l.commentsBetween(opening + len(open), item.start)
 	trailing := l.commentsBetween(item.end, closing)
 	if len(leading) == 0 && len(trailing) == 0 {
 		return l.arena.Concat(l.arena.Text(open), item.document, l.arena.Text(close)), nil
 	}
 	hasTrailingLineComment := false
 	for _, comment := range trailing {
-		hasTrailingLineComment = hasTrailingLineComment || strings.HasPrefix(comment.Raw, "//")
+		hasTrailingLineComment = hasTrailingLineComment ||
+			strings.HasPrefix(comment.Raw, "//")
 	}
 	if hasTrailingLineComment {
 		body := item.document
@@ -1268,10 +1471,19 @@ func (l *lowerer) delimitedSingle(
 		boundary := item.end
 		previousWasLineComment := false
 		for _, comment := range trailing {
-			if !previousWasLineComment && l.samePhysicalLine(boundary, comment.Range.Start) {
-				body = l.arena.Concat(body, l.arena.Text(" "), l.arena.Verbatim(comment.Raw))
+			if !previousWasLineComment &&
+				l.samePhysicalLine(boundary, comment.Range.Start) {
+				body = l.arena.Concat(
+					body,
+					l.arena.Text(" "),
+					l.arena.Verbatim(comment.Raw),
+				)
 			} else {
-				body = l.arena.Concat(body, l.commentGap(boundary, comment.Range.Start), l.arena.Verbatim(comment.Raw))
+				body = l.arena.Concat(
+					body,
+					l.commentGap(boundary, comment.Range.Start),
+					l.arena.Verbatim(comment.Raw),
+				)
 			}
 			boundary = comment.Range.End
 			previousWasLineComment = strings.HasPrefix(comment.Raw, "//")
@@ -1305,7 +1517,7 @@ func (l *lowerer) fieldComments(item doc.ID, field *ast.Field) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		suffix := make([]doc.ID, 0, len(comments)*2)
+		suffix := make([]doc.ID, 0, len(comments) * 2)
 		for _, comment := range comments {
 			suffix = append(suffix, l.arena.Text(" "), l.arena.Verbatim(comment.Raw))
 		}
@@ -1329,13 +1541,17 @@ func (l *lowerer) field(field *ast.Field) (doc.ID, error) {
 	return l.fieldWithType(field, typeDocument, " ")
 }
 
-func (l *lowerer) fieldWithType(field *ast.Field, typeDocument doc.ID, separator string) (doc.ID, error) {
+func (l *lowerer) fieldWithType(
+	field *ast.Field,
+	typeDocument doc.ID,
+	separator string,
+) (doc.ID, error) {
 	typeStart, startFound := l.source.PhysicalOffset(field.Type.Pos())
 	typeEnd, endFound := l.source.PhysicalOffset(field.Type.End())
 	if !startFound || !endFound {
 		return doc.ID{}, errors.New("field type has no physical boundary")
 	}
-	parts := make([]doc.ID, 0, len(field.Names)*4+4)
+	parts := make([]doc.ID, 0, len(field.Names) * 4 + 4)
 	boundary := typeEnd
 	if len(field.Names) == 0 {
 		parts = append(parts, typeDocument)
@@ -1356,7 +1572,10 @@ func (l *lowerer) fieldWithType(field *ast.Field, typeDocument doc.ID, separator
 			if err != nil {
 				return doc.ID{}, fmt.Errorf("field name boundary: %w", err)
 			}
-			beforeComma, err := l.inlineComments(l.commentsBetween(boundary, comma.Range.Start), true)
+			beforeComma, err := l.inlineComments(
+				l.commentsBetween(boundary, comma.Range.Start),
+				true,
+			)
 			if err != nil {
 				return doc.ID{}, err
 			}
@@ -1364,20 +1583,34 @@ func (l *lowerer) fieldWithType(field *ast.Field, typeDocument doc.ID, separator
 			beforeName := l.commentsBetween(comma.Range.End, nameStart)
 			hasLineComment := false
 			for _, comment := range beforeName {
-				hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+				hasLineComment = hasLineComment ||
+					strings.HasPrefix(comment.Raw, "//")
 			}
 			if hasLineComment {
-				parts = append(parts, l.arena.Indent(l.arena.Concat(
-					l.arena.HardLine(),
-					l.boundaryCommentsDocument(beforeName, nameStart),
-					l.arena.Text(name.Name),
-				)))
+				parts = append(
+					parts,
+					l.arena.Indent(
+						l.arena.Concat(
+							l.arena.HardLine(),
+							l.boundaryCommentsDocument(
+								beforeName,
+								nameStart,
+							),
+							l.arena.Text(name.Name),
+						),
+					),
+				)
 			} else {
 				beforeNameDocument, err := l.inlineComments(beforeName, true)
 				if err != nil {
 					return doc.ID{}, err
 				}
-				parts = append(parts, beforeNameDocument, l.arena.Text(" "), l.arena.Text(name.Name))
+				parts = append(
+					parts,
+					beforeNameDocument,
+					l.arena.Text(" "),
+					l.arena.Text(name.Name),
+				)
 			}
 			boundary = nameEnd
 		}
@@ -1427,10 +1660,10 @@ func (l *lowerer) blockTail(block *ast.BlockStmt) (doc.ID, error) {
 			return doc.ID{}, errors.New("first block statement has no physical offset")
 		}
 	}
-	openingTrailing := l.openingNolintComments(opening+1, openingLimit)
+	openingTrailing := l.openingNolintComments(opening + 1, openingLimit)
 	boundary := opening + 1
 	if len(openingTrailing) > 0 {
-		boundary = openingTrailing[len(openingTrailing)-1].Range.End
+		boundary = openingTrailing[len(openingTrailing) - 1].Range.End
 	}
 	statements, err := l.statementRange(block.List, boundary, closing)
 	if err != nil {
@@ -1439,7 +1672,11 @@ func (l *lowerer) blockTail(block *ast.BlockStmt) (doc.ID, error) {
 	openingSuffix := l.withTrailingComments(l.arena.Empty(), openingTrailing)
 	if len(statements) == 0 {
 		if len(openingTrailing) > 0 {
-			return l.arena.Concat(openingSuffix, l.arena.HardLine(), l.arena.Text("}")), nil
+			return l.arena.Concat(
+				openingSuffix,
+				l.arena.HardLine(),
+				l.arena.Text("}"),
+			), nil
 		}
 		return l.arena.Text("}"), nil
 	}
@@ -1454,7 +1691,9 @@ func (l *lowerer) blockTail(block *ast.BlockStmt) (doc.ID, error) {
 func (l *lowerer) openingNolintComments(start, limit int) []source.Comment {
 	var owned []source.Comment
 	for index, comment := range l.comments {
-		if l.emittedComment[index] || comment.Range.Start < start || comment.Range.Start >= limit {
+		if l.emittedComment[index] ||
+			comment.Range.Start < start ||
+			comment.Range.Start >= limit {
 			continue
 		}
 		if !l.samePhysicalLine(start, comment.Range.Start) ||
@@ -1468,13 +1707,16 @@ func (l *lowerer) openingNolintComments(start, limit int) []source.Comment {
 }
 
 type loweredStatement struct {
-	document    doc.ID
-	outdented   bool
+	document doc.ID
+	outdented bool
 	blankBefore bool
 }
 
-func (l *lowerer) statementRange(statements []ast.Stmt, boundary, closing int) ([]loweredStatement, error) {
-	loweredStatements := make([]loweredStatement, 0, len(statements)+1)
+func (l *lowerer) statementRange(
+	statements []ast.Stmt,
+	boundary, closing int,
+) ([]loweredStatement, error) {
+	loweredStatements := make([]loweredStatement, 0, len(statements) + 1)
 	for index, statement := range statements {
 		statementStart, found := l.source.PhysicalOffset(statement.Pos())
 		if !found {
@@ -1494,8 +1736,8 @@ func (l *lowerer) statementRange(statements []ast.Stmt, boundary, closing int) (
 			}
 		}
 		limit := closing
-		if index+1 < len(statements) {
-			limit, found = l.source.PhysicalOffset(statements[index+1].Pos())
+		if index + 1 < len(statements) {
+			limit, found = l.source.PhysicalOffset(statements[index + 1].Pos())
 			if !found {
 				return nil, errors.New("following statement has no physical offset")
 			}
@@ -1513,35 +1755,48 @@ func (l *lowerer) statementRange(statements []ast.Stmt, boundary, closing int) (
 			lowered = l.arena.Verbatim(string(l.physical[statementStart:statementEnd]))
 		}
 		if len(leading) > 0 {
-			lowered = l.arena.Concat(l.boundaryCommentsDocument(leading, statementStart), lowered)
+			lowered = l.arena.Concat(
+				l.boundaryCommentsDocument(leading, statementStart),
+				lowered,
+			)
 		}
 		lowered = l.withTrailingComments(lowered, trailing)
 		outdented := statementIsOutdented(statement)
-		loweredStatements = append(loweredStatements, loweredStatement{
-			document:    lowered,
-			outdented:   outdented,
-			blankBefore: blankBefore,
-		})
+		loweredStatements = append(
+			loweredStatements,
+			loweredStatement{
+				document: lowered,
+				outdented: outdented,
+				blankBefore: blankBefore,
+			},
+		)
 		boundary = statementEnd
 		if len(trailing) > 0 {
-			boundary = trailing[len(trailing)-1].Range.End
+			boundary = trailing[len(trailing) - 1].Range.End
 		}
 	}
 	if trailingBoundary := l.commentsBetween(boundary, closing); len(trailingBoundary) > 0 {
-		outdented := len(statements) > 0 && statementIsClause(statements[len(statements)-1])
+		outdented := len(statements) > 0 &&
+			statementIsClause(statements[len(statements) - 1])
 		blankBefore := false
 		if len(statements) > 0 {
 			var err error
-			blankBefore, err = l.hasStatementBlankGap(boundary, trailingBoundary[0].Range.Start)
+			blankBefore, err = l.hasStatementBlankGap(
+				boundary,
+				trailingBoundary[0].Range.Start,
+			)
 			if err != nil {
 				return nil, err
 			}
 		}
-		loweredStatements = append(loweredStatements, loweredStatement{
-			document:    l.commentsDocument(trailingBoundary),
-			outdented:   outdented,
-			blankBefore: blankBefore,
-		})
+		loweredStatements = append(
+			loweredStatements,
+			loweredStatement{
+				document: l.commentsDocument(trailingBoundary),
+				outdented: outdented,
+				blankBefore: blankBefore,
+			},
+		)
 	}
 	return loweredStatements, nil
 }
@@ -1570,10 +1825,10 @@ func (l *lowerer) blockOpeningHasNolint(block *ast.BlockStmt) bool {
 		}
 	}
 	for _, comment := range l.comments {
-		if comment.Range.Start < opening+1 || comment.Range.Start >= limit {
+		if comment.Range.Start < opening + 1 || comment.Range.Start >= limit {
 			continue
 		}
-		if l.samePhysicalLine(opening+1, comment.Range.Start) &&
+		if l.samePhysicalLine(opening + 1, comment.Range.Start) &&
 			isNolintComment(comment.Raw) {
 			return true
 		}
@@ -1607,7 +1862,7 @@ func statementIsClause(statement ast.Stmt) bool {
 }
 
 func (l *lowerer) statementSequence(statements []loweredStatement) doc.ID {
-	parts := make([]doc.ID, 0, len(statements)*3)
+	parts := make([]doc.ID, 0, len(statements) * 3)
 	for _, statement := range statements {
 		separator := l.arena.HardLine()
 		if statement.blankBefore {
@@ -1627,9 +1882,12 @@ func (l *lowerer) hasStatementBlankGap(start, end int) (bool, error) {
 	if err != nil || !blank {
 		return blank, err
 	}
-	first := sort.Search(len(l.tokens), func(index int) bool {
-		return l.tokens[index].Range.Start >= start
-	})
+	first := sort.Search(
+		len(l.tokens),
+		func(index int) bool {
+			return l.tokens[index].Range.Start >= start
+		},
+	)
 	for _, item := range l.tokens[first:] {
 		if item.Range.Start >= end {
 			break
@@ -1736,9 +1994,12 @@ func (l *lowerer) keywordWithOperand(
 	keywordOffset, keywordFound := l.source.PhysicalOffset(keywordPosition)
 	operandStart, operandFound := l.source.PhysicalOffset(operand.Pos())
 	if !keywordFound || !operandFound {
-		return doc.ID{}, fmt.Errorf("%s statement has no physical operand boundary", keyword)
+		return doc.ID{}, fmt.Errorf(
+			"%s statement has no physical operand boundary",
+			keyword,
+		)
 	}
-	comments := l.commentsBetween(keywordOffset+len(keyword), operandStart)
+	comments := l.commentsBetween(keywordOffset + len(keyword), operandStart)
 	hasLineComment := false
 	for _, comment := range comments {
 		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
@@ -1746,18 +2007,25 @@ func (l *lowerer) keywordWithOperand(
 	if hasLineComment {
 		return l.arena.Concat(
 			l.arena.Text(keyword),
-			l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsDocument(comments, operandStart),
-				operandDocument,
-			)),
+			l.arena.Indent(
+				l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(comments, operandStart),
+					operandDocument,
+				),
+			),
 		), nil
 	}
 	commentsDocument, err := l.inlineComments(comments, true)
 	if err != nil {
 		return doc.ID{}, err
 	}
-	return l.arena.Concat(l.arena.Text(keyword), commentsDocument, l.arena.Text(" "), operandDocument), nil
+	return l.arena.Concat(
+		l.arena.Text(keyword),
+		commentsDocument,
+		l.arena.Text(" "),
+		operandDocument,
+	), nil
 }
 
 func (l *lowerer) incrementOrDecrement(statement *ast.IncDecStmt) (doc.ID, error) {
@@ -1768,9 +2036,14 @@ func (l *lowerer) incrementOrDecrement(statement *ast.IncDecStmt) (doc.ID, error
 	expressionEnd, expressionEndFound := l.source.PhysicalOffset(statement.X.End())
 	operatorOffset, operatorFound := l.source.PhysicalOffset(statement.TokPos)
 	if !expressionEndFound || !operatorFound {
-		return doc.ID{}, errors.New("increment or decrement has no physical operator boundary")
+		return doc.ID{}, errors.New(
+			"increment or decrement has no physical operator boundary",
+		)
 	}
-	beforeOperator, err := l.inlineComments(l.commentsBetween(expressionEnd, operatorOffset), true)
+	beforeOperator, err := l.inlineComments(
+		l.commentsBetween(expressionEnd, operatorOffset),
+		true,
+	)
 	if err != nil {
 		return doc.ID{}, err
 	}
@@ -1805,7 +2078,9 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 			initializerStart, forFound = l.source.PhysicalOffset(statement.Init.Pos())
 			initializerEnd, braceFound = l.source.PhysicalOffset(statement.Init.End())
 			if !forFound || !braceFound {
-				return doc.ID{}, errors.New("classic for initializer has no physical boundary")
+				return doc.ID{}, errors.New(
+					"classic for initializer has no physical boundary",
+				)
 			}
 			parts = append(parts, initializer)
 		}
@@ -1823,7 +2098,9 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 			conditionStart, forFound = l.source.PhysicalOffset(statement.Cond.Pos())
 			conditionEnd, braceFound = l.source.PhysicalOffset(statement.Cond.End())
 			if !forFound || !braceFound {
-				return doc.ID{}, errors.New("classic for condition has no physical boundary")
+				return doc.ID{}, errors.New(
+					"classic for condition has no physical boundary",
+				)
 			}
 			continuation = append(continuation, condition)
 		}
@@ -1840,17 +2117,22 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 			postStart, forFound = l.source.PhysicalOffset(statement.Post.Pos())
 			postEnd, braceFound = l.source.PhysicalOffset(statement.Post.End())
 			if !forFound || !braceFound {
-				return doc.ID{}, errors.New("classic for post statement has no physical boundary")
+				return doc.ID{}, errors.New(
+					"classic for post statement has no physical boundary",
+				)
 			}
 			continuation = append(continuation, l.arena.Line(), post)
 		}
 
-		leadingInitializer := l.commentsBetween(forOffset+len("for"), initializerStart)
+		leadingInitializer := l.commentsBetween(forOffset + len("for"), initializerStart)
 		betweenInitializerAndCondition := l.commentsBetween(initializerEnd, conditionStart)
 		betweenConditionAndPost := l.commentsBetween(conditionEnd, postStart)
 		trailingPost := l.commentsBetween(postEnd, braceOffset)
-		hasComments := len(leadingInitializer)+len(betweenInitializerAndCondition)+
-			len(betweenConditionAndPost)+len(trailingPost) > 0
+		hasComments := len(leadingInitializer) +
+			len(betweenInitializerAndCondition) +
+			len(betweenConditionAndPost) +
+			len(trailingPost) >
+			0
 		if hasComments {
 			trailingPostDocument, err := l.inlineComments(trailingPost, true)
 			if err != nil {
@@ -1859,9 +2141,13 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 			header := []doc.ID{l.arena.Text("for")}
 			rows := make([]doc.ID, 0, 16)
 			if len(leadingInitializer) > 0 {
-				rows = append(rows,
+				rows = append(
+					rows,
 					l.arena.HardLine(),
-					l.boundaryCommentsDocument(leadingInitializer, initializerStart),
+					l.boundaryCommentsDocument(
+						leadingInitializer,
+						initializerStart,
+					),
 				)
 				if statement.Init != nil {
 					rows = append(rows, initializer)
@@ -1879,7 +2165,13 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 				rows = append(rows, l.arena.HardLine())
 			}
 			if len(betweenInitializerAndCondition) > 0 {
-				rows = append(rows, l.boundaryCommentsDocument(betweenInitializerAndCondition, conditionStart))
+				rows = append(
+					rows,
+					l.boundaryCommentsDocument(
+						betweenInitializerAndCondition,
+						conditionStart,
+					),
+				)
 			}
 			if statement.Cond != nil {
 				rows = append(rows, condition)
@@ -1890,17 +2182,35 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 			}
 			if len(betweenConditionAndPost) > 0 {
 				if statement.Post != nil {
-					rows = append(rows, l.boundaryCommentsDocument(betweenConditionAndPost, postStart))
+					rows = append(
+						rows,
+						l.boundaryCommentsDocument(
+							betweenConditionAndPost,
+							postStart,
+						),
+					)
 				} else {
-					rows = append(rows, l.boundaryCommentsBody(betweenConditionAndPost))
+					rows = append(
+						rows,
+						l.boundaryCommentsBody(betweenConditionAndPost),
+					)
 				}
 			}
 			if statement.Post != nil {
 				rows = append(rows, post, trailingPostDocument, l.arena.Text(" {"))
 			} else if len(betweenConditionAndPost) > 0 {
 				header = append(header, l.arena.Indent(l.arena.Concat(rows...)))
-				header = append(header,
-					l.commentGap(betweenConditionAndPost[len(betweenConditionAndPost)-1].Range.End, braceOffset),
+				header = append(
+					header,
+					l.commentGap(
+						betweenConditionAndPost[len(
+								betweenConditionAndPost,
+							) -
+								1].
+							Range.
+							End,
+						braceOffset,
+					),
 					l.arena.Text("{"),
 				)
 				return l.arena.Concat(l.arena.Concat(header...), tail), nil
@@ -1910,7 +2220,11 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 			header = append(header, l.arena.Indent(l.arena.Concat(rows...)))
 			return l.arena.Concat(l.arena.Concat(header...), tail), nil
 		}
-		parts = append(parts, l.arena.Indent(l.arena.Concat(continuation...)), l.arena.Text(" {"))
+		parts = append(
+			parts,
+			l.arena.Indent(l.arena.Concat(continuation...)),
+			l.arena.Text(" {"),
+		)
 		return l.arena.Concat(l.arena.Group(l.arena.Concat(parts...)), tail), nil
 	}
 	if statement.Cond != nil {
@@ -1925,8 +2239,11 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 		if !forFound || !startFound || !endFound || !braceFound {
 			return doc.ID{}, errors.New("for condition has no physical boundary")
 		}
-		leading := l.commentsBetween(forOffset+len("for"), conditionStart)
-		trailingDocument, err := l.inlineComments(l.commentsBetween(conditionEnd, braceOffset), true)
+		leading := l.commentsBetween(forOffset + len("for"), conditionStart)
+		trailingDocument, err := l.inlineComments(
+			l.commentsBetween(conditionEnd, braceOffset),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -1934,11 +2251,13 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 		if len(leading) > 0 {
 			header = l.arena.Concat(
 				l.arena.Text("for"),
-				l.arena.Indent(l.arena.Concat(
-					l.arena.HardLine(),
-					l.boundaryCommentsDocument(leading, conditionStart),
-					condition,
-				)),
+				l.arena.Indent(
+					l.arena.Concat(
+						l.arena.HardLine(),
+						l.boundaryCommentsDocument(leading, conditionStart),
+						condition,
+					),
+				),
 				trailingDocument,
 				l.arena.Text(" {"),
 			)
@@ -1957,7 +2276,7 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 	if !forFound || !braceFound {
 		return doc.ID{}, errors.New("infinite for header has no physical boundary")
 	}
-	headerComments := l.commentsBetween(forOffset+len("for"), braceOffset)
+	headerComments := l.commentsBetween(forOffset + len("for"), braceOffset)
 	if len(headerComments) > 0 {
 		hasLineComment := false
 		for _, comment := range headerComments {
@@ -1968,15 +2287,25 @@ func (l *lowerer) forStatement(statement *ast.ForStmt) (doc.ID, error) {
 			if err != nil {
 				return doc.ID{}, err
 			}
-			return l.arena.Concat(l.arena.Text("for"), commentsDocument, l.arena.Text(" {"), tail), nil
+			return l.arena.Concat(
+				l.arena.Text("for"),
+				commentsDocument,
+				l.arena.Text(" {"),
+				tail,
+			), nil
 		}
 		return l.arena.Concat(
 			l.arena.Text("for"),
-			l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsBody(headerComments),
-			)),
-			l.commentGap(headerComments[len(headerComments)-1].Range.End, braceOffset),
+			l.arena.Indent(
+				l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsBody(headerComments),
+				),
+			),
+			l.commentGap(
+				headerComments[len(headerComments) - 1].Range.End,
+				braceOffset,
+			),
 			l.arena.Text("{"),
 			tail,
 		), nil
@@ -1995,9 +2324,12 @@ func (l *lowerer) classicForSemicolons(statement *ast.ForStmt) ([2]source.Token,
 	brackets := 0
 	braces := 0
 	semicolons := make([]source.Token, 0, 2)
-	first := sort.Search(len(l.tokens), func(index int) bool {
-		return l.tokens[index].Range.Start > start
-	})
+	first := sort.Search(
+		len(l.tokens),
+		func(index int) bool {
+			return l.tokens[index].Range.Start > start
+		},
+	)
 	for _, item := range l.tokens[first:] {
 		if item.Range.Start >= end {
 			break
@@ -2016,7 +2348,10 @@ func (l *lowerer) classicForSemicolons(statement *ast.ForStmt) ([2]source.Token,
 		case token.RBRACE:
 			braces--
 		case token.SEMICOLON:
-			if item.Semicolon == source.SemicolonExplicit && parentheses == 0 && brackets == 0 && braces == 0 {
+			if item.Semicolon == source.SemicolonExplicit &&
+				parentheses == 0 &&
+				brackets == 0 &&
+				braces == 0 {
 				semicolons = append(semicolons, item)
 			}
 		}
@@ -2033,7 +2368,10 @@ func (l *lowerer) classicForSemicolons(statement *ast.ForStmt) ([2]source.Token,
 	case 2:
 		return [2]source.Token{semicolons[0], semicolons[1]}, true, nil
 	default:
-		return result, false, fmt.Errorf("for clause contains %d top-level explicit semicolons", len(semicolons))
+		return result, false, fmt.Errorf(
+			"for clause contains %d top-level explicit semicolons",
+			len(semicolons),
+		)
 	}
 }
 
@@ -2057,13 +2395,17 @@ func (l *lowerer) rangeStatement(statement *ast.RangeStmt) (doc.ID, error) {
 		}
 		clauseStart = assignmentStart
 		clause = append(clause, assignment)
-		beforeRange = l.commentsBetween(operatorOffset+len(statement.Tok.String()), rangeOffset)
+		beforeRange = l.commentsBetween(
+			operatorOffset + len(statement.Tok.String()),
+			rangeOffset,
+		)
 		hasLineComment := false
 		for _, comment := range beforeRange {
 			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
 		}
 		if hasLineComment {
-			clause = append(clause,
+			clause = append(
+				clause,
 				l.arena.HardLine(),
 				l.boundaryCommentsDocument(beforeRange, rangeOffset),
 			)
@@ -2085,9 +2427,12 @@ func (l *lowerer) rangeStatement(statement *ast.RangeStmt) (doc.ID, error) {
 	}
 	clause = append(clause, l.arena.Text("range"))
 	clauseDocument := l.arena.Concat(clause...)
-	leadingClause := l.commentsBetween(forOffset+len("for"), clauseStart)
-	leadingIterable := l.commentsBetween(rangeOffset+len("range"), iterableStart)
-	trailingIterableDocument, err := l.inlineComments(l.commentsBetween(iterableEnd, braceOffset), true)
+	leadingClause := l.commentsBetween(forOffset + len("for"), clauseStart)
+	leadingIterable := l.commentsBetween(rangeOffset + len("range"), iterableStart)
+	trailingIterableDocument, err := l.inlineComments(
+		l.commentsBetween(iterableEnd, braceOffset),
+		true,
+	)
 	if err != nil {
 		return doc.ID{}, err
 	}
@@ -2100,7 +2445,8 @@ func (l *lowerer) rangeStatement(statement *ast.RangeStmt) (doc.ID, error) {
 			clauseDocument,
 		}
 		if len(leadingIterable) > 0 {
-			body = append(body,
+			body = append(
+				body,
 				l.arena.HardLine(),
 				l.boundaryCommentsDocument(leadingIterable, iterableStart),
 				iterable,
@@ -2118,25 +2464,27 @@ func (l *lowerer) rangeStatement(statement *ast.RangeStmt) (doc.ID, error) {
 		header = l.arena.Concat(
 			l.arena.Text("for "),
 			l.arena.Indent(clauseDocument),
-			l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsDocument(leadingIterable, iterableStart),
-				iterable,
-			)),
+			l.arena.Indent(
+				l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(leadingIterable, iterableStart),
+					iterable,
+				),
+			),
 			trailingIterableDocument,
 			l.arena.Text(" {"),
 		)
 	} else {
-		header = l.arena.Group(l.arena.Concat(
-			l.arena.Text("for "),
-			l.arena.Indent(l.arena.Concat(
-				clauseDocument,
-				l.arena.Line(),
-				iterable,
-			)),
-			trailingIterableDocument,
-			l.arena.Text(" {"),
-		))
+		header = l.arena.Group(
+			l.arena.Concat(
+				l.arena.Text("for "),
+				l.arena.Indent(
+					l.arena.Concat(clauseDocument, l.arena.Line(), iterable),
+				),
+				trailingIterableDocument,
+				l.arena.Text(" {"),
+			),
+		)
 	}
 	return l.arena.Concat(header, tail), nil
 }
@@ -2164,7 +2512,10 @@ func (l *lowerer) rangeAssignment(statement *ast.RangeStmt) (doc.ID, int, int, e
 		if err != nil {
 			return doc.ID{}, 0, 0, fmt.Errorf("range assignment boundary: %w", err)
 		}
-		afterKey, err := l.inlineComments(l.commentsBetween(keyEnd, comma.Range.Start), true)
+		afterKey, err := l.inlineComments(
+			l.commentsBetween(keyEnd, comma.Range.Start),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, 0, 0, err
 		}
@@ -2179,11 +2530,14 @@ func (l *lowerer) rangeAssignment(statement *ast.RangeStmt) (doc.ID, int, int, e
 			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
 		}
 		if hasLineComment {
-			parts = append(parts, l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsDocument(beforeValue, valueStart),
-				value,
-			))
+			parts = append(
+				parts,
+				l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(beforeValue, valueStart),
+					value,
+				),
+			)
 		} else {
 			beforeValueDocument, err := l.inlineComments(beforeValue, true)
 			if err != nil {
@@ -2197,7 +2551,7 @@ func (l *lowerer) rangeAssignment(statement *ast.RangeStmt) (doc.ID, int, int, e
 	if err != nil {
 		return doc.ID{}, 0, 0, err
 	}
-	parts = append(parts, beforeOperator, l.arena.Text(" "+statement.Tok.String()))
+	parts = append(parts, beforeOperator, l.arena.Text(" " + statement.Tok.String()))
 	return l.arena.Concat(parts...), keyStart, operatorOffset, nil
 }
 
@@ -2210,7 +2564,7 @@ func (l *lowerer) labeledStatement(statement *ast.LabeledStmt) (doc.ID, error) {
 		return doc.ID{}, err
 	}
 	return l.arena.Concat(
-		l.arena.Text(statement.Label.Name+":"),
+		l.arena.Text(statement.Label.Name + ":"),
 		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), labeled)),
 	), nil
 }
@@ -2224,7 +2578,13 @@ func (l *lowerer) switchStatement(statement *ast.SwitchStmt) (doc.ID, error) {
 			return doc.ID{}, err
 		}
 	}
-	header, err := l.switchHeader(statement.Switch, statement.Init, statement.Tag, tag, statement.Body.Lbrace)
+	header, err := l.switchHeader(
+		statement.Switch,
+		statement.Init,
+		statement.Tag,
+		tag,
+		statement.Body.Lbrace,
+	)
 	if err != nil {
 		return doc.ID{}, err
 	}
@@ -2240,7 +2600,13 @@ func (l *lowerer) typeSwitchStatement(statement *ast.TypeSwitchStmt) (doc.ID, er
 	if err != nil {
 		return doc.ID{}, err
 	}
-	header, err := l.switchHeader(statement.Switch, statement.Init, statement.Assign, guard, statement.Body.Lbrace)
+	header, err := l.switchHeader(
+		statement.Switch,
+		statement.Init,
+		statement.Assign,
+		guard,
+		statement.Body.Lbrace,
+	)
 	if err != nil {
 		return doc.ID{}, err
 	}
@@ -2265,7 +2631,7 @@ func (l *lowerer) switchHeader(
 	}
 
 	if subject == nil && initializer == nil {
-		comments := l.commentsBetween(keywordOffset+len("switch"), braceOffset)
+		comments := l.commentsBetween(keywordOffset + len("switch"), braceOffset)
 		if len(comments) == 0 {
 			return l.arena.Text("switch {"), nil
 		}
@@ -2278,12 +2644,21 @@ func (l *lowerer) switchHeader(
 			if err != nil {
 				return doc.ID{}, err
 			}
-			return l.arena.Concat(l.arena.Text("switch"), commentsDocument, l.arena.Text(" {")), nil
+			return l.arena.Concat(
+				l.arena.Text("switch"),
+				commentsDocument,
+				l.arena.Text(" {"),
+			), nil
 		}
 		return l.arena.Concat(
 			l.arena.Text("switch"),
-			l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.boundaryCommentsBody(comments))),
-			l.commentGap(comments[len(comments)-1].Range.End, braceOffset),
+			l.arena.Indent(
+				l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsBody(comments),
+				),
+			),
+			l.commentGap(comments[len(comments) - 1].Range.End, braceOffset),
 			l.arena.Text("{"),
 		), nil
 	}
@@ -2316,7 +2691,7 @@ func (l *lowerer) switchHeader(
 		}
 	}
 
-	leading := l.commentsBetween(keywordOffset+len("switch"), initializerStart)
+	leading := l.commentsBetween(keywordOffset + len("switch"), initializerStart)
 	var between []source.Comment
 	if initializer != nil && subject != nil {
 		between = l.commentsBetween(initializerEnd, subjectStart)
@@ -2329,11 +2704,19 @@ func (l *lowerer) switchHeader(
 	parts := []doc.ID{l.arena.Text("switch")}
 	if initializer != nil {
 		if len(leading) > 0 {
-			parts = append(parts, l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsDocument(leading, initializerStart),
-				initializerDocument,
-			)))
+			parts = append(
+				parts,
+				l.arena.Indent(
+					l.arena.Concat(
+						l.arena.HardLine(),
+						l.boundaryCommentsDocument(
+							leading,
+							initializerStart,
+						),
+						initializerDocument,
+					),
+				),
+			)
 		} else {
 			parts = append(parts, l.arena.Text(" "), initializerDocument)
 		}
@@ -2342,19 +2725,32 @@ func (l *lowerer) switchHeader(
 
 	if subject != nil {
 		if initializer != nil && len(between) > 0 {
-			parts = append(parts, l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsDocument(between, subjectStart),
-				subjectDocument,
-			)))
+			parts = append(
+				parts,
+				l.arena.Indent(
+					l.arena.Concat(
+						l.arena.HardLine(),
+						l.boundaryCommentsDocument(between, subjectStart),
+						subjectDocument,
+					),
+				),
+			)
 		} else if initializer == nil && len(leading) > 0 {
-			parts = append(parts, l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsDocument(leading, subjectStart),
-				subjectDocument,
-			)))
+			parts = append(
+				parts,
+				l.arena.Indent(
+					l.arena.Concat(
+						l.arena.HardLine(),
+						l.boundaryCommentsDocument(leading, subjectStart),
+						subjectDocument,
+					),
+				),
+			)
 		} else if initializer != nil {
-			parts = append(parts, l.arena.Indent(l.arena.Concat(l.arena.Line(), subjectDocument)))
+			parts = append(
+				parts,
+				l.arena.Indent(l.arena.Concat(l.arena.Line(), subjectDocument)),
+			)
 		} else {
 			parts = append(parts, l.arena.Text(" "), subjectDocument)
 		}
@@ -2382,8 +2778,10 @@ func (l *lowerer) switchHeader(
 	}
 	return l.arena.Concat(
 		l.arena.Concat(parts...),
-		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.boundaryCommentsBody(comments))),
-		l.commentGap(comments[len(comments)-1].Range.End, braceOffset),
+		l.arena.Indent(
+			l.arena.Concat(l.arena.HardLine(), l.boundaryCommentsBody(comments)),
+		),
+		l.commentGap(comments[len(comments) - 1].Range.End, braceOffset),
 		l.arena.Text("{"),
 	), nil
 }
@@ -2394,7 +2792,9 @@ func (l *lowerer) typeSwitchGuard(statement ast.Stmt) (doc.ID, error) {
 		return l.typeSwitchAssertion(value.X)
 	case *ast.AssignStmt:
 		if len(value.Rhs) != 1 {
-			return doc.ID{}, errors.New("type-switch assignment must contain one assertion")
+			return doc.ID{}, errors.New(
+				"type-switch assignment must contain one assertion",
+			)
 		}
 		left, err := l.expressions(value.Lhs)
 		if err != nil {
@@ -2424,15 +2824,21 @@ func (l *lowerer) typeSwitchAssertion(expression ast.Expr) (doc.ID, error) {
 	if !openingFound || !closingFound {
 		return doc.ID{}, errors.New("type-switch assertion has no physical boundary")
 	}
-	keyword, err := l.uniqueTokenBetween(token.TYPE, opening+len("("), closing)
+	keyword, err := l.uniqueTokenBetween(token.TYPE, opening + len("("), closing)
 	if err != nil {
 		return doc.ID{}, fmt.Errorf("type-switch assertion keyword: %w", err)
 	}
-	suffix, err := l.delimitedSingle(assertion.Lparen, assertion.Rparen, "(", ")", delimitedItem{
-		document: l.arena.Text(keyword.Raw),
-		start:    keyword.Range.Start,
-		end:      keyword.Range.End,
-	})
+	suffix, err := l.delimitedSingle(
+		assertion.Lparen,
+		assertion.Rparen,
+		"(",
+		")",
+		delimitedItem{
+			document: l.arena.Text(keyword.Raw),
+			start: keyword.Range.Start,
+			end: keyword.Range.End,
+		},
+	)
 	if err != nil {
 		return doc.ID{}, err
 	}
@@ -2457,7 +2863,7 @@ func (l *lowerer) caseClause(clause *ast.CaseClause, _ int) (doc.ID, error) {
 	if !found {
 		return doc.ID{}, errors.New("case clause has no physical end offset")
 	}
-	body, err := l.statementRange(clause.Body, colon+1, end)
+	body, err := l.statementRange(clause.Body, colon + 1, end)
 	if err != nil {
 		return doc.ID{}, err
 	}
@@ -2491,17 +2897,23 @@ func (l *lowerer) caseClauseHeader(clause *ast.CaseClause, colon int) (doc.ID, e
 	}
 
 	parts := []doc.ID{l.arena.Text("case")}
-	leading := l.commentsBetween(caseOffset+len("case"), items[0].start)
+	leading := l.commentsBetween(caseOffset + len("case"), items[0].start)
 	hasLeadingLineComment := false
 	for _, comment := range leading {
-		hasLeadingLineComment = hasLeadingLineComment || strings.HasPrefix(comment.Raw, "//")
+		hasLeadingLineComment = hasLeadingLineComment ||
+			strings.HasPrefix(comment.Raw, "//")
 	}
 	if hasLeadingLineComment {
-		parts = append(parts, l.arena.Indent(l.arena.Concat(
-			l.arena.HardLine(),
-			l.boundaryCommentsDocument(leading, items[0].start),
-			items[0].document,
-		)))
+		parts = append(
+			parts,
+			l.arena.Indent(
+				l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(leading, items[0].start),
+					items[0].document,
+				),
+			),
+		)
 	} else {
 		leadingDocument, err := l.inlineComments(leading, true)
 		if err != nil {
@@ -2511,13 +2923,16 @@ func (l *lowerer) caseClauseHeader(clause *ast.CaseClause, colon int) (doc.ID, e
 	}
 
 	for index := 1; index < len(items); index++ {
-		previous := items[index-1]
+		previous := items[index - 1]
 		current := items[index]
 		comma, err := l.uniqueTokenBetween(token.COMMA, previous.end, current.start)
 		if err != nil {
 			return doc.ID{}, fmt.Errorf("case expression boundary: %w", err)
 		}
-		afterPrevious, err := l.inlineComments(l.commentsBetween(previous.end, comma.Range.Start), true)
+		afterPrevious, err := l.inlineComments(
+			l.commentsBetween(previous.end, comma.Range.Start),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -2528,23 +2943,42 @@ func (l *lowerer) caseClauseHeader(clause *ast.CaseClause, colon int) (doc.ID, e
 			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
 		}
 		if hasLineComment {
-			parts = append(parts, l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsDocument(beforeCurrent, current.start),
-				current.document,
-			)))
+			parts = append(
+				parts,
+				l.arena.Indent(
+					l.arena.Concat(
+						l.arena.HardLine(),
+						l.boundaryCommentsDocument(
+							beforeCurrent,
+							current.start,
+						),
+						current.document,
+					),
+				),
+			)
 		} else if len(beforeCurrent) > 0 {
 			beforeCurrentDocument, err := l.inlineComments(beforeCurrent, true)
 			if err != nil {
 				return doc.ID{}, err
 			}
-			parts = append(parts, beforeCurrentDocument, l.arena.Text(" "), current.document)
+			parts = append(
+				parts,
+				beforeCurrentDocument,
+				l.arena.Text(" "),
+				current.document,
+			)
 		} else {
-			parts = append(parts, l.arena.Indent(l.arena.Concat(l.arena.Line(), current.document)))
+			parts = append(
+				parts,
+				l.arena.Indent(l.arena.Concat(l.arena.Line(), current.document)),
+			)
 		}
 	}
 
-	trailingDocument, err := l.inlineComments(l.commentsBetween(items[len(items)-1].end, colon), true)
+	trailingDocument, err := l.inlineComments(
+		l.commentsBetween(items[len(items) - 1].end, colon),
+		true,
+	)
 	if err != nil {
 		return doc.ID{}, err
 	}
@@ -2553,7 +2987,7 @@ func (l *lowerer) caseClauseHeader(clause *ast.CaseClause, colon int) (doc.ID, e
 }
 
 func (l *lowerer) defaultClauseHeader(keywordOffset, colon int) (doc.ID, error) {
-	comments := l.commentsBetween(keywordOffset+len("default"), colon)
+	comments := l.commentsBetween(keywordOffset + len("default"), colon)
 	hasLineComment := false
 	for _, comment := range comments {
 		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
@@ -2563,16 +2997,28 @@ func (l *lowerer) defaultClauseHeader(keywordOffset, colon int) (doc.ID, error) 
 		if err != nil {
 			return doc.ID{}, err
 		}
-		return l.arena.Concat(l.arena.Text("default"), commentsDocument, l.arena.Text(":")), nil
+		return l.arena.Concat(
+			l.arena.Text("default"),
+			commentsDocument,
+			l.arena.Text(":"),
+		), nil
 	}
 	body := l.arena.Text("default")
 	boundary := keywordOffset + len("default")
 	previousWasLineComment := false
 	for _, comment := range comments {
 		if !previousWasLineComment && l.samePhysicalLine(boundary, comment.Range.Start) {
-			body = l.arena.Concat(body, l.arena.Text(" "), l.arena.Verbatim(comment.Raw))
+			body = l.arena.Concat(
+				body,
+				l.arena.Text(" "),
+				l.arena.Verbatim(comment.Raw),
+			)
 		} else {
-			body = l.arena.Concat(body, l.commentGap(boundary, comment.Range.Start), l.arena.Verbatim(comment.Raw))
+			body = l.arena.Concat(
+				body,
+				l.commentGap(boundary, comment.Range.Start),
+				l.arena.Verbatim(comment.Raw),
+			)
 		}
 		boundary = comment.Range.End
 		previousWasLineComment = strings.HasPrefix(comment.Raw, "//")
@@ -2594,7 +3040,7 @@ func (l *lowerer) communicationClause(clause *ast.CommClause, _ int) (doc.ID, er
 	if !found {
 		return doc.ID{}, errors.New("communication clause has no physical end offset")
 	}
-	body, err := l.statementRange(clause.Body, colon+1, end)
+	body, err := l.statementRange(clause.Body, colon + 1, end)
 	if err != nil {
 		return doc.ID{}, err
 	}
@@ -2615,24 +3061,31 @@ func (l *lowerer) communicationClauseHeader(clause *ast.CommClause, colon int) (
 	communicationStart, startFound := l.source.PhysicalOffset(clause.Comm.Pos())
 	communicationEnd, endFound := l.source.PhysicalOffset(clause.Comm.End())
 	if !startFound || !endFound {
-		return doc.ID{}, errors.New("communication clause has no physical statement boundary")
+		return doc.ID{}, errors.New(
+			"communication clause has no physical statement boundary",
+		)
 	}
 	communication, err := l.communicationStatement(clause.Comm)
 	if err != nil {
 		return doc.ID{}, err
 	}
 	parts := []doc.ID{l.arena.Text("case")}
-	leading := l.commentsBetween(caseOffset+len("case"), communicationStart)
+	leading := l.commentsBetween(caseOffset + len("case"), communicationStart)
 	hasLineComment := false
 	for _, comment := range leading {
 		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
 	}
 	if hasLineComment {
-		parts = append(parts, l.arena.Indent(l.arena.Concat(
-			l.arena.HardLine(),
-			l.boundaryCommentsDocument(leading, communicationStart),
-			communication,
-		)))
+		parts = append(
+			parts,
+			l.arena.Indent(
+				l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(leading, communicationStart),
+					communication,
+				),
+			),
+		)
 	} else {
 		leadingDocument, err := l.inlineComments(leading, true)
 		if err != nil {
@@ -2681,7 +3134,9 @@ func (l *lowerer) assignmentWithDocuments(
 	if len(assignment.Lhs) == 0 || len(assignment.Rhs) == 0 {
 		return doc.ID{}, errors.New("assignment requires left and right expressions")
 	}
-	leftEnd, leftEndFound := l.source.PhysicalOffset(assignment.Lhs[len(assignment.Lhs)-1].End())
+	leftEnd, leftEndFound := l.source.PhysicalOffset(
+		assignment.Lhs[len(assignment.Lhs) - 1].End(),
+	)
 	operatorOffset, operatorFound := l.source.PhysicalOffset(assignment.TokPos)
 	rightStart, rightStartFound := l.source.PhysicalOffset(assignment.Rhs[0].Pos())
 	if !leftEndFound || !operatorFound || !rightStartFound {
@@ -2691,31 +3146,47 @@ func (l *lowerer) assignmentWithDocuments(
 	if err != nil {
 		return doc.ID{}, err
 	}
-	afterOperator := l.commentsBetween(operatorOffset+len(assignment.Tok.String()), rightStart)
-	parts := []doc.ID{left, beforeOperator, l.arena.Text(" " + assignment.Tok.String())}
+	afterOperator := l.commentsBetween(
+		operatorOffset + len(assignment.Tok.String()),
+		rightStart,
+	)
+	operator := l.arena.Concat(beforeOperator, l.arena.Text(" " + assignment.Tok.String()))
+	tail := []doc.ID{operator}
 	hasLineComment := false
 	for _, comment := range afterOperator {
 		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
 	}
 	if hasLineComment {
-		parts = append(parts, l.arena.Indent(l.arena.Concat(
-			l.arena.HardLine(),
-			l.boundaryCommentsDocument(afterOperator, rightStart),
-			right,
-		)))
+		tail = append(
+			tail,
+			l.arena.Indent(
+				l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(afterOperator, rightStart),
+					right,
+				),
+			),
+		)
 	} else {
 		afterOperatorDocument, err := l.inlineComments(afterOperator, true)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, afterOperatorDocument)
+		tail = append(tail, afterOperatorDocument)
 		if breakRight {
-			parts = append(parts, l.arena.Indent(l.arena.Concat(l.arena.Line(), right)))
+			tail = append(tail, l.arena.Indent(l.arena.Concat(l.arena.Line(), right)))
 		} else {
-			parts = append(parts, l.arena.Text(" "), right)
+			tail = append(tail, l.arena.Text(" "), right)
 		}
 	}
-	return l.arena.Group(l.arena.Concat(parts...)), nil
+	if breakRight {
+		return l.arena.Group(l.arena.Concat(append([]doc.ID{left}, tail...)...)), nil
+	}
+	return l.arena.GroupWithIndependentTail(
+		left,
+		operator,
+		l.arena.Group(l.arena.Concat(tail...)),
+	), nil
 }
 
 func (l *lowerer) sendStatement(statement *ast.SendStmt) (doc.ID, error) {
@@ -2737,24 +3208,33 @@ func (l *lowerer) sendStatement(statement *ast.SendStmt) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	afterArrow := l.commentsBetween(arrowOffset+len("<-"), valueStart)
+	afterArrow := l.commentsBetween(arrowOffset + len("<-"), valueStart)
 	parts := []doc.ID{channel, beforeArrow, l.arena.Text(" <-")}
 	hasLineComment := false
 	for _, comment := range afterArrow {
 		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
 	}
 	if hasLineComment {
-		parts = append(parts, l.arena.Indent(l.arena.Concat(
-			l.arena.HardLine(),
-			l.boundaryCommentsDocument(afterArrow, valueStart),
-			sent,
-		)))
+		parts = append(
+			parts,
+			l.arena.Indent(
+				l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(afterArrow, valueStart),
+					sent,
+				),
+			),
+		)
 	} else {
 		afterArrowDocument, err := l.inlineComments(afterArrow, true)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		parts = append(parts, afterArrowDocument, l.arena.Indent(l.arena.Concat(l.arena.Line(), sent)))
+		parts = append(
+			parts,
+			afterArrowDocument,
+			l.arena.Indent(l.arena.Concat(l.arena.Line(), sent)),
+		)
 	}
 	return l.arena.Group(l.arena.Concat(parts...)), nil
 }
@@ -2772,7 +3252,10 @@ func (l *lowerer) ifStatement(statement *ast.IfStmt) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	trailingDocument, err := l.inlineComments(l.commentsBetween(conditionEnd, braceOffset), true)
+	trailingDocument, err := l.inlineComments(
+		l.commentsBetween(conditionEnd, braceOffset),
+		true,
+	)
 	if err != nil {
 		return doc.ID{}, err
 	}
@@ -2788,31 +3271,44 @@ func (l *lowerer) ifStatement(statement *ast.IfStmt) (doc.ID, error) {
 		if !startFound || !endFound {
 			return doc.ID{}, errors.New("if initializer has no physical boundary")
 		}
-		leading := l.commentsBetween(ifOffset+len("if"), initializerStart)
+		leading := l.commentsBetween(ifOffset + len("if"), initializerStart)
 		between := l.commentsBetween(initializerEnd, conditionStart)
 		if len(leading) > 0 || len(between) > 0 {
 			if len(leading) > 0 {
-				parts = append(parts, l.arena.Indent(l.arena.Concat(
-					l.arena.HardLine(),
-					l.boundaryCommentsDocument(leading, initializerStart),
-					initializer,
-				)))
+				parts = append(
+					parts,
+					l.arena.Indent(
+						l.arena.Concat(
+							l.arena.HardLine(),
+							l.boundaryCommentsDocument(
+								leading,
+								initializerStart,
+							),
+							initializer,
+						),
+					),
+				)
 			} else {
 				parts = append(parts, l.arena.Text(" "), initializer)
 			}
 			continuation := []doc.ID{l.arena.HardLine()}
 			if len(between) > 0 {
-				continuation = append(continuation, l.boundaryCommentsDocument(between, conditionStart))
+				continuation = append(
+					continuation,
+					l.boundaryCommentsDocument(between, conditionStart),
+				)
 			}
 			continuation = append(continuation, condition)
-			parts = append(parts,
+			parts = append(
+				parts,
 				l.arena.Text(";"),
 				l.arena.Indent(l.arena.Concat(continuation...)),
 				trailingDocument,
 				l.arena.Text(" {"),
 			)
 		} else {
-			parts = append(parts,
+			parts = append(
+				parts,
 				l.arena.Text(" "),
 				initializer,
 				l.arena.Text(";"),
@@ -2823,19 +3319,23 @@ func (l *lowerer) ifStatement(statement *ast.IfStmt) (doc.ID, error) {
 			parts = []doc.ID{l.arena.Group(l.arena.Concat(parts...))}
 		}
 	} else {
-		leading := l.commentsBetween(ifOffset+len("if"), conditionStart)
+		leading := l.commentsBetween(ifOffset + len("if"), conditionStart)
 		if len(leading) > 0 {
-			parts = append(parts,
-				l.arena.Indent(l.arena.Concat(
-					l.arena.HardLine(),
-					l.boundaryCommentsDocument(leading, conditionStart),
-					condition,
-				)),
+			parts = append(
+				parts,
+				l.arena.Indent(
+					l.arena.Concat(
+						l.arena.HardLine(),
+						l.boundaryCommentsDocument(leading, conditionStart),
+						condition,
+					),
+				),
 				trailingDocument,
 				l.arena.Text(" {"),
 			)
 		} else {
-			parts = append(parts,
+			parts = append(
+				parts,
 				l.arena.Text(" "),
 				condition,
 				trailingDocument,
@@ -2851,7 +3351,7 @@ func (l *lowerer) ifStatement(statement *ast.IfStmt) (doc.ID, error) {
 	}
 	header := l.arena.Concat(parts...)
 	if preserveHeader {
-		header = l.arena.Verbatim(string(l.physical[ifOffset : braceOffset+1]))
+		header = l.arena.Verbatim(string(l.physical[ifOffset:braceOffset + 1]))
 	}
 	result := []doc.ID{header, tail}
 	if statement.Else != nil {
@@ -2883,13 +3383,16 @@ func (l *lowerer) expressions(expressions []ast.Expr) (doc.ID, error) {
 	}
 	parts := []doc.ID{items[0].document}
 	for index := 1; index < len(items); index++ {
-		previous := items[index-1]
+		previous := items[index - 1]
 		current := items[index]
 		comma, err := l.uniqueTokenBetween(token.COMMA, previous.end, current.start)
 		if err != nil {
 			return doc.ID{}, fmt.Errorf("expression list boundary: %w", err)
 		}
-		afterPrevious, err := l.inlineComments(l.commentsBetween(previous.end, comma.Range.Start), true)
+		afterPrevious, err := l.inlineComments(
+			l.commentsBetween(previous.end, comma.Range.Start),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -2900,17 +3403,30 @@ func (l *lowerer) expressions(expressions []ast.Expr) (doc.ID, error) {
 			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
 		}
 		if hasLineComment {
-			parts = append(parts, l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsDocument(beforeCurrent, current.start),
-				current.document,
-			)))
+			parts = append(
+				parts,
+				l.arena.Indent(
+					l.arena.Concat(
+						l.arena.HardLine(),
+						l.boundaryCommentsDocument(
+							beforeCurrent,
+							current.start,
+						),
+						current.document,
+					),
+				),
+			)
 		} else {
 			beforeCurrentDocument, err := l.inlineComments(beforeCurrent, true)
 			if err != nil {
 				return doc.ID{}, err
 			}
-			parts = append(parts, beforeCurrentDocument, l.arena.Text(" "), current.document)
+			parts = append(
+				parts,
+				beforeCurrentDocument,
+				l.arena.Text(" "),
+				current.document,
+			)
 		}
 	}
 	return l.arena.Concat(parts...), nil
@@ -2933,7 +3449,12 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		suffix, err := l.dotSuffix(value.X, value.Sel.Pos(), l.arena.Text(value.Sel.Name), false)
+		suffix, err := l.dotSuffix(
+			value.X,
+			value.Sel.Pos(),
+			l.arena.Text(value.Sel.Name),
+			false,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -2972,7 +3493,9 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 			return doc.ID{}, err
 		}
 		if value.Type == nil {
-			return doc.ID{}, errors.New("type-switch assertion is not an ordinary expression")
+			return doc.ID{}, errors.New(
+				"type-switch assertion is not an ordinary expression",
+			)
 		}
 		asserted, err := l.expression(value.Type)
 		if err != nil {
@@ -2983,11 +3506,13 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if !startFound || !endFound {
 			return doc.ID{}, errors.New("type assertion has no physical range")
 		}
-		suffix, err := l.delimitedSingle(value.Lparen, value.Rparen, "(", ")", delimitedItem{
-			document: asserted,
-			start:    start,
-			end:      end,
-		})
+		suffix, err := l.delimitedSingle(
+			value.Lparen,
+			value.Rparen,
+			"(",
+			")",
+			delimitedItem{document: asserted, start: start, end: end},
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -3008,13 +3533,17 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		start, startFound := l.source.PhysicalOffset(value.X.Pos())
 		end, endFound := l.source.PhysicalOffset(value.X.End())
 		if !startFound || !endFound {
-			return doc.ID{}, errors.New("parenthesized expression has no physical range")
+			return doc.ID{}, errors.New(
+				"parenthesized expression has no physical range",
+			)
 		}
-		return l.delimitedSingle(value.Lparen, value.Rparen, "(", ")", delimitedItem{
-			document: inner,
-			start:    start,
-			end:      end,
-		})
+		return l.delimitedSingle(
+			value.Lparen,
+			value.Rparen,
+			"(",
+			")",
+			delimitedItem{document: inner, start: start, end: end},
+		)
 	case *ast.StarExpr:
 		operand, err := l.expression(value.X)
 		if err != nil {
@@ -3035,7 +3564,12 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if !openingFound || !elementFound {
 			return doc.ID{}, errors.New("array type has no physical boundary")
 		}
-		closing, err := l.matchingTokenBetween(token.LBRACK, token.RBRACK, opening, elementStart)
+		closing, err := l.matchingTokenBetween(
+			token.LBRACK,
+			token.RBRACK,
+			opening,
+			elementStart,
+		)
 		if err != nil {
 			return doc.ID{}, fmt.Errorf("array type closing boundary: %w", err)
 		}
@@ -3049,7 +3583,7 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		}
 		if value.Len == nil {
 			inside, err := l.openingBoundary(
-				l.commentsBetween(opening+len("["), closing.Range.Start),
+				l.commentsBetween(opening + len("["), closing.Range.Start),
 				closing.Range.Start,
 				l.arena.Text("]"),
 				false,
@@ -3070,7 +3604,7 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 			return doc.ID{}, errors.New("array length has no physical boundary")
 		}
 		lengthWithComments, err := l.openingBoundary(
-			l.commentsBetween(opening+len("["), lengthStart),
+			l.commentsBetween(opening + len("["), lengthStart),
 			lengthStart,
 			length,
 			true,
@@ -3079,7 +3613,10 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		beforeClose, err := l.inlineComments(l.commentsBetween(lengthEnd, closing.Range.Start), true)
+		beforeClose, err := l.inlineComments(
+			l.commentsBetween(lengthEnd, closing.Range.Start),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -3107,7 +3644,7 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if !keyStartFound || !keyEndFound || !elementFound || !mapFound {
 			return doc.ID{}, errors.New("map type has no physical boundary")
 		}
-		opening, err := l.uniqueTokenBetween(token.LBRACK, mapOffset+len("map"), keyStart)
+		opening, err := l.uniqueTokenBetween(token.LBRACK, mapOffset + len("map"), keyStart)
 		if err != nil {
 			return doc.ID{}, fmt.Errorf("map type opening boundary: %w", err)
 		}
@@ -3125,7 +3662,10 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		beforeClose, err := l.inlineComments(l.commentsBetween(keyEnd, closing.Range.Start), true)
+		beforeClose, err := l.inlineComments(
+			l.commentsBetween(keyEnd, closing.Range.Start),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -3160,17 +3700,38 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		case ast.SEND:
 			arrow, arrowFound := l.source.PhysicalOffset(value.Arrow)
 			if !arrowFound {
-				return doc.ID{}, errors.New("send channel type has no physical arrow boundary")
+				return doc.ID{}, errors.New(
+					"send channel type has no physical arrow boundary",
+				)
 			}
 			afterArrow := l.physicalHeader(arrow, "<-", " ", valueStart, element)
 			return l.physicalHeader(begin, "chan", "", arrow, afterArrow), nil
 		case ast.RECV:
-			channel, err := l.uniqueTokenBetween(token.CHAN, begin+len("<-"), valueStart)
+			channel, err := l.uniqueTokenBetween(
+				token.CHAN,
+				begin + len("<-"),
+				valueStart,
+			)
 			if err != nil {
-				return doc.ID{}, fmt.Errorf("receive channel type keyword boundary: %w", err)
+				return doc.ID{}, fmt.Errorf(
+					"receive channel type keyword boundary: %w",
+					err,
+				)
 			}
-			afterChannel := l.physicalHeader(channel.Range.Start, "chan", " ", valueStart, element)
-			return l.physicalHeader(begin, "<-", "", channel.Range.Start, afterChannel), nil
+			afterChannel := l.physicalHeader(
+				channel.Range.Start,
+				"chan",
+				" ",
+				valueStart,
+				element,
+			)
+			return l.physicalHeader(
+				begin,
+				"<-",
+				"",
+				channel.Range.Start,
+				afterChannel,
+			), nil
 		default:
 			return l.physicalHeader(begin, "chan", " ", valueStart, element), nil
 		}
@@ -3201,9 +3762,14 @@ func (l *lowerer) expression(expression ast.Expr) (doc.ID, error) {
 		signatureEnd, signatureFound := l.source.PhysicalOffset(value.Type.End())
 		bodyStart, bodyFound := l.source.PhysicalOffset(value.Body.Lbrace)
 		if !signatureFound || !bodyFound {
-			return doc.ID{}, errors.New("function literal has no physical body boundary")
+			return doc.ID{}, errors.New(
+				"function literal has no physical body boundary",
+			)
 		}
-		beforeBody, err := l.inlineComments(l.commentsBetween(signatureEnd, bodyStart), true)
+		beforeBody, err := l.inlineComments(
+			l.commentsBetween(signatureEnd, bodyStart),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -3236,18 +3802,23 @@ func (l *lowerer) keyValue(expression *ast.KeyValueExpr) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	afterColon := l.commentsBetween(colonOffset+len(":"), valueStart)
+	afterColon := l.commentsBetween(colonOffset + len(":"), valueStart)
 	parts := []doc.ID{key, beforeColon, l.arena.Text(":")}
 	hasLineComment := false
 	for _, comment := range afterColon {
 		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
 	}
 	if hasLineComment {
-		parts = append(parts, l.arena.Indent(l.arena.Concat(
-			l.arena.HardLine(),
-			l.boundaryCommentsDocument(afterColon, valueStart),
-			value,
-		)))
+		parts = append(
+			parts,
+			l.arena.Indent(
+				l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(afterColon, valueStart),
+					value,
+				),
+			),
+		)
 	} else {
 		afterColonDocument, err := l.inlineComments(afterColon, true)
 		if err != nil {
@@ -3269,7 +3840,7 @@ func (l *lowerer) unary(expression *ast.UnaryExpr) (doc.ID, error) {
 	if !operatorFound || !operandStartFound || !tokenFound {
 		return doc.ID{}, errors.New("unary expression has no physical operator boundary")
 	}
-	comments := l.commentsBetween(operatorOffset+len(operatorRaw), operandStart)
+	comments := l.commentsBetween(operatorOffset + len(operatorRaw), operandStart)
 	if len(comments) == 0 {
 		return l.arena.Concat(l.arena.Text(operatorRaw), operand), nil
 	}
@@ -3280,18 +3851,25 @@ func (l *lowerer) unary(expression *ast.UnaryExpr) (doc.ID, error) {
 	if hasLineComment {
 		return l.arena.Concat(
 			l.arena.Text(operatorRaw),
-			l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsDocument(comments, operandStart),
-				operand,
-			)),
+			l.arena.Indent(
+				l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(comments, operandStart),
+					operand,
+				),
+			),
 		), nil
 	}
 	commentsDocument, err := l.inlineComments(comments, true)
 	if err != nil {
 		return doc.ID{}, err
 	}
-	return l.arena.Concat(l.arena.Text(operatorRaw), commentsDocument, l.arena.Text(" "), operand), nil
+	return l.arena.Concat(
+		l.arena.Text(operatorRaw),
+		commentsDocument,
+		l.arena.Text(" "),
+		operand,
+	), nil
 }
 
 func (l *lowerer) compositeLiteral(literal *ast.CompositeLit) (doc.ID, error) {
@@ -3314,7 +3892,10 @@ func (l *lowerer) compositeLiteral(literal *ast.CompositeLit) (doc.ID, error) {
 		if !startFound || !endFound {
 			return doc.ID{}, errors.New("composite element has no physical range")
 		}
-		elements = append(elements, delimitedItem{document: element, start: start, end: end})
+		elements = append(
+			elements,
+			delimitedItem{document: element, start: start, end: end},
+		)
 	}
 	list, err := l.delimitedCommaList(literal.Lbrace, literal.Rbrace, "{", "}", elements)
 	if err != nil {
@@ -3340,11 +3921,13 @@ func (l *lowerer) indexSuffix(expression *ast.IndexExpr) (doc.ID, error) {
 	if !startFound || !endFound {
 		return doc.ID{}, errors.New("index has no physical range")
 	}
-	list, err := l.delimitedSingle(expression.Lbrack, expression.Rbrack, "[", "]", delimitedItem{
-		document: index,
-		start:    start,
-		end:      end,
-	})
+	list, err := l.delimitedSingle(
+		expression.Lbrack,
+		expression.Rbrack,
+		"[",
+		"]",
+		delimitedItem{document: index, start: start, end: end},
+	)
 	if err != nil {
 		return doc.ID{}, err
 	}
@@ -3393,10 +3976,10 @@ func (l *lowerer) slice(expression *ast.SliceExpr) (doc.ID, error) {
 	}
 	type slicePiece struct {
 		document doc.ID
-		start    int
-		end      int
-		colon    bool
-		closing  bool
+		start int
+		end int
+		colon bool
+		closing bool
 	}
 	pieces := make([]slicePiece, 0, 6)
 	appendBound := func(bound ast.Expr) error {
@@ -3418,32 +4001,41 @@ func (l *lowerer) slice(expression *ast.SliceExpr) (doc.ID, error) {
 	if err := appendBound(expression.Low); err != nil {
 		return doc.ID{}, err
 	}
-	pieces = append(pieces, slicePiece{
-		document: l.arena.Text(":"),
-		start:    colons[0].Range.Start,
-		end:      colons[0].Range.End,
-		colon:    true,
-	})
+	pieces = append(
+		pieces,
+		slicePiece{
+			document: l.arena.Text(":"),
+			start: colons[0].Range.Start,
+			end: colons[0].Range.End,
+			colon: true,
+		},
+	)
 	if err := appendBound(expression.High); err != nil {
 		return doc.ID{}, err
 	}
 	if expression.Slice3 {
-		pieces = append(pieces, slicePiece{
-			document: l.arena.Text(":"),
-			start:    colons[1].Range.Start,
-			end:      colons[1].Range.End,
-			colon:    true,
-		})
+		pieces = append(
+			pieces,
+			slicePiece{
+				document: l.arena.Text(":"),
+				start: colons[1].Range.Start,
+				end: colons[1].Range.End,
+				colon: true,
+			},
+		)
 		if err := appendBound(expression.Max); err != nil {
 			return doc.ID{}, err
 		}
 	}
-	pieces = append(pieces, slicePiece{
-		document: l.arena.Text("]"),
-		start:    closing,
-		end:      closing + len("]"),
-		closing:  true,
-	})
+	pieces = append(
+		pieces,
+		slicePiece{
+			document: l.arena.Text("]"),
+			start: closing,
+			end: closing + len("]"),
+			closing: true,
+		},
+	)
 	parts := []doc.ID{base, beforeOpening, l.arena.Text("[")}
 	previousEnd := opening + len("[")
 	previousOpen := true
@@ -3456,13 +4048,20 @@ func (l *lowerer) slice(expression *ast.SliceExpr) (doc.ID, error) {
 		}
 		if hasLineComment {
 			if !previousOpen && !previousColon {
-				return doc.ID{}, errors.New("slice line comment has no grammar-safe break boundary")
+				return doc.ID{}, errors.New(
+					"slice line comment has no grammar-safe break boundary",
+				)
 			}
-			parts = append(parts, l.arena.Indent(l.arena.Concat(
-				l.arena.HardLine(),
-				l.boundaryCommentsDocument(comments, piece.start),
-				piece.document,
-			)))
+			parts = append(
+				parts,
+				l.arena.Indent(
+					l.arena.Concat(
+						l.arena.HardLine(),
+						l.boundaryCommentsDocument(comments, piece.start),
+						piece.document,
+					),
+				),
+			)
 		} else {
 			commentsDocument, err := l.inlineCommentsWithSpacing(
 				comments,
@@ -3481,14 +4080,20 @@ func (l *lowerer) slice(expression *ast.SliceExpr) (doc.ID, error) {
 	return l.arena.Concat(parts...), nil
 }
 
-func (l *lowerer) sliceColons(expression *ast.SliceExpr, opening, closing int) ([]source.Token, error) {
+func (l *lowerer) sliceColons(
+	expression *ast.SliceExpr,
+	opening, closing int,
+) ([]source.Token, error) {
 	parentheses := 0
 	brackets := 0
 	braces := 0
 	colons := make([]source.Token, 0, 2)
-	first := sort.Search(len(l.tokens), func(index int) bool {
-		return l.tokens[index].Range.Start > opening
-	})
+	first := sort.Search(
+		len(l.tokens),
+		func(index int) bool {
+			return l.tokens[index].Range.Start > opening
+		},
+	)
 	for _, item := range l.tokens[first:] {
 		if item.Range.Start >= closing {
 			break
@@ -3523,7 +4128,11 @@ func (l *lowerer) sliceColons(expression *ast.SliceExpr, opening, closing int) (
 		want = 2
 	}
 	if len(colons) != want {
-		return nil, fmt.Errorf("slice expression contains %d top-level colons, want %d", len(colons), want)
+		return nil, fmt.Errorf(
+			"slice expression contains %d top-level colons, want %d",
+			len(colons),
+			want,
+		)
 	}
 	return colons, nil
 }
@@ -3540,9 +4149,14 @@ func (l *lowerer) functionType(function *ast.FuncType, includeKeyword bool) (doc
 		parametersStart, startFound := l.source.PhysicalOffset(function.Params.Pos())
 		typeParametersEnd, endFound := l.source.PhysicalOffset(function.TypeParams.End())
 		if !startFound || !endFound {
-			return doc.ID{}, errors.New("function type parameters have no physical parameter boundary")
+			return doc.ID{}, errors.New(
+				"function type parameters have no physical parameter boundary",
+			)
 		}
-		beforeParameters, err := l.inlineComments(l.commentsBetween(typeParametersEnd, parametersStart), true)
+		beforeParameters, err := l.inlineComments(
+			l.commentsBetween(typeParametersEnd, parametersStart),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -3564,9 +4178,14 @@ func (l *lowerer) functionType(function *ast.FuncType, includeKeyword bool) (doc
 		}
 		resultsStart, found := l.source.PhysicalOffset(function.Results.Pos())
 		if !found {
-			return doc.ID{}, errors.New("function type results have no physical start boundary")
+			return doc.ID{}, errors.New(
+				"function type results have no physical start boundary",
+			)
 		}
-		beforeResults, err := l.inlineComments(l.commentsBetween(boundary, resultsStart), true)
+		beforeResults, err := l.inlineComments(
+			l.commentsBetween(boundary, resultsStart),
+			true,
+		)
 		if err != nil {
 			return doc.ID{}, err
 		}
@@ -3583,7 +4202,12 @@ func (l *lowerer) functionType(function *ast.FuncType, includeKeyword bool) (doc
 	return l.keywordHeader(function.Func, "func", "", firstStart, document)
 }
 
-func (l *lowerer) aggregateType(keywordPosition token.Pos, keyword string, fields *ast.FieldList, methods bool) (doc.ID, error) {
+func (l *lowerer) aggregateType(
+	keywordPosition token.Pos,
+	keyword string,
+	fields *ast.FieldList,
+	methods bool,
+) (doc.ID, error) {
 	if fields == nil {
 		return l.arena.Text(keyword + "{}"), nil
 	}
@@ -3596,16 +4220,19 @@ func (l *lowerer) aggregateType(keywordPosition token.Pos, keyword string, field
 	if !found {
 		return doc.ID{}, fmt.Errorf("%s closing delimiter has no physical offset", keyword)
 	}
-	items := make([]doc.ID, 0, len(fields.List)+1)
+	items := make([]doc.ID, 0, len(fields.List) + 1)
 	for _, field := range fields.List {
 		var (
 			item doc.ID
-			err  error
+			err error
 		)
 		if methods && len(field.Names) > 0 {
 			function, ok := field.Type.(*ast.FuncType)
 			if !ok {
-				return doc.ID{}, fmt.Errorf("named interface field has type %T", field.Type)
+				return doc.ID{}, fmt.Errorf(
+					"named interface field has type %T",
+					field.Type,
+				)
 			}
 			signature, signatureErr := l.functionType(function, false)
 			if signatureErr != nil {
@@ -3644,7 +4271,9 @@ func (l *lowerer) aggregateType(keywordPosition token.Pos, keyword string, field
 	}
 	group := l.arena.Concat(
 		l.arena.Text("{"),
-		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), l.join(l.arena.HardLine(), items))),
+		l.arena.Indent(
+			l.arena.Concat(l.arena.HardLine(), l.join(l.arena.HardLine(), items)),
+		),
 		l.arena.HardLine(),
 		l.arena.Text("}"),
 	)
@@ -3660,9 +4289,13 @@ func (l *lowerer) call(call *ast.CallExpr) (doc.ID, error) {
 	if err != nil {
 		return doc.ID{}, err
 	}
-	if chain, ok, err := l.selectorChainWithGrouper(call.Fun, func(body doc.ID) doc.ID {
-		return l.arena.GroupWithIndependentTail(body, lookahead, arguments)
-	}); ok || err != nil {
+	if chain, ok, err := l.selectorChainWithGrouper(
+		call.Fun,
+		func(body doc.ID) doc.ID {
+			return l.arena.GroupWithIndependentTail(body, lookahead, arguments)
+		},
+	);
+		ok || err != nil {
 		return chain, err
 	}
 	function, err := l.expression(call.Fun)
@@ -3684,16 +4317,16 @@ func (l *lowerer) callSelectorLookahead(call *ast.CallExpr) (doc.ID, error) {
 		return doc.ID{}, err
 	}
 	delimiter := "("
-	if len(call.Args) == 0 && len(l.commentsBetween(opening+len("("), closing)) == 0 {
+	if len(call.Args) == 0 && len(l.commentsBetween(opening + len("("), closing)) == 0 {
 		delimiter = "()"
 	}
 	return l.arena.Concat(beforeOpening, l.arena.Text(delimiter)), nil
 }
 
 type selectorChainPart struct {
-	selector  *ast.SelectorExpr
-	call      *ast.CallExpr
-	index     *ast.IndexExpr
+	selector *ast.SelectorExpr
+	call *ast.CallExpr
+	index *ast.IndexExpr
 	indexList *ast.IndexListExpr
 }
 
@@ -3731,7 +4364,7 @@ func (l *lowerer) selectorChainWithGrouper(
 			if err != nil {
 				return doc.ID{}, false, err
 			}
-			continuation := make([]doc.ID, 0, len(parts)*3)
+			continuation := make([]doc.ID, 0, len(parts) * 3)
 			for index := len(parts) - 1; index >= 0; index-- {
 				part := parts[index]
 				if part.selector != nil {
@@ -3768,10 +4401,12 @@ func (l *lowerer) selectorChainWithGrouper(
 					continuation = append(continuation, suffix)
 				}
 			}
-			return group(l.arena.Concat(
-				base,
-				l.arena.Indent(l.arena.Concat(continuation...)),
-			)), true, nil
+			return group(
+				l.arena.Concat(
+					base,
+					l.arena.Indent(l.arena.Concat(continuation...)),
+				),
+			), true, nil
 		}
 	}
 }
@@ -3802,11 +4437,16 @@ func (l *lowerer) dotSuffix(
 		hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
 	}
 	if hasLineComment {
-		parts = append(parts, l.arena.Indent(l.arena.Concat(
-			l.arena.HardLine(),
-			l.boundaryCommentsDocument(afterDot, rightStart),
-			suffix,
-		)))
+		parts = append(
+			parts,
+			l.arena.Indent(
+				l.arena.Concat(
+					l.arena.HardLine(),
+					l.boundaryCommentsDocument(afterDot, rightStart),
+					suffix,
+				),
+			),
+		)
 		return l.arena.Concat(parts...), nil
 	}
 	if len(afterDot) > 0 {
@@ -3839,19 +4479,25 @@ func (l *lowerer) callArguments(call *ast.CallExpr) (doc.ID, error) {
 		if !startFound || !endFound {
 			return doc.ID{}, errors.New("call argument has no physical range")
 		}
-		if index == len(call.Args)-1 && call.Ellipsis.IsValid() {
+		if index == len(call.Args) - 1 && call.Ellipsis.IsValid() {
 			ellipsis, found := l.source.PhysicalOffset(call.Ellipsis)
 			if !found {
 				return doc.ID{}, errors.New("call ellipsis has no physical offset")
 			}
-			beforeEllipsis, err := l.inlineComments(l.commentsBetween(end, ellipsis), true)
+			beforeEllipsis, err := l.inlineComments(
+				l.commentsBetween(end, ellipsis),
+				true,
+			)
 			if err != nil {
 				return doc.ID{}, err
 			}
 			lowered = l.arena.Concat(lowered, beforeEllipsis, l.arena.Text("..."))
 			end = ellipsis + len("...")
 		}
-		arguments = append(arguments, delimitedItem{document: lowered, start: start, end: end})
+		arguments = append(
+			arguments,
+			delimitedItem{document: lowered, start: start, end: end},
+		)
 	}
 	list, err := l.delimitedCommaList(call.Lparen, call.Rparen, "(", ")", arguments)
 	if err != nil {
@@ -3860,7 +4506,11 @@ func (l *lowerer) callArguments(call *ast.CallExpr) (doc.ID, error) {
 	return l.postfixBoundary(call.Fun, call.Lparen, list)
 }
 
-func (l *lowerer) postfixBoundary(left ast.Expr, openingPosition token.Pos, suffix doc.ID) (doc.ID, error) {
+func (l *lowerer) postfixBoundary(
+	left ast.Expr,
+	openingPosition token.Pos,
+	suffix doc.ID,
+) (doc.ID, error) {
 	leftEnd, leftEndFound := l.source.PhysicalOffset(left.End())
 	opening, openingFound := l.source.PhysicalOffset(openingPosition)
 	if !leftEndFound || !openingFound {
@@ -3896,24 +4546,29 @@ func (l *lowerer) binary(expression *ast.BinaryExpr) (doc.ID, error) {
 			return doc.ID{}, errors.New("binary operator has no physical token")
 		}
 		leftEnd, leftFound := l.source.PhysicalOffset(operands[index].End())
-		rightStart, rightFound := l.source.PhysicalOffset(operands[index+1].Pos())
+		rightStart, rightFound := l.source.PhysicalOffset(operands[index + 1].Pos())
 		if !leftFound || !rightFound {
 			return doc.ID{}, errors.New("binary operand has no physical boundary")
 		}
 		leftComments := l.commentsBetween(leftEnd, operatorStart)
-		rightComments := l.commentsBetween(operatorStart+len(operatorRaw), rightStart)
+		rightComments := l.commentsBetween(operatorStart + len(operatorRaw), rightStart)
 		leftDocument, err := l.inlineComments(leftComments, true)
 		if err != nil {
 			return doc.ID{}, err
 		}
 		hasRightLineComment := false
 		for _, comment := range rightComments {
-			hasRightLineComment = hasRightLineComment || strings.HasPrefix(comment.Raw, "//")
+			hasRightLineComment = hasRightLineComment ||
+				strings.HasPrefix(comment.Raw, "//")
 		}
-		items[index] = l.arena.Concat(items[index], leftDocument, l.arena.Text(" "+operator.Op.String()))
+		items[index] = l.arena.Concat(
+			items[index],
+			leftDocument,
+			l.arena.Text(" " + operator.Op.String()),
+		)
 		if hasRightLineComment {
 			boundaries[index] = l.binaryLineCommentBoundary(
-				operatorStart+len(operatorRaw),
+				operatorStart + len(operatorRaw),
 				rightStart,
 				rightComments,
 			)
@@ -3925,14 +4580,13 @@ func (l *lowerer) binary(expression *ast.BinaryExpr) (doc.ID, error) {
 		}
 		boundaries[index] = l.arena.Concat(l.arena.Line(), rightDocument)
 	}
-	continuation := make([]doc.ID, 0, len(boundaries)*2)
+	continuation := make([]doc.ID, 0, len(boundaries) * 2)
 	for index, boundary := range boundaries {
-		continuation = append(continuation, boundary, items[index+1])
+		continuation = append(continuation, boundary, items[index + 1])
 	}
-	return l.arena.Group(l.arena.Concat(
-		items[0],
-		l.arena.Indent(l.arena.Concat(continuation...)),
-	)), nil
+	return l.arena.Group(
+		l.arena.Concat(items[0], l.arena.Indent(l.arena.Concat(continuation...))),
+	), nil
 }
 
 func (l *lowerer) binaryLineCommentBoundary(
@@ -3940,7 +4594,7 @@ func (l *lowerer) binaryLineCommentBoundary(
 	rightStart int,
 	comments []source.Comment,
 ) doc.ID {
-	parts := make([]doc.ID, 0, len(comments)*3+1)
+	parts := make([]doc.ID, 0, len(comments) * 3 + 1)
 	boundary := operatorEnd
 	previousWasLineComment := false
 	for _, comment := range comments {
@@ -3998,13 +4652,16 @@ func (l *lowerer) inlineCommentsWithSpacing(
 	if len(comments) == 0 {
 		return l.arena.Empty(), nil
 	}
-	parts := make([]doc.ID, 0, len(comments)*2+1)
+	parts := make([]doc.ID, 0, len(comments) * 2 + 1)
 	if leadingSpace {
 		parts = append(parts, l.arena.Text(" "))
 	}
 	for index, comment := range comments {
 		if strings.HasPrefix(comment.Raw, "//") {
-			return doc.ID{}, fmt.Errorf("line comment %d requires a proven binary boundary layout", comment.ID)
+			return doc.ID{}, fmt.Errorf(
+				"line comment %d requires a proven binary boundary layout",
+				comment.ID,
+			)
 		}
 		if index > 0 {
 			parts = append(parts, l.arena.Text(" "))
@@ -4017,7 +4674,12 @@ func (l *lowerer) inlineCommentsWithSpacing(
 	return l.arena.Concat(parts...), nil
 }
 
-func (l *lowerer) flattenBinary(expression ast.Expr, operator token.Token, operands *[]ast.Expr, operators *[]*ast.BinaryExpr) {
+func (l *lowerer) flattenBinary(
+	expression ast.Expr,
+	operator token.Token,
+	operands *[]ast.Expr,
+	operators *[]*ast.BinaryExpr,
+) {
 	binary, ok := expression.(*ast.BinaryExpr)
 	if !ok || binary.Op != operator {
 		*operands = append(*operands, expression)
@@ -4030,20 +4692,24 @@ func (l *lowerer) flattenBinary(expression ast.Expr, operator token.Token, opera
 
 func (l *lowerer) commaList(open, close string, items []doc.ID) doc.ID {
 	separator := l.arena.Concat(l.arena.Text(","), l.arena.Line())
-	return l.arena.Group(l.arena.Concat(
-		l.arena.Text(open),
-		l.arena.Indent(l.arena.Concat(l.arena.SoftLine(), l.join(separator, items))),
-		l.arena.IfBreak(l.arena.Text(","), l.arena.Empty()),
-		l.arena.SoftLine(),
-		l.arena.Text(close),
-	))
+	return l.arena.Group(
+		l.arena.Concat(
+			l.arena.Text(open),
+			l.arena.Indent(
+				l.arena.Concat(l.arena.SoftLine(), l.join(separator, items)),
+			),
+			l.arena.IfBreak(l.arena.Text(","), l.arena.Empty()),
+			l.arena.SoftLine(),
+			l.arena.Text(close),
+		),
+	)
 }
 
 func (l *lowerer) join(separator doc.ID, items []doc.ID) doc.ID {
 	if len(items) == 0 {
 		return l.arena.Empty()
 	}
-	parts := make([]doc.ID, 0, len(items)*2-1)
+	parts := make([]doc.ID, 0, len(items) * 2 - 1)
 	for index, item := range items {
 		if index > 0 {
 			parts = append(parts, separator)

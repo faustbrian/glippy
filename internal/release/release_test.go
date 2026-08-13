@@ -29,11 +29,7 @@ func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
 	t.Setenv("GIT_DIR", filepath.Join(t.TempDir(), "wrong-git-dir"))
 	t.Setenv("GIT_WORK_TREE", t.TempDir())
 	t.Setenv("GIT_INDEX_FILE", filepath.Join(t.TempDir(), "wrong-index"))
-	options := Options{
-		Root:           root,
-		Version:        "v0.0.0-test",
-		SourceRevision: revision,
-	}
+	options := Options{Root: root, Version: "v0.0.0-test", SourceRevision: revision}
 	outputs := []string{filepath.Join(parent, "first"), filepath.Join(parent, "second")}
 	manifests := make([]Manifest, len(outputs))
 	for index, output := range outputs {
@@ -44,19 +40,22 @@ func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
 		}
 		manifests[index] = manifest
 	}
-	if len(manifests[0].Artifacts) != len(DefaultTargets()) || !reflect.DeepEqual(manifests[0], manifests[1]) {
+	if len(manifests[0].Artifacts) != len(DefaultTargets()) ||
+		!reflect.DeepEqual(manifests[0], manifests[1]) {
 		t.Fatalf("manifests differ: %#v != %#v", manifests[0], manifests[1])
 	}
-	if manifests[0].SchemaVersion != 1 || manifests[0].Product != "gox" ||
-		manifests[0].Version != "v0.0.0-test" || manifests[0].SourceRevision != revision ||
+	if manifests[0].SchemaVersion != 1 ||
+		manifests[0].Product != "gox" ||
+		manifests[0].Version != "v0.0.0-test" ||
+		manifests[0].SourceRevision != revision ||
 		manifests[0].GoVersion == "" {
 		t.Fatalf("manifest identity = %#v", manifests[0])
 	}
 	wantTargets := map[Target]bool{
 		{GOOS: "darwin", GOARCH: "amd64"}: true,
 		{GOOS: "darwin", GOARCH: "arm64"}: true,
-		{GOOS: "linux", GOARCH: "amd64"}:  true,
-		{GOOS: "linux", GOARCH: "arm64"}:  true,
+		{GOOS: "linux", GOARCH: "amd64"}: true,
+		{GOOS: "linux", GOARCH: "arm64"}: true,
 	}
 	for _, artifact := range manifests[0].Artifacts {
 		target := Target{GOOS: artifact.GOOS, GOARCH: artifact.GOARCH}
@@ -68,10 +67,7 @@ func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
 	if len(wantTargets) != 0 {
 		t.Fatalf("manifest is missing targets %#v", wantTargets)
 	}
-	names := []string{
-		"gox_v0.0.0-test_manifest.json",
-		"gox_v0.0.0-test_checksums.txt",
-	}
+	names := []string{"gox_v0.0.0-test_manifest.json", "gox_v0.0.0-test_checksums.txt"}
 	for _, artifact := range manifests[0].Artifacts {
 		names = append(names, artifact.File)
 	}
@@ -96,12 +92,15 @@ func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
 		t.Fatalf("release output entries = %#v", entries)
 	}
 	verifyChecksums(t, outputs[0])
-	manifestBytes, err := os.ReadFile(filepath.Join(outputs[0], "gox_v0.0.0-test_manifest.json"))
+	manifestBytes, err := os.ReadFile(
+		filepath.Join(outputs[0], "gox_v0.0.0-test_manifest.json"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var decoded Manifest
-	if err := json.Unmarshal(manifestBytes, &decoded); err != nil || !reflect.DeepEqual(decoded, manifests[0]) {
+	if err := json.Unmarshal(manifestBytes, &decoded);
+		err != nil || !reflect.DeepEqual(decoded, manifests[0]) {
 		t.Fatalf("decode manifest = %#v, %v", decoded, err)
 	}
 
@@ -131,13 +130,16 @@ func TestBuildRejectsExistingOutputWithoutMutation(t *testing.T) {
 	if err := os.WriteFile(sentinel, []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Build(context.Background(), Options{
-		Root:           filepath.Clean(filepath.Join("..", "..")),
-		Output:         output,
-		Version:        "v0.0.0-test",
-		SourceRevision: strings.Repeat("a", 40),
-		Targets:        []Target{{GOOS: "darwin", GOARCH: "arm64"}},
-	})
+	_, err := Build(
+		context.Background(),
+		Options{
+			Root: filepath.Clean(filepath.Join("..", "..")),
+			Output: output,
+			Version: "v0.0.0-test",
+			SourceRevision: strings.Repeat("a", 40),
+			Targets: []Target{{GOOS: "darwin", GOARCH: "arm64"}},
+		},
+	)
 	if err == nil {
 		t.Fatal("Build() accepted an existing output directory")
 	}
@@ -171,13 +173,16 @@ func TestBuildRemovesOwnedOutputAfterBuildFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := filepath.Join(t.TempDir(), "release")
-	_, err = Build(context.Background(), Options{
-		Root:           root,
-		Output:         output,
-		Version:        "v0.0.0-test",
-		SourceRevision: strings.TrimSpace(string(revisionOutput)),
-		Targets:        []Target{{GOOS: "darwin", GOARCH: "arm64"}},
-	})
+	_, err = Build(
+		context.Background(),
+		Options{
+			Root: root,
+			Output: output,
+			Version: "v0.0.0-test",
+			SourceRevision: strings.TrimSpace(string(revisionOutput)),
+			Targets: []Target{{GOOS: "darwin", GOARCH: "arm64"}},
+		},
+	)
 	if err == nil {
 		t.Fatal("Build() succeeded without the product command")
 	}
@@ -188,7 +193,12 @@ func TestBuildRemovesOwnedOutputAfterBuildFailure(t *testing.T) {
 
 func TestBuildRejectsDirtyOrMismatchedSourceBeforeCreatingOutput(t *testing.T) {
 	root, _ := committedFixture(t, filepath.Clean(filepath.Join("..", "..")))
-	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".release-ignored\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(root, ".gitignore"),
+		[]byte(".release-ignored\n"),
+		0o600,
+	);
+		err != nil {
 		t.Fatal(err)
 	}
 	runFixtureGit(t, root, "add", ".gitignore")
@@ -210,38 +220,48 @@ func TestBuildRejectsDirtyOrMismatchedSourceBeforeCreatingOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	revision := strings.TrimSpace(string(revisionOutput))
-	for _, test := range []struct {
-		name      string
-		revision  string
-		dirtyPath string
-	}{
-		{name: "mismatched revision", revision: strings.Repeat("b", 40)},
-		{name: "untracked source", revision: revision, dirtyPath: "untracked"},
-		{name: "ignored source", revision: revision, dirtyPath: ".release-ignored"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			if test.dirtyPath != "" {
-				path := filepath.Join(root, test.dirtyPath)
-				if err := os.WriteFile(path, []byte("dirty"), 0o600); err != nil {
-					t.Fatal(err)
+	for _, test := range
+		[]struct {
+			name string
+			revision string
+			dirtyPath string
+		}{
+			{name: "mismatched revision", revision: strings.Repeat("b", 40)},
+			{name: "untracked source", revision: revision, dirtyPath: "untracked"},
+			{name: "ignored source", revision: revision, dirtyPath: ".release-ignored"},
+		} {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				if test.dirtyPath != "" {
+					path := filepath.Join(root, test.dirtyPath)
+					if err := os.WriteFile(path, []byte("dirty"), 0o600);
+						err != nil {
+						t.Fatal(err)
+					}
+					defer os.Remove(path)
 				}
-				defer os.Remove(path)
-			}
-			output := filepath.Join(t.TempDir(), "release")
-			_, err := Build(context.Background(), Options{
-				Root:           root,
-				Output:         output,
-				Version:        "v0.0.0-test",
-				SourceRevision: test.revision,
-				Targets:        []Target{{GOOS: "darwin", GOARCH: "arm64"}},
-			})
-			if err == nil {
-				t.Fatalf("Build() accepted %s", test.name)
-			}
-			if _, statErr := os.Lstat(output); !os.IsNotExist(statErr) {
-				t.Fatalf("rejected source created output: %v", statErr)
-			}
-		})
+				output := filepath.Join(t.TempDir(), "release")
+				_, err := Build(
+					context.Background(),
+					Options{
+						Root: root,
+						Output: output,
+						Version: "v0.0.0-test",
+						SourceRevision: test.revision,
+						Targets: []Target{
+							{GOOS: "darwin", GOARCH: "arm64"},
+						},
+					},
+				)
+				if err == nil {
+					t.Fatalf("Build() accepted %s", test.name)
+				}
+				if _, statErr := os.Lstat(output); !os.IsNotExist(statErr) {
+					t.Fatalf("rejected source created output: %v", statErr)
+				}
+			},
+		)
 	}
 }
 
@@ -260,7 +280,12 @@ func TestDefaultTargetsAreAdmittedPrototypePlatforms(t *testing.T) {
 	}
 	for index := range want {
 		if got[index] != want[index] {
-			t.Fatalf("DefaultTargets()[%d] = %#v, want %#v", index, got[index], want[index])
+			t.Fatalf(
+				"DefaultTargets()[%d] = %#v, want %#v",
+				index,
+				got[index],
+				want[index],
+			)
 		}
 	}
 	got[0] = Target{}
@@ -279,7 +304,11 @@ func TestVerifyModuleBoundaryRejectsExternalLocalReplacement(t *testing.T) {
 	}
 	writeModule := func(replacement string) {
 		t.Helper()
-		contents := []byte("module example.com/release\n\ngo 1.26.0\n\nreplace example.com/dependency => " + replacement + "\n")
+		contents := []byte(
+			"module example.com/release\n\ngo 1.26.0\n\nreplace example.com/dependency => " +
+				replacement +
+				"\n",
+		)
 		if err := os.WriteFile(filepath.Join(root, "go.mod"), contents, 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -296,9 +325,10 @@ func TestVerifyModuleBoundaryRejectsExternalLocalReplacement(t *testing.T) {
 
 func TestExportSourcePinsCommittedBytes(t *testing.T) {
 	root, revision := committedFixture(t, filepath.Clean(filepath.Join("..", "..")))
-	snapshot, err := exportSource(context.Background(), Options{
-		Root: root, SourceRevision: revision, GitBinary: "git",
-	})
+	snapshot, err := exportSource(
+		context.Background(),
+		Options{Root: root, SourceRevision: revision, GitBinary: "git"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +337,12 @@ func TestExportSourcePinsCommittedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("mutated after export\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("mutated after export\n"),
+		0o600,
+	);
+		err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(filepath.Join(snapshot, "go.mod"))
@@ -344,7 +379,8 @@ func TestOwnedOutputPinsWritesAndRefusesReplacement(t *testing.T) {
 	if err := writeExclusive(owned.root, "artifact", []byte("pinned"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := os.ReadFile(filepath.Join(moved, "artifact")); err != nil || string(got) != "pinned" {
+	if got, err := os.ReadFile(filepath.Join(moved, "artifact"));
+		err != nil || string(got) != "pinned" {
 		t.Fatalf("pinned output write = %q, %v", got, err)
 	}
 	if _, err := os.Lstat(filepath.Join(owned.path, "artifact")); !os.IsNotExist(err) {
@@ -384,7 +420,8 @@ func TestOwnedOutputPublishesWithoutReplacingExistingPath(t *testing.T) {
 	if got, err := os.ReadFile(sentinel); err != nil || string(got) != "keep" {
 		t.Fatalf("existing output changed: %q, %v", got, err)
 	}
-	if got, err := os.ReadFile(filepath.Join(owned.path, "artifact")); err != nil || string(got) != "release" {
+	if got, err := os.ReadFile(filepath.Join(owned.path, "artifact"));
+		err != nil || string(got) != "release" {
 		t.Fatalf("private output changed: %q, %v", got, err)
 	}
 	if err := removeOwnedOutput(owned); err != nil {
@@ -451,7 +488,16 @@ func committedFixture(t *testing.T, root string) (string, string) {
 	if err := os.Mkdir(fixture, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	listed := exec.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+	listed := exec.Command(
+		"git",
+		"-C",
+		root,
+		"ls-files",
+		"--cached",
+		"--others",
+		"--exclude-standard",
+		"-z",
+	)
 	output, err := listed.Output()
 	if err != nil {
 		t.Fatal(err)
@@ -477,7 +523,8 @@ func committedFixture(t *testing.T, root string) (string, string) {
 		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(destination, contents, information.Mode().Perm()); err != nil {
+		if err := os.WriteFile(destination, contents, information.Mode().Perm());
+			err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -521,7 +568,7 @@ func verifyChecksums(t *testing.T, output string) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(contents)), "\n")
-	if len(lines) != len(DefaultTargets())+1 {
+	if len(lines) != len(DefaultTargets()) + 1 {
 		t.Fatalf("checksum lines = %#v", lines)
 	}
 	for _, line := range lines {

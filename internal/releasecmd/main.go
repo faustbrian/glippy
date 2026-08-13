@@ -16,7 +16,12 @@ func main() {
 	var options release.Options
 	flag.StringVar(&options.Output, "output", "", "new artifact output directory")
 	flag.StringVar(&options.Version, "version", "", "canonical release version")
-	flag.StringVar(&options.SourceRevision, "revision", "", "40- or 64-character source revision")
+	flag.StringVar(
+		&options.SourceRevision,
+		"revision",
+		"",
+		"40- or 64-character source revision",
+	)
 	flag.StringVar(&options.GoBinary, "go", "go", "Go toolchain binary")
 	flag.StringVar(&options.GitBinary, "git", "git", "Git binary")
 	flag.Parse()

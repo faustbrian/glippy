@@ -11,38 +11,48 @@ func TestRenderCallUsesCanonicalFlatAndBrokenForms(t *testing.T) {
 	t.Parallel()
 
 	arena := NewArena()
-	call := arena.Group(arena.Concat(
-		arena.Text("call("),
-		arena.Indent(arena.Concat(
+	call := arena.Group(
+		arena.Concat(
+			arena.Text("call("),
+			arena.Indent(
+				arena.Concat(
+					arena.SoftLine(),
+					arena.Text("first,"),
+					arena.Line(),
+					arena.Text("second"),
+					arena.IfBreak(arena.Text(","), arena.Empty()),
+				),
+			),
 			arena.SoftLine(),
-			arena.Text("first,"),
-			arena.Line(),
-			arena.Text("second"),
-			arena.IfBreak(arena.Text(","), arena.Empty()),
-		)),
-		arena.SoftLine(),
-		arena.Text(")"),
-	))
+			arena.Text(")"),
+		),
+	)
 
 	tests := []struct {
-		name  string
+		name string
 		width int
-		want  string
+		want string
 	}{
 		{name: "flat", width: 80, want: "call(first, second)"},
 		{name: "broken", width: 12, want: "call(\n\tfirst,\n\tsecond,\n)"},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			got, err := arena.Render(call, Options{Width: test.width, TabWidth: 8, FitBudget: 1_000})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got != test.want {
-				t.Fatalf("Render() = %q, want %q", got, test.want)
-			}
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				got, err := arena.Render(
+					call,
+					Options{Width: test.width, TabWidth: 8, FitBudget: 1_000},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got != test.want {
+					t.Fatalf("Render() = %q, want %q", got, test.want)
+				}
+			},
+		)
 	}
 }
 
@@ -52,51 +62,59 @@ func TestRenderGroupWithIndependentTailSeparatesAdjacentLayoutDecisions(t *testi
 	arena := NewArena()
 	calleeBody := arena.Concat(
 		arena.Text("client."),
-		arena.Indent(arena.Concat(
-			arena.SoftLine(),
-			arena.Text("Call"),
-		)),
+		arena.Indent(arena.Concat(arena.SoftLine(), arena.Text("Call"))),
 	)
-	arguments := arena.Group(arena.Concat(
-		arena.Text("("),
-		arena.Indent(arena.Concat(
+	arguments := arena.Group(
+		arena.Concat(
+			arena.Text("("),
+			arena.Indent(
+				arena.Concat(
+					arena.SoftLine(),
+					arena.Text("firstArgument,"),
+					arena.Line(),
+					arena.Text("secondArgument"),
+					arena.IfBreak(arena.Text(","), arena.Empty()),
+				),
+			),
 			arena.SoftLine(),
-			arena.Text("firstArgument,"),
-			arena.Line(),
-			arena.Text("secondArgument"),
-			arena.IfBreak(arena.Text(","), arena.Empty()),
-		)),
-		arena.SoftLine(),
-		arena.Text(")"),
-	))
+			arena.Text(")"),
+		),
+	)
 	document := arena.GroupWithIndependentTail(calleeBody, arena.Text("("), arguments)
 
-	for _, test := range []struct {
-		name  string
-		width int
-		want  string
-	}{
-		{
-			name:  "callee and opening delimiter fit",
-			width: 12,
-			want:  "client.Call(\n\tfirstArgument,\n\tsecondArgument,\n)",
-		},
-		{
-			name:  "opening delimiter exceeds width",
-			width: 11,
-			want:  "client.\n\tCall(\n\t\tfirstArgument,\n\t\tsecondArgument,\n\t)",
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			got, err := arena.Render(document, Options{Width: test.width, TabWidth: 8, FitBudget: 1_000})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got != test.want {
-				t.Fatalf("Render() = %q, want %q", got, test.want)
-			}
-		})
+	for _, test := range
+		[]struct {
+			name string
+			width int
+			want string
+		}{
+			{
+				name: "callee and opening delimiter fit",
+				width: 12,
+				want: "client.Call(\n\tfirstArgument,\n\tsecondArgument,\n)",
+			},
+			{
+				name: "opening delimiter exceeds width",
+				width: 11,
+				want: "client.\n\tCall(\n\t\tfirstArgument,\n\t\tsecondArgument,\n\t)",
+			},
+		} {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				got, err := arena.Render(
+					document,
+					Options{Width: test.width, TabWidth: 8, FitBudget: 1_000},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got != test.want {
+					t.Fatalf("Render() = %q, want %q", got, test.want)
+				}
+			},
+		)
 	}
 }
 
@@ -104,16 +122,20 @@ func TestRenderBinaryChainBreaksAfterOperators(t *testing.T) {
 	t.Parallel()
 
 	arena := NewArena()
-	condition := arena.Group(arena.Concat(
-		arena.Text("if foo &&"),
-		arena.Indent(arena.Concat(
-			arena.Line(),
-			arena.Text("bar &&"),
-			arena.Line(),
-			arena.Text("baz"),
-		)),
-		arena.Text(" {"),
-	))
+	condition := arena.Group(
+		arena.Concat(
+			arena.Text("if foo &&"),
+			arena.Indent(
+				arena.Concat(
+					arena.Line(),
+					arena.Text("bar &&"),
+					arena.Line(),
+					arena.Text("baz"),
+				),
+			),
+			arena.Text(" {"),
+		),
+	)
 
 	got, err := arena.Render(condition, Options{Width: 12, TabWidth: 8, FitBudget: 1_000})
 	if err != nil {
@@ -130,11 +152,10 @@ func TestRenderRepresentativeHostileStatementsWithHardLines(t *testing.T) {
 
 	arena := NewArena()
 	block := arena.Concat(
-		arena.Text("if _, err := client.Discover(nil); !errors.Is(err, ErrContextRequired) {"),
-		arena.Indent(arena.Concat(
-			arena.HardLine(),
-			arena.Text("t.Fatal(err)"),
-		)),
+		arena.Text(
+			"if _, err := client.Discover(nil); !errors.Is(err, ErrContextRequired) {",
+		),
+		arena.Indent(arena.Concat(arena.HardLine(), arena.Text("t.Fatal(err)"))),
 		arena.HardLine(),
 		arena.Text("}"),
 	)
@@ -148,32 +169,38 @@ func TestRenderRepresentativeHostileStatementsWithHardLines(t *testing.T) {
 
 	tests := []struct {
 		name string
-		doc  ID
+		doc ID
 		want string
 	}{
 		{
 			name: "compressed block",
-			doc:  block,
+			doc: block,
 			want: "if _, err := client.Discover(nil); !errors.Is(err, ErrContextRequired) {\n\tt.Fatal(err)\n}",
 		},
 		{
 			name: "ordinary statement semicolons",
-			doc:  statements,
+			doc: statements,
 			want: "ctx, cancel := context.WithCancel(t.Context())\ncancel()\nresult := work(ctx)",
 		},
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			got, err := arena.Render(test.doc, Options{Width: 100, TabWidth: 8, FitBudget: 1_000})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got != test.want {
-				t.Fatalf("Render() = %q, want %q", got, test.want)
-			}
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				got, err := arena.Render(
+					test.doc,
+					Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got != test.want {
+					t.Fatalf("Render() = %q, want %q", got, test.want)
+				}
+			},
+		)
 	}
 }
 
@@ -200,12 +227,14 @@ func TestRenderMeasuresTabsFromTheCurrentColumn(t *testing.T) {
 	t.Parallel()
 
 	arena := NewArena()
-	document := arena.Group(arena.Concat(
-		arena.Text("1234567"),
-		arena.Text("\tX"),
-		arena.Line(),
-		arena.Text("Y"),
-	))
+	document := arena.Group(
+		arena.Concat(
+			arena.Text("1234567"),
+			arena.Text("\tX"),
+			arena.Line(),
+			arena.Text("Y"),
+		),
+	)
 
 	got, err := arena.Render(document, Options{Width: 11, TabWidth: 8, FitBudget: 1_000})
 	if err != nil {
@@ -222,14 +251,18 @@ func TestRenderMeasuresAGroupFromPendingIndentation(t *testing.T) {
 	arena := NewArena()
 	document := arena.Concat(
 		arena.Text("{"),
-		arena.Indent(arena.Concat(
-			arena.HardLine(),
-			arena.Group(arena.Concat(
-				arena.Text("a"),
-				arena.Line(),
-				arena.Text("b"),
-			)),
-		)),
+		arena.Indent(
+			arena.Concat(
+				arena.HardLine(),
+				arena.Group(
+					arena.Concat(
+						arena.Text("a"),
+						arena.Line(),
+						arena.Text("b"),
+					),
+				),
+			),
+		),
 	)
 
 	got, err := arena.Render(document, Options{Width: 9, TabWidth: 8, FitBudget: 1_000})
@@ -237,7 +270,10 @@ func TestRenderMeasuresAGroupFromPendingIndentation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got != "{\n\ta\n\tb" {
-		t.Fatalf("Render() = %q, want a broken group measured from the indented column", got)
+		t.Fatalf(
+			"Render() = %q, want a broken group measured from the indented column",
+			got,
+		)
 	}
 }
 
@@ -264,7 +300,10 @@ func TestRenderRejectsNewlinesInText(t *testing.T) {
 	t.Parallel()
 
 	arena := NewArena()
-	_, err := arena.Render(arena.Text("first\nsecond"), Options{Width: 80, TabWidth: 8, FitBudget: 1_000})
+	_, err := arena.Render(
+		arena.Text("first\nsecond"),
+		Options{Width: 80, TabWidth: 8, FitBudget: 1_000},
+	)
 	if err == nil {
 		t.Fatal("Render() must require multiline content to use Verbatim")
 	}
@@ -312,12 +351,14 @@ func TestRenderBreakParentForcesBrokenGroup(t *testing.T) {
 	t.Parallel()
 
 	arena := NewArena()
-	document := arena.Group(arena.Concat(
-		arena.Text("first"),
-		arena.Line(),
-		arena.Text("second"),
-		arena.BreakParent(),
-	))
+	document := arena.Group(
+		arena.Concat(
+			arena.Text("first"),
+			arena.Line(),
+			arena.Text("second"),
+			arena.BreakParent(),
+		),
+	)
 
 	got, err := arena.Render(document, Options{Width: 80, TabWidth: 8, FitBudget: 1_000})
 	if err != nil {
@@ -333,18 +374,16 @@ func TestRenderBreakParentDoesNotBreakPrecedingSiblingGroup(t *testing.T) {
 
 	arena := NewArena()
 	document := arena.Concat(
-		arena.Group(arena.Concat(
-			arena.Text("a"),
-			arena.Line(),
-			arena.Text("b"),
-		)),
+		arena.Group(arena.Concat(arena.Text("a"), arena.Line(), arena.Text("b"))),
 		arena.Text(" "),
-		arena.Group(arena.Concat(
-			arena.Text("c"),
-			arena.BreakParent(),
-			arena.Line(),
-			arena.Text("d"),
-		)),
+		arena.Group(
+			arena.Concat(
+				arena.Text("c"),
+				arena.BreakParent(),
+				arena.Line(),
+				arena.Text("d"),
+			),
+		),
 	)
 
 	got, err := arena.Render(document, Options{Width: 80, TabWidth: 8, FitBudget: 1_000})
@@ -361,18 +400,16 @@ func TestRenderStillMeasuresAForcedBrokenSiblingFirstLine(t *testing.T) {
 
 	arena := NewArena()
 	document := arena.Concat(
-		arena.Group(arena.Concat(
-			arena.Text("aaaa"),
-			arena.Line(),
-			arena.Text("b"),
-		)),
+		arena.Group(arena.Concat(arena.Text("aaaa"), arena.Line(), arena.Text("b"))),
 		arena.Text(" "),
-		arena.Group(arena.Concat(
-			arena.Text("cccc"),
-			arena.BreakParent(),
-			arena.Line(),
-			arena.Text("d"),
-		)),
+		arena.Group(
+			arena.Concat(
+				arena.Text("cccc"),
+				arena.BreakParent(),
+				arena.Line(),
+				arena.Text("d"),
+			),
+		),
 	)
 
 	got, err := arena.Render(document, Options{Width: 8, TabWidth: 8, FitBudget: 1_000})
@@ -389,13 +426,12 @@ func TestRenderRecordsSourceMarkers(t *testing.T) {
 
 	arena := NewArena()
 	mark := SourceMark{Offset: 42}
-	document := arena.Concat(
-		arena.Text("a"),
-		arena.SourceMarker(mark),
-		arena.Text("bc"),
-	)
+	document := arena.Concat(arena.Text("a"), arena.SourceMarker(mark), arena.Text("bc"))
 
-	got, err := arena.RenderWithMarkers(document, Options{Width: 80, TabWidth: 8, FitBudget: 1_000})
+	got, err := arena.RenderWithMarkers(
+		document,
+		Options{Width: 80, TabWidth: 8, FitBudget: 1_000},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,14 +451,15 @@ func TestRenderRecordsSourceMarkerAfterPendingIndentation(t *testing.T) {
 	mark := SourceMark{Offset: 42}
 	document := arena.Concat(
 		arena.Text("{"),
-		arena.Indent(arena.Concat(
-			arena.HardLine(),
-			arena.SourceMarker(mark),
-			arena.Text("x"),
-		)),
+		arena.Indent(
+			arena.Concat(arena.HardLine(), arena.SourceMarker(mark), arena.Text("x")),
+		),
 	)
 
-	got, err := arena.RenderWithMarkers(document, Options{Width: 80, TabWidth: 8, FitBudget: 1_000})
+	got, err := arena.RenderWithMarkers(
+		document,
+		Options{Width: 80, TabWidth: 8, FitBudget: 1_000},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +476,8 @@ func TestRenderRejectsForeignArenaReference(t *testing.T) {
 	arena.Text("local")
 	foreign := NewArena().Text("foreign")
 	root := arena.Group(foreign)
-	if _, err := arena.Render(root, Options{Width: 80, TabWidth: 8, FitBudget: 32}); err == nil {
+	if _, err := arena.Render(root, Options{Width: 80, TabWidth: 8, FitBudget: 32});
+		err == nil {
 		t.Fatal("Render() must reject document references owned by another arena")
 	}
 }
@@ -456,7 +494,7 @@ func TestRenderRejectsInvalidOptions(t *testing.T) {
 
 func TestRenderBoundsAdversarialDepthAndBreadthAllocations(t *testing.T) {
 	const (
-		depth   = 100_000
+		depth = 100_000
 		breadth = 20_000
 	)
 	options := Options{Width: breadth + 1, TabWidth: 8, FitBudget: 32}
@@ -468,9 +506,12 @@ func TestRenderBoundsAdversarialDepthAndBreadthAllocations(t *testing.T) {
 	}
 	var deepOutput string
 	var deepErr error
-	deepAllocations := testing.AllocsPerRun(5, func() {
-		deepOutput, deepErr = deepArena.Render(deepDocument, options)
-	})
+	deepAllocations := testing.AllocsPerRun(
+		5,
+		func() {
+			deepOutput, deepErr = deepArena.Render(deepDocument, options)
+		},
+	)
 	if deepErr != nil {
 		t.Fatal(deepErr)
 	}
@@ -489,9 +530,12 @@ func TestRenderBoundsAdversarialDepthAndBreadthAllocations(t *testing.T) {
 	wideDocument := wideArena.Concat(parts...)
 	var wideOutput string
 	var wideErr error
-	wideAllocations := testing.AllocsPerRun(5, func() {
-		wideOutput, wideErr = wideArena.Render(wideDocument, options)
-	})
+	wideAllocations := testing.AllocsPerRun(
+		5,
+		func() {
+			wideOutput, wideErr = wideArena.Render(wideDocument, options)
+		},
+	)
 	if wideErr != nil {
 		t.Fatal(wideErr)
 	}
@@ -506,12 +550,15 @@ func TestRenderBoundsAdversarialDepthAndBreadthAllocations(t *testing.T) {
 func TestArenaCapacityHintBoundsNodeStorageAllocations(t *testing.T) {
 	const nodes = 20_000
 
-	allocations := testing.AllocsPerRun(5, func() {
-		arena := NewArenaWithCapacity(nodes + 1)
-		for range nodes {
-			arena.Text("x")
-		}
-	})
+	allocations := testing.AllocsPerRun(
+		5,
+		func() {
+			arena := NewArenaWithCapacity(nodes + 1)
+			for range nodes {
+				arena.Text("x")
+			}
+		},
+	)
 	if allocations > 2 {
 		t.Fatalf("capacity-aware arena allocations = %.0f, want at most 2", allocations)
 	}
@@ -519,43 +566,49 @@ func TestArenaCapacityHintBoundsNodeStorageAllocations(t *testing.T) {
 
 func BenchmarkRenderAdversarialNesting(b *testing.B) {
 	for _, depth := range []int{20_000, 100_000} {
-		b.Run(strconv.Itoa(depth), func(b *testing.B) {
-			arena := NewArena()
-			document := arena.Text("x")
-			for range depth {
-				document = arena.Group(document)
-			}
-			options := Options{Width: 80, TabWidth: 8, FitBudget: 32}
-			b.ReportAllocs()
-			b.ResetTimer()
-
-			for b.Loop() {
-				if _, err := arena.Render(document, options); err != nil {
-					b.Fatal(err)
+		b.Run(
+			strconv.Itoa(depth),
+			func(b *testing.B) {
+				arena := NewArena()
+				document := arena.Text("x")
+				for range depth {
+					document = arena.Group(document)
 				}
-			}
-		})
+				options := Options{Width: 80, TabWidth: 8, FitBudget: 32}
+				b.ReportAllocs()
+				b.ResetTimer()
+
+				for b.Loop() {
+					if _, err := arena.Render(document, options); err != nil {
+						b.Fatal(err)
+					}
+				}
+			},
+		)
 	}
 }
 
 func BenchmarkRenderAdversarialSiblings(b *testing.B) {
 	for _, count := range []int{1_000, 2_000, 4_000, 8_000, 16_000} {
-		b.Run(strconv.Itoa(count), func(b *testing.B) {
-			arena := NewArena()
-			parts := make([]ID, 0, count)
-			for range count {
-				parts = append(parts, arena.Group(arena.Text("x")))
-			}
-			document := arena.Concat(parts...)
-			options := Options{Width: count + 1, TabWidth: 8, FitBudget: 32}
-			b.ReportAllocs()
-			b.ResetTimer()
-
-			for b.Loop() {
-				if _, err := arena.Render(document, options); err != nil {
-					b.Fatal(err)
+		b.Run(
+			strconv.Itoa(count),
+			func(b *testing.B) {
+				arena := NewArena()
+				parts := make([]ID, 0, count)
+				for range count {
+					parts = append(parts, arena.Group(arena.Text("x")))
 				}
-			}
-		})
+				document := arena.Concat(parts...)
+				options := Options{Width: count + 1, TabWidth: 8, FitBudget: 32}
+				b.ReportAllocs()
+				b.ResetTimer()
+
+				for b.Loop() {
+					if _, err := arena.Render(document, options); err != nil {
+						b.Fatal(err)
+					}
+				}
+			},
+		)
 	}
 }

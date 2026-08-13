@@ -19,9 +19,19 @@ func TestCoordinateAndReplaceWritesOneValidatedAtomicResult(t *testing.T) {
 	input := "package sample\nfunc run(){target()}\n"
 	path := writeSource(t, input)
 	snapshot, file := readSnapshotSource(t, path)
-	transaction, err := fixengine.CoordinateAndReplace(snapshot, []fixengine.Selection{
-		selection(file, "rename", "rewrite", rules.FixSafe, edit(input, "target", "primary")),
-	}, fixOptions())
+	transaction, err := fixengine.CoordinateAndReplace(
+		snapshot,
+		[]fixengine.Selection{
+			selection(
+				file,
+				"rename",
+				"rewrite",
+				rules.FixSafe,
+				edit(input, "target", "primary"),
+			),
+		},
+		fixOptions(),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,14 +65,31 @@ func TestCoordinateAndReplaceDoesNotWriteRejectedFixes(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot, file := readSnapshotSource(t, path)
-	transaction, err := fixengine.CoordinateAndReplace(snapshot, []fixengine.Selection{
-		selection(file, "first", "rewrite", rules.FixSafe, edit(input, "target", "primary")),
-		selection(file, "second", "rewrite", rules.FixSafe, edit(input, "target", "secondary")),
-	}, fixOptions())
+	transaction, err := fixengine.CoordinateAndReplace(
+		snapshot,
+		[]fixengine.Selection{
+			selection(
+				file,
+				"first",
+				"rewrite",
+				rules.FixSafe,
+				edit(input, "target", "primary"),
+			),
+			selection(
+				file,
+				"second",
+				"rewrite",
+				rules.FixSafe,
+				edit(input, "target", "secondary"),
+			),
+		},
+		fixOptions(),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if transaction.Status != fixengine.WriteNotPerformed || len(transaction.Result.Rejected) != 2 {
+	if transaction.Status != fixengine.WriteNotPerformed ||
+		len(transaction.Result.Rejected) != 2 {
 		t.Fatalf("CoordinateAndReplace() = %#v", transaction)
 	}
 	after, err := os.Stat(path)
@@ -84,9 +111,19 @@ func TestCoordinateAndReplaceRejectsAnOnDiskSourceChange(t *testing.T) {
 	if err := os.WriteFile(path, newer, 0o640); err != nil {
 		t.Fatal(err)
 	}
-	transaction, err := fixengine.CoordinateAndReplace(snapshot, []fixengine.Selection{
-		selection(file, "rename", "rewrite", rules.FixSafe, edit(input, "target", "primary")),
-	}, fixOptions())
+	transaction, err := fixengine.CoordinateAndReplace(
+		snapshot,
+		[]fixengine.Selection{
+			selection(
+				file,
+				"rename",
+				"rewrite",
+				rules.FixSafe,
+				edit(input, "target", "primary"),
+			),
+		},
+		fixOptions(),
+	)
 	if !errors.Is(err, filesystem.ErrStale) {
 		t.Fatalf("CoordinateAndReplace() error = %v, want ErrStale", err)
 	}
@@ -108,9 +145,19 @@ func TestCoordinateAndReplacePreservesDiskWhenValidationRejectsFix(t *testing.T)
 	input := "package sample\nfunc run(){target()}\n"
 	path := writeSource(t, input)
 	snapshot, file := readSnapshotSource(t, path)
-	transaction, err := fixengine.CoordinateAndReplace(snapshot, []fixengine.Selection{
-		selection(file, "invalid", "rewrite", rules.FixSafe, edit(input, "target()", "(")),
-	}, fixOptions())
+	transaction, err := fixengine.CoordinateAndReplace(
+		snapshot,
+		[]fixengine.Selection{
+			selection(
+				file,
+				"invalid",
+				"rewrite",
+				rules.FixSafe,
+				edit(input, "target()", "("),
+			),
+		},
+		fixOptions(),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

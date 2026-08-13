@@ -16,72 +16,108 @@ import (
 func TestSourceSyntaxViewsCannotMutateStoredState(t *testing.T) {
 	t.Parallel()
 
-	t.Run("complete file", func(t *testing.T) {
-		file, err := source.Load("immutable.go", []byte("package original\nvar value = 1\n"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := file.ReadSyntax(func(syntax *ast.File) error {
-			syntax.Name.Name = "mutated"
-			syntax.Decls = nil
-			return nil
-		}); err != nil {
-			t.Fatal(err)
-		}
-		reference, err := source.Load("immutable.go", []byte("package original\nvar value = 1\n"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := source.ValidateEquivalent(file, reference); err != nil {
-			t.Fatalf("stored file state changed through syntax view: %v", err)
-		}
-		if err := file.ReadSyntax(func(syntax *ast.File) error {
-			if syntax.Name.Name != "original" || len(syntax.Decls) != 1 {
-				t.Fatalf("stored file syntax was mutated: package %q, declarations %d", syntax.Name.Name, len(syntax.Decls))
+	t.Run(
+		"complete file",
+		func(t *testing.T) {
+			file, err := source.Load(
+				"immutable.go",
+				[]byte("package original\nvar value = 1\n"),
+			)
+			if err != nil {
+				t.Fatal(err)
 			}
-			return nil
-		}); err != nil {
-			t.Fatal(err)
-		}
-	})
+			if err := file.ReadSyntax(
+				func(syntax *ast.File) error {
+					syntax.Name.Name = "mutated"
+					syntax.Decls = nil
+					return nil
+				},
+			);
+				err != nil {
+				t.Fatal(err)
+			}
+			reference, err := source.Load(
+				"immutable.go",
+				[]byte("package original\nvar value = 1\n"),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := source.ValidateEquivalent(file, reference); err != nil {
+				t.Fatalf("stored file state changed through syntax view: %v", err)
+			}
+			if err := file.ReadSyntax(
+				func(syntax *ast.File) error {
+					if syntax.Name.Name != "original" ||
+						len(syntax.Decls) != 1 {
+						t.Fatalf(
+							"stored file syntax was mutated: package %q, declarations %d",
+							syntax.Name.Name,
+							len(syntax.Decls),
+						)
+					}
+					return nil
+				},
+			);
+				err != nil {
+				t.Fatal(err)
+			}
+		},
+	)
 
-	t.Run("fragment", func(t *testing.T) {
-		fragment, err := source.LoadFragment(
-			"immutable.go",
-			source.FragmentExpression,
-			[]byte("left + right"),
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := fragment.ReadSyntax(func(syntax source.FragmentSyntax) error {
-			binary := syntax.Expression.(*ast.BinaryExpr)
-			binary.X.(*ast.Ident).Name = "mutated"
-			return nil
-		}); err != nil {
-			t.Fatal(err)
-		}
-		reference, err := source.LoadFragment(
-			"immutable.go",
-			source.FragmentExpression,
-			[]byte("left + right"),
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := source.ValidateFragmentEquivalent(fragment, reference); err != nil {
-			t.Fatalf("stored fragment state changed through syntax view: %v", err)
-		}
-		if err := fragment.ReadSyntax(func(syntax source.FragmentSyntax) error {
-			binary := syntax.Expression.(*ast.BinaryExpr)
-			if got := binary.X.(*ast.Ident).Name; got != "left" {
-				t.Fatalf("stored fragment syntax was mutated: left operand %q", got)
+	t.Run(
+		"fragment",
+		func(t *testing.T) {
+			fragment, err := source.LoadFragment(
+				"immutable.go",
+				source.FragmentExpression,
+				[]byte("left + right"),
+			)
+			if err != nil {
+				t.Fatal(err)
 			}
-			return nil
-		}); err != nil {
-			t.Fatal(err)
-		}
-	})
+			if err := fragment.ReadSyntax(
+				func(syntax source.FragmentSyntax) error {
+					binary := syntax.Expression.(*ast.BinaryExpr)
+					binary.X.(*ast.Ident).Name = "mutated"
+					return nil
+				},
+			);
+				err != nil {
+				t.Fatal(err)
+			}
+			reference, err := source.LoadFragment(
+				"immutable.go",
+				source.FragmentExpression,
+				[]byte("left + right"),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := source.ValidateFragmentEquivalent(fragment, reference);
+				err != nil {
+				t.Fatalf(
+					"stored fragment state changed through syntax view: %v",
+					err,
+				)
+			}
+			if err := fragment.ReadSyntax(
+				func(syntax source.FragmentSyntax) error {
+					binary := syntax.Expression.(*ast.BinaryExpr)
+					if got := binary.X.(*ast.Ident).Name; got != "left" {
+						t.Fatalf(
+							"stored fragment syntax was mutated: left operand %q",
+							got,
+						)
+					}
+					return nil
+				},
+			);
+				err != nil {
+				t.Fatal(err)
+			}
+		},
+	)
 }
 
 func TestFileReadSyntaxViewProvidesMatchingFileSetAndRequiresCallbacks(t *testing.T) {
@@ -97,20 +133,24 @@ func TestFileReadSyntaxViewProvidesMatchingFileSetAndRequiresCallbacks(t *testin
 	if err := file.ReadSyntaxView(nil); err == nil {
 		t.Fatal("ReadSyntaxView(nil) error = nil")
 	}
-	if err := file.ReadSyntaxView(func(fileSet *token.FileSet, syntax *ast.File) error {
-		tokenFile := fileSet.File(syntax.Pos())
-		if tokenFile == nil {
-			t.Fatal("syntax view has no matching token file")
-		}
-		if tokenFile.Name() != "source.go" || tokenFile.Offset(syntax.Name.Pos()) != len("package ") {
-			t.Fatalf(
-				"syntax view file = %q, package offset = %d",
-				tokenFile.Name(),
-				tokenFile.Offset(syntax.Name.Pos()),
-			)
-		}
-		return nil
-	}); err != nil {
+	if err := file.ReadSyntaxView(
+		func(fileSet *token.FileSet, syntax *ast.File) error {
+			tokenFile := fileSet.File(syntax.Pos())
+			if tokenFile == nil {
+				t.Fatal("syntax view has no matching token file")
+			}
+			if tokenFile.Name() != "source.go" ||
+				tokenFile.Offset(syntax.Name.Pos()) != len("package ") {
+				t.Fatalf(
+					"syntax view file = %q, package offset = %d",
+					tokenFile.Name(),
+					tokenFile.Offset(syntax.Name.Pos()),
+				)
+			}
+			return nil
+		},
+	);
+		err != nil {
 		t.Fatal(err)
 	}
 }
@@ -118,13 +158,16 @@ func TestFileReadSyntaxViewProvidesMatchingFileSetAndRequiresCallbacks(t *testin
 func TestLoadBuildsALosslessPhysicalSourceLedger(t *testing.T) {
 	t.Parallel()
 
-	input := []byte("\xef\xbb\xbf//go:build linux\r\n\r\npackage hostile\r\n\r\n//go:generate echo generated\r\nfunc run() { value := `first\rsecond`; value++ }\r\n")
+	input := []byte(
+		"\xef\xbb\xbf//go:build linux\r\n\r\npackage hostile\r\n\r\n//go:generate echo generated\r\nfunc run() { value := `first\rsecond`; value++ }\r\n",
+	)
 	file, err := source.Load("./fixture.go", input)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if got := file.Metadata(); !got.HasBOM || got.Newlines != source.NewlineCRLF || !got.FinalNewline {
+	if got := file.Metadata();
+		!got.HasBOM || got.Newlines != source.NewlineCRLF || !got.FinalNewline {
 		t.Fatalf("Metadata() = %#v, want BOM, CRLF, and final newline", got)
 	}
 	if got := reconstruct(file.Pieces()); !bytes.Equal(got, input) {
@@ -145,18 +188,28 @@ func TestLoadBuildsALosslessPhysicalSourceLedger(t *testing.T) {
 		}
 	}
 	if !explicit || !inserted || rawLiteral == "" {
-		t.Fatalf("token ledger lost semicolon origin or raw literal: explicit=%t inserted=%t raw=%q", explicit, inserted, rawLiteral)
+		t.Fatalf(
+			"token ledger lost semicolon origin or raw literal: explicit=%t inserted=%t raw=%q",
+			explicit,
+			inserted,
+			rawLiteral,
+		)
 	}
 	packageOffset := bytes.Index(input, []byte("package"))
 	packageRange, found := file.TokenRangeAtOffset(packageOffset)
-	if !found || packageRange != (source.Range{Start: packageOffset, End: packageOffset + len("package")}) {
+	if !found ||
+		packageRange !=
+			(source.Range{Start: packageOffset, End: packageOffset + len("package")}) {
 		t.Fatalf("TokenRangeAtOffset(package) = %#v, %v", packageRange, found)
 	}
 	if _, found := file.TokenRangeAtOffset(packageOffset + 1); found {
 		t.Fatal("TokenRangeAtOffset() accepted an offset inside a token")
 	}
 
-	wantDirectives := []source.DirectiveKind{source.DirectiveBuildConstraint, source.DirectiveGoGenerate}
+	wantDirectives := []source.DirectiveKind{
+		source.DirectiveBuildConstraint,
+		source.DirectiveGoGenerate,
+	}
 	gotDirectives := make([]source.DirectiveKind, 0, len(file.Directives()))
 	for _, directive := range file.Directives() {
 		gotDirectives = append(gotDirectives, directive.Kind)
@@ -183,7 +236,11 @@ func TestLoadKeepsPhysicalOffsetsWhenLineDirectivesAdjustDiagnostics(t *testing.
 		}
 	}
 	if packageToken.Range.Start != bytes.Index(input, []byte("package")) {
-		t.Fatalf("package physical offset = %d, want %d", packageToken.Range.Start, bytes.Index(input, []byte("package")))
+		t.Fatalf(
+			"package physical offset = %d, want %d",
+			packageToken.Range.Start,
+			bytes.Index(input, []byte("package")),
+		)
 	}
 	directives := file.Directives()
 	if len(directives) != 1 || directives[0].Kind != source.DirectiveLine {
@@ -201,7 +258,7 @@ func TestFilePositionUsesPhysicalByteLinesAndColumns(t *testing.T) {
 	}
 	tests := []struct {
 		target string
-		line   int
+		line int
 		column int
 	}{
 		{target: "package", line: 2, column: 1},
@@ -211,7 +268,10 @@ func TestFilePositionUsesPhysicalByteLinesAndColumns(t *testing.T) {
 	for _, test := range tests {
 		offset := bytes.Index(input, []byte(test.target))
 		position, found := file.Position(offset)
-		if !found || position.Offset != offset || position.Line != test.line || position.Column != test.column {
+		if !found ||
+			position.Offset != offset ||
+			position.Line != test.line ||
+			position.Column != test.column {
 			t.Fatalf("Position(%q) = %#v, %v", test.target, position, found)
 		}
 	}
@@ -244,78 +304,123 @@ func TestLoadFragmentKeepsSyntheticWrappersOutsideThePhysicalLedger(t *testing.T
 	t.Parallel()
 
 	tests := []struct {
-		name             string
-		kind             source.FragmentKind
-		input            string
+		name string
+		kind source.FragmentKind
+		input string
 		wantDeclarations int
-		wantStatements   int
-		wantExpression   bool
+		wantStatements int
+		wantExpression bool
 	}{
 		{
-			name:             "declarations",
-			kind:             source.FragmentDeclaration,
-			input:            "var answer=42\nfunc run(){}",
+			name: "declarations",
+			kind: source.FragmentDeclaration,
+			input: "var answer=42\nfunc run(){}",
 			wantDeclarations: 2,
 		},
 		{
-			name:           "statements",
-			kind:           source.FragmentStatement,
-			input:          "value:=1;value++",
+			name: "statements",
+			kind: source.FragmentStatement,
+			input: "value:=1;value++",
 			wantStatements: 2,
 		},
 		{
-			name:           "expression",
-			kind:           source.FragmentExpression,
-			input:          "client.call(first, second)",
+			name: "expression",
+			kind: source.FragmentExpression,
+			input: "client.call(first, second)",
 			wantExpression: true,
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			fragment, err := source.LoadFragment("stdin.go", test.kind, []byte(test.input))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got := reconstruct(fragment.Pieces()); !bytes.Equal(got, []byte(test.input)) {
-				t.Fatalf("physical ledger reconstructed %q, want exact input %q", got, test.input)
-			}
-			for _, item := range fragment.Tokens() {
-				if item.Range.Start < 0 || item.Range.End > len(test.input) {
-					t.Fatalf("token range %#v escapes physical input", item.Range)
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				fragment, err := source.LoadFragment(
+					"stdin.go",
+					test.kind,
+					[]byte(test.input),
+				)
+				if err != nil {
+					t.Fatal(err)
 				}
-				if item.Raw == "package" || item.Raw == "goxfragment" {
-					t.Fatalf("physical token ledger contains synthetic token %q", item.Raw)
+				if got := reconstruct(fragment.Pieces());
+					!bytes.Equal(got, []byte(test.input)) {
+					t.Fatalf(
+						"physical ledger reconstructed %q, want exact input %q",
+						got,
+						test.input,
+					)
 				}
-			}
-			err = fragment.ReadSyntax(func(syntax source.FragmentSyntax) error {
-				if len(syntax.Declarations) != test.wantDeclarations {
-					t.Fatalf("declaration count = %d, want %d", len(syntax.Declarations), test.wantDeclarations)
+				for _, item := range fragment.Tokens() {
+					if item.Range.Start < 0 ||
+						item.Range.End > len(test.input) {
+						t.Fatalf(
+							"token range %#v escapes physical input",
+							item.Range,
+						)
+					}
+					if item.Raw == "package" || item.Raw == "goxfragment" {
+						t.Fatalf(
+							"physical token ledger contains synthetic token %q",
+							item.Raw,
+						)
+					}
 				}
-				if len(syntax.Statements) != test.wantStatements {
-					t.Fatalf("statement count = %d, want %d", len(syntax.Statements), test.wantStatements)
+				err = fragment.ReadSyntax(
+					func(syntax source.FragmentSyntax) error {
+						if len(syntax.Declarations) !=
+							test.wantDeclarations {
+							t.Fatalf(
+								"declaration count = %d, want %d",
+								len(syntax.Declarations),
+								test.wantDeclarations,
+							)
+						}
+						if len(syntax.Statements) != test.wantStatements {
+							t.Fatalf(
+								"statement count = %d, want %d",
+								len(syntax.Statements),
+								test.wantStatements,
+							)
+						}
+						if (syntax.Expression != nil) !=
+							test.wantExpression {
+							t.Fatalf(
+								"expression present = %t, want %t",
+								syntax.Expression != nil,
+								test.wantExpression,
+							)
+						}
+						var position int
+						var found bool
+						switch {
+						case len(syntax.Declarations) > 0:
+							position, found = fragment.PhysicalOffset(
+								syntax.Declarations[0].Pos(),
+							)
+						case len(syntax.Statements) > 0:
+							position, found = fragment.PhysicalOffset(
+								syntax.Statements[0].Pos(),
+							)
+						case syntax.Expression != nil:
+							position, found = fragment.PhysicalOffset(
+								syntax.Expression.Pos(),
+							)
+						}
+						if !found || position != 0 {
+							t.Fatalf(
+								"first user node physical offset = %d, %t; want 0, true",
+								position,
+								found,
+							)
+						}
+						return nil
+					},
+				)
+				if err != nil {
+					t.Fatal(err)
 				}
-				if (syntax.Expression != nil) != test.wantExpression {
-					t.Fatalf("expression present = %t, want %t", syntax.Expression != nil, test.wantExpression)
-				}
-				var position int
-				var found bool
-				switch {
-				case len(syntax.Declarations) > 0:
-					position, found = fragment.PhysicalOffset(syntax.Declarations[0].Pos())
-				case len(syntax.Statements) > 0:
-					position, found = fragment.PhysicalOffset(syntax.Statements[0].Pos())
-				case syntax.Expression != nil:
-					position, found = fragment.PhysicalOffset(syntax.Expression.Pos())
-				}
-				if !found || position != 0 {
-					t.Fatalf("first user node physical offset = %d, %t; want 0, true", position, found)
-				}
-				return nil
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-		})
+			},
+		)
 	}
 }
 
@@ -323,69 +428,97 @@ func TestLoadFragmentRejectsBoundaryEscapeAndWrapperReliance(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		kind       source.FragmentKind
-		input      string
+		name string
+		kind source.FragmentKind
+		input string
 		wantOffset int
 	}{
 		{
-			name:       "statement boundary escape",
-			kind:       source.FragmentStatement,
-			input:      "}\nvar escaped = 1\nfunc reopened(){",
+			name: "statement boundary escape",
+			kind: source.FragmentStatement,
+			input: "}\nvar escaped = 1\nfunc reopened(){",
 			wantOffset: 0,
 		},
 		{
-			name:       "expression boundary escape",
-			kind:       source.FragmentExpression,
-			input:      "1)\nvar escaped = (2",
+			name: "expression boundary escape",
+			kind: source.FragmentExpression,
+			input: "1)\nvar escaped = (2",
 			wantOffset: 1,
 		},
 		{
-			name:       "statement wrapper declaration",
-			kind:       source.FragmentStatement,
-			input:      "goxfragment()",
+			name: "statement wrapper declaration",
+			kind: source.FragmentStatement,
+			input: "goxfragment()",
 			wantOffset: 0,
 		},
 		{
-			name:       "statement wrapper used as map key",
-			kind:       source.FragmentStatement,
-			input:      "_ = map[func()]int{goxfragment: 1}",
+			name: "statement wrapper used as map key",
+			kind: source.FragmentStatement,
+			input: "_ = map[func()]int{goxfragment: 1}",
 			wantOffset: len("_ = map[func()]int{"),
 		},
 		{
-			name:       "ambiguous statement wrapper key",
-			kind:       source.FragmentStatement,
-			input:      "_ = T{goxfragment: 1}",
+			name: "ambiguous statement wrapper key",
+			kind: source.FragmentStatement,
+			input: "_ = T{goxfragment: 1}",
 			wantOffset: len("_ = T{"),
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			fragment, err := source.LoadFragment("stdin.go", test.kind, []byte(test.input))
-			if err == nil {
-				t.Fatal("LoadFragment() must reject content outside the selected user boundary")
-			}
-			var positionError *source.FragmentError
-			if !errors.As(err, &positionError) {
-				t.Fatalf("LoadFragment() error = %T %v, want physical FragmentError", err, err)
-			}
-			if positionError.Offset != test.wantOffset {
-				t.Fatalf("fragment error offset = %d, want %d", positionError.Offset, test.wantOffset)
-			}
-			if strings.Contains(err.Error(), "goxfragment") {
-				t.Fatalf("LoadFragment() error exposed synthetic identifier: %q", err)
-			}
-			if fragment == nil || fragment.CanFormat() {
-				t.Fatalf("LoadFragment() fragment = %#v, want diagnostic-only state", fragment)
-			}
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				fragment, err := source.LoadFragment(
+					"stdin.go",
+					test.kind,
+					[]byte(test.input),
+				)
+				if err == nil {
+					t.Fatal(
+						"LoadFragment() must reject content outside the selected user boundary",
+					)
+				}
+				var positionError *source.FragmentError
+				if !errors.As(err, &positionError) {
+					t.Fatalf(
+						"LoadFragment() error = %T %v, want physical FragmentError",
+						err,
+						err,
+					)
+				}
+				if positionError.Offset != test.wantOffset {
+					t.Fatalf(
+						"fragment error offset = %d, want %d",
+						positionError.Offset,
+						test.wantOffset,
+					)
+				}
+				if strings.Contains(err.Error(), "goxfragment") {
+					t.Fatalf(
+						"LoadFragment() error exposed synthetic identifier: %q",
+						err,
+					)
+				}
+				if fragment == nil || fragment.CanFormat() {
+					t.Fatalf(
+						"LoadFragment() fragment = %#v, want diagnostic-only state",
+						fragment,
+					)
+				}
+			},
+		)
 	}
 
-	for _, input := range []string{
-		"goxfragment := func(){}; goxfragment()",
-		"_ = struct{ goxfragment int }{goxfragment: 1}",
-	} {
-		fragment, err := source.LoadFragment("stdin.go", source.FragmentStatement, []byte(input))
+	for _, input := range
+		[]string{
+			"goxfragment := func(){}; goxfragment()",
+			"_ = struct{ goxfragment int }{goxfragment: 1}",
+		} {
+		fragment, err := source.LoadFragment(
+			"stdin.go",
+			source.FragmentStatement,
+			[]byte(input),
+		)
 		if err != nil {
 			t.Fatalf("LoadFragment(%q) rejected user-owned syntax: %v", input, err)
 		}
@@ -441,26 +574,58 @@ func TestLoadFragmentRejectsFilePlacementDirectives(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		kind  source.FragmentKind
+		name string
+		kind source.FragmentKind
 		input string
 	}{
-		{name: "build constraint", kind: source.FragmentDeclaration, input: "//go:build linux\nvar value int"},
-		{name: "generated marker", kind: source.FragmentDeclaration, input: "// Code generated by fixture. DO NOT EDIT.\nvar value int"},
-		{name: "cgo preamble", kind: source.FragmentDeclaration, input: "/*\n#cgo CFLAGS: -DVALUE=1\n*/\nimport \"C\""},
-		{name: "line directive", kind: source.FragmentStatement, input: "//line generated.go:100\nvalue++"},
-		{name: "compiler directive", kind: source.FragmentDeclaration, input: "//go:linkname local remote\nfunc local()"},
+		{
+			name: "build constraint",
+			kind: source.FragmentDeclaration,
+			input: "//go:build linux\nvar value int",
+		},
+		{
+			name: "generated marker",
+			kind: source.FragmentDeclaration,
+			input: "// Code generated by fixture. DO NOT EDIT.\nvar value int",
+		},
+		{
+			name: "cgo preamble",
+			kind: source.FragmentDeclaration,
+			input: "/*\n#cgo CFLAGS: -DVALUE=1\n*/\nimport \"C\"",
+		},
+		{
+			name: "line directive",
+			kind: source.FragmentStatement,
+			input: "//line generated.go:100\nvalue++",
+		},
+		{
+			name: "compiler directive",
+			kind: source.FragmentDeclaration,
+			input: "//go:linkname local remote\nfunc local()",
+		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			fragment, err := source.LoadFragment("stdin.go", test.kind, []byte(test.input))
-			if err == nil {
-				t.Fatal("LoadFragment() must reject file-placement directives")
-			}
-			if fragment == nil || fragment.CanFormat() {
-				t.Fatalf("LoadFragment() fragment = %#v, want diagnostic-only state", fragment)
-			}
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				fragment, err := source.LoadFragment(
+					"stdin.go",
+					test.kind,
+					[]byte(test.input),
+				)
+				if err == nil {
+					t.Fatal(
+						"LoadFragment() must reject file-placement directives",
+					)
+				}
+				if fragment == nil || fragment.CanFormat() {
+					t.Fatalf(
+						"LoadFragment() fragment = %#v, want diagnostic-only state",
+						fragment,
+					)
+				}
+			},
+		)
 	}
 }
 
@@ -483,7 +648,9 @@ func TestLoadFragmentAllowsExternalNolintDirectives(t *testing.T) {
 func TestLoadRejectsMalformedBuildConstraints(t *testing.T) {
 	t.Parallel()
 
-	input := []byte("// +build " + strings.Repeat("tag ", 102) + "\n\npackage invalid_constraint\n")
+	input := []byte(
+		"// +build " + strings.Repeat("tag ", 102) + "\n\npackage invalid_constraint\n",
+	)
 	file, err := source.Load("constraint.go", input)
 	if err == nil {
 		t.Fatal("Load() must reject a malformed build constraint")
@@ -512,18 +679,24 @@ func TestSourceBytesAreReturnedByValue(t *testing.T) {
 func TestLoadIndexesTriviaCommentsAndAnchoredDirectives(t *testing.T) {
 	t.Parallel()
 
-	input := []byte("\xef\xbb\xbf// Code generated by fixture. DO NOT EDIT.\npackage cgo_fixture\n\n/*\n#cgo CFLAGS: -DVALUE=1\n*/\nimport \"C\"\n")
+	input := []byte(
+		"\xef\xbb\xbf// Code generated by fixture. DO NOT EDIT.\npackage cgo_fixture\n\n/*\n#cgo CFLAGS: -DVALUE=1\n*/\nimport \"C\"\n",
+	)
 	file, err := source.Load("cgo.go", input)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	trivia := file.Trivia()
-	if len(trivia) == 0 || trivia[0].Kind != source.TriviaBOM || trivia[0].Raw != "\xef\xbb\xbf" {
+	if len(trivia) == 0 ||
+		trivia[0].Kind != source.TriviaBOM ||
+		trivia[0].Raw != "\xef\xbb\xbf" {
 		t.Fatalf("Trivia() = %#v, want a distinct leading BOM", trivia)
 	}
 	comments := file.Comments()
-	if len(comments) != 2 || comments[0].Raw != "// Code generated by fixture. DO NOT EDIT." || comments[1].Raw != "/*\n#cgo CFLAGS: -DVALUE=1\n*/" {
+	if len(comments) != 2 ||
+		comments[0].Raw != "// Code generated by fixture. DO NOT EDIT." ||
+		comments[1].Raw != "/*\n#cgo CFLAGS: -DVALUE=1\n*/" {
 		t.Fatalf("Comments() = %#v, want exact generated marker and cgo preamble", comments)
 	}
 
@@ -575,11 +748,17 @@ func TestDirectiveCorpusCoversEveryPrototypeDirectiveClass(t *testing.T) {
 func TestValidateEquivalentRejectsCommentMovementAcrossSignificantTokens(t *testing.T) {
 	t.Parallel()
 
-	before, err := source.Load("ownership.go", []byte("package ownership\nvar _ = combine(first /* keep */, second)\n"))
+	before, err := source.Load(
+		"ownership.go",
+		[]byte("package ownership\nvar _ = combine(first /* keep */, second)\n"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := source.Load("ownership.go", []byte("package ownership\nvar _ = combine(first, second /* keep */)\n"))
+	after, err := source.Load(
+		"ownership.go",
+		[]byte("package ownership\nvar _ = combine(first, second /* keep */)\n"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -591,11 +770,17 @@ func TestValidateEquivalentRejectsCommentMovementAcrossSignificantTokens(t *test
 func TestValidateEquivalentAllowsCommentMovementAcrossFormatterPunctuation(t *testing.T) {
 	t.Parallel()
 
-	before, err := source.Load("punctuation.go", []byte("package ownership\nvar _ = combine(first /* keep */, second)\n"))
+	before, err := source.Load(
+		"punctuation.go",
+		[]byte("package ownership\nvar _ = combine(first /* keep */, second)\n"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := source.Load("punctuation.go", []byte("package ownership\nvar _ = combine(first, /* keep */ second)\n"))
+	after, err := source.Load(
+		"punctuation.go",
+		[]byte("package ownership\nvar _ = combine(first, /* keep */ second)\n"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -645,14 +830,18 @@ func TestEquivalenceRejectsDirectiveLineAnchorMovement(t *testing.T) {
 
 	beforeFile, err := source.Load(
 		"directive.go",
-		[]byte("package directive\nfunc run(){ //gox:ignore example because ownership matters\nwork()}\n"),
+		[]byte(
+			"package directive\nfunc run(){ //gox:ignore example because ownership matters\nwork()}\n",
+		),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	afterFile, err := source.Load(
 		"directive.go",
-		[]byte("package directive\nfunc run(){\n//gox:ignore example because ownership matters\nwork()}\n"),
+		[]byte(
+			"package directive\nfunc run(){\n//gox:ignore example because ownership matters\nwork()}\n",
+		),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -683,14 +872,18 @@ func TestEquivalenceRejectsDirectiveLineAnchorMovement(t *testing.T) {
 
 	adjacentFile, err := source.Load(
 		"directive.go",
-		[]byte("package directive\nfunc run(){\n//gox:ignore example because ownership matters\nwork()}\n"),
+		[]byte(
+			"package directive\nfunc run(){\n//gox:ignore example because ownership matters\nwork()}\n",
+		),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	blankLineFile, err := source.Load(
 		"directive.go",
-		[]byte("package directive\nfunc run(){\n//gox:ignore example because ownership matters\n\nwork()}\n"),
+		[]byte(
+			"package directive\nfunc run(){\n//gox:ignore example because ownership matters\n\nwork()}\n",
+		),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -701,43 +894,59 @@ func TestEquivalenceRejectsDirectiveLineAnchorMovement(t *testing.T) {
 
 	indentedFile, err := source.Load(
 		"directive.go",
-		[]byte("package directive\nfunc run(){\n\t//gox:ignore example because ownership matters\nwork()}\n"),
+		[]byte(
+			"package directive\nfunc run(){\n\t//gox:ignore example because ownership matters\nwork()}\n",
+		),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := source.ValidateEquivalent(adjacentFile, indentedFile); err != nil {
-		t.Fatalf("ValidateEquivalent() rejected indentation-only directive placement: %v", err)
+		t.Fatalf(
+			"ValidateEquivalent() rejected indentation-only directive placement: %v",
+			err,
+		)
 	}
 
 	generateAdjacent, err := source.Load(
 		"directive.go",
-		[]byte("package directive\n//go:generate go run example.invalid/generator\nfunc run(){}\n"),
+		[]byte(
+			"package directive\n//go:generate go run example.invalid/generator\nfunc run(){}\n",
+		),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	generateSeparated, err := source.Load(
 		"directive.go",
-		[]byte("package directive\n\n//go:generate go run example.invalid/generator\nfunc run(){}\n"),
+		[]byte(
+			"package directive\n\n//go:generate go run example.invalid/generator\nfunc run(){}\n",
+		),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := source.ValidateEquivalent(generateAdjacent, generateSeparated); err != nil {
-		t.Fatalf("ValidateEquivalent() rejected canonical spacing before a declaration directive: %v", err)
+		t.Fatalf(
+			"ValidateEquivalent() rejected canonical spacing before a declaration directive: %v",
+			err,
+		)
 	}
 
 	generateTrailing, err := source.Load(
 		"directive.go",
-		[]byte("package directive\nvar value = 1 //go:generate go run example.invalid/generator\n"),
+		[]byte(
+			"package directive\nvar value = 1 //go:generate go run example.invalid/generator\n",
+		),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	generateActivated, err := source.Load(
 		"directive.go",
-		[]byte("package directive\nvar value = 1\n//go:generate go run example.invalid/generator\n"),
+		[]byte(
+			"package directive\nvar value = 1\n//go:generate go run example.invalid/generator\n",
+		),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -752,14 +961,18 @@ func TestEquivalenceRejectsNolintPhysicalLineOwnershipChanges(t *testing.T) {
 
 	before, err := source.Load(
 		"nolint.go",
-		[]byte("package directive\nfunc run(){if veryLongCall(nil,first,second) { //nolint:staticcheck\nwork()}}\n"),
+		[]byte(
+			"package directive\nfunc run(){if veryLongCall(nil,first,second) { //nolint:staticcheck\nwork()}}\n",
+		),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	after, err := source.Load(
 		"nolint.go",
-		[]byte("package directive\nfunc run(){if veryLongCall(\n\tnil,\n\tfirst,\n\tsecond,\n) { //nolint:staticcheck\nwork()}}\n"),
+		[]byte(
+			"package directive\nfunc run(){if veryLongCall(\n\tnil,\n\tfirst,\n\tsecond,\n) { //nolint:staticcheck\nwork()}}\n",
+		),
 	)
 	if err != nil {
 		t.Fatal(err)

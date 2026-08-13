@@ -26,7 +26,7 @@ func TestPackageFactSnapshotRestoresAcrossIndependentTypeChecks(t *testing.T) {
 	t.Parallel()
 
 	analyzer := &goanalysis.Analyzer{
-		Name:      "persistent-facts",
+		Name: "persistent-facts",
 		FactTypes: []goanalysis.Fact{new(snapshotFact)},
 	}
 	first, _ := checkFactIdentityFixture(t)
@@ -49,7 +49,8 @@ func TestPackageFactSnapshotRestoresAcrossIndependentTypeChecks(t *testing.T) {
 		analyzer,
 		&packages.Package{Types: second},
 		encoded,
-	); err != nil {
+	);
+		err != nil {
 		t.Fatal(err)
 	}
 	packageFact := new(snapshotFact)
@@ -79,15 +80,13 @@ func TestPackageFactSnapshotsRestoreDependencyGraph(t *testing.T) {
 	t.Parallel()
 
 	analyzer := &goanalysis.Analyzer{
-		Name:      "persistent-facts",
+		Name: "persistent-facts",
 		FactTypes: []goanalysis.Fact{new(snapshotFact)},
 	}
 	firstDependency, firstRoot := factSnapshotPackages()
 	first := newAnalyzerFactSet()
-	if err := first.beginObjectFacts(
-		analyzer,
-		&packages.Package{Types: firstDependency},
-	); err != nil {
+	if err := first.beginObjectFacts(analyzer, &packages.Package{Types: firstDependency});
+		err != nil {
 		t.Fatal(err)
 	}
 	first.exportPackageFact(
@@ -101,7 +100,8 @@ func TestPackageFactSnapshotsRestoreDependencyGraph(t *testing.T) {
 		firstDependency.Scope().Lookup("Exported"),
 		&snapshotFact{Value: "dependency object"},
 	)
-	if err := first.beginObjectFacts(analyzer, &packages.Package{Types: firstRoot}); err != nil {
+	if err := first.beginObjectFacts(analyzer, &packages.Package{Types: firstRoot});
+		err != nil {
 		t.Fatal(err)
 	}
 	dependencySnapshot, err := first.encodePackageFactSnapshot(analyzer, firstDependency)
@@ -126,14 +126,16 @@ func TestPackageFactSnapshotsRestoreDependencyGraph(t *testing.T) {
 		analyzer,
 		&packages.Package{Types: secondDependency},
 		dependencySnapshot,
-	); err != nil {
+	);
+		err != nil {
 		t.Fatal(err)
 	}
 	if err := restored.restorePackageFactSnapshot(
 		analyzer,
 		&packages.Package{Types: secondRoot},
 		rootSnapshot,
-	); err != nil {
+	);
+		err != nil {
 		t.Fatal(err)
 	}
 	packageFact := new(snapshotFact)
@@ -147,7 +149,8 @@ func TestPackageFactSnapshotsRestoreDependencyGraph(t *testing.T) {
 		secondRoot,
 		secondDependency.Scope().Lookup("Exported"),
 		objectFact,
-	) || objectFact.Value != "dependency object" {
+	) ||
+		objectFact.Value != "dependency object" {
 		t.Fatalf("restored dependency object fact = %#v", objectFact)
 	}
 }
@@ -156,7 +159,7 @@ func TestPackageFactSnapshotRejectsUnstableObjects(t *testing.T) {
 	t.Parallel()
 
 	analyzer := &goanalysis.Analyzer{
-		Name:      "persistent-facts",
+		Name: "persistent-facts",
 		FactTypes: []goanalysis.Fact{new(snapshotFact)},
 	}
 	pkg, definitions := checkFactIdentityFixture(t)
@@ -170,10 +173,7 @@ func TestPackageFactSnapshotRejectsUnstableObjects(t *testing.T) {
 	}
 	duplicateTypes := &goanalysis.Analyzer{
 		Name: "duplicate-facts",
-		FactTypes: []goanalysis.Fact{
-			new(snapshotFact),
-			new(snapshotFact),
-		},
+		FactTypes: []goanalysis.Fact{new(snapshotFact), new(snapshotFact)},
 	}
 	duplicateFacts := populatedFactSnapshotSet(t, duplicateTypes, pkg, "duplicate")
 	if _, err := duplicateFacts.encodePackageFactSnapshot(duplicateTypes, pkg); err == nil {
@@ -185,13 +185,17 @@ func TestPackageFactSnapshotRestoreIsValidatedAndTransactional(t *testing.T) {
 	t.Parallel()
 
 	analyzer := &goanalysis.Analyzer{
-		Name:      "persistent-facts",
+		Name: "persistent-facts",
 		FactTypes: []goanalysis.Fact{new(snapshotFact)},
 	}
 	first, _ := checkFactIdentityFixture(t)
 	second, _ := checkFactIdentityFixture(t)
-	encoded, err := populatedFactSnapshotSet(t, analyzer, first, "first").
-		encodePackageFactSnapshot(analyzer, first)
+	encoded, err := populatedFactSnapshotSet(
+		t,
+		analyzer,
+		first,
+		"first",
+	).encodePackageFactSnapshot(analyzer, first)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +204,8 @@ func TestPackageFactSnapshotRestoreIsValidatedAndTransactional(t *testing.T) {
 		analyzer,
 		&packages.Package{Types: second},
 		append(bytes.Clone(encoded), '\n'),
-	); err == nil {
+	);
+		err == nil {
 		t.Fatal("restorePackageFactSnapshot() accepted a noncanonical snapshot")
 	}
 	if restored.importPackageFact(analyzer, second, new(snapshotFact)) {
@@ -219,7 +224,8 @@ func TestPackageFactSnapshotRestoreIsValidatedAndTransactional(t *testing.T) {
 		analyzer,
 		&packages.Package{Types: second},
 		corruptBytes,
-	); err == nil {
+	);
+		err == nil {
 		t.Fatal("restorePackageFactSnapshot() accepted corrupt fact bytes")
 	}
 	stale := corrupt
@@ -235,15 +241,15 @@ func TestPackageFactSnapshotRestoreIsValidatedAndTransactional(t *testing.T) {
 		analyzer,
 		&packages.Package{Types: second},
 		staleBytes,
-	); err == nil {
+	);
+		err == nil {
 		t.Fatal("restorePackageFactSnapshot() accepted a stale object path")
 	}
 	unordered := stale
 	if err := json.Unmarshal(encoded, &unordered); err != nil {
 		t.Fatal(err)
 	}
-	unordered.ObjectFacts[0], unordered.ObjectFacts[1] =
-		unordered.ObjectFacts[1], unordered.ObjectFacts[0]
+	unordered.ObjectFacts[0], unordered.ObjectFacts[1] = unordered.ObjectFacts[1], unordered.ObjectFacts[0]
 	unorderedBytes, err := json.Marshal(unordered)
 	if err != nil {
 		t.Fatal(err)
@@ -255,26 +261,29 @@ func TestPackageFactSnapshotRestoreIsValidatedAndTransactional(t *testing.T) {
 		analyzer,
 		&packages.Package{Types: second},
 		unorderedBytes,
-	); err == nil {
+	);
+		err == nil {
 		t.Fatal("restorePackageFactSnapshot() accepted unordered object facts")
 	}
 
 	wrongAnalyzer := &goanalysis.Analyzer{
-		Name:      analyzer.Name,
+		Name: analyzer.Name,
 		FactTypes: []goanalysis.Fact{new(otherSnapshotFact)},
 	}
 	if err := restored.restorePackageFactSnapshot(
 		wrongAnalyzer,
 		&packages.Package{Types: second},
 		encoded,
-	); err == nil {
+	);
+		err == nil {
 		t.Fatal("restorePackageFactSnapshot() accepted an undeclared fact type")
 	}
 	if err := restored.restorePackageFactSnapshot(
 		analyzer,
 		&packages.Package{Types: types.NewPackage("example.com/other", "other")},
 		encoded,
-	); err == nil {
+	);
+		err == nil {
 		t.Fatal("restorePackageFactSnapshot() accepted a different package")
 	}
 
@@ -282,11 +291,16 @@ func TestPackageFactSnapshotRestoreIsValidatedAndTransactional(t *testing.T) {
 		analyzer,
 		&packages.Package{Types: second},
 		encoded,
-	); err != nil {
+	);
+		err != nil {
 		t.Fatal(err)
 	}
-	conflicting, err := populatedFactSnapshotSet(t, analyzer, first, "second").
-		encodePackageFactSnapshot(analyzer, first)
+	conflicting, err := populatedFactSnapshotSet(
+		t,
+		analyzer,
+		first,
+		"second",
+	).encodePackageFactSnapshot(analyzer, first)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +308,8 @@ func TestPackageFactSnapshotRestoreIsValidatedAndTransactional(t *testing.T) {
 		analyzer,
 		&packages.Package{Types: second},
 		conflicting,
-	); !errors.Is(err, errFactSnapshotConflict) {
+	);
+		!errors.Is(err, errFactSnapshotConflict) {
 		t.Fatalf("conflicting restore error = %v", err)
 	}
 	packageFact := new(snapshotFact)
@@ -329,12 +344,9 @@ func populatedFactSnapshotSet(
 
 func factSnapshotPackages() (*types.Package, *types.Package) {
 	dependency := types.NewPackage("example.com/dependency", "dependency")
-	dependency.Scope().Insert(types.NewVar(
-		token.NoPos,
-		dependency,
-		"Exported",
-		types.Typ[types.Int],
-	))
+	dependency.Scope().Insert(
+		types.NewVar(token.NoPos, dependency, "Exported", types.Typ[types.Int]),
+	)
 	dependency.MarkComplete()
 	root := types.NewPackage("example.com/root", "root")
 	root.SetImports([]*types.Package{dependency})
@@ -343,19 +355,25 @@ func factSnapshotPackages() (*types.Package, *types.Package) {
 }
 
 func FuzzDecodePackageFactSnapshot(f *testing.F) {
-	f.Add([]byte(`{"version":1,"analyzer":"a","package":"p","packageFacts":[],"objectFacts":[]}`))
+	f.Add(
+		[]byte(
+			`{"version":1,"analyzer":"a","package":"p","packageFacts":[],"objectFacts":[]}`,
+		),
+	)
 	f.Add([]byte("corrupt"))
-	f.Fuzz(func(t *testing.T, encoded []byte) {
-		snapshot, err := decodePackageFactSnapshot(encoded)
-		if err != nil {
-			return
-		}
-		reencoded, err := json.Marshal(snapshot)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(reencoded, encoded) {
-			t.Fatal("accepted fact snapshot was not canonical")
-		}
-	})
+	f.Fuzz(
+		func(t *testing.T, encoded []byte) {
+			snapshot, err := decodePackageFactSnapshot(encoded)
+			if err != nil {
+				return
+			}
+			reencoded, err := json.Marshal(snapshot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(reencoded, encoded) {
+				t.Fatal("accepted fact snapshot was not canonical")
+			}
+		},
+	)
 }

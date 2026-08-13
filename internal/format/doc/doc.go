@@ -18,8 +18,8 @@ type ID struct {
 
 // Options controls deterministic rendering.
 type Options struct {
-	Width     int
-	TabWidth  int
+	Width int
+	TabWidth int
 	FitBudget int
 }
 
@@ -45,17 +45,17 @@ const (
 )
 
 type node struct {
-	kind            kind
-	text            string
-	flatWidth       int
-	flatKnown       bool
+	kind kind
+	text string
+	flatWidth int
+	flatKnown bool
 	columnSensitive bool
-	forcesBreak     bool
-	children        []ID
-	first           ID
-	second          ID
-	third           ID
-	mark            SourceMark
+	forcesBreak bool
+	children []ID
+	first ID
+	second ID
+	third ID
+	mark SourceMark
 }
 
 // SourceMark identifies a physical source offset carried through rendering.
@@ -65,13 +65,13 @@ type SourceMark struct {
 
 // RenderedMarker maps a source marker to a byte offset in rendered output.
 type RenderedMarker struct {
-	Source       SourceMark
+	Source SourceMark
 	OutputOffset int
 }
 
 // RenderResult contains rendered text and ordered source marker mappings.
 type RenderResult struct {
-	Text    string
+	Text string
 	Markers []RenderedMarker
 }
 
@@ -106,13 +106,15 @@ func (a *Arena) Text(value string) ID {
 		return a.Empty()
 	}
 	columnSensitive := strings.ContainsAny(value, "\t\r\n")
-	return a.append(node{
-		kind:            kindText,
-		text:            value,
-		flatWidth:       utf8.RuneCountInString(value),
-		flatKnown:       !columnSensitive,
-		columnSensitive: columnSensitive,
-	})
+	return a.append(
+		node{
+			kind: kindText,
+			text: value,
+			flatWidth: utf8.RuneCountInString(value),
+			flatKnown: !columnSensitive,
+			columnSensitive: columnSensitive,
+		},
+	)
 }
 
 // Verbatim returns content whose bytes, including embedded newlines, are
@@ -123,13 +125,15 @@ func (a *Arena) Verbatim(value string) ID {
 		return a.Empty()
 	}
 	columnSensitive := strings.ContainsAny(value, "\t\r\n")
-	return a.append(node{
-		kind:            kindVerbatim,
-		text:            value,
-		flatWidth:       utf8.RuneCountInString(value),
-		flatKnown:       !columnSensitive,
-		columnSensitive: columnSensitive,
-	})
+	return a.append(
+		node{
+			kind: kindVerbatim,
+			text: value,
+			flatWidth: utf8.RuneCountInString(value),
+			flatKnown: !columnSensitive,
+			columnSensitive: columnSensitive,
+		},
+	)
 }
 
 // Concat returns the ordered concatenation of parts.
@@ -156,13 +160,15 @@ func (a *Arena) Concat(parts ...ID) ID {
 	if len(filtered) == 1 {
 		return filtered[0]
 	}
-	return a.append(node{
-		kind:        kindConcat,
-		children:    filtered,
-		flatWidth:   flatWidth,
-		flatKnown:   flatKnown,
-		forcesBreak: forcesBreak,
-	})
+	return a.append(
+		node{
+			kind: kindConcat,
+			children: filtered,
+			flatWidth: flatWidth,
+			flatKnown: flatKnown,
+			forcesBreak: forcesBreak,
+		},
+	)
 }
 
 // Group selects a flat form when it fits and a broken form otherwise.
@@ -171,13 +177,15 @@ func (a *Arena) Group(body ID) ID {
 		return a.append(node{kind: kindInvalid, forcesBreak: true})
 	}
 	bodyNode := a.nodes[body.index]
-	return a.append(node{
-		kind:        kindGroup,
-		first:       body,
-		flatWidth:   bodyNode.flatWidth,
-		flatKnown:   bodyNode.flatKnown,
-		forcesBreak: bodyNode.forcesBreak,
-	})
+	return a.append(
+		node{
+			kind: kindGroup,
+			first: body,
+			flatWidth: bodyNode.flatWidth,
+			flatKnown: bodyNode.flatKnown,
+			forcesBreak: bodyNode.forcesBreak,
+		},
+	)
 }
 
 // GroupWithIndependentTail selects body layout using only body and lookahead,
@@ -189,15 +197,19 @@ func (a *Arena) GroupWithIndependentTail(body, lookahead, tail ID) ID {
 	}
 	bodyNode := a.nodes[body.index]
 	tailNode := a.nodes[tail.index]
-	return a.append(node{
-		kind:        kindGroupWithIndependentTail,
-		first:       body,
-		second:      lookahead,
-		third:       tail,
-		flatWidth:   saturatedWidthSum(bodyNode.flatWidth, tailNode.flatWidth),
-		flatKnown:   bodyNode.flatKnown && tailNode.flatKnown,
-		forcesBreak: bodyNode.forcesBreak || tailNode.forcesBreak || a.nodes[lookahead.index].forcesBreak,
-	})
+	return a.append(
+		node{
+			kind: kindGroupWithIndependentTail,
+			first: body,
+			second: lookahead,
+			third: tail,
+			flatWidth: saturatedWidthSum(bodyNode.flatWidth, tailNode.flatWidth),
+			flatKnown: bodyNode.flatKnown && tailNode.flatKnown,
+			forcesBreak: bodyNode.forcesBreak ||
+				tailNode.forcesBreak ||
+				a.nodes[lookahead.index].forcesBreak,
+		},
+	)
 }
 
 // Indent increases logical indentation after line breaks within body.
@@ -206,13 +218,15 @@ func (a *Arena) Indent(body ID) ID {
 		return a.append(node{kind: kindInvalid, forcesBreak: true})
 	}
 	bodyNode := a.nodes[body.index]
-	return a.append(node{
-		kind:        kindIndent,
-		first:       body,
-		flatWidth:   bodyNode.flatWidth,
-		flatKnown:   bodyNode.flatKnown,
-		forcesBreak: bodyNode.forcesBreak,
-	})
+	return a.append(
+		node{
+			kind: kindIndent,
+			first: body,
+			flatWidth: bodyNode.flatWidth,
+			flatKnown: bodyNode.flatKnown,
+			forcesBreak: bodyNode.forcesBreak,
+		},
+	)
 }
 
 // SoftLine emits nothing in flat mode and a newline in broken mode.
@@ -236,14 +250,17 @@ func (a *Arena) IfBreak(broken, flat ID) ID {
 	if !a.valid(broken) || !a.valid(flat) {
 		return a.append(node{kind: kindInvalid, forcesBreak: true})
 	}
-	return a.append(node{
-		kind:        kindIfBreak,
-		first:       broken,
-		second:      flat,
-		flatWidth:   a.nodes[flat.index].flatWidth,
-		flatKnown:   a.nodes[flat.index].flatKnown,
-		forcesBreak: a.nodes[broken.index].forcesBreak || a.nodes[flat.index].forcesBreak,
-	})
+	return a.append(
+		node{
+			kind: kindIfBreak,
+			first: broken,
+			second: flat,
+			flatWidth: a.nodes[flat.index].flatWidth,
+			flatKnown: a.nodes[flat.index].flatKnown,
+			forcesBreak: a.nodes[broken.index].forcesBreak ||
+				a.nodes[flat.index].forcesBreak,
+		},
+	)
 }
 
 // LineSuffix defers body until immediately before the next rendered line
@@ -252,7 +269,13 @@ func (a *Arena) LineSuffix(body ID) ID {
 	if !a.valid(body) {
 		return a.append(node{kind: kindInvalid, forcesBreak: true})
 	}
-	return a.append(node{kind: kindLineSuffix, first: body, forcesBreak: a.nodes[body.index].forcesBreak})
+	return a.append(
+		node{
+			kind: kindLineSuffix,
+			first: body,
+			forcesBreak: a.nodes[body.index].forcesBreak,
+		},
+	)
 }
 
 // LineSuffixBoundary emits a line boundary when a suffix is pending.
@@ -290,9 +313,9 @@ const (
 )
 
 type command struct {
-	id     ID
+	id ID
 	indent int
-	mode   layoutMode
+	mode layoutMode
 	action commandAction
 }
 
@@ -315,7 +338,9 @@ func (a *Arena) Render(root ID, options Options) (string, error) {
 // mappings. Output offsets are bytes.
 func (a *Arena) RenderWithMarkers(root ID, options Options) (RenderResult, error) {
 	if options.Width <= 0 || options.TabWidth <= 0 || options.FitBudget <= 0 {
-		return RenderResult{}, errors.New("width, tab width, and fit budget must be positive")
+		return RenderResult{}, errors.New(
+			"width, tab width, and fit budget must be positive",
+		)
 	}
 	if !a.valid(root) {
 		return RenderResult{}, errors.New("document root is not owned by this arena")
@@ -331,7 +356,10 @@ func (a *Arena) RenderWithMarkers(root ID, options Options) (RenderResult, error
 
 	flushMarkers := func() {
 		for _, mark := range pendingMarkers {
-			markers = append(markers, RenderedMarker{Source: mark, OutputOffset: output.Len()})
+			markers = append(
+				markers,
+				RenderedMarker{Source: mark, OutputOffset: output.Len()},
+			)
 		}
 		pendingMarkers = pendingMarkers[:0]
 	}
@@ -377,17 +405,23 @@ func (a *Arena) RenderWithMarkers(root ID, options Options) (RenderResult, error
 			continue
 		}
 		if !a.valid(current.id) {
-			return RenderResult{}, errors.New("document contains a reference not owned by this arena")
+			return RenderResult{}, errors.New(
+				"document contains a reference not owned by this arena",
+			)
 		}
 		value := a.nodes[current.id.index]
 
 		switch value.kind {
 		case kindEmpty:
 		case kindInvalid:
-			return RenderResult{}, errors.New("document contains a reference not owned by this arena")
+			return RenderResult{}, errors.New(
+				"document contains a reference not owned by this arena",
+			)
 		case kindText:
 			if strings.ContainsAny(value.text, "\r\n") {
-				return RenderResult{}, errors.New("text documents cannot contain newlines; use Verbatim")
+				return RenderResult{}, errors.New(
+					"text documents cannot contain newlines; use Verbatim",
+				)
 			}
 			if value.text != "" {
 				writeIndent()
@@ -406,7 +440,14 @@ func (a *Arena) RenderWithMarkers(root ID, options Options) (RenderResult, error
 			}
 		case kindConcat:
 			for index := len(value.children) - 1; index >= 0; index-- {
-				stack = append(stack, command{id: value.children[index], indent: current.indent, mode: current.mode})
+				stack = append(
+					stack,
+					command{
+						id: value.children[index],
+						indent: current.indent,
+						mode: current.mode,
+					},
+				)
 			}
 		case kindGroup:
 			mode := modeFlat
@@ -417,15 +458,23 @@ func (a *Arena) RenderWithMarkers(root ID, options Options) (RenderResult, error
 				if pendingIndent >= 0 {
 					fitColumn = pendingIndent * options.TabWidth
 				}
-				first := command{id: value.first, indent: current.indent, mode: modeFlat}
-				if !a.fits(options.Width-fitColumn, options, stack, first) {
+				first := command{
+					id: value.first,
+					indent: current.indent,
+					mode: modeFlat,
+				}
+				if !a.fits(options.Width - fitColumn, options, stack, first) {
 					mode = modeBroken
 				}
 			}
-			stack = append(stack, command{id: value.first, indent: current.indent, mode: mode})
+			stack = append(
+				stack,
+				command{id: value.first, indent: current.indent, mode: mode},
+			)
 		case kindGroupWithIndependentTail:
 			mode := modeFlat
-			bodyForcesBreak := a.nodes[value.first.index].forcesBreak || a.nodes[value.second.index].forcesBreak
+			bodyForcesBreak := a.nodes[value.first.index].forcesBreak ||
+				a.nodes[value.second.index].forcesBreak
 			if current.mode == modeBroken && bodyForcesBreak {
 				mode = modeBroken
 			} else if current.mode == modeBroken {
@@ -433,9 +482,15 @@ func (a *Arena) RenderWithMarkers(root ID, options Options) (RenderResult, error
 				if pendingIndent >= 0 {
 					fitColumn = pendingIndent * options.TabWidth
 				}
-				first := command{id: value.first, indent: current.indent, mode: modeFlat}
-				lookahead := []command{{id: value.second, indent: current.indent, mode: modeFlat}}
-				if !a.fits(options.Width-fitColumn, options, lookahead, first) {
+				first := command{
+					id: value.first,
+					indent: current.indent,
+					mode: modeFlat,
+				}
+				lookahead := []command{
+					{id: value.second, indent: current.indent, mode: modeFlat},
+				}
+				if !a.fits(options.Width - fitColumn, options, lookahead, first) {
 					mode = modeBroken
 				}
 			}
@@ -443,10 +498,23 @@ func (a *Arena) RenderWithMarkers(root ID, options Options) (RenderResult, error
 			if mode == modeBroken {
 				tailIndent++
 			}
-			stack = append(stack, command{id: value.third, indent: tailIndent, mode: modeBroken})
-			stack = append(stack, command{id: value.first, indent: current.indent, mode: mode})
+			stack = append(
+				stack,
+				command{id: value.third, indent: tailIndent, mode: modeBroken},
+			)
+			stack = append(
+				stack,
+				command{id: value.first, indent: current.indent, mode: mode},
+			)
 		case kindIndent:
-			stack = append(stack, command{id: value.first, indent: current.indent + 1, mode: current.mode})
+			stack = append(
+				stack,
+				command{
+					id: value.first,
+					indent: current.indent + 1,
+					mode: current.mode,
+				},
+			)
 		case kindSoftLine:
 			if current.mode == modeBroken {
 				scheduleLine(current.indent)
@@ -466,9 +534,15 @@ func (a *Arena) RenderWithMarkers(root ID, options Options) (RenderResult, error
 			if current.mode == modeFlat {
 				selected = value.second
 			}
-			stack = append(stack, command{id: selected, indent: current.indent, mode: current.mode})
+			stack = append(
+				stack,
+				command{id: selected, indent: current.indent, mode: current.mode},
+			)
 		case kindLineSuffix:
-			suffixes = append(suffixes, command{id: value.first, indent: current.indent, mode: modeFlat})
+			suffixes = append(
+				suffixes,
+				command{id: value.first, indent: current.indent, mode: modeFlat},
+			)
 		case kindLineSuffixBoundary:
 			if len(suffixes) > 0 {
 				scheduleLine(current.indent)
@@ -478,7 +552,13 @@ func (a *Arena) RenderWithMarkers(root ID, options Options) (RenderResult, error
 			if pendingIndent >= 0 {
 				pendingMarkers = append(pendingMarkers, value.mark)
 			} else {
-				markers = append(markers, RenderedMarker{Source: value.mark, OutputOffset: output.Len()})
+				markers = append(
+					markers,
+					RenderedMarker{
+						Source: value.mark,
+						OutputOffset: output.Len(),
+					},
+				)
 			}
 		default:
 			return RenderResult{}, fmt.Errorf("unknown document kind %d", value.kind)
@@ -544,32 +624,70 @@ func (a *Arena) fits(remaining int, options Options, continuation []command, fir
 			remaining -= nextColumn - column
 		case kindConcat:
 			for index := len(value.children) - 1; index >= 0; index-- {
-				stack = append(stack, command{id: value.children[index], indent: current.indent, mode: current.mode})
+				stack = append(
+					stack,
+					command{
+						id: value.children[index],
+						indent: current.indent,
+						mode: current.mode,
+					},
+				)
 			}
 		case kindGroup:
 			mode := modeFlat
 			if value.forcesBreak {
 				mode = modeBroken
 			}
-			stack = append(stack, command{id: value.first, indent: current.indent, mode: mode})
+			stack = append(
+				stack,
+				command{id: value.first, indent: current.indent, mode: mode},
+			)
 		case kindGroupWithIndependentTail:
 			if current.mode == modeFlat {
-				stack = append(stack, command{id: value.third, indent: current.indent, mode: modeFlat})
-				stack = append(stack, command{id: value.first, indent: current.indent, mode: modeFlat})
+				stack = append(
+					stack,
+					command{
+						id: value.third,
+						indent: current.indent,
+						mode: modeFlat,
+					},
+				)
+				stack = append(
+					stack,
+					command{
+						id: value.first,
+						indent: current.indent,
+						mode: modeFlat,
+					},
+				)
 				continue
 			}
 			bodyMode := modeFlat
-			if a.nodes[value.first.index].forcesBreak || a.nodes[value.second.index].forcesBreak {
+			if a.nodes[value.first.index].forcesBreak ||
+				a.nodes[value.second.index].forcesBreak {
 				bodyMode = modeBroken
 			}
 			tailIndent := current.indent
 			if bodyMode == modeBroken {
 				tailIndent++
 			}
-			stack = append(stack, command{id: value.third, indent: tailIndent, mode: modeBroken})
-			stack = append(stack, command{id: value.first, indent: current.indent, mode: bodyMode})
+			stack = append(
+				stack,
+				command{id: value.third, indent: tailIndent, mode: modeBroken},
+			)
+			stack = append(
+				stack,
+				command{id: value.first, indent: current.indent, mode: bodyMode},
+			)
 		case kindIndent:
-			stack = append(stack, command{id: value.first, indent: current.indent + 1, mode: current.mode})
+			stack = append(
+				stack,
+				command{
+					id: value.first,
+					indent: current.indent + 1,
+					mode: current.mode,
+				},
+			)
 		case kindSoftLine:
 			if current.mode == modeBroken {
 				return true
@@ -589,7 +707,10 @@ func (a *Arena) fits(remaining int, options Options, continuation []command, fir
 			if current.mode == modeFlat {
 				selected = value.second
 			}
-			stack = append(stack, command{id: selected, indent: current.indent, mode: current.mode})
+			stack = append(
+				stack,
+				command{id: selected, indent: current.indent, mode: current.mode},
+			)
 		case kindLineSuffix, kindLineSuffixBoundary:
 			return false
 		case kindBreakParent:
@@ -613,7 +734,7 @@ func advanceColumn(column int, value string, tabWidth int) int {
 		case '\n', '\r':
 			column = 0
 		case '\t':
-			column += tabWidth - column%tabWidth
+			column += tabWidth - column % tabWidth
 		default:
 			column++
 		}
@@ -623,7 +744,7 @@ func advanceColumn(column int, value string, tabWidth int) int {
 
 func saturatedWidthSum(left, right int) int {
 	maximum := int(^uint(0) >> 1)
-	if right > maximum-left {
+	if right > maximum - left {
 		return maximum
 	}
 	return left + right

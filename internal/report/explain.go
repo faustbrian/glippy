@@ -15,7 +15,13 @@ func RenderRuleText(registry *rules.Registry, ruleID string) ([]byte, bool) {
 	}
 
 	var output strings.Builder
-	fmt.Fprintf(&output, "%s\n%s\n\n%s\n\n", metadata.ID, metadata.Summary, metadata.Documentation)
+	fmt.Fprintf(
+		&output,
+		"%s\n%s\n\n%s\n\n",
+		metadata.ID,
+		metadata.Summary,
+		metadata.Documentation,
+	)
 	fmt.Fprintf(&output, "default severity: %s\n", metadata.DefaultSeverity)
 	fmt.Fprintf(&output, "presets: %s\n", joinPresets(metadata.Presets))
 	fmt.Fprintf(&output, "minimum Go: %s\n", metadata.MinimumGoVersion)
@@ -41,7 +47,12 @@ func RenderRuleText(registry *rules.Registry, ruleID string) ([]byte, bool) {
 	fmt.Fprintf(&output, "type-error packages: %s\n", typeErrorPolicy)
 	fmt.Fprintf(&output, "categories: %s\n", joinCategories(metadata.Categories))
 	if metadata.Deprecation != nil {
-		fmt.Fprintf(&output, "deprecated since %s: %s\n", metadata.Deprecation.Since, metadata.Deprecation.Message)
+		fmt.Fprintf(
+			&output,
+			"deprecated since %s: %s\n",
+			metadata.Deprecation.Since,
+			metadata.Deprecation.Message,
+		)
 		if metadata.Deprecation.Replacement != "" {
 			fmt.Fprintf(&output, "replacement: %s\n", metadata.Deprecation.Replacement)
 		}
@@ -86,7 +97,7 @@ func RenderRuleText(registry *rules.Registry, ruleID string) ([]byte, bool) {
 	for index, example := range metadata.Examples {
 		title := example.Title
 		if strings.TrimSpace(title) == "" {
-			title = fmt.Sprintf("example %d", index+1)
+			title = fmt.Sprintf("example %d", index + 1)
 		}
 		fmt.Fprintf(&output, "  %s\n", title)
 		output.WriteString("    incorrect:\n")

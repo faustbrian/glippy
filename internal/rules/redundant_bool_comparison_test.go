@@ -32,7 +32,7 @@ func run(ready bool, named namedBool, aliased alias) {
 `
 	result := runRedundantBoolComparison(t, input, nil)
 	want := []struct {
-		expression  string
+		expression string
 		replacement string
 	}{
 		{expression: "ready == true", replacement: "ready"},
@@ -49,17 +49,24 @@ func run(ready bool, named namedBool, aliased alias) {
 	for index, expected := range want {
 		offset := strings.Index(input[searchStart:], expected.expression)
 		if offset < 0 {
-			t.Fatalf("input does not contain %q after %d", expected.expression, searchStart)
+			t.Fatalf(
+				"input does not contain %q after %d",
+				expected.expression,
+				searchStart,
+			)
 		}
 		offset += searchStart
 		diagnostic := result.Files[0].Diagnostics[index]
 		wantRange := source.Range{Start: offset, End: offset + len(expected.expression)}
 		if diagnostic.RuleID != "redundant-bool-comparison" ||
-			diagnostic.MessageKey != "omit-comparison" || diagnostic.Range != wantRange ||
-			len(diagnostic.Fixes) != 1 || diagnostic.Fixes[0].Name != "simplify-comparison" ||
+			diagnostic.MessageKey != "omit-comparison" ||
+			diagnostic.Range != wantRange ||
+			len(diagnostic.Fixes) != 1 ||
+			diagnostic.Fixes[0].Name != "simplify-comparison" ||
 			diagnostic.Fixes[0].Safety != rules.FixSafe ||
 			len(diagnostic.Fixes[0].Edits) != 1 ||
-			diagnostic.Fixes[0].Edits[0] != (rules.Edit{Range: wantRange, NewText: expected.replacement}) {
+			diagnostic.Fixes[0].Edits[0] !=
+				(rules.Edit{Range: wantRange, NewText: expected.replacement}) {
 			t.Fatalf("diagnostic %d = %#v", index, diagnostic)
 		}
 		searchStart = offset + len(expected.expression)
@@ -69,18 +76,25 @@ func run(ready bool, named namedBool, aliased alias) {
 func TestRedundantBoolComparisonReportsWithoutFixWhenRemovedTriviaContainsComments(t *testing.T) {
 	t.Parallel()
 
-	result := runRedundantBoolComparison(t, `package sample
+	result := runRedundantBoolComparison(
+		t,
+		`package sample
 func run(ready bool) {
 	_ = ready /* keep operator context */ == true
 	_ = ready == /* keep constant context */ true
 }
-`, nil)
+`,
+		nil,
+	)
 	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 2 {
 		t.Fatalf("result = %#v, want two diagnostics", result)
 	}
 	for _, diagnostic := range result.Files[0].Diagnostics {
 		if diagnostic.RuleID != "redundant-bool-comparison" || len(diagnostic.Fixes) != 0 {
-			t.Fatalf("diagnostic = %#v, want comment-preserving no-fix finding", diagnostic)
+			t.Fatalf(
+				"diagnostic = %#v, want comment-preserving no-fix finding",
+				diagnostic,
+			)
 		}
 	}
 }
@@ -97,12 +111,12 @@ func run(left, right bool) {
 `
 	result := runRedundantBoolComparison(t, input, nil)
 	want := []struct {
-		expression  string
+		expression string
 		replacement string
 	}{
 		{expression: "(left && right) != true", replacement: "!(left && right)"},
 		{
-			expression:  "(left /* keep operand context */ && right) == false",
+			expression: "(left /* keep operand context */ && right) == false",
 			replacement: "!(left /* keep operand context */ && right)",
 		},
 		{expression: "!left == false", replacement: "left"},
@@ -114,11 +128,16 @@ func run(left, right bool) {
 	for index, expected := range want {
 		offset := strings.Index(input[searchStart:], expected.expression)
 		if offset < 0 {
-			t.Fatalf("input does not contain %q after %d", expected.expression, searchStart)
+			t.Fatalf(
+				"input does not contain %q after %d",
+				expected.expression,
+				searchStart,
+			)
 		}
 		offset += searchStart
 		diagnostic := result.Files[0].Diagnostics[index]
-		if len(diagnostic.Fixes) != 1 || len(diagnostic.Fixes[0].Edits) != 1 ||
+		if len(diagnostic.Fixes) != 1 ||
+			len(diagnostic.Fixes[0].Edits) != 1 ||
 			diagnostic.Fixes[0].Edits[0].NewText != expected.replacement {
 			t.Fatalf("diagnostic %d = %#v", index, diagnostic)
 		}
@@ -129,7 +148,9 @@ func run(left, right bool) {
 func TestRedundantBoolComparisonAcceptsNonConstantsAndNonBooleanOperands(t *testing.T) {
 	t.Parallel()
 
-	result := runRedundantBoolComparison(t, `package sample
+	result := runRedundantBoolComparison(
+		t,
+		`package sample
 func run(ready, other bool, dynamic any, number int) {
 	_ = ready == other
 	_ = dynamic == true
@@ -138,56 +159,83 @@ func run(ready, other bool, dynamic any, number int) {
 func shadowed(true bool, ready bool) {
 	_ = ready == true
 }
-`, nil)
+`,
+		nil,
+	)
 	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 0 {
 		t.Fatalf("result = %#v, want no diagnostics", result)
 	}
 }
 
-func TestRedundantBoolComparisonHonorsSuppressionsGeneratedFilesTypeErrorsAndSeverity(t *testing.T) {
+func TestRedundantBoolComparisonHonorsSuppressionsGeneratedFilesTypeErrorsAndSeverity(
+	t *testing.T,
+) {
 	t.Parallel()
 
-	suppressed := runRedundantBoolComparison(t, `package sample
+	suppressed := runRedundantBoolComparison(
+		t,
+		`package sample
 func run(ready bool) {
 	//gox:ignore redundant-bool-comparison -- explicit comparison
 	_ = ready == true
 }
-`, nil)
-	if len(suppressed.Files) != 1 || len(suppressed.Files[0].Diagnostics) != 0 ||
+`,
+		nil,
+	)
+	if len(suppressed.Files) != 1 ||
+		len(suppressed.Files[0].Diagnostics) != 0 ||
 		len(suppressed.Files[0].Suppressed) != 1 {
 		t.Fatalf("suppressed result = %#v", suppressed)
 	}
 
-	generated := runRedundantBoolComparison(t, `// Code generated by fixture. DO NOT EDIT.
+	generated := runRedundantBoolComparison(
+		t,
+		`// Code generated by fixture. DO NOT EDIT.
 package sample
 func run(ready bool) { _ = ready == true }
-`, nil)
+`,
+		nil,
+	)
 	if len(generated.Files) != 1 || len(generated.Files[0].Diagnostics) != 0 {
 		t.Fatalf("generated result = %#v", generated)
 	}
 
-	illTyped := runRedundantBoolComparison(t, `package sample
+	illTyped := runRedundantBoolComparison(
+		t,
+		`package sample
 func run(ready bool) { missing(); _ = ready == true }
-`, nil)
-	if len(illTyped.Files) != 1 || len(illTyped.Files[0].Diagnostics) != 0 ||
+`,
+		nil,
+	)
+	if len(illTyped.Files) != 1 ||
+		len(illTyped.Files[0].Diagnostics) != 0 ||
 		len(illTyped.LoadDiagnostics) == 0 {
 		t.Fatalf("ill-typed result = %#v", illTyped)
 	}
 
-	errorSeverity := runRedundantBoolComparison(t, `package sample
+	errorSeverity := runRedundantBoolComparison(
+		t,
+		`package sample
 func run(ready bool) { _ = ready == true }
-`, map[string]rules.Severity{"redundant-bool-comparison": rules.SeverityError})
-	if len(errorSeverity.Files) != 1 || len(errorSeverity.Files[0].Diagnostics) != 1 ||
+`,
+		map[string]rules.Severity{"redundant-bool-comparison": rules.SeverityError},
+	)
+	if len(errorSeverity.Files) != 1 ||
+		len(errorSeverity.Files[0].Diagnostics) != 1 ||
 		errorSeverity.Files[0].Diagnostics[0].Severity != rules.SeverityError {
 		t.Fatalf("severity result = %#v", errorSeverity)
 	}
 
-	disabled := runRedundantBoolComparison(t, `package sample
+	disabled := runRedundantBoolComparison(
+		t,
+		`package sample
 func run(ready bool) { _ = ready == true }
-`, map[string]rules.Severity{
-		"nilness":                   rules.SeverityWarn,
-		"redundant-bool-comparison": rules.SeverityOff,
-	})
+`,
+		map[string]rules.Severity{
+			"nilness": rules.SeverityWarn,
+			"redundant-bool-comparison": rules.SeverityOff,
+		},
+	)
 	if len(disabled.Files) != 1 || len(disabled.Files[0].Diagnostics) != 0 {
 		t.Fatalf("disabled result = %#v", disabled)
 	}
@@ -201,16 +249,23 @@ func TestDefaultRegistryDocumentsRedundantBoolComparisonSafeFix(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadata, found := registry.Metadata("redundant-bool-comparison")
-	if !found || metadata.Requirement != rules.RequireTypes ||
-		metadata.DefaultSeverity != rules.SeverityWarn || metadata.MinimumGoVersion != "1.25" ||
-		metadata.RunOnGenerated || metadata.RunDespiteTypeErrors ||
-		len(metadata.Presets) != 1 || metadata.Presets[0] != rules.PresetStyle ||
-		len(metadata.NodeInterests) != 1 || metadata.NodeInterests[0] != rules.NodeBinaryExpr ||
-		len(metadata.Fixes) != 1 || metadata.Fixes[0] != (rules.FixMetadata{
-		Name:        "simplify-comparison",
-		Description: "replace the comparison with an equivalent boolean expression",
-		Safety:      rules.FixSafe,
-	}) {
+	if !found ||
+		metadata.Requirement != rules.RequireTypes ||
+		metadata.DefaultSeverity != rules.SeverityWarn ||
+		metadata.MinimumGoVersion != "1.25" ||
+		metadata.RunOnGenerated ||
+		metadata.RunDespiteTypeErrors ||
+		len(metadata.Presets) != 1 ||
+		metadata.Presets[0] != rules.PresetStyle ||
+		len(metadata.NodeInterests) != 1 ||
+		metadata.NodeInterests[0] != rules.NodeBinaryExpr ||
+		len(metadata.Fixes) != 1 ||
+		metadata.Fixes[0] !=
+			(rules.FixMetadata{
+				Name: "simplify-comparison",
+				Description: "replace the comparison with an equivalent boolean expression",
+				Safety: rules.FixSafe,
+			}) {
 		t.Fatalf("metadata = %#v, found = %v", metadata, found)
 	}
 }
@@ -221,7 +276,8 @@ func BenchmarkRedundantBoolComparisonSharedTypes(b *testing.B) {
 		filepath.Join(root, "go.mod"),
 		[]byte("module example.com/redundantboolbenchmark\n\ngo 1.26.0\n"),
 		0o600,
-	); err != nil {
+	);
+		err != nil {
 		b.Fatal(err)
 	}
 	var input strings.Builder
@@ -230,12 +286,18 @@ func BenchmarkRedundantBoolComparisonSharedTypes(b *testing.B) {
 		fmt.Fprintf(&input, "_ = values[%d] == true\n", index)
 	}
 	input.WriteString("}\n")
-	if err := os.WriteFile(filepath.Join(root, "sample.go"), []byte(input.String()), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "sample.go"), []byte(input.String()), 0o600);
+		err != nil {
 		b.Fatal(err)
 	}
-	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
-		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes,
-	})
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireTypes,
+		},
+	)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -250,7 +312,12 @@ func BenchmarkRedundantBoolComparisonSharedTypes(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		diagnostics, err := analysis.RunTypes(context.Background(), loaded, registry, selection)
+		diagnostics, err := analysis.RunTypes(
+			context.Background(),
+			loaded,
+			registry,
+			selection,
+		)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -271,7 +338,8 @@ func runRedundantBoolComparison(
 		filepath.Join(root, "go.mod"),
 		[]byte("module example.com/redundantbool\n\ngo 1.26.0\n"),
 		0o600,
-	); err != nil {
+	);
+		err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "sample.go"), []byte(input), 0o600); err != nil {

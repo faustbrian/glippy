@@ -12,24 +12,24 @@ import (
 
 // RunOptions selects native rules and suppression policy for one source file.
 type RunOptions struct {
-	SourceGoVersion          string
-	Preset                   rules.Preset
-	Overrides                map[string]rules.Severity
-	RuleOptions              map[string]rules.OptionSet
+	SourceGoVersion string
+	Preset rules.Preset
+	Overrides map[string]rules.Severity
+	RuleOptions map[string]rules.OptionSet
 	RequireSuppressionReason bool
-	SuppressionExpiryCutoff  string
-	Cache                    *PackageCacheOptions
+	SuppressionExpiryCutoff string
+	Cache *PackageCacheOptions
 }
 
 // Result is one reporter-ready syntax analysis result over one source version.
 type Result struct {
-	Path                string
-	Digest              source.Digest
-	Requirement         rules.Requirement
-	Selection           []rules.Selection
-	Diagnostics         []rules.Diagnostic
-	Suppressed          []suppressions.SuppressedDiagnostic
-	UnusedSuppressions  []suppressions.Directive
+	Path string
+	Digest source.Digest
+	Requirement rules.Requirement
+	Selection []rules.Selection
+	Diagnostics []rules.Diagnostic
+	Suppressed []suppressions.SuppressedDiagnostic
+	UnusedSuppressions []suppressions.Directive
 	SuppressionProblems []suppressions.Problem
 }
 
@@ -62,13 +62,13 @@ func Run(
 		return Result{}, fmt.Errorf("resolve analysis rules: %w", err)
 	}
 	result := Result{
-		Path:                file.Path(),
-		Digest:              file.Digest(),
-		Requirement:         rules.MaximumRequirement(selection),
-		Selection:           slices.Clone(selection),
-		Diagnostics:         []rules.Diagnostic{},
-		Suppressed:          []suppressions.SuppressedDiagnostic{},
-		UnusedSuppressions:  []suppressions.Directive{},
+		Path: file.Path(),
+		Digest: file.Digest(),
+		Requirement: rules.MaximumRequirement(selection),
+		Selection: slices.Clone(selection),
+		Diagnostics: []rules.Diagnostic{},
+		Suppressed: []suppressions.SuppressedDiagnostic{},
+		UnusedSuppressions: []suppressions.Directive{},
 		SuppressionProblems: []suppressions.Problem{},
 	}
 	for _, selected := range selection {
@@ -81,11 +81,14 @@ func Run(
 		}
 	}
 
-	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
-		KnownRules:    registry.IDs(),
-		RequireReason: options.RequireSuppressionReason,
-		ExpiryCutoff:  options.SuppressionExpiryCutoff,
-	})
+	index, problems := suppressions.Parse(
+		file,
+		suppressions.ParseOptions{
+			KnownRules: registry.IDs(),
+			RequireReason: options.RequireSuppressionReason,
+			ExpiryCutoff: options.SuppressionExpiryCutoff,
+		},
+	)
 	diagnostics, err := RunSyntax(ctx, file, registry, selection)
 	if err != nil {
 		return result, err

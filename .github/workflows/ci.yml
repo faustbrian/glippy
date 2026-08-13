@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out Gox
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install the recorded Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: 1.26.5
+          cache: false
+      - name: Verify source and behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_root=$(mktemp -d "$RUNNER_TEMP/gox-ci.XXXXXX")
+          cleanup() {
+            trap - EXIT HUP INT TERM
+            if [ -d "$task_root/modcache" ] &&
+              ! GOMODCACHE="$task_root/modcache" go clean -modcache >/dev/null 2>&1; then
+              chmod -R u+w "$task_root/modcache"
+            fi
+            find "$task_root" -mindepth 1 -delete
+            rmdir "$task_root"
+          }
+          trap cleanup EXIT HUP INT TERM
+
+          export GOCACHE="$task_root/gocache"
+          export GOMODCACHE="$task_root/modcache"
+          export GOENV=off
+          export GOTOOLCHAIN=local
+
+          go test ./... -count=1
+          go test -race ./... -count=1
+          go vet ./...
+          go mod tidy -diff
+          go build -o "$task_root/gox" ./cmd/gox
+          "$task_root/gox" check ./...

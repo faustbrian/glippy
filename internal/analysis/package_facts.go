@@ -21,7 +21,7 @@ import (
 type packageFactKey struct {
 	analyzer *goanalysis.Analyzer
 	package_ *types.Package
-	type_    reflect.Type
+	type_ reflect.Type
 }
 
 type objectFactViewKey struct {
@@ -31,7 +31,7 @@ type objectFactViewKey struct {
 
 type objectFactKey struct {
 	object types.Object
-	type_  reflect.Type
+	type_ reflect.Type
 }
 
 type objectFactView struct {
@@ -40,15 +40,15 @@ type objectFactView struct {
 
 type analyzerFactSet struct {
 	packageValues map[packageFactKey][]byte
-	objectViews   map[objectFactViewKey]*objectFactView
-	packages      map[*types.Package]*packages.Package
+	objectViews map[objectFactViewKey]*objectFactView
+	packages map[*types.Package]*packages.Package
 }
 
 func newAnalyzerFactSet() *analyzerFactSet {
 	return &analyzerFactSet{
 		packageValues: make(map[packageFactKey][]byte),
-		objectViews:   make(map[objectFactViewKey]*objectFactView),
-		packages:      make(map[*types.Package]*packages.Package),
+		objectViews: make(map[objectFactViewKey]*objectFactView),
+		packages: make(map[*types.Package]*packages.Package),
 	}
 }
 
@@ -84,7 +84,10 @@ func (r *packageAnalyzerRule) runPackageFactGraph(
 		}
 		switch state[pkg] {
 		case 1:
-			return fmt.Errorf("package fact graph contains an import cycle at %q", pkg.ID)
+			return fmt.Errorf(
+				"package fact graph contains an import cycle at %q",
+				pkg.ID,
+			)
 		case 2:
 			return nil
 		}
@@ -154,9 +157,13 @@ func (r *packageAnalyzerRule) runPackageFactGraph(
 		if packageCacheable {
 			encoded, encodeErr := r.encodePackageCacheEntry(pkg, produced, facts)
 			if encodeErr == nil {
-				if err := cachePlan.options.Store.Put(ctx, key, encoded); err != nil {
+				if err := cachePlan.options.Store.Put(ctx, key, encoded);
+					err != nil {
 					if !invalidHit || !errors.Is(err, cache.ErrConflict) {
-						return fmt.Errorf("write package analyzer cache: %w", err)
+						return fmt.Errorf(
+							"write package analyzer cache: %w",
+							err,
+						)
 					}
 				} else {
 					cacheKeys[pkg] = key
@@ -197,11 +204,15 @@ func (r *packageAnalyzerRule) packageCacheKey(
 	if plan == nil || !baseCacheable {
 		return cache.Key{}, false
 	}
-	components := make([]cache.Component, 0, len(pkg.Imports)+1)
-	components = append(components, cache.Component{
-		Kind: cache.ComponentBuildSelection, Identity: "analysis-input-manifest",
-		Digest: cache.Digest(base),
-	})
+	components := make([]cache.Component, 0, len(pkg.Imports) + 1)
+	components = append(
+		components,
+		cache.Component{
+			Kind: cache.ComponentBuildSelection,
+			Identity: "analysis-input-manifest",
+			Digest: cache.Digest(base),
+		},
+	)
 	imports := make([]string, 0, len(pkg.Imports))
 	for path := range pkg.Imports {
 		imports = append(imports, path)
@@ -213,25 +224,31 @@ func (r *packageAnalyzerRule) packageCacheKey(
 		if !found {
 			return cache.Key{}, false
 		}
-		components = append(components, cache.Component{
-			Kind: cache.ComponentFact, Identity: path + "=" + dependency.ID,
-			Digest: cache.Digest(key),
-		})
+		components = append(
+			components,
+			cache.Component{
+				Kind: cache.ComponentFact,
+				Identity: path + "=" + dependency.ID,
+				Digest: cache.Digest(key),
+			},
+		)
 	}
-	key, err := cache.BuildKey(cache.KeyInput{
-		Namespace:       "typed-analyzer-v1:" + r.metadata.ID + ":" + pkg.ID,
-		ToolVersion:     plan.options.ToolVersion,
-		BuildGoVersion:  plan.options.BuildGoVersion,
-		SourceGoVersion: plan.options.SourceGoVersion,
-		Configuration:   plan.options.Configuration,
-		Rules:           plan.rules,
-		BuildTags:       loadOptions.BuildTags,
-		GOOS:            loadOptions.GOOS,
-		GOARCH:          loadOptions.GOARCH,
-		CGOEnabled:      plan.options.CGOEnabled,
-		FormatterMode:   plan.options.FormatterMode,
-		Components:      components,
-	})
+	key, err := cache.BuildKey(
+		cache.KeyInput{
+			Namespace: "typed-analyzer-v1:" + r.metadata.ID + ":" + pkg.ID,
+			ToolVersion: plan.options.ToolVersion,
+			BuildGoVersion: plan.options.BuildGoVersion,
+			SourceGoVersion: plan.options.SourceGoVersion,
+			Configuration: plan.options.Configuration,
+			Rules: plan.rules,
+			BuildTags: loadOptions.BuildTags,
+			GOOS: loadOptions.GOOS,
+			GOARCH: loadOptions.GOARCH,
+			CGOEnabled: plan.options.CGOEnabled,
+			FormatterMode: plan.options.FormatterMode,
+			Components: components,
+		},
+	)
 	if err != nil {
 		return cache.Key{}, false
 	}
@@ -246,19 +263,21 @@ func (r *packageAnalyzerRule) packageCacheBaseKey(
 	if plan == nil {
 		return cache.Key{}, false
 	}
-	key, err := buildPackageCacheKey(packageCacheKeyInput{
-		Namespace:       "typed-analyzer-input-v1:" + r.metadata.ID,
-		ToolVersion:     plan.options.ToolVersion,
-		BuildGoVersion:  plan.options.BuildGoVersion,
-		SourceGoVersion: plan.options.SourceGoVersion,
-		Configuration:   plan.options.Configuration,
-		Rules:           plan.rules,
-		CGOEnabled:      plan.options.CGOEnabled,
-		FormatterMode:   plan.options.FormatterMode,
-		LoadOptions:     loadOptions,
-		Loaded:          loaded,
-		Facts:           map[string]cache.Digest{},
-	})
+	key, err := buildPackageCacheKey(
+		packageCacheKeyInput{
+			Namespace: "typed-analyzer-input-v1:" + r.metadata.ID,
+			ToolVersion: plan.options.ToolVersion,
+			BuildGoVersion: plan.options.BuildGoVersion,
+			SourceGoVersion: plan.options.SourceGoVersion,
+			Configuration: plan.options.Configuration,
+			Rules: plan.rules,
+			CGOEnabled: plan.options.CGOEnabled,
+			FormatterMode: plan.options.FormatterMode,
+			LoadOptions: loadOptions,
+			Loaded: loaded,
+			Facts: map[string]cache.Digest{},
+		},
+	)
 	if err != nil {
 		return cache.Key{}, false
 	}
@@ -277,7 +296,11 @@ func (s *analyzerFactSet) importPackageFact(
 	if err != nil {
 		panic(err)
 	}
-	encoded, found := s.packageValues[packageFactKey{analyzer: analyzer, package_: package_, type_: type_}]
+	encoded, found := s.packageValues[packageFactKey{
+		analyzer: analyzer,
+		package_: package_,
+		type_: type_,
+	}]
 	if !found {
 		return false
 	}
@@ -307,7 +330,7 @@ func (s *analyzerFactSet) allPackageFacts(
 	analyzer *goanalysis.Analyzer,
 	current *types.Package,
 ) []goanalysis.PackageFact {
-	visible := make(map[*types.Package]struct{}, len(current.Imports())+1)
+	visible := make(map[*types.Package]struct{}, len(current.Imports()) + 1)
 	visible[current] = struct{}{}
 	for _, imported := range current.Imports() {
 		visible[imported] = struct{}{}
@@ -318,12 +341,15 @@ func (s *analyzerFactSet) allPackageFacts(
 			keys = append(keys, key)
 		}
 	}
-	sort.Slice(keys, func(left, right int) bool {
-		if keys[left].package_.Path() != keys[right].package_.Path() {
-			return keys[left].package_.Path() < keys[right].package_.Path()
-		}
-		return lessFactType(keys[left].type_, keys[right].type_)
-	})
+	sort.Slice(
+		keys,
+		func(left, right int) bool {
+			if keys[left].package_.Path() != keys[right].package_.Path() {
+				return keys[left].package_.Path() < keys[right].package_.Path()
+			}
+			return lessFactType(keys[left].type_, keys[right].type_)
+		},
+	)
 	result := make([]goanalysis.PackageFact, len(keys))
 	for index, key := range keys {
 		fact := reflect.New(key.type_.Elem()).Interface().(goanalysis.Fact)
@@ -349,9 +375,12 @@ func (s *analyzerFactSet) beginObjectFacts(
 	s.packages[pkg.Types] = pkg
 	view := &objectFactView{values: make(map[objectFactKey][]byte)}
 	imports := append([]*types.Package(nil), pkg.Types.Imports()...)
-	sort.Slice(imports, func(left, right int) bool {
-		return imports[left].Path() < imports[right].Path()
-	})
+	sort.Slice(
+		imports,
+		func(left, right int) bool {
+			return imports[left].Path() < imports[right].Path()
+		},
+	)
 	for _, imported := range imports {
 		dependency, found := s.objectViews[objectFactViewKey{
 			analyzer: analyzer,
@@ -368,7 +397,8 @@ func (s *analyzerFactSet) beginObjectFacts(
 			if !objectFactExportedFrom(factKey.object, imported) {
 				continue
 			}
-			if previous, duplicate := view.values[factKey]; duplicate && !bytes.Equal(previous, encoded) {
+			if previous, duplicate := view.values[factKey];
+				duplicate && !bytes.Equal(previous, encoded) {
 				return fmt.Errorf(
 					"analyzer %q inherited conflicting object fact %T for %s",
 					analyzer.Name,
@@ -420,12 +450,14 @@ func (s *analyzerFactSet) exportObjectFact(
 		panic("object fact export requires an object")
 	}
 	if object.Pkg() != current {
-		panic(fmt.Sprintf(
-			"analyzer %q cannot export object fact for %s outside package %q",
-			analyzer.Name,
-			types.ObjectString(object, packagePath),
-			current.Path(),
-		))
+		panic(
+			fmt.Sprintf(
+				"analyzer %q cannot export object fact for %s outside package %q",
+				analyzer.Name,
+				types.ObjectString(object, packagePath),
+				current.Path(),
+			),
+		)
 	}
 	type_, err := declaredFactType(analyzer, fact)
 	if err != nil {
@@ -454,9 +486,12 @@ func (s *analyzerFactSet) allObjectFacts(
 	for key := range view.values {
 		keys = append(keys, key)
 	}
-	sort.Slice(keys, func(left, right int) bool {
-		return s.lessObjectFact(view, keys[left], keys[right])
-	})
+	sort.Slice(
+		keys,
+		func(left, right int) bool {
+			return s.lessObjectFact(view, keys[left], keys[right])
+		},
+	)
 	result := make([]goanalysis.ObjectFact, len(keys))
 	for index, key := range keys {
 		fact := reflect.New(key.type_.Elem()).Interface().(goanalysis.Fact)

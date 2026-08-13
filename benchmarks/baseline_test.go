@@ -52,7 +52,13 @@ func BenchmarkParse(b *testing.B) {
 	b.SetBytes(int64(len(workload)))
 
 	for b.Loop() {
-		if _, err := parser.ParseFile(token.NewFileSet(), "hostile.go", workload, parser.ParseComments); err != nil {
+		if _, err := parser.ParseFile(
+			token.NewFileSet(),
+			"hostile.go",
+			workload,
+			parser.ParseComments,
+		);
+			err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -71,23 +77,34 @@ func BenchmarkGoFormat(b *testing.B) {
 
 func BenchmarkGoxFormatManyClassicLoops(b *testing.B) {
 	for _, loops := range []int{100, 1_000} {
-		b.Run(strconv.Itoa(loops), func(b *testing.B) {
-			input := []byte("package benchmark\nfunc run(ready bool){" + strings.Repeat("for ;ready;{work()};", loops) + "}\n")
-			file, err := source.Load("many_loops.go", input)
-			if err != nil {
-				b.Fatal(err)
-			}
-			options := goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 10_000}
-			b.ReportAllocs()
-			b.SetBytes(int64(len(input)))
-			b.ResetTimer()
-
-			for b.Loop() {
-				if _, err := goxformat.File(file, options); err != nil {
+		b.Run(
+			strconv.Itoa(loops),
+			func(b *testing.B) {
+				input := []byte(
+					"package benchmark\nfunc run(ready bool){" +
+						strings.Repeat("for ;ready;{work()};", loops) +
+						"}\n",
+				)
+				file, err := source.Load("many_loops.go", input)
+				if err != nil {
 					b.Fatal(err)
 				}
-			}
-		})
+				options := goxformat.Options{
+					Width: 100,
+					TabWidth: 8,
+					FitBudget: 10_000,
+				}
+				b.ReportAllocs()
+				b.SetBytes(int64(len(input)))
+				b.ResetTimer()
+
+				for b.Loop() {
+					if _, err := goxformat.File(file, options); err != nil {
+						b.Fatal(err)
+					}
+				}
+			},
+		)
 	}
 }
 
@@ -97,7 +114,8 @@ func BenchmarkGoxEditorStdin(b *testing.B) {
 		b.Fatal(err)
 	}
 	arguments := []string{"fmt", "--stdin-filepath=" + path}
-	if exitCode := cli.Run(arguments, bytes.NewReader(workload), io.Discard, io.Discard); exitCode != cli.ExitSuccess {
+	if exitCode := cli.Run(arguments, bytes.NewReader(workload), io.Discard, io.Discard);
+		exitCode != cli.ExitSuccess {
 		b.Fatalf("editor workload exit code = %d, want %d", exitCode, cli.ExitSuccess)
 	}
 	b.ReportAllocs()
@@ -105,8 +123,18 @@ func BenchmarkGoxEditorStdin(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		if exitCode := cli.Run(arguments, bytes.NewReader(workload), io.Discard, io.Discard); exitCode != cli.ExitSuccess {
-			b.Fatalf("editor workload exit code = %d, want %d", exitCode, cli.ExitSuccess)
+		if exitCode := cli.Run(
+			arguments,
+			bytes.NewReader(workload),
+			io.Discard,
+			io.Discard,
+		);
+			exitCode != cli.ExitSuccess {
+			b.Fatalf(
+				"editor workload exit code = %d, want %d",
+				exitCode,
+				cli.ExitSuccess,
+			)
 		}
 	}
 }
@@ -118,12 +146,15 @@ func BenchmarkASTInspect(b *testing.B) {
 
 	for b.Loop() {
 		count := 0
-		ast.Inspect(file, func(node ast.Node) bool {
-			if node != nil {
-				count++
-			}
-			return true
-		})
+		ast.Inspect(
+			file,
+			func(node ast.Node) bool {
+				if node != nil {
+					count++
+				}
+				return true
+			},
+		)
 		if count == 0 {
 			b.Fatal("empty traversal")
 		}
@@ -139,9 +170,12 @@ func BenchmarkInspectorBuildAndFilter(b *testing.B) {
 	for b.Loop() {
 		count := 0
 		inspect := inspector.New([]*ast.File{file})
-		inspect.Preorder(nodes, func(ast.Node) {
-			count++
-		})
+		inspect.Preorder(
+			nodes,
+			func(ast.Node) {
+				count++
+			},
+		)
 		if count == 0 {
 			b.Fatal("empty filtered traversal")
 		}
@@ -153,35 +187,71 @@ func BenchmarkSyntaxRuleTraversalStrategies(b *testing.B) {
 	for _, ruleCount := range []int{1, 3, 5, 10, 25} {
 		ruleSet := benchmarkSyntaxRules(ruleCount)
 		wantVisits := runNaiveSyntaxRules(file, ruleSet)
-		b.Run(strconv.Itoa(ruleCount), func(b *testing.B) {
-			b.Run("direct", func(b *testing.B) {
-				b.ReportAllocs()
-				for b.Loop() {
-					if visits := runDirectSyntaxRules(file, ruleSet); visits != wantVisits {
-						b.Fatalf("direct visits = %d, want %d", visits, wantVisits)
-					}
-				}
-				b.ReportMetric(float64(wantVisits), "callbacks/op")
-			})
-			b.Run("inspector", func(b *testing.B) {
-				b.ReportAllocs()
-				for b.Loop() {
-					if visits := runInspectorSyntaxRules(file, ruleSet); visits != wantVisits {
-						b.Fatalf("inspector visits = %d, want %d", visits, wantVisits)
-					}
-				}
-				b.ReportMetric(float64(wantVisits), "callbacks/op")
-			})
-			b.Run("naive", func(b *testing.B) {
-				b.ReportAllocs()
-				for b.Loop() {
-					if visits := runNaiveSyntaxRules(file, ruleSet); visits != wantVisits {
-						b.Fatalf("naive visits = %d, want %d", visits, wantVisits)
-					}
-				}
-				b.ReportMetric(float64(wantVisits), "callbacks/op")
-			})
-		})
+		b.Run(
+			strconv.Itoa(ruleCount),
+			func(b *testing.B) {
+				b.Run(
+					"direct",
+					func(b *testing.B) {
+						b.ReportAllocs()
+						for b.Loop() {
+							if visits := runDirectSyntaxRules(
+								file,
+								ruleSet,
+							);
+								visits != wantVisits {
+								b.Fatalf(
+									"direct visits = %d, want %d",
+									visits,
+									wantVisits,
+								)
+							}
+						}
+						b.ReportMetric(float64(wantVisits), "callbacks/op")
+					},
+				)
+				b.Run(
+					"inspector",
+					func(b *testing.B) {
+						b.ReportAllocs()
+						for b.Loop() {
+							if visits := runInspectorSyntaxRules(
+								file,
+								ruleSet,
+							);
+								visits != wantVisits {
+								b.Fatalf(
+									"inspector visits = %d, want %d",
+									visits,
+									wantVisits,
+								)
+							}
+						}
+						b.ReportMetric(float64(wantVisits), "callbacks/op")
+					},
+				)
+				b.Run(
+					"naive",
+					func(b *testing.B) {
+						b.ReportAllocs()
+						for b.Loop() {
+							if visits := runNaiveSyntaxRules(
+								file,
+								ruleSet,
+							);
+								visits != wantVisits {
+								b.Fatalf(
+									"naive visits = %d, want %d",
+									visits,
+									wantVisits,
+								)
+							}
+						}
+						b.ReportMetric(float64(wantVisits), "callbacks/op")
+					},
+				)
+			},
+		)
 	}
 }
 
@@ -191,16 +261,19 @@ func runDirectSyntaxRules(file *ast.File, ruleSet []benchmarkSyntaxRule) int {
 		dispatch[rule.interest] = append(dispatch[rule.interest], rule)
 	}
 	visits := 0
-	ast.Inspect(file, func(node ast.Node) bool {
-		interest, found := rules.KindOf(node)
-		if !found {
+	ast.Inspect(
+		file,
+		func(node ast.Node) bool {
+			interest, found := rules.KindOf(node)
+			if !found {
+				return true
+			}
+			for _, rule := range dispatch[interest] {
+				visits += rule.run(node)
+			}
 			return true
-		}
-		for _, rule := range dispatch[interest] {
-			visits += rule.run(node)
-		}
-		return true
-	})
+		},
+	)
 	return visits
 }
 
@@ -212,15 +285,17 @@ var benchmarkSyntaxInterests = []rules.NodeKind{
 
 type benchmarkSyntaxRule struct {
 	interest rules.NodeKind
-	run      func(ast.Node) int
+	run func(ast.Node) int
 }
 
 func benchmarkSyntaxRules(count int) []benchmarkSyntaxRule {
 	rules := make([]benchmarkSyntaxRule, count)
 	for index := range rules {
 		rules[index] = benchmarkSyntaxRule{
-			interest: benchmarkSyntaxInterests[index%len(benchmarkSyntaxInterests)],
-			run:      func(ast.Node) int { return 1 },
+			interest: benchmarkSyntaxInterests[index % len(benchmarkSyntaxInterests)],
+			run: func(ast.Node) int {
+				return 1
+			},
 		}
 	}
 	return rules
@@ -244,27 +319,33 @@ func runInspectorSyntaxRules(file *ast.File, ruleSet []benchmarkSyntaxRule) int 
 	}
 	visits := 0
 	inspect := inspector.New([]*ast.File{file})
-	inspect.Preorder(filter, func(node ast.Node) {
-		interest, found := rules.KindOf(node)
-		if !found {
-			panic("unexpected filtered syntax node")
-		}
-		for _, rule := range dispatch[interest] {
-			visits += rule.run(node)
-		}
-	})
+	inspect.Preorder(
+		filter,
+		func(node ast.Node) {
+			interest, found := rules.KindOf(node)
+			if !found {
+				panic("unexpected filtered syntax node")
+			}
+			for _, rule := range dispatch[interest] {
+				visits += rule.run(node)
+			}
+		},
+	)
 	return visits
 }
 
 func runNaiveSyntaxRules(file *ast.File, ruleSet []benchmarkSyntaxRule) int {
 	visits := 0
 	for _, rule := range ruleSet {
-		ast.Inspect(file, func(node ast.Node) bool {
-			if benchmarkSyntaxNodeMatches(rule.interest, node) {
-				visits += rule.run(node)
-			}
-			return true
-		})
+		ast.Inspect(
+			file,
+			func(node ast.Node) bool {
+				if benchmarkSyntaxNodeMatches(rule.interest, node) {
+					visits += rule.run(node)
+				}
+				return true
+			},
+		)
 	}
 	return visits
 }
@@ -285,12 +366,13 @@ func BenchmarkTypeCheck(b *testing.B) {
 
 	for b.Loop() {
 		info := &types.Info{
-			Defs:  make(map[*ast.Ident]types.Object),
-			Uses:  make(map[*ast.Ident]types.Object),
+			Defs: make(map[*ast.Ident]types.Object),
+			Uses: make(map[*ast.Ident]types.Object),
 			Types: make(map[ast.Expr]types.TypeAndValue),
 		}
 		config := &types.Config{Importer: importer.Default()}
-		if _, err := config.Check("example.com/workload", files, []*ast.File{file}, info); err != nil {
+		if _, err := config.Check("example.com/workload", files, []*ast.File{file}, info);
+			err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -374,7 +456,12 @@ func TestEnvironmentIsReported(t *testing.T) {
 
 func parseWorkload(tb testing.TB) *ast.File {
 	tb.Helper()
-	file, err := parser.ParseFile(token.NewFileSet(), "hostile.go", workload, parser.ParseComments)
+	file, err := parser.ParseFile(
+		token.NewFileSet(),
+		"hostile.go",
+		workload,
+		parser.ParseComments,
+	)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -400,10 +487,10 @@ func packageLoadConfig(dir, cache string) *packages.Config {
 			packages.NeedTypes |
 			packages.NeedTypesInfo,
 		Dir: dir,
-		Env: replaceEnvironment(os.Environ(), map[string]string{
-			"GOCACHE": cache,
-			"GOWORK":  "off",
-		}),
+		Env: replaceEnvironment(
+			os.Environ(),
+			map[string]string{"GOCACHE": cache, "GOWORK": "off"},
+		),
 	}
 }
 
@@ -419,7 +506,7 @@ func loadPackages(config *packages.Config) error {
 }
 
 func replaceEnvironment(current []string, replacements map[string]string) []string {
-	result := make([]string, 0, len(current)+len(replacements))
+	result := make([]string, 0, len(current) + len(replacements))
 	for _, value := range current {
 		name, _, found := strings.Cut(value, "=")
 		if found {
@@ -430,7 +517,7 @@ func replaceEnvironment(current []string, replacements map[string]string) []stri
 		result = append(result, value)
 	}
 	for name, value := range replacements {
-		result = append(result, name+"="+value)
+		result = append(result, name + "=" + value)
 	}
 	sort.Strings(result)
 	return result

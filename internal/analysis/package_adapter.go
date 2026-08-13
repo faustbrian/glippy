@@ -19,7 +19,7 @@ import (
 )
 
 type activePackageAnalyzer struct {
-	rule     *packageAnalyzerRule
+	rule *packageAnalyzerRule
 	metadata rules.Metadata
 	severity rules.Severity
 }
@@ -132,7 +132,12 @@ func runPackageAnalyzers(
 			if pkg.IllTyped && !analyzer.metadata.RunDespiteTypeErrors {
 				continue
 			}
-			if !packageAnalyzerOwnsEligibleFile(pkg.ID, files, owners, analyzer.metadata) {
+			if !packageAnalyzerOwnsEligibleFile(
+				pkg.ID,
+				files,
+				owners,
+				analyzer.metadata,
+			) {
 				continue
 			}
 			produced, err := analyzer.rule.runPackage(
@@ -160,15 +165,24 @@ func preparePackageAnalyzers(
 	selection []rules.Selection,
 ) ([]activePackageAnalyzer, error) {
 	ordered := slices.Clone(selection)
-	sort.Slice(ordered, func(left, right int) bool { return ordered[left].ID < ordered[right].ID })
+	sort.Slice(
+		ordered,
+		func(left, right int) bool {
+			return ordered[left].ID < ordered[right].ID
+		},
+	)
 	result := make([]activePackageAnalyzer, 0, len(ordered))
 	previousID := ""
 	for _, selected := range ordered {
 		if selected.ID == previousID {
-			return nil, fmt.Errorf("selected package analyzer %q more than once", selected.ID)
+			return nil, fmt.Errorf(
+				"selected package analyzer %q more than once",
+				selected.ID,
+			)
 		}
 		previousID = selected.ID
-		if selected.Severity != rules.SeverityWarn && selected.Severity != rules.SeverityError {
+		if selected.Severity != rules.SeverityWarn &&
+			selected.Severity != rules.SeverityError {
 			return nil, fmt.Errorf(
 				"selected package analyzer %q has invalid severity %q",
 				selected.ID,
@@ -181,7 +195,10 @@ func preparePackageAnalyzers(
 		}
 		metadata, _ := registry.Metadata(selected.ID)
 		if selected.Requirement != metadata.Requirement {
-			return nil, fmt.Errorf("selected package analyzer %q requirement does not match registry", selected.ID)
+			return nil, fmt.Errorf(
+				"selected package analyzer %q requirement does not match registry",
+				selected.ID,
+			)
 		}
 		if metadata.Requirement != rules.RequireTypes {
 			return nil, fmt.Errorf(
@@ -192,18 +209,29 @@ func preparePackageAnalyzers(
 		}
 		adapted, found := nativeRule.(*packageAnalyzerRule)
 		if !found {
-			return nil, fmt.Errorf("selected rule %q is not a package analyzer", selected.ID)
+			return nil, fmt.Errorf(
+				"selected rule %q is not a package analyzer",
+				selected.ID,
+			)
 		}
 		if len(metadata.NodeInterests) != 1 || metadata.NodeInterests[0] != rules.NodeFile {
-			return nil, fmt.Errorf("selected package analyzer %q must declare only file interest", selected.ID)
+			return nil, fmt.Errorf(
+				"selected package analyzer %q must declare only file interest",
+				selected.ID,
+			)
 		}
 		adapted, err := adapted.forRun(selected.Options)
 		if err != nil {
 			return nil, fmt.Errorf("selected package analyzer %q: %w", selected.ID, err)
 		}
-		result = append(result, activePackageAnalyzer{
-			rule: adapted, metadata: metadata, severity: selected.Severity,
-		})
+		result = append(
+			result,
+			activePackageAnalyzer{
+				rule: adapted,
+				metadata: metadata,
+				severity: selected.Severity,
+			},
+		)
 	}
 	return result, nil
 }
@@ -221,7 +249,8 @@ func (r *packageAnalyzerRule) forRun(options rules.OptionSet) (*packageAnalyzerR
 		r.analyzer.Name,
 		r.contract,
 		r.admission,
-	); err != nil {
+	);
+		err != nil {
 		return nil, err
 	}
 	if err := bindAnalyzerFlags(
@@ -229,7 +258,8 @@ func (r *packageAnalyzerRule) forRun(options rules.OptionSet) (*packageAnalyzerR
 		r.metadata,
 		r.bindings,
 		analyzerOptionSetLookup{options: options},
-	); err != nil {
+	);
+		err != nil {
 		return nil, err
 	}
 	plan := analyzerExecutionPlan(instance)
@@ -276,7 +306,11 @@ func (r *packageAnalyzerRule) runPackage(
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if pkg == nil || pkg.Fset == nil || pkg.Types == nil || pkg.TypesInfo == nil || pkg.TypesSizes == nil {
+	if pkg == nil ||
+		pkg.Fset == nil ||
+		pkg.Types == nil ||
+		pkg.TypesInfo == nil ||
+		pkg.TypesSizes == nil {
 		return nil, fmt.Errorf("adapted package is missing required type information")
 	}
 	module, err := packageAnalyzerModule(pkg.Module, 0)
@@ -312,22 +346,35 @@ func (r *packageAnalyzerRule) runPackage(
 			resultOf[required] = result
 		}
 		reported := make([]goanalysis.Diagnostic, 0)
-		importObjectFact := func(types.Object, goanalysis.Fact) bool { return false }
+		importObjectFact := func(types.Object, goanalysis.Fact) bool {
+			return false
+		}
 		exportObjectFact := func(types.Object, goanalysis.Fact) {
 			panic("adapted analyzer attempted to export an undeclared object fact")
 		}
-		allObjectFacts := func() []goanalysis.ObjectFact { return nil }
-		importPackageFact := func(*types.Package, goanalysis.Fact) bool { return false }
+		allObjectFacts := func() []goanalysis.ObjectFact {
+			return nil
+		}
+		importPackageFact := func(*types.Package, goanalysis.Fact) bool {
+			return false
+		}
 		exportPackageFact := func(goanalysis.Fact) {
 			panic("adapted analyzer attempted to export an undeclared package fact")
 		}
-		allPackageFacts := func() []goanalysis.PackageFact { return nil }
+		allPackageFacts := func() []goanalysis.PackageFact {
+			return nil
+		}
 		if facts != nil {
 			if err := facts.beginObjectFacts(planned.original, pkg); err != nil {
 				return nil, err
 			}
 			importObjectFact = func(object types.Object, fact goanalysis.Fact) bool {
-				return facts.importObjectFact(planned.original, pkg.Types, object, fact)
+				return facts.importObjectFact(
+					planned.original,
+					pkg.Types,
+					object,
+					fact,
+				)
 			}
 			exportObjectFact = func(object types.Object, fact goanalysis.Fact) {
 				facts.exportObjectFact(planned.original, pkg.Types, object, fact)
@@ -335,7 +382,10 @@ func (r *packageAnalyzerRule) runPackage(
 			allObjectFacts = func() []goanalysis.ObjectFact {
 				return facts.allObjectFacts(planned.original, pkg.Types)
 			}
-			importPackageFact = func(package_ *types.Package, fact goanalysis.Fact) bool {
+			importPackageFact = func(
+				package_ *types.Package,
+				fact goanalysis.Fact,
+			) bool {
 				return facts.importPackageFact(planned.original, package_, fact)
 			}
 			exportPackageFact = func(fact goanalysis.Fact) {
@@ -346,13 +396,13 @@ func (r *packageAnalyzerRule) runPackage(
 			}
 		}
 		pass := &goanalysis.Pass{
-			Analyzer:   &analyzer,
-			Fset:       pkg.Fset,
-			Files:      syntax,
-			Pkg:        pkg.Types,
-			TypesInfo:  pkg.TypesInfo,
+			Analyzer: &analyzer,
+			Fset: pkg.Fset,
+			Files: syntax,
+			Pkg: pkg.Types,
+			TypesInfo: pkg.TypesInfo,
 			TypesSizes: pkg.TypesSizes,
-			Module:     module,
+			Module: module,
 			Report: func(diagnostic goanalysis.Diagnostic) {
 				reported = append(reported, cloneAnalyzerDiagnostic(diagnostic))
 			},
@@ -360,20 +410,26 @@ func (r *packageAnalyzerRule) runPackage(
 			ReadFile: func(filename string) ([]byte, error) {
 				path := filepath.Clean(filename)
 				if !filepath.IsAbs(path) || path != filename {
-					return nil, fmt.Errorf("read file %q: path is not normalized absolute", filename)
+					return nil, fmt.Errorf(
+						"read file %q: path is not normalized absolute",
+						filename,
+					)
 				}
 				file, found := byPath[path]
 				if !found {
-					return nil, fmt.Errorf("read file %q: outside the adapted package source", filename)
+					return nil, fmt.Errorf(
+						"read file %q: outside the adapted package source",
+						filename,
+					)
 				}
 				return file.Bytes(), nil
 			},
-			ImportObjectFact:  importObjectFact,
+			ImportObjectFact: importObjectFact,
 			ImportPackageFact: importPackageFact,
-			ExportObjectFact:  exportObjectFact,
+			ExportObjectFact: exportObjectFact,
 			ExportPackageFact: exportPackageFact,
-			AllPackageFacts:   allPackageFacts,
-			AllObjectFacts:    allObjectFacts,
+			AllPackageFacts: allPackageFacts,
+			AllObjectFacts: allObjectFacts,
 		}
 		if analyzer.RunDespiteErrors {
 			pass.TypeErrors = slices.Clone(pkg.TypeErrors)
@@ -393,10 +449,13 @@ func (r *packageAnalyzerRule) runPackage(
 				want,
 			)
 		}
-		if stepIndex != len(r.steps)-1 && len(reported) != 0 {
-			return nil, fmt.Errorf("prerequisite analyzer %q reported diagnostics", analyzer.Name)
+		if stepIndex != len(r.steps) - 1 && len(reported) != 0 {
+			return nil, fmt.Errorf(
+				"prerequisite analyzer %q reported diagnostics",
+				analyzer.Name,
+			)
 		}
-		if stepIndex == len(r.steps)-1 {
+		if stepIndex == len(r.steps) - 1 {
 			upstream = reported
 		}
 		results[planned.original] = result
@@ -438,12 +497,20 @@ func (r *packageAnalyzerRule) packageFinding(
 	}
 	related := make([]rules.Related, len(diagnostic.Related))
 	for index, item := range diagnostic.Related {
-		relatedFile, sourceRange, err := packageAnalyzerRange(fileSet, files, item.Pos, item.End)
+		relatedFile, sourceRange, err := packageAnalyzerRange(
+			fileSet,
+			files,
+			item.Pos,
+			item.End,
+		)
 		if err != nil {
 			return nil, rules.Finding{}, fmt.Errorf("related range %d: %w", index, err)
 		}
 		if relatedFile != file {
-			return nil, rules.Finding{}, fmt.Errorf("related range %d belongs to another source file", index)
+			return nil, rules.Finding{}, fmt.Errorf(
+				"related range %d belongs to another source file",
+				index,
+			)
 		}
 		related[index] = rules.Related{Range: sourceRange, Message: item.Message}
 	}
@@ -451,11 +518,19 @@ func (r *packageAnalyzerRule) packageFinding(
 	for fixIndex, suggested := range diagnostic.SuggestedFixes {
 		mapped, found := r.fixes[suggested.Message]
 		if !found {
-			return nil, rules.Finding{}, fmt.Errorf("undeclared suggested fix %q", suggested.Message)
+			return nil, rules.Finding{}, fmt.Errorf(
+				"undeclared suggested fix %q",
+				suggested.Message,
+			)
 		}
 		edits := make([]rules.Edit, len(suggested.TextEdits))
 		for editIndex, edit := range suggested.TextEdits {
-			editFile, sourceRange, err := packageAnalyzerRange(fileSet, files, edit.Pos, edit.End)
+			editFile, sourceRange, err := packageAnalyzerRange(
+				fileSet,
+				files,
+				edit.Pos,
+				edit.End,
+			)
 			if err != nil {
 				return nil, rules.Finding{}, fmt.Errorf(
 					"suggested fix %q edit %d: %w",
@@ -471,7 +546,10 @@ func (r *packageAnalyzerRule) packageFinding(
 					editIndex,
 				)
 			}
-			edits[editIndex] = rules.Edit{Range: sourceRange, NewText: string(edit.NewText)}
+			edits[editIndex] = rules.Edit{
+				Range: sourceRange,
+				NewText: string(edit.NewText),
+			}
 		}
 		fixes[fixIndex] = rules.Fix{Name: mapped.name, Safety: mapped.safety, Edits: edits}
 	}
@@ -481,11 +559,11 @@ func (r *packageAnalyzerRule) packageFinding(
 	}
 	return file, rules.Finding{
 		MessageKey: messageKey,
-		Message:    diagnostic.Message,
-		Range:      primary,
-		Related:    related,
-		Help:       help,
-		Fixes:      fixes,
+		Message: diagnostic.Message,
+		Range: primary,
+		Related: related,
+		Help: help,
+		Fixes: fixes,
 	}, nil
 }
 
@@ -505,11 +583,15 @@ func packageAnalyzerRange(
 	physicalEnd := fileSet.PositionFor(end, false)
 	path := filepath.Clean(physicalStart.Filename)
 	if !filepath.IsAbs(path) || path != physicalStart.Filename || physicalEnd.Filename != path {
-		return nil, source.Range{}, fmt.Errorf("positions do not belong to one adapted package source")
+		return nil, source.Range{}, fmt.Errorf(
+			"positions do not belong to one adapted package source",
+		)
 	}
 	file, found := files[path]
 	if !found {
-		return nil, source.Range{}, fmt.Errorf("position is outside the adapted package source")
+		return nil, source.Range{}, fmt.Errorf(
+			"position is outside the adapted package source",
+		)
 	}
 	range_ := source.Range{Start: physicalStart.Offset, End: physicalEnd.Offset}
 	if _, valid := file.Slice(range_); !valid {
@@ -523,20 +605,22 @@ func packageAnalyzerModule(module *packages.Module, depth int) (*goanalysis.Modu
 		return nil, nil
 	}
 	if depth >= 16 {
-		return nil, fmt.Errorf("adapted package module replacement chain exceeds 16 entries")
+		return nil, fmt.Errorf(
+			"adapted package module replacement chain exceeds 16 entries",
+		)
 	}
-	replacement, err := packageAnalyzerModule(module.Replace, depth+1)
+	replacement, err := packageAnalyzerModule(module.Replace, depth + 1)
 	if err != nil {
 		return nil, err
 	}
 	result := &goanalysis.Module{
-		Path:      module.Path,
-		Version:   module.Version,
-		Replace:   replacement,
-		Main:      module.Main,
-		Indirect:  module.Indirect,
-		Dir:       module.Dir,
-		GoMod:     module.GoMod,
+		Path: module.Path,
+		Version: module.Version,
+		Replace: replacement,
+		Main: module.Main,
+		Indirect: module.Indirect,
+		Dir: module.Dir,
+		GoMod: module.GoMod,
 		GoVersion: module.GoVersion,
 	}
 	if module.Time != nil {

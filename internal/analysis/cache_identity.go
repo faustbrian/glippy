@@ -18,36 +18,41 @@ import (
 )
 
 type packageCacheKeyInput struct {
-	Namespace       string
-	ToolVersion     string
-	BuildGoVersion  string
+	Namespace string
+	ToolVersion string
+	BuildGoVersion string
 	SourceGoVersion string
-	Configuration   cache.Digest
-	Rules           []cache.RuleInput
-	CGOEnabled      bool
-	FormatterMode   string
-	LoadOptions     PackageLoadOptions
-	Loaded          PackageLoadResult
-	Facts           map[string]cache.Digest
+	Configuration cache.Digest
+	Rules []cache.RuleInput
+	CGOEnabled bool
+	FormatterMode string
+	LoadOptions PackageLoadOptions
+	Loaded PackageLoadResult
+	Facts map[string]cache.Digest
 }
 
 type packageCacheComponentKey struct {
-	kind     cache.ComponentKind
+	kind cache.ComponentKind
 	identity string
 }
 
 func buildPackageCacheKey(input packageCacheKeyInput) (cache.Key, error) {
-	if err := validatePackageCacheLoadIdentity(input.LoadOptions, input.CGOEnabled); err != nil {
+	if err := validatePackageCacheLoadIdentity(input.LoadOptions, input.CGOEnabled);
+		err != nil {
 		return cache.Key{}, err
 	}
 	if input.Loaded.Requirement != input.LoadOptions.Requirement {
-		return cache.Key{}, fmt.Errorf("package cache load requirement does not match its request")
+		return cache.Key{}, fmt.Errorf(
+			"package cache load requirement does not match its request",
+		)
 	}
 	if len(input.Loaded.Diagnostics) != 0 || len(input.Loaded.Sources.problems) != 0 {
 		return cache.Key{}, fmt.Errorf("package cache identity requires an error-free load")
 	}
 	if input.Facts == nil {
-		return cache.Key{}, fmt.Errorf("package cache identity requires explicit imported fact digests")
+		return cache.Key{}, fmt.Errorf(
+			"package cache identity requires explicit imported fact digests",
+		)
 	}
 	if _, err := packageBuildFlags(input.LoadOptions); err != nil {
 		return cache.Key{}, err
@@ -58,7 +63,10 @@ func buildPackageCacheKey(input packageCacheKeyInput) (cache.Key, error) {
 	}
 	for _, pkg := range packages_ {
 		if pkg.IllTyped {
-			return cache.Key{}, fmt.Errorf("package cache identity refuses ill-typed package %q", pkg.ID)
+			return cache.Key{}, fmt.Errorf(
+				"package cache identity refuses ill-typed package %q",
+				pkg.ID,
+			)
 		}
 	}
 	components := make(map[packageCacheComponentKey]cache.Component)
@@ -98,7 +106,8 @@ func buildPackageCacheKey(input packageCacheKeyInput) (cache.Key, error) {
 		input.Loaded.Packages,
 		packages_,
 		input.LoadOptions.LoadDependencySyntax,
-	); err != nil {
+	);
+		err != nil {
 		return cache.Key{}, err
 	}
 	factNames := make([]string, 0, len(input.Facts))
@@ -108,11 +117,18 @@ func buildPackageCacheKey(input packageCacheKeyInput) (cache.Key, error) {
 	sort.Strings(factNames)
 	for _, name := range factNames {
 		if strings.TrimSpace(name) == "" || input.Facts[name] == (cache.Digest{}) {
-			return cache.Key{}, fmt.Errorf("package cache imported fact identity is incomplete")
+			return cache.Key{}, fmt.Errorf(
+				"package cache imported fact identity is incomplete",
+			)
 		}
-		if err := add(cache.Component{
-			Kind: cache.ComponentFact, Identity: name, Digest: input.Facts[name],
-		}); err != nil {
+		if err := add(
+			cache.Component{
+				Kind: cache.ComponentFact,
+				Identity: name,
+				Digest: input.Facts[name],
+			},
+		);
+			err != nil {
 			return cache.Key{}, err
 		}
 	}
@@ -120,20 +136,22 @@ func buildPackageCacheKey(input packageCacheKeyInput) (cache.Key, error) {
 	for _, component := range components {
 		ordered = append(ordered, component)
 	}
-	return cache.BuildKey(cache.KeyInput{
-		Namespace:       input.Namespace,
-		ToolVersion:     input.ToolVersion,
-		BuildGoVersion:  input.BuildGoVersion,
-		SourceGoVersion: input.SourceGoVersion,
-		Configuration:   input.Configuration,
-		Rules:           slices.Clone(input.Rules),
-		BuildTags:       slices.Clone(input.LoadOptions.BuildTags),
-		GOOS:            input.LoadOptions.GOOS,
-		GOARCH:          input.LoadOptions.GOARCH,
-		CGOEnabled:      input.CGOEnabled,
-		FormatterMode:   input.FormatterMode,
-		Components:      ordered,
-	})
+	return cache.BuildKey(
+		cache.KeyInput{
+			Namespace: input.Namespace,
+			ToolVersion: input.ToolVersion,
+			BuildGoVersion: input.BuildGoVersion,
+			SourceGoVersion: input.SourceGoVersion,
+			Configuration: input.Configuration,
+			Rules: slices.Clone(input.Rules),
+			BuildTags: slices.Clone(input.LoadOptions.BuildTags),
+			GOOS: input.LoadOptions.GOOS,
+			GOARCH: input.LoadOptions.GOARCH,
+			CGOEnabled: input.CGOEnabled,
+			FormatterMode: input.FormatterMode,
+			Components: ordered,
+		},
+	)
 }
 
 func validatePackageCacheLoadIdentity(options PackageLoadOptions, cgoEnabled bool) error {
@@ -163,16 +181,24 @@ func reachablePackageGraph(roots []*packages.Package) ([]*packages.Package, erro
 	var visit func(*packages.Package) error
 	visit = func(pkg *packages.Package) error {
 		if pkg == nil || pkg.ID == "" {
-			return fmt.Errorf("package cache graph contains a nil or unidentified package")
+			return fmt.Errorf(
+				"package cache graph contains a nil or unidentified package",
+			)
 		}
 		if state[pkg] == 1 {
-			return fmt.Errorf("package cache graph contains an import cycle at %q", pkg.ID)
+			return fmt.Errorf(
+				"package cache graph contains an import cycle at %q",
+				pkg.ID,
+			)
 		}
 		if state[pkg] == 2 {
 			return nil
 		}
 		if previous, found := byID[pkg.ID]; found && previous != pkg {
-			return fmt.Errorf("package cache graph has conflicting package ID %q", pkg.ID)
+			return fmt.Errorf(
+				"package cache graph has conflicting package ID %q",
+				pkg.ID,
+			)
 		}
 		byID[pkg.ID] = pkg
 		state[pkg] = 1
@@ -206,10 +232,7 @@ func reachablePackageGraph(roots []*packages.Package) ([]*packages.Package, erro
 	return result, nil
 }
 
-func addPackageSourceComponents(
-	add func(cache.Component) error,
-	sources PackageSourceSet,
-) error {
+func addPackageSourceComponents(add func(cache.Component) error, sources PackageSourceSet) error {
 	if len(sources.paths) == 0 || len(sources.paths) != len(sources.files) {
 		return fmt.Errorf("package cache source set is incomplete")
 	}
@@ -224,11 +247,20 @@ func addPackageSourceComponents(
 			return fmt.Errorf("package cache source %q is missing", path)
 		}
 		if file.Path() != path {
-			return fmt.Errorf("package cache source %q has identity %q", path, file.Path())
+			return fmt.Errorf(
+				"package cache source %q has identity %q",
+				path,
+				file.Path(),
+			)
 		}
-		if err := add(cache.Component{
-			Kind: cache.ComponentSource, Identity: path, Digest: cache.Digest(file.Digest()),
-		}); err != nil {
+		if err := add(
+			cache.Component{
+				Kind: cache.ComponentSource,
+				Identity: path,
+				Digest: cache.Digest(file.Digest()),
+			},
+		);
+			err != nil {
 			return err
 		}
 	}
@@ -251,57 +283,82 @@ func addPackageSelectionComponents(
 		moduleMode = ModuleReadonly
 	}
 	request := struct {
-		Dir                  string
-		Patterns             []string
-		Requirement          string
-		Tests                bool
+		Dir string
+		Patterns []string
+		Requirement string
+		Tests bool
 		LoadDependencySyntax bool
-		BuildTags            []string
-		ModuleMode           ModuleMode
-		AllowNetwork         bool
+		BuildTags []string
+		ModuleMode ModuleMode
+		AllowNetwork bool
 	}{
-		Dir: options.Dir, Patterns: patterns, Requirement: options.Requirement.String(),
-		Tests: options.Tests, LoadDependencySyntax: options.LoadDependencySyntax,
-		BuildTags: tags, ModuleMode: moduleMode, AllowNetwork: options.AllowNetwork,
+		Dir: options.Dir,
+		Patterns: patterns,
+		Requirement: options.Requirement.String(),
+		Tests: options.Tests,
+		LoadDependencySyntax: options.LoadDependencySyntax,
+		BuildTags: tags,
+		ModuleMode: moduleMode,
+		AllowNetwork: options.AllowNetwork,
 	}
 	digest, err := digestPackageCacheJSON(request)
 	if err != nil {
 		return err
 	}
-	if err := add(cache.Component{
-		Kind: cache.ComponentBuildSelection, Identity: "request", Digest: digest,
-	}); err != nil {
+	if err := add(
+		cache.Component{
+			Kind: cache.ComponentBuildSelection,
+			Identity: "request",
+			Digest: digest,
+		},
+	);
+		err != nil {
 		return err
 	}
 	for _, pkg := range packages_ {
 		imports := make([]string, 0, len(pkg.Imports))
 		for path, imported := range pkg.Imports {
 			if imported == nil {
-				return fmt.Errorf("package cache package %q has nil import %q", pkg.ID, path)
+				return fmt.Errorf(
+					"package cache package %q has nil import %q",
+					pkg.ID,
+					path,
+				)
 			}
-			imports = append(imports, path+"="+imported.ID)
+			imports = append(imports, path + "=" + imported.ID)
 		}
 		sort.Strings(imports)
 		selection := struct {
-			ID, Name, PkgPath, ForTest  string
-			GoFiles, CompiledGoFiles    []string
-			OtherFiles, EmbedFiles      []string
+			ID, Name, PkgPath, ForTest string
+			GoFiles, CompiledGoFiles []string
+			OtherFiles, EmbedFiles []string
 			EmbedPatterns, IgnoredFiles []string
-			Imports                     []string
+			Imports []string
 		}{
-			ID: pkg.ID, Name: pkg.Name, PkgPath: pkg.PkgPath, ForTest: pkg.ForTest,
-			GoFiles: sortedStrings(pkg.GoFiles), CompiledGoFiles: sortedStrings(pkg.CompiledGoFiles),
-			OtherFiles: sortedStrings(pkg.OtherFiles), EmbedFiles: sortedStrings(pkg.EmbedFiles),
-			EmbedPatterns: sortedStrings(pkg.EmbedPatterns), IgnoredFiles: sortedStrings(pkg.IgnoredFiles),
+			ID: pkg.ID,
+			Name: pkg.Name,
+			PkgPath: pkg.PkgPath,
+			ForTest: pkg.ForTest,
+			GoFiles: sortedStrings(pkg.GoFiles),
+			CompiledGoFiles: sortedStrings(pkg.CompiledGoFiles),
+			OtherFiles: sortedStrings(pkg.OtherFiles),
+			EmbedFiles: sortedStrings(pkg.EmbedFiles),
+			EmbedPatterns: sortedStrings(pkg.EmbedPatterns),
+			IgnoredFiles: sortedStrings(pkg.IgnoredFiles),
 			Imports: imports,
 		}
 		digest, err := digestPackageCacheJSON(selection)
 		if err != nil {
 			return err
 		}
-		if err := add(cache.Component{
-			Kind: cache.ComponentBuildSelection, Identity: "package:" + pkg.ID, Digest: digest,
-		}); err != nil {
+		if err := add(
+			cache.Component{
+				Kind: cache.ComponentBuildSelection,
+				Identity: "package:" + pkg.ID,
+				Digest: digest,
+			},
+		);
+			err != nil {
 			return err
 		}
 	}
@@ -317,22 +374,51 @@ func addPackageEnvironmentComponent(
 	if err != nil {
 		return err
 	}
-	return add(cache.Component{
-		Kind: cache.ComponentEnvironment, Identity: "go/packages", Digest: digest,
-	})
+	return add(
+		cache.Component{
+			Kind: cache.ComponentEnvironment,
+			Identity: "go/packages",
+			Digest: digest,
+		},
+	)
 }
 
 func packageCacheEnvironment(options PackageLoadOptions) []string {
 	selected := map[string]struct{}{
-		"CC": {}, "CXX": {}, "FC": {}, "PATH": {}, "PKG_CONFIG": {},
-		"CGO_ENABLED": {}, "CGO_CFLAGS": {}, "CGO_CPPFLAGS": {},
-		"CGO_CXXFLAGS": {}, "CGO_FFLAGS": {}, "CGO_LDFLAGS": {},
-		"GO111MODULE": {}, "GO386": {}, "GOAMD64": {}, "GOARCH": {},
-		"GOARM": {}, "GOARM64": {}, "GOENV": {}, "GOEXPERIMENT": {},
-		"GOFLAGS": {}, "GOINSECURE": {}, "GOMIPS": {}, "GOMIPS64": {},
-		"GONOPROXY": {}, "GONOSUMDB": {}, "GOPPC64": {}, "GOPRIVATE": {},
-		"GOPROXY": {}, "GORISCV64": {}, "GOSUMDB": {}, "GOTOOLCHAIN": {},
-		"GOVCS": {}, "GOWASM": {}, "GOWORK": {},
+		"CC": {},
+		"CXX": {},
+		"FC": {},
+		"PATH": {},
+		"PKG_CONFIG": {},
+		"CGO_ENABLED": {},
+		"CGO_CFLAGS": {},
+		"CGO_CPPFLAGS": {},
+		"CGO_CXXFLAGS": {},
+		"CGO_FFLAGS": {},
+		"CGO_LDFLAGS": {},
+		"GO111MODULE": {},
+		"GO386": {},
+		"GOAMD64": {},
+		"GOARCH": {},
+		"GOARM": {},
+		"GOARM64": {},
+		"GOENV": {},
+		"GOEXPERIMENT": {},
+		"GOFLAGS": {},
+		"GOINSECURE": {},
+		"GOMIPS": {},
+		"GOMIPS64": {},
+		"GONOPROXY": {},
+		"GONOSUMDB": {},
+		"GOPPC64": {},
+		"GOPRIVATE": {},
+		"GOPROXY": {},
+		"GORISCV64": {},
+		"GOSUMDB": {},
+		"GOTOOLCHAIN": {},
+		"GOVCS": {},
+		"GOWASM": {},
+		"GOWORK": {},
 	}
 	environment := packageLoadEnvironment(options)
 	result := make([]string, 0, len(selected))
@@ -345,10 +431,7 @@ func packageCacheEnvironment(options PackageLoadOptions) []string {
 	return result
 }
 
-func addPackageOverlayComponents(
-	add func(cache.Component) error,
-	overlay map[string][]byte,
-) error {
+func addPackageOverlayComponents(add func(cache.Component) error, overlay map[string][]byte) error {
 	paths := make([]string, 0, len(overlay))
 	for path := range overlay {
 		paths = append(paths, path)
@@ -358,9 +441,14 @@ func addPackageOverlayComponents(
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 			return fmt.Errorf("package cache overlay path %q is not canonical", path)
 		}
-		if err := add(cache.Component{
-			Kind: cache.ComponentOverlay, Identity: path, Digest: cache.DigestOf(overlay[path]),
-		}); err != nil {
+		if err := add(
+			cache.Component{
+				Kind: cache.ComponentOverlay,
+				Identity: path,
+				Digest: cache.DigestOf(overlay[path]),
+			},
+		);
+			err != nil {
 			return err
 		}
 	}
@@ -384,11 +472,15 @@ func addPackageModuleComponents(
 		seen[module] = struct{}{}
 		metadata := struct {
 			Path, Version, Time, Dir, GoMod, GoVersion, Error string
-			Main, Indirect                                    bool
+			Main, Indirect bool
 		}{
-			Path: module.Path, Version: module.Version, Dir: module.Dir,
-			GoMod: module.GoMod, GoVersion: module.GoVersion,
-			Main: module.Main, Indirect: module.Indirect,
+			Path: module.Path,
+			Version: module.Version,
+			Dir: module.Dir,
+			GoMod: module.GoMod,
+			GoVersion: module.GoVersion,
+			Main: module.Main,
+			Indirect: module.Indirect,
 		}
 		if module.Time != nil {
 			metadata.Time = module.Time.UTC().Format("2006-01-02T15:04:05.999999999Z")
@@ -400,22 +492,31 @@ func addPackageModuleComponents(
 		if err != nil {
 			return err
 		}
-		if err := add(cache.Component{
-			Kind:     cache.ComponentModule,
-			Identity: "metadata:" + module.Path + "@" + module.Version,
-			Digest:   digest,
-		}); err != nil {
+		if err := add(
+			cache.Component{
+				Kind: cache.ComponentModule,
+				Identity: "metadata:" + module.Path + "@" + module.Version,
+				Digest: digest,
+			},
+		);
+			err != nil {
 			return err
 		}
 		if module.GoMod != "" {
-			if err := addRequiredPackageCacheFile(add, cache.ComponentModule, module.GoMod); err != nil {
+			if err := addRequiredPackageCacheFile(
+				add,
+				cache.ComponentModule,
+				module.GoMod,
+			);
+				err != nil {
 				return err
 			}
 			if err := addOptionalPackageCacheFile(
 				add,
 				cache.ComponentModule,
 				filepath.Join(filepath.Dir(module.GoMod), "go.sum"),
-			); err != nil {
+			);
+				err != nil {
 				return err
 			}
 		}
@@ -436,29 +537,41 @@ func addPackageModuleComponents(
 	default:
 		workspace = goWork
 	}
-	selection, err := digestPackageCacheJSON(struct {
-		Setting, Path string
-	}{Setting: goWork, Path: workspace})
+	selection, err := digestPackageCacheJSON(
+		struct {
+			Setting, Path string
+		}{Setting: goWork, Path: workspace},
+	)
 	if err != nil {
 		return err
 	}
-	if err := add(cache.Component{
-		Kind: cache.ComponentWorkspace, Identity: "selection", Digest: selection,
-	}); err != nil {
+	if err := add(
+		cache.Component{
+			Kind: cache.ComponentWorkspace,
+			Identity: "selection",
+			Digest: selection,
+		},
+	);
+		err != nil {
 		return err
 	}
 	if workspace != "" {
 		if !filepath.IsAbs(workspace) || filepath.Clean(workspace) != workspace {
-			return fmt.Errorf("package cache workspace path %q is not canonical", workspace)
+			return fmt.Errorf(
+				"package cache workspace path %q is not canonical",
+				workspace,
+			)
 		}
-		if err := addRequiredPackageCacheFile(add, cache.ComponentWorkspace, workspace); err != nil {
+		if err := addRequiredPackageCacheFile(add, cache.ComponentWorkspace, workspace);
+			err != nil {
 			return err
 		}
 		if err := addOptionalPackageCacheFile(
 			add,
 			cache.ComponentWorkspace,
 			filepath.Join(filepath.Dir(workspace), "go.work.sum"),
-		); err != nil {
+		);
+			err != nil {
 			return err
 		}
 	}
@@ -473,16 +586,21 @@ func addPackageModuleComponents(
 				}
 				candidate := filepath.Dir(pkg.Module.GoMod)
 				if vendorRoot != "" && vendorRoot != candidate {
-					return fmt.Errorf("package cache graph has multiple main module roots")
+					return fmt.Errorf(
+						"package cache graph has multiple main module roots",
+					)
 				}
 				vendorRoot = candidate
 			}
 		}
 		if vendorRoot == "" {
-			return fmt.Errorf("package cache vendor mode has no workspace or main module root")
+			return fmt.Errorf(
+				"package cache vendor mode has no workspace or main module root",
+			)
 		}
 		vendor := filepath.Join(vendorRoot, "vendor", "modules.txt")
-		if err := addRequiredPackageCacheFile(add, cache.ComponentModule, vendor); err != nil {
+		if err := addRequiredPackageCacheFile(add, cache.ComponentModule, vendor);
+			err != nil {
 			return err
 		}
 	}
@@ -510,21 +628,34 @@ func addPackageExportComponents(
 	}
 	for _, pkg := range packages_ {
 		if pkg.ID == "unsafe" && pkg.PkgPath == "unsafe" && len(pkg.CompiledGoFiles) == 0 {
-			if err := add(cache.Component{
-				Kind: cache.ComponentDependencyExport, Identity: "intrinsic:unsafe",
-				Digest: cache.DigestOf([]byte("go-toolchain-intrinsic-unsafe-v1")),
-			}); err != nil {
+			if err := add(
+				cache.Component{
+					Kind: cache.ComponentDependencyExport,
+					Identity: "intrinsic:unsafe",
+					Digest: cache.DigestOf(
+						[]byte("go-toolchain-intrinsic-unsafe-v1"),
+					),
+				},
+			);
+				err != nil {
 				return err
 			}
 			continue
 		}
 		if _, required := requireSource[pkg.ID]; required {
 			if len(pkg.CompiledGoFiles) == 0 {
-				return fmt.Errorf("package cache package %q has no compiled source", pkg.ID)
+				return fmt.Errorf(
+					"package cache package %q has no compiled source",
+					pkg.ID,
+				)
 			}
 			for _, path := range pkg.CompiledGoFiles {
 				if _, found := sources.Lookup(path); !found {
-					return fmt.Errorf("package cache package %q source %q was not captured", pkg.ID, path)
+					return fmt.Errorf(
+						"package cache package %q source %q was not captured",
+						pkg.ID,
+						path,
+					)
 				}
 			}
 		}
@@ -533,10 +664,14 @@ func addPackageExportComponents(
 			if err != nil {
 				return err
 			}
-			if err := add(cache.Component{
-				Kind: cache.ComponentDependencyExport, Identity: "package:" + pkg.ID,
-				Digest: digest,
-			}); err != nil {
+			if err := add(
+				cache.Component{
+					Kind: cache.ComponentDependencyExport,
+					Identity: "package:" + pkg.ID,
+					Digest: digest,
+				},
+			);
+				err != nil {
 				return err
 			}
 			continue
@@ -547,11 +682,18 @@ func addPackageExportComponents(
 			}
 		}
 		if len(pkg.CompiledGoFiles) == 0 {
-			return fmt.Errorf("package cache package %q has no source or export evidence", pkg.ID)
+			return fmt.Errorf(
+				"package cache package %q has no source or export evidence",
+				pkg.ID,
+			)
 		}
 		for _, path := range pkg.CompiledGoFiles {
 			if _, found := sources.Lookup(path); !found {
-				return fmt.Errorf("package cache package %q source %q was not captured", pkg.ID, path)
+				return fmt.Errorf(
+					"package cache package %q source %q was not captured",
+					pkg.ID,
+					path,
+				)
 			}
 		}
 	}
@@ -588,7 +730,10 @@ func addOptionalPackageCacheFile(
 
 func digestPackageCacheFile(path string) (cache.Digest, error) {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return cache.Digest{}, fmt.Errorf("package cache file path %q is not canonical", path)
+		return cache.Digest{}, fmt.Errorf(
+			"package cache file path %q is not canonical",
+			path,
+		)
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -631,7 +776,8 @@ func environmentValue(environment []string, name string) string {
 func findPackageCacheWorkspace(directory string) string {
 	for current := directory; ; current = filepath.Dir(current) {
 		candidate := filepath.Join(current, "go.work")
-		if information, err := os.Stat(candidate); err == nil && information.Mode().IsRegular() {
+		if information, err := os.Stat(candidate);
+			err == nil && information.Mode().IsRegular() {
 			return candidate
 		}
 		parent := filepath.Dir(current)

@@ -17,30 +17,34 @@ const redundantBoolComparisonFix = "simplify-comparison"
 
 func (redundantBoolComparisonRule) Metadata() Metadata {
 	return Metadata{
-		ID:               "redundant-bool-comparison",
-		Summary:          "detects comparisons with boolean constants",
-		Documentation:    "Comparing a boolean expression with a compile-time true or false value adds no information. Use the boolean expression directly, negating it when the comparison reverses its truth value.",
-		DefaultSeverity:  SeverityWarn,
-		Presets:          []Preset{PresetStyle},
+		ID: "redundant-bool-comparison",
+		Summary: "detects comparisons with boolean constants",
+		Documentation: "Comparing a boolean expression with a compile-time true or false value adds no information. Use the boolean expression directly, negating it when the comparison reverses its truth value.",
+		DefaultSeverity: SeverityWarn,
+		Presets: []Preset{PresetStyle},
 		MinimumGoVersion: "1.25",
-		Requirement:      RequireTypes,
-		NodeInterests:    []NodeKind{NodeBinaryExpr},
-		Categories:       []Category{CategoryStyle, CategoryMaintainability},
-		Fixes: []FixMetadata{{
-			Name:        redundantBoolComparisonFix,
-			Description: "replace the comparison with an equivalent boolean expression",
-			Safety:      FixSafe,
-		}},
+		Requirement: RequireTypes,
+		NodeInterests: []NodeKind{NodeBinaryExpr},
+		Categories: []Category{CategoryStyle, CategoryMaintainability},
+		Fixes: []FixMetadata{
+			{
+				Name: redundantBoolComparisonFix,
+				Description: "replace the comparison with an equivalent boolean expression",
+				Safety: FixSafe,
+			},
+		},
 		KnownLimitations: []string{
 			"Boolean type parameters are not reported until their complete type sets can be proven boolean.",
 			"Comparisons are not reported when the retained operand has a defined boolean type because the comparison may intentionally normalize the result to predeclared bool.",
 			"A diagnostic has no automatic fix when removing the comparison would discard a comment outside the retained operand.",
 		},
-		Examples: []Example{{
-			Title:     "Use the boolean condition directly",
-			Incorrect: "if ready == true {\n\trun()\n}",
-			Correct:   "if ready {\n\trun()\n}",
-		}},
+		Examples: []Example{
+			{
+				Title: "Use the boolean condition directly",
+				Incorrect: "if ready == true {\n\trun()\n}",
+				Correct: "if ready {\n\trun()\n}",
+			},
+		},
 	}
 }
 
@@ -62,9 +66,9 @@ func (redundantBoolComparisonRule) RunTypes(ctx *TypesContext, node ast.Node) ([
 	}
 	finding := Finding{
 		MessageKey: "omit-comparison",
-		Message:    "comparison with a boolean constant is redundant",
-		Range:      comparisonRange,
-		Help:       "use the boolean expression directly",
+		Message: "comparison with a boolean constant is redundant",
+		Range: comparisonRange,
+		Help: "use the boolean expression directly",
 	}
 	otherRange, err := ctx.Range(other)
 	if err != nil {
@@ -75,18 +79,22 @@ func (redundantBoolComparisonRule) RunTypes(ctx *TypesContext, node ast.Node) ([
 	}
 	replacement, found := ctx.File().Slice(otherRange)
 	if !found {
-		return nil, fmt.Errorf("redundant-bool-comparison operand has an invalid source range")
+		return nil, fmt.Errorf(
+			"redundant-bool-comparison operand has an invalid source range",
+		)
 	}
 	negate := comparison.Op == token.EQL && !constantValue ||
 		comparison.Op == token.NEQ && constantValue
 	if negate {
 		replacement = negateBooleanSource(other, replacement)
 	}
-	finding.Fixes = []Fix{{
-		Name:   redundantBoolComparisonFix,
-		Safety: FixSafe,
-		Edits:  []Edit{{Range: comparisonRange, NewText: replacement}},
-	}}
+	finding.Fixes = []Fix{
+		{
+			Name: redundantBoolComparisonFix,
+			Safety: FixSafe,
+			Edits: []Edit{{Range: comparisonRange, NewText: replacement}},
+		},
+	}
 	return []Finding{finding}, nil
 }
 
@@ -139,12 +147,19 @@ func commentsOutsideRetainedRange(
 }
 
 func negateBooleanSource(expression ast.Expr, text string) string {
-	if unary, ok := expression.(*ast.UnaryExpr); ok && unary.Op == token.NOT && strings.HasPrefix(text, "!") {
+	if unary, ok := expression.(*ast.UnaryExpr);
+		ok && unary.Op == token.NOT && strings.HasPrefix(text, "!") {
 		return strings.TrimPrefix(text, "!")
 	}
 	switch expression.(type) {
-	case *ast.ParenExpr, *ast.Ident, *ast.SelectorExpr, *ast.CallExpr, *ast.IndexExpr,
-		*ast.IndexListExpr, *ast.TypeAssertExpr, *ast.UnaryExpr:
+	case *ast.ParenExpr,
+		*ast.Ident,
+		*ast.SelectorExpr,
+		*ast.CallExpr,
+		*ast.IndexExpr,
+		*ast.IndexListExpr,
+		*ast.TypeAssertExpr,
+		*ast.UnaryExpr:
 		return "!" + text
 	default:
 		return "!(" + text + ")"

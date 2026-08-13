@@ -12,9 +12,9 @@ func TestRenderProducesDeterministicShellCompletions(t *testing.T) {
 
 	ruleIDs := []string{"ineffective-break", "duplicate-condition"}
 	tests := []struct {
-		shell   completion.Shell
+		shell completion.Shell
 		markers []string
-		absent  []string
+		absent []string
 	}{
 		{
 			shell: completion.Bash,
@@ -50,34 +50,48 @@ func TestRenderProducesDeterministicShellCompletions(t *testing.T) {
 
 	for _, test := range tests {
 		test := test
-		t.Run(string(test.shell), func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			string(test.shell),
+			func(t *testing.T) {
+				t.Parallel()
 
-			first, err := completion.Render(test.shell, ruleIDs)
-			if err != nil {
-				t.Fatal(err)
-			}
-			second, err := completion.Render(test.shell, ruleIDs)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(first) != string(second) {
-				t.Fatal("Render() is nondeterministic")
-			}
-			if len(first) == 0 || first[len(first)-1] != '\n' {
-				t.Fatalf("Render() output does not end in one newline: %q", first)
-			}
-			for _, marker := range test.markers {
-				if !strings.Contains(string(first), marker) {
-					t.Fatalf("Render() output does not contain %q:\n%s", marker, first)
+				first, err := completion.Render(test.shell, ruleIDs)
+				if err != nil {
+					t.Fatal(err)
 				}
-			}
-			for _, marker := range test.absent {
-				if strings.Contains(string(first), marker) {
-					t.Fatalf("Render() output contains invalid form %q:\n%s", marker, first)
+				second, err := completion.Render(test.shell, ruleIDs)
+				if err != nil {
+					t.Fatal(err)
 				}
-			}
-		})
+				if string(first) != string(second) {
+					t.Fatal("Render() is nondeterministic")
+				}
+				if len(first) == 0 || first[len(first) - 1] != '\n' {
+					t.Fatalf(
+						"Render() output does not end in one newline: %q",
+						first,
+					)
+				}
+				for _, marker := range test.markers {
+					if !strings.Contains(string(first), marker) {
+						t.Fatalf(
+							"Render() output does not contain %q:\n%s",
+							marker,
+							first,
+						)
+					}
+				}
+				for _, marker := range test.absent {
+					if strings.Contains(string(first), marker) {
+						t.Fatalf(
+							"Render() output contains invalid form %q:\n%s",
+							marker,
+							first,
+						)
+					}
+				}
+			},
+		)
 	}
 }
 
@@ -87,7 +101,8 @@ func TestRenderRejectsUnsupportedShellAndUnsafeRuleID(t *testing.T) {
 	if _, err := completion.Render(completion.Shell("powershell"), nil); err == nil {
 		t.Fatal("Render() accepted an unsupported shell")
 	}
-	if _, err := completion.Render(completion.Bash, []string{"valid-rule", "$(unsafe)"}); err == nil {
+	if _, err := completion.Render(completion.Bash, []string{"valid-rule", "$(unsafe)"});
+		err == nil {
 		t.Fatal("Render() accepted an unsafe rule ID")
 	}
 }

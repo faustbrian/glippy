@@ -16,17 +16,17 @@ import (
 )
 
 type activeSyntaxRule struct {
-	rule     rules.SyntaxRule
+	rule rules.SyntaxRule
 	metadata rules.Metadata
 	severity rules.Severity
-	context  *rules.Context
+	context *rules.Context
 }
 
 type activeSyntaxFileRule struct {
-	rule     rules.SyntaxFileRule
+	rule rules.SyntaxFileRule
 	metadata rules.Metadata
 	severity rules.Severity
-	context  *rules.Context
+	context *rules.Context
 }
 
 // RunSyntax executes selected syntax rules through one shared AST traversal.
@@ -49,9 +49,12 @@ func RunSyntax(
 		return nil, err
 	}
 	ordered := slices.Clone(selection)
-	sort.Slice(ordered, func(left, right int) bool {
-		return ordered[left].ID < ordered[right].ID
-	})
+	sort.Slice(
+		ordered,
+		func(left, right int) bool {
+			return ordered[left].ID < ordered[right].ID
+		},
+	)
 	dispatch := make(map[rules.NodeKind][]activeSyntaxRule)
 	fileRules := make([]activeSyntaxFileRule, 0)
 	previousID := ""
@@ -63,7 +66,10 @@ func RunSyntax(
 		switch selected.Severity {
 		case rules.SeverityWarn, rules.SeverityError:
 		case rules.SeverityOff:
-			return nil, fmt.Errorf("selected rule %q has disabled severity", selected.ID)
+			return nil, fmt.Errorf(
+				"selected rule %q has disabled severity",
+				selected.ID,
+			)
 		default:
 			return nil, fmt.Errorf(
 				"selected rule %q has invalid severity %q",
@@ -77,7 +83,10 @@ func RunSyntax(
 		}
 		metadata, _ := registry.Metadata(selected.ID)
 		if selected.Requirement != metadata.Requirement {
-			return nil, fmt.Errorf("selected rule %q requirement does not match registry", selected.ID)
+			return nil, fmt.Errorf(
+				"selected rule %q requirement does not match registry",
+				selected.ID,
+			)
 		}
 		if metadata.Requirement != rules.RequireSyntax {
 			return nil, fmt.Errorf(
@@ -92,26 +101,41 @@ func RunSyntax(
 		fileRule, fileRuleFound := nativeRule.(rules.SyntaxFileRule)
 		syntaxRule, syntaxRuleFound := nativeRule.(rules.SyntaxRule)
 		if fileRuleFound && syntaxRuleFound {
-			return nil, fmt.Errorf("selected rule %q implements ambiguous syntax execution", selected.ID)
+			return nil, fmt.Errorf(
+				"selected rule %q implements ambiguous syntax execution",
+				selected.ID,
+			)
 		}
 		if fileRuleFound {
-			if len(metadata.NodeInterests) != 1 || metadata.NodeInterests[0] != rules.NodeFile {
-				return nil, fmt.Errorf("selected file rule %q must declare only file interest", selected.ID)
+			if len(metadata.NodeInterests) != 1 ||
+				metadata.NodeInterests[0] != rules.NodeFile {
+				return nil, fmt.Errorf(
+					"selected file rule %q must declare only file interest",
+					selected.ID,
+				)
 			}
-			fileRules = append(fileRules, activeSyntaxFileRule{
-				rule: fileRule, metadata: metadata, severity: selected.Severity,
-				context: rules.NewContext(file, selected.Options),
-			})
+			fileRules = append(
+				fileRules,
+				activeSyntaxFileRule{
+					rule: fileRule,
+					metadata: metadata,
+					severity: selected.Severity,
+					context: rules.NewContext(file, selected.Options),
+				},
+			)
 			continue
 		}
 		if !syntaxRuleFound {
-			return nil, fmt.Errorf("selected rule %q does not implement syntax execution", selected.ID)
+			return nil, fmt.Errorf(
+				"selected rule %q does not implement syntax execution",
+				selected.ID,
+			)
 		}
 		active := activeSyntaxRule{
-			rule:     syntaxRule,
+			rule: syntaxRule,
 			metadata: metadata,
 			severity: selected.Severity,
-			context:  rules.NewContext(file, selected.Options),
+			context: rules.NewContext(file, selected.Options),
 		}
 		for _, interest := range metadata.NodeInterests {
 			dispatch[interest] = append(dispatch[interest], active)
@@ -123,46 +147,71 @@ func RunSyntax(
 
 	diagnostics := make([]rules.Diagnostic, 0)
 	if len(dispatch) > 0 {
-		err := file.ReadSyntax(func(syntax *ast.File) error {
-			var runErr error
-			ast.Inspect(syntax, func(node ast.Node) bool {
-				if runErr != nil {
-					return false
-				}
-				if node == nil {
-					return true
-				}
-				if err := ctx.Err(); err != nil {
-					runErr = err
-					return false
-				}
-				kind, found := rules.KindOf(node)
-				if !found {
-					return true
-				}
-				for _, active := range dispatch[kind] {
-					findings, err := active.rule.RunSyntax(active.context, node)
-					if contextErr := ctx.Err(); contextErr != nil {
-						runErr = contextErr
-						return false
-					}
-					if err != nil {
-						runErr = fmt.Errorf("%s: %w", active.metadata.ID, err)
-						return false
-					}
-					for _, finding := range findings {
-						diagnostic, err := diagnosticForFinding(file, active.metadata, active.severity, finding)
-						if err != nil {
-							runErr = fmt.Errorf("%s: %w", active.metadata.ID, err)
+		err := file.ReadSyntax(
+			func(syntax *ast.File) error {
+				var runErr error
+				ast.Inspect(
+					syntax,
+					func(node ast.Node) bool {
+						if runErr != nil {
 							return false
 						}
-						diagnostics = append(diagnostics, diagnostic)
-					}
-				}
-				return true
-			})
-			return runErr
-		})
+						if node == nil {
+							return true
+						}
+						if err := ctx.Err(); err != nil {
+							runErr = err
+							return false
+						}
+						kind, found := rules.KindOf(node)
+						if !found {
+							return true
+						}
+						for _, active := range dispatch[kind] {
+							findings, err := active.rule.RunSyntax(
+								active.context,
+								node,
+							)
+							if contextErr := ctx.Err();
+								contextErr != nil {
+								runErr = contextErr
+								return false
+							}
+							if err != nil {
+								runErr = fmt.Errorf(
+									"%s: %w",
+									active.metadata.ID,
+									err,
+								)
+								return false
+							}
+							for _, finding := range findings {
+								diagnostic, err := diagnosticForFinding(
+									file,
+									active.metadata,
+									active.severity,
+									finding,
+								)
+								if err != nil {
+									runErr = fmt.Errorf(
+										"%s: %w",
+										active.metadata.ID,
+										err,
+									)
+									return false
+								}
+								diagnostics = append(
+									diagnostics,
+									diagnostic,
+								)
+							}
+						}
+						return true
+					},
+				)
+				return runErr
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -180,7 +229,12 @@ func RunSyntax(
 			return nil, fmt.Errorf("%s: %w", active.metadata.ID, err)
 		}
 		for _, finding := range findings {
-			diagnostic, err := diagnosticForFinding(file, active.metadata, active.severity, finding)
+			diagnostic, err := diagnosticForFinding(
+				file,
+				active.metadata,
+				active.severity,
+				finding,
+			)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", active.metadata.ID, err)
 			}
@@ -227,10 +281,16 @@ func diagnosticForFinding(
 		fix := &fixes[fixIndex]
 		declared, found := fixMetadata[fix.Name]
 		if !found {
-			return rules.Diagnostic{}, fmt.Errorf("finding uses undeclared fix %q", fix.Name)
+			return rules.Diagnostic{}, fmt.Errorf(
+				"finding uses undeclared fix %q",
+				fix.Name,
+			)
 		}
 		if fix.Safety != declared.Safety {
-			return rules.Diagnostic{}, fmt.Errorf("finding fix %q safety does not match metadata", fix.Name)
+			return rules.Diagnostic{}, fmt.Errorf(
+				"finding fix %q safety does not match metadata",
+				fix.Name,
+			)
 		}
 		if _, duplicate := seenFixes[fix.Name]; duplicate {
 			return rules.Diagnostic{}, fmt.Errorf("finding repeats fix %q", fix.Name)
@@ -239,71 +299,83 @@ func diagnosticForFinding(
 		fix.Edits = slices.Clone(fix.Edits)
 		for _, edit := range fix.Edits {
 			if _, valid := file.Slice(edit.Range); !valid {
-				return rules.Diagnostic{}, fmt.Errorf("finding fix %q has invalid edit range", fix.Name)
+				return rules.Diagnostic{}, fmt.Errorf(
+					"finding fix %q has invalid edit range",
+					fix.Name,
+				)
 			}
 		}
 	}
-	sort.Slice(fixes, func(left, right int) bool { return fixes[left].Name < fixes[right].Name })
+	sort.Slice(
+		fixes,
+		func(left, right int) bool {
+			return fixes[left].Name < fixes[right].Name
+		},
+	)
 	related := slices.Clone(finding.Related)
 	notes := slices.Clone(finding.Notes)
 	return rules.Diagnostic{
-		RuleID:     metadata.ID,
-		Severity:   severity,
+		RuleID: metadata.ID,
+		Severity: severity,
 		MessageKey: finding.MessageKey,
-		Message:    finding.Message,
-		Path:       file.Path(),
-		Digest:     file.Digest(),
-		Range:      finding.Range,
-		Related:    related,
-		Notes:      notes,
-		Help:       finding.Help,
-		Fixes:      fixes,
+		Message: finding.Message,
+		Path: file.Path(),
+		Digest: file.Digest(),
+		Range: finding.Range,
+		Related: related,
+		Notes: notes,
+		Help: finding.Help,
+		Fixes: fixes,
 	}, nil
 }
 
 func sortDiagnostics(diagnostics []rules.Diagnostic) {
-	sort.SliceStable(diagnostics, func(left, right int) bool {
-		first, second := diagnostics[left], diagnostics[right]
-		if order := cmp.Compare(first.Path, second.Path); order != 0 {
-			return order < 0
-		}
-		if order := bytes.Compare(first.Digest[:], second.Digest[:]); order != 0 {
-			return order < 0
-		}
-		if first.Range.Start != second.Range.Start {
-			return first.Range.Start < second.Range.Start
-		}
-		if first.Range.End != second.Range.End {
-			return first.Range.End < second.Range.End
-		}
-		if order := cmp.Compare(first.RuleID, second.RuleID); order != 0 {
-			return order < 0
-		}
-		if order := cmp.Compare(first.Severity, second.Severity); order != 0 {
-			return order < 0
-		}
-		if order := cmp.Compare(first.MessageKey, second.MessageKey); order != 0 {
-			return order < 0
-		}
-		if order := cmp.Compare(first.Message, second.Message); order != 0 {
-			return order < 0
-		}
-		if order := compareRelated(first.Related, second.Related); order != 0 {
-			return order < 0
-		}
-		if order := slices.Compare(first.Notes, second.Notes); order != 0 {
-			return order < 0
-		}
-		if order := cmp.Compare(first.Help, second.Help); order != 0 {
-			return order < 0
-		}
-		return compareFixes(first.Fixes, second.Fixes) < 0
-	})
+	sort.SliceStable(
+		diagnostics,
+		func(left, right int) bool {
+			first, second := diagnostics[left], diagnostics[right]
+			if order := cmp.Compare(first.Path, second.Path); order != 0 {
+				return order < 0
+			}
+			if order := bytes.Compare(first.Digest[:], second.Digest[:]); order != 0 {
+				return order < 0
+			}
+			if first.Range.Start != second.Range.Start {
+				return first.Range.Start < second.Range.Start
+			}
+			if first.Range.End != second.Range.End {
+				return first.Range.End < second.Range.End
+			}
+			if order := cmp.Compare(first.RuleID, second.RuleID); order != 0 {
+				return order < 0
+			}
+			if order := cmp.Compare(first.Severity, second.Severity); order != 0 {
+				return order < 0
+			}
+			if order := cmp.Compare(first.MessageKey, second.MessageKey); order != 0 {
+				return order < 0
+			}
+			if order := cmp.Compare(first.Message, second.Message); order != 0 {
+				return order < 0
+			}
+			if order := compareRelated(first.Related, second.Related); order != 0 {
+				return order < 0
+			}
+			if order := slices.Compare(first.Notes, second.Notes); order != 0 {
+				return order < 0
+			}
+			if order := cmp.Compare(first.Help, second.Help); order != 0 {
+				return order < 0
+			}
+			return compareFixes(first.Fixes, second.Fixes) < 0
+		},
+	)
 }
 
 func compareRelated(left, right []rules.Related) int {
 	for index := 0; index < min(len(left), len(right)); index++ {
-		if order := cmp.Compare(left[index].Range.Start, right[index].Range.Start); order != 0 {
+		if order := cmp.Compare(left[index].Range.Start, right[index].Range.Start);
+			order != 0 {
 			return order
 		}
 		if order := cmp.Compare(left[index].Range.End, right[index].Range.End); order != 0 {
@@ -326,13 +398,22 @@ func compareFixes(left, right []rules.Fix) int {
 		}
 		leftEdits, rightEdits := left[index].Edits, right[index].Edits
 		for edit := 0; edit < min(len(leftEdits), len(rightEdits)); edit++ {
-			if order := cmp.Compare(leftEdits[edit].Range.Start, rightEdits[edit].Range.Start); order != 0 {
+			if order := cmp.Compare(
+				leftEdits[edit].Range.Start,
+				rightEdits[edit].Range.Start,
+			);
+				order != 0 {
 				return order
 			}
-			if order := cmp.Compare(leftEdits[edit].Range.End, rightEdits[edit].Range.End); order != 0 {
+			if order := cmp.Compare(
+				leftEdits[edit].Range.End,
+				rightEdits[edit].Range.End,
+			);
+				order != 0 {
 				return order
 			}
-			if order := cmp.Compare(leftEdits[edit].NewText, rightEdits[edit].NewText); order != 0 {
+			if order := cmp.Compare(leftEdits[edit].NewText, rightEdits[edit].NewText);
+				order != 0 {
 				return order
 			}
 		}

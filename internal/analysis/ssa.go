@@ -15,10 +15,10 @@ import (
 )
 
 type activeSSARule struct {
-	rule     rules.SSARule
+	rule rules.SSARule
 	metadata rules.Metadata
 	severity rules.Severity
-	options  rules.OptionSet
+	options rules.OptionSet
 }
 
 // RunSSA executes selected SSA-tier rules once per source function through one
@@ -79,7 +79,9 @@ func RunSSA(
 			return nil, err
 		}
 		pkg, file := work.package_, work.file
-		if pkg.IllTyped || (file.source.Metadata().Generated && !anySSARuleRunsGenerated(activeRules)) {
+		if pkg.IllTyped ||
+			(file.source.Metadata().Generated &&
+				!anySSARuleRunsGenerated(activeRules)) {
 			continue
 		}
 		ssaPackage := ssaByPackage[pkg]
@@ -109,10 +111,14 @@ func RunSSA(
 			}
 			function := functionMap[sourceFunction.function]
 			if function == nil {
-				return nil, fmt.Errorf("package %q source function has no SSA function", pkg.ID)
+				return nil, fmt.Errorf(
+					"package %q source function has no SSA function",
+					pkg.ID,
+				)
 			}
 			for _, active := range activeRules {
-				if file.source.Metadata().Generated && !active.metadata.RunOnGenerated {
+				if file.source.Metadata().Generated &&
+					!active.metadata.RunOnGenerated {
 					continue
 				}
 				ruleContext := rules.NewSSAContext(
@@ -131,10 +137,17 @@ func RunSSA(
 				}
 				for _, finding := range findings {
 					diagnostic, err := diagnosticForFinding(
-						file.source, active.metadata, active.severity, finding,
+						file.source,
+						active.metadata,
+						active.severity,
+						finding,
 					)
 					if err != nil {
-						return nil, fmt.Errorf("%s: %w", active.metadata.ID, err)
+						return nil, fmt.Errorf(
+							"%s: %w",
+							active.metadata.ID,
+							err,
+						)
 					}
 					diagnostics = append(diagnostics, diagnostic)
 				}
@@ -149,7 +162,12 @@ func prepareSSARules(
 	selection []rules.Selection,
 ) ([]activeSSARule, error) {
 	ordered := slices.Clone(selection)
-	sort.Slice(ordered, func(left, right int) bool { return ordered[left].ID < ordered[right].ID })
+	sort.Slice(
+		ordered,
+		func(left, right int) bool {
+			return ordered[left].ID < ordered[right].ID
+		},
+	)
 	activeRules := make([]activeSSARule, 0, len(ordered))
 	previousID := ""
 	for _, selected := range ordered {
@@ -157,8 +175,13 @@ func prepareSSARules(
 			return nil, fmt.Errorf("selected rule %q more than once", selected.ID)
 		}
 		previousID = selected.ID
-		if selected.Severity != rules.SeverityWarn && selected.Severity != rules.SeverityError {
-			return nil, fmt.Errorf("selected rule %q has invalid severity %q", selected.ID, selected.Severity)
+		if selected.Severity != rules.SeverityWarn &&
+			selected.Severity != rules.SeverityError {
+			return nil, fmt.Errorf(
+				"selected rule %q has invalid severity %q",
+				selected.ID,
+				selected.Severity,
+			)
 		}
 		nativeRule, found := registry.Lookup(selected.ID)
 		if !found {
@@ -166,22 +189,40 @@ func prepareSSARules(
 		}
 		metadata, _ := registry.Metadata(selected.ID)
 		if selected.Requirement != metadata.Requirement {
-			return nil, fmt.Errorf("selected rule %q requirement does not match registry", selected.ID)
+			return nil, fmt.Errorf(
+				"selected rule %q requirement does not match registry",
+				selected.ID,
+			)
 		}
 		if metadata.Requirement != rules.RequireSSA {
-			return nil, fmt.Errorf("selected rule %q requires %s; SSA runner requires SSA rules", selected.ID, metadata.Requirement)
+			return nil, fmt.Errorf(
+				"selected rule %q requires %s; SSA runner requires SSA rules",
+				selected.ID,
+				metadata.Requirement,
+			)
 		}
 		ssaRule, found := nativeRule.(rules.SSARule)
 		if !found {
-			return nil, fmt.Errorf("selected rule %q does not implement SSA execution", selected.ID)
+			return nil, fmt.Errorf(
+				"selected rule %q does not implement SSA execution",
+				selected.ID,
+			)
 		}
 		if implementsNonSSAExecution(nativeRule) {
-			return nil, fmt.Errorf("selected rule %q implements ambiguous SSA execution", selected.ID)
+			return nil, fmt.Errorf(
+				"selected rule %q implements ambiguous SSA execution",
+				selected.ID,
+			)
 		}
-		activeRules = append(activeRules, activeSSARule{
-			rule: ssaRule, metadata: metadata, severity: selected.Severity,
-			options: selected.Options,
-		})
+		activeRules = append(
+			activeRules,
+			activeSSARule{
+				rule: ssaRule,
+				metadata: metadata,
+				severity: selected.Severity,
+				options: selected.Options,
+			},
+		)
 	}
 	return activeRules, nil
 }

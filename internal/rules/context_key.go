@@ -10,25 +10,27 @@ type contextKeyRule struct{}
 
 func (contextKeyRule) Metadata() Metadata {
 	return Metadata{
-		ID:               "context-key",
-		Summary:          "detects unsafe keys passed to context.WithValue",
-		Documentation:    "A context key must be comparable and should use a package-specific defined type to avoid collisions. Built-in types and anonymous empty structs can collide across packages, while nil or non-comparable keys cause context.WithValue to panic.",
-		DefaultSeverity:  SeverityWarn,
-		Presets:          []Preset{PresetSuspicious},
+		ID: "context-key",
+		Summary: "detects unsafe keys passed to context.WithValue",
+		Documentation: "A context key must be comparable and should use a package-specific defined type to avoid collisions. Built-in types and anonymous empty structs can collide across packages, while nil or non-comparable keys cause context.WithValue to panic.",
+		DefaultSeverity: SeverityWarn,
+		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
-		Requirement:      RequireTypes,
-		NodeInterests:    []NodeKind{NodeCallExpr},
-		Categories:       []Category{CategoryCorrectness, CategorySafety},
+		Requirement: RequireTypes,
+		NodeInterests: []NodeKind{NodeCallExpr},
+		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"Interface-typed keys and type parameters whose type sets are not proven entirely non-comparable are not reported because their dynamic value is not proven by the types tier.",
 			"The rule recognizes only the standard library context.WithValue function by object identity.",
 		},
-		Examples: []Example{{
-			Title:     "Use a package-specific context key type",
-			Incorrect: `context.WithValue(ctx, "request-id", requestID)`,
-			Correct: `type requestIDKey struct{}
+		Examples: []Example{
+			{
+				Title: "Use a package-specific context key type",
+				Incorrect: `context.WithValue(ctx, "request-id", requestID)`,
+				Correct: `type requestIDKey struct{}
 context.WithValue(ctx, requestIDKey{}, requestID)`,
-		}},
+			},
+		},
 	}
 }
 
@@ -57,12 +59,14 @@ func (contextKeyRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, err
 	if err != nil {
 		return nil, err
 	}
-	return []Finding{{
-		MessageKey: messageKey,
-		Message:    message,
-		Range:      range_,
-		Help:       "use a comparable package-specific defined key type",
-	}}, nil
+	return []Finding{
+		{
+			MessageKey: messageKey,
+			Message: message,
+			Range: range_,
+			Help: "use a comparable package-specific defined key type",
+		},
+	}, nil
 }
 
 func isContextWithValue(info *types.Info, expression ast.Expr) bool {
@@ -80,7 +84,9 @@ func isContextWithValue(info *types.Info, expression ast.Expr) bool {
 		return false
 	}
 	function, ok := object.(*types.Func)
-	return ok && function.Pkg() != nil && function.Pkg().Path() == "context" &&
+	return ok &&
+		function.Pkg() != nil &&
+		function.Pkg().Path() == "context" &&
 		function.Name() == "WithValue"
 }
 
@@ -143,7 +149,10 @@ func structuralNonComparability(
 		var result bool
 		found := false
 		for embedded := range underlying.EmbeddedTypes() {
-			nonComparable, restricted, known := structuralNonComparability(embedded, visiting)
+			nonComparable, restricted, known := structuralNonComparability(
+				embedded,
+				visiting,
+			)
 			if !known {
 				return false, false, false
 			}
@@ -163,7 +172,10 @@ func structuralNonComparability(
 		}
 		allNonComparable := true
 		for term := range underlying.Terms() {
-			nonComparable, restricted, known := structuralNonComparability(term.Type(), visiting)
+			nonComparable, restricted, known := structuralNonComparability(
+				term.Type(),
+				visiting,
+			)
 			if !known || !restricted {
 				return false, false, false
 			}

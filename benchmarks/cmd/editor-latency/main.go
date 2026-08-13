@@ -13,8 +13,8 @@ import (
 
 type probeOptions struct {
 	warmups int
-	runs    int
-	budget  time.Duration
+	runs int
+	budget time.Duration
 }
 
 func main() {
@@ -39,14 +39,16 @@ func run(arguments []string, output io.Writer) error {
 		return errors.New("--binary and --input are required and operands are not accepted")
 	}
 	if *warmups < 0 || *runs <= 0 || *budgetMS <= 0 {
-		return errors.New("--warmups must be non-negative and --runs and --budget-ms must be positive")
+		return errors.New(
+			"--warmups must be non-negative and --runs and --budget-ms must be positive",
+		)
 	}
 	input, err := os.ReadFile(*inputPath)
 	if err != nil {
 		return fmt.Errorf("read formatter input: %w", err)
 	}
 	execute := func() (time.Duration, error) {
-		command := exec.Command(*binary, "fmt", "--stdin-filepath="+*inputPath)
+		command := exec.Command(*binary, "fmt", "--stdin-filepath=" + *inputPath)
 		command.Stdin = bytes.NewReader(input)
 		command.Stdout = io.Discard
 		var standardError bytes.Buffer
@@ -55,15 +57,19 @@ func run(arguments []string, output io.Writer) error {
 		err := command.Run()
 		elapsed := time.Since(started)
 		if err != nil {
-			return 0, fmt.Errorf("formatter invocation failed: %w: %s", err, standardError.String())
+			return 0, fmt.Errorf(
+				"formatter invocation failed: %w: %s",
+				err,
+				standardError.String(),
+			)
 		}
 		return elapsed, nil
 	}
 	return probe(
 		probeOptions{
 			warmups: *warmups,
-			runs:    *runs,
-			budget:  time.Duration(*budgetMS) * time.Millisecond,
+			runs: *runs,
+			budget: time.Duration(*budgetMS) * time.Millisecond,
 		},
 		execute,
 		output,
@@ -88,7 +94,8 @@ func probe(options probeOptions, execute func() (time.Duration, error), output i
 		if elapsed > maximum {
 			maximum = elapsed
 		}
-		if _, err := fmt.Fprintf(output, "%d,%.3f\n", sample, milliseconds(elapsed)); err != nil {
+		if _, err := fmt.Fprintf(output, "%d,%.3f\n", sample, milliseconds(elapsed));
+			err != nil {
 			return err
 		}
 	}
@@ -99,7 +106,7 @@ func probe(options probeOptions, execute func() (time.Duration, error), output i
 		return fmt.Errorf(
 			"editor latency budget exceeded: %.3f ms > %d ms",
 			milliseconds(maximum),
-			options.budget/time.Millisecond,
+			options.budget / time.Millisecond,
 		)
 	}
 	return nil

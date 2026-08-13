@@ -15,20 +15,20 @@ import (
 
 type ssaRule struct {
 	metadata rules.Metadata
-	run      func(*rules.SSAContext) ([]rules.Finding, error)
+	run func(*rules.SSAContext) ([]rules.Finding, error)
 }
 
 type ambiguousSSARule struct {
 	ssaRule
 }
 
-func (r ambiguousSSARule) RunControlFlow(
-	*rules.ControlFlowContext,
-) ([]rules.Finding, error) {
+func (r ambiguousSSARule) RunControlFlow(*rules.ControlFlowContext) ([]rules.Finding, error) {
 	return nil, nil
 }
 
-func (r ssaRule) Metadata() rules.Metadata { return r.metadata }
+func (r ssaRule) Metadata() rules.Metadata {
+	return r.metadata
+}
 
 func (r ssaRule) RunSSA(ctx *rules.SSAContext) ([]rules.Finding, error) {
 	return r.run(ctx)
@@ -38,9 +38,16 @@ func TestRunSSASharesProgramAndVisitsSourceFunctionsCanonically(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
 	path := filepath.Join(root, "project.go")
-	writeTypesFixture(t, path, `package project
+	writeTypesFixture(
+		t,
+		path,
+		`package project
 
 var initializer = func() { target() }
 
@@ -55,10 +62,16 @@ func target() {}
 
 type owner struct{}
 func (owner) method() {}
-`)
-	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
-		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireSSA,
-	})
+`,
+	)
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireSSA,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,20 +83,33 @@ func (owner) method() {}
 		return ssaRule{
 			metadata: ssaMetadata(id),
 			run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
-				if ctx.File().Path() != path || ctx.PackageID() != "example.com/project" ||
-					ctx.Package().Path() != "example.com/project" || ctx.Info() == nil ||
-					ctx.Program() == nil || ctx.SSAPackage() == nil || ctx.Function() == nil ||
-					ctx.Syntax() == nil || ctx.IllTyped() {
+				if ctx.File().Path() != path ||
+					ctx.PackageID() != "example.com/project" ||
+					ctx.Package().Path() != "example.com/project" ||
+					ctx.Info() == nil ||
+					ctx.Program() == nil ||
+					ctx.SSAPackage() == nil ||
+					ctx.Function() == nil ||
+					ctx.Syntax() == nil ||
+					ctx.IllTyped() {
 					t.Fatalf("SSA context = %#v", ctx)
 				}
 				range_, err := ctx.Range(ctx.Syntax())
 				if err != nil {
 					return nil, err
 				}
-				programs[range_.Start] = append(programs[range_.Start], ctx.Program())
-				functions[range_.Start] = append(functions[range_.Start], ctx.Function())
-				visits = append(visits, id+":"+functionKind(ctx.Syntax()))
-				return []rules.Finding{{MessageKey: id, Message: id, Range: range_}}, nil
+				programs[range_.Start] = append(
+					programs[range_.Start],
+					ctx.Program(),
+				)
+				functions[range_.Start] = append(
+					functions[range_.Start],
+					ctx.Function(),
+				)
+				visits = append(visits, id + ":" + functionKind(ctx.Syntax()))
+				return []rules.Finding{
+					{MessageKey: id, Message: id, Range: range_},
+				}, nil
 			},
 		}
 	}
@@ -101,18 +127,29 @@ func (owner) method() {}
 	}
 
 	wantVisits := []string{
-		"a-ssa:literal", "z-ssa:literal",
-		"a-ssa:declaration", "z-ssa:declaration",
-		"a-ssa:declaration", "z-ssa:declaration",
-		"a-ssa:literal", "z-ssa:literal",
-		"a-ssa:declaration", "z-ssa:declaration",
-		"a-ssa:declaration", "z-ssa:declaration",
+		"a-ssa:literal",
+		"z-ssa:literal",
+		"a-ssa:declaration",
+		"z-ssa:declaration",
+		"a-ssa:declaration",
+		"z-ssa:declaration",
+		"a-ssa:literal",
+		"z-ssa:literal",
+		"a-ssa:declaration",
+		"z-ssa:declaration",
+		"a-ssa:declaration",
+		"z-ssa:declaration",
 	}
 	if !reflect.DeepEqual(visits, wantVisits) {
 		t.Fatalf("SSA visits = %#v, want %#v", visits, wantVisits)
 	}
 	if len(programs) != 6 || len(functions) != 6 || len(diagnostics) != 12 {
-		t.Fatalf("RunSSA() = programs %#v, functions %#v, diagnostics %#v", programs, functions, diagnostics)
+		t.Fatalf(
+			"RunSSA() = programs %#v, functions %#v, diagnostics %#v",
+			programs,
+			functions,
+			diagnostics,
+		)
 	}
 	var sharedProgram *ssa.Program
 	for start, values := range programs {
@@ -136,15 +173,32 @@ func TestRunSSASkipsIllTypedPackagesAndHonorsGeneratedPolicy(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
 	validPath := filepath.Join(root, "valid", "valid.go")
 	generatedPath := filepath.Join(root, "generated", "generated.go")
 	writeTypesFixture(t, validPath, "package valid\nfunc run() {}\n")
-	writeTypesFixture(t, filepath.Join(root, "invalid", "invalid.go"), "package invalid\nfunc run() { _ = missing }\n")
-	writeTypesFixture(t, generatedPath, "// Code generated by test. DO NOT EDIT.\npackage generated\nfunc run() {}\n")
-	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
-		Dir: root, Patterns: []string{"./valid", "./invalid", "./generated"}, Requirement: rules.RequireSSA,
-	})
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "invalid", "invalid.go"),
+		"package invalid\nfunc run() { _ = missing }\n",
+	)
+	writeTypesFixture(
+		t,
+		generatedPath,
+		"// Code generated by test. DO NOT EDIT.\npackage generated\nfunc run() {}\n",
+	)
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"./valid", "./invalid", "./generated"},
+			Requirement: rules.RequireSSA,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,11 +215,16 @@ func TestRunSSASkipsIllTypedPackagesAndHonorsGeneratedPolicy(t *testing.T) {
 				if err != nil {
 					return nil, err
 				}
-				return []rules.Finding{{MessageKey: id, Message: id, Range: range_}}, nil
+				return []rules.Finding{
+					{MessageKey: id, Message: id, Range: range_},
+				}, nil
 			},
 		}
 	}
-	registry, err := rules.NewRegistry(newRule("ordinary-ssa", false), newRule("generated-ssa", true))
+	registry, err := rules.NewRegistry(
+		newRule("ordinary-ssa", false),
+		newRule("generated-ssa", true),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,9 +236,12 @@ func TestRunSSASkipsIllTypedPackagesAndHonorsGeneratedPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(diagnostics) != 3 || diagnostics[0].Path != generatedPath ||
-		diagnostics[0].RuleID != "generated-ssa" || diagnostics[1].Path != validPath ||
-		diagnostics[1].RuleID != "generated-ssa" || diagnostics[2].RuleID != "ordinary-ssa" {
+	if len(diagnostics) != 3 ||
+		diagnostics[0].Path != generatedPath ||
+		diagnostics[0].RuleID != "generated-ssa" ||
+		diagnostics[1].Path != validPath ||
+		diagnostics[1].RuleID != "generated-ssa" ||
+		diagnostics[2].RuleID != "ordinary-ssa" {
 		t.Fatalf("RunSSA() eligibility = %#v", diagnostics)
 	}
 }
@@ -188,11 +250,20 @@ func TestRunSSAPreservesCancellationAfterRuleExecution(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
 	writeTypesFixture(t, filepath.Join(root, "project.go"), "package project\nfunc run() {}\n")
-	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
-		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireSSA,
-	})
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireSSA,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +276,9 @@ func TestRunSSAPreservesCancellationAfterRuleExecution(t *testing.T) {
 			if err != nil {
 				return nil, err
 			}
-			return []rules.Finding{{MessageKey: "canceled", Message: "canceled", Range: range_}}, nil
+			return []rules.Finding{
+				{MessageKey: "canceled", Message: "canceled", Range: range_},
+			}, nil
 		},
 	}
 	registry, err := rules.NewRegistry(rule)
@@ -216,7 +289,8 @@ func TestRunSSAPreservesCancellationAfterRuleExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if diagnostics, err := analysis.RunSSA(ctx, loaded, registry, selection); !errors.Is(err, context.Canceled) || diagnostics != nil {
+	if diagnostics, err := analysis.RunSSA(ctx, loaded, registry, selection);
+		!errors.Is(err, context.Canceled) || diagnostics != nil {
 		t.Fatalf("RunSSA() = %#v, %v", diagnostics, err)
 	}
 }
@@ -225,15 +299,29 @@ func TestRunSSARejectsInvalidExecutionContracts(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
 	writeTypesFixture(t, filepath.Join(root, "project.go"), "package project\nfunc run() {}\n")
-	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
-		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireSSA,
-	})
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireSSA,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rule := ssaRule{metadata: ssaMetadata("valid-ssa"), run: func(*rules.SSAContext) ([]rules.Finding, error) { return nil, nil }}
+	rule := ssaRule{
+		metadata: ssaMetadata("valid-ssa"),
+		run: func(*rules.SSAContext) ([]rules.Finding, error) {
+			return nil, nil
+		},
+	}
 	registry, err := rules.NewRegistry(rule)
 	if err != nil {
 		t.Fatal(err)
@@ -247,34 +335,53 @@ func TestRunSSARejectsInvalidExecutionContracts(t *testing.T) {
 	}
 	typesLoad := loaded
 	typesLoad.Requirement = rules.RequireTypes
-	if _, err := analysis.RunSSA(context.Background(), typesLoad, registry, selection); err == nil ||
-		!strings.Contains(err.Error(), "SSA-tier package load") {
+	if _, err := analysis.RunSSA(context.Background(), typesLoad, registry, selection);
+		err == nil || !strings.Contains(err.Error(), "SSA-tier package load") {
 		t.Fatalf("RunSSA() types-load error = %v", err)
 	}
 	invalidSeverity := append([]rules.Selection(nil), selection...)
 	invalidSeverity[0].Severity = "fatal"
-	if _, err := analysis.RunSSA(context.Background(), loaded, registry, invalidSeverity); err == nil ||
-		!strings.Contains(err.Error(), "invalid severity") {
+	if _, err := analysis.RunSSA(context.Background(), loaded, registry, invalidSeverity);
+		err == nil || !strings.Contains(err.Error(), "invalid severity") {
 		t.Fatalf("RunSSA() invalid severity error = %v", err)
 	}
-	missingRegistry, err := rules.NewRegistry(metadataRuleAdapter{metadata: ssaMetadata("missing-ssa-execution")})
+	missingRegistry, err := rules.NewRegistry(
+		metadataRuleAdapter{metadata: ssaMetadata("missing-ssa-execution")},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	missingSelection, _ := missingRegistry.Resolve(rules.PresetCorrectness, nil)
-	if _, err := analysis.RunSSA(context.Background(), loaded, missingRegistry, missingSelection); err == nil ||
-		!strings.Contains(err.Error(), "does not implement SSA execution") {
+	if _, err := analysis.RunSSA(
+		context.Background(),
+		loaded,
+		missingRegistry,
+		missingSelection,
+	);
+		err == nil || !strings.Contains(err.Error(), "does not implement SSA execution") {
 		t.Fatalf("RunSSA() missing execution error = %v", err)
 	}
-	ambiguousRegistry, err := rules.NewRegistry(ambiguousSSARule{ssaRule{
-		metadata: ssaMetadata("ambiguous-ssa"), run: func(*rules.SSAContext) ([]rules.Finding, error) { return nil, nil },
-	}})
+	ambiguousRegistry, err := rules.NewRegistry(
+		ambiguousSSARule{
+			ssaRule{
+				metadata: ssaMetadata("ambiguous-ssa"),
+				run: func(*rules.SSAContext) ([]rules.Finding, error) {
+					return nil, nil
+				},
+			},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ambiguousSelection, _ := ambiguousRegistry.Resolve(rules.PresetCorrectness, nil)
-	if _, err := analysis.RunSSA(context.Background(), loaded, ambiguousRegistry, ambiguousSelection); err == nil ||
-		!strings.Contains(err.Error(), "ambiguous SSA execution") {
+	if _, err := analysis.RunSSA(
+		context.Background(),
+		loaded,
+		ambiguousRegistry,
+		ambiguousSelection,
+	);
+		err == nil || !strings.Contains(err.Error(), "ambiguous SSA execution") {
 		t.Fatalf("RunSSA() ambiguous execution error = %v", err)
 	}
 }
@@ -283,14 +390,28 @@ func TestRunSSAAnalyzesEachPhysicalFunctionOnceAcrossTestVariants(t *testing.T) 
 	t.Parallel()
 
 	root := t.TempDir()
-	writeTypesFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
 	projectPath := filepath.Join(root, "project.go")
 	testPath := filepath.Join(root, "project_test.go")
 	writeTypesFixture(t, projectPath, "package project\nfunc run() {}\n")
-	writeTypesFixture(t, testPath, "package project\nimport \"testing\"\nfunc TestRun(t *testing.T) {}\n")
-	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
-		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireSSA, Tests: true,
-	})
+	writeTypesFixture(
+		t,
+		testPath,
+		"package project\nimport \"testing\"\nfunc TestRun(t *testing.T) {}\n",
+	)
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireSSA,
+			Tests: true,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +419,10 @@ func TestRunSSAAnalyzesEachPhysicalFunctionOnceAcrossTestVariants(t *testing.T) 
 	rule := ssaRule{
 		metadata: ssaMetadata("variant-ssa"),
 		run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
-			owners[ctx.File().Path()] = append(owners[ctx.File().Path()], ctx.PackageID())
+			owners[ctx.File().Path()] = append(
+				owners[ctx.File().Path()],
+				ctx.PackageID(),
+			)
 			return nil, nil
 		},
 	}
@@ -310,27 +434,29 @@ func TestRunSSAAnalyzesEachPhysicalFunctionOnceAcrossTestVariants(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := analysis.RunSSA(context.Background(), loaded, registry, selection); err != nil {
+	if _, err := analysis.RunSSA(context.Background(), loaded, registry, selection);
+		err != nil {
 		t.Fatal(err)
 	}
 	if got := owners[projectPath]; !reflect.DeepEqual(got, []string{"example.com/project"}) {
 		t.Fatalf("production owners = %#v", got)
 	}
-	if got := owners[testPath]; len(got) != 1 || !strings.Contains(got[0], "[example.com/project.test]") {
+	if got := owners[testPath];
+		len(got) != 1 || !strings.Contains(got[0], "[example.com/project.test]") {
 		t.Fatalf("test owners = %#v", got)
 	}
 }
 
 func ssaMetadata(id string) rules.Metadata {
 	return rules.Metadata{
-		ID:               id,
-		Summary:          "reports SSA",
-		Documentation:    "Full SSA rule documentation.",
-		DefaultSeverity:  rules.SeverityWarn,
-		Presets:          []rules.Preset{rules.PresetCorrectness},
+		ID: id,
+		Summary: "reports SSA",
+		Documentation: "Full SSA rule documentation.",
+		DefaultSeverity: rules.SeverityWarn,
+		Presets: []rules.Preset{rules.PresetCorrectness},
 		MinimumGoVersion: "1.22",
-		Requirement:      rules.RequireSSA,
-		Categories:       []rules.Category{rules.CategoryCorrectness},
-		Examples:         []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+		Requirement: rules.RequireSSA,
+		Categories: []rules.Category{rules.CategoryCorrectness},
+		Examples: []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
 	}
 }

@@ -17,22 +17,26 @@ type documentedRule struct {
 func TestRenderRuleTextKeepsEmptyContractsAndDeprecationVisible(t *testing.T) {
 	t.Parallel()
 
-	registry, err := rules.NewRegistry(documentedRule{metadata: rules.Metadata{
-		ID:               "deprecated-rule",
-		Summary:          "reports a deprecated pattern",
-		Documentation:    "Use the replacement rule for new code.",
-		DefaultSeverity:  rules.SeverityOff,
-		Presets:          []rules.Preset{rules.PresetMigration},
-		MinimumGoVersion: "1.22",
-		Requirement:      rules.RequireLexical,
-		Categories:       []rules.Category{rules.CategoryMigration},
-		Deprecation: &rules.Deprecation{
-			Since:       "1.3",
-			Replacement: "replacement-rule",
-			Message:     "use the replacement rule",
+	registry, err := rules.NewRegistry(
+		documentedRule{
+			metadata: rules.Metadata{
+				ID: "deprecated-rule",
+				Summary: "reports a deprecated pattern",
+				Documentation: "Use the replacement rule for new code.",
+				DefaultSeverity: rules.SeverityOff,
+				Presets: []rules.Preset{rules.PresetMigration},
+				MinimumGoVersion: "1.22",
+				Requirement: rules.RequireLexical,
+				Categories: []rules.Category{rules.CategoryMigration},
+				Deprecation: &rules.Deprecation{
+					Since: "1.3",
+					Replacement: "replacement-rule",
+					Message: "use the replacement rule",
+				},
+				Examples: []rules.Example{{Incorrect: "old()", Correct: "new()"}},
+			},
 		},
-		Examples: []rules.Example{{Incorrect: "old()", Correct: "new()"}},
-	}})
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,39 +44,50 @@ func TestRenderRuleTextKeepsEmptyContractsAndDeprecationVisible(t *testing.T) {
 	if !found {
 		t.Fatal("RenderRuleText() did not find the deprecated rule")
 	}
-	for _, contract := range []string{
-		"node interests: none\n",
-		"deprecated since 1.3: use the replacement rule\n",
-		"replacement: replacement-rule\n",
-		"fixes:\n  none\n",
-		"configuration:\n  none\n",
-		"known limitations:\n  none documented\n",
-		"examples:\n  example 1\n",
-	} {
+	for _, contract := range
+		[]string{
+			"node interests: none\n",
+			"deprecated since 1.3: use the replacement rule\n",
+			"replacement: replacement-rule\n",
+			"fixes:\n  none\n",
+			"configuration:\n  none\n",
+			"known limitations:\n  none documented\n",
+			"examples:\n  example 1\n",
+		} {
 		if !strings.Contains(string(output), contract) {
-			t.Fatalf("RenderRuleText() output does not contain %q:\n%s", contract, output)
+			t.Fatalf(
+				"RenderRuleText() output does not contain %q:\n%s",
+				contract,
+				output,
+			)
 		}
 	}
 }
 
-func (r documentedRule) Metadata() rules.Metadata { return r.metadata }
+func (r documentedRule) Metadata() rules.Metadata {
+	return r.metadata
+}
 
 func TestRenderRuleTextIncludesTypeErrorPolicy(t *testing.T) {
 	t.Parallel()
 
-	registry, err := rules.NewRegistry(documentedRule{metadata: rules.Metadata{
-		ID:                   "typed-rule",
-		Summary:              "reports a typed defect",
-		Documentation:        "Runs when partial type information is sufficient.",
-		DefaultSeverity:      rules.SeverityWarn,
-		Presets:              []rules.Preset{rules.PresetCorrectness},
-		MinimumGoVersion:     "1.22",
-		Requirement:          rules.RequireTypes,
-		NodeInterests:        []rules.NodeKind{rules.NodeCallExpr},
-		RunDespiteTypeErrors: true,
-		Categories:           []rules.Category{rules.CategoryCorrectness},
-		Examples:             []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
-	}})
+	registry, err := rules.NewRegistry(
+		documentedRule{
+			metadata: rules.Metadata{
+				ID: "typed-rule",
+				Summary: "reports a typed defect",
+				Documentation: "Runs when partial type information is sufficient.",
+				DefaultSeverity: rules.SeverityWarn,
+				Presets: []rules.Preset{rules.PresetCorrectness},
+				MinimumGoVersion: "1.22",
+				Requirement: rules.RequireTypes,
+				NodeInterests: []rules.NodeKind{rules.NodeCallExpr},
+				RunDespiteTypeErrors: true,
+				Categories: []rules.Category{rules.CategoryCorrectness},
+				Examples: []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+			},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,18 +100,22 @@ func TestRenderRuleTextIncludesTypeErrorPolicy(t *testing.T) {
 func TestRenderRuleTextIncludesDependencySyntaxPolicy(t *testing.T) {
 	t.Parallel()
 
-	registry, err := rules.NewRegistry(packageDocumentedRule{metadata: rules.Metadata{
-		ID:                       "dependency-rule",
-		Summary:                  "reports a dependency-aware defect",
-		Documentation:            "Inspects dependency syntax through the shared package graph.",
-		DefaultSeverity:          rules.SeverityWarn,
-		Presets:                  []rules.Preset{rules.PresetCorrectness},
-		MinimumGoVersion:         "1.22",
-		Requirement:              rules.RequireTypes,
-		RequiresDependencySyntax: true,
-		Categories:               []rules.Category{rules.CategoryCorrectness},
-		Examples:                 []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
-	}})
+	registry, err := rules.NewRegistry(
+		packageDocumentedRule{
+			metadata: rules.Metadata{
+				ID: "dependency-rule",
+				Summary: "reports a dependency-aware defect",
+				Documentation: "Inspects dependency syntax through the shared package graph.",
+				DefaultSeverity: rules.SeverityWarn,
+				Presets: []rules.Preset{rules.PresetCorrectness},
+				MinimumGoVersion: "1.22",
+				Requirement: rules.RequireTypes,
+				RequiresDependencySyntax: true,
+				Categories: []rules.Category{rules.CategoryCorrectness},
+				Examples: []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+			},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,9 +125,13 @@ func TestRenderRuleTextIncludesDependencySyntaxPolicy(t *testing.T) {
 	}
 }
 
-type packageDocumentedRule struct{ metadata rules.Metadata }
+type packageDocumentedRule struct {
+	metadata rules.Metadata
+}
 
-func (r packageDocumentedRule) Metadata() rules.Metadata { return r.metadata }
+func (r packageDocumentedRule) Metadata() rules.Metadata {
+	return r.metadata
+}
 
 func (r packageDocumentedRule) RunPackage(*rules.PackageContext) ([]rules.PackageFinding, error) {
 	return nil, nil
@@ -117,36 +140,48 @@ func (r packageDocumentedRule) RunPackage(*rules.PackageContext) ([]rules.Packag
 func TestRenderRuleTextUsesCanonicalMetadata(t *testing.T) {
 	t.Parallel()
 
-	registry, err := rules.NewRegistry(documentedRule{metadata: rules.Metadata{
-		ID:               "example-rule",
-		Summary:          "reports one observable defect",
-		Documentation:    "Reports calls whose result is ignored.",
-		DefaultSeverity:  rules.SeverityWarn,
-		Presets:          []rules.Preset{rules.PresetCorrectness},
-		MinimumGoVersion: "1.22",
-		Requirement:      rules.RequireSyntax,
-		NodeInterests:    []rules.NodeKind{rules.NodeCallExpr},
-		RunOnGenerated:   false,
-		Categories:       []rules.Category{rules.CategoryCorrectness},
-		Fixes: []rules.FixMetadata{{
-			Name:        "rewrite",
-			Description: "replace the ignored call",
-			Safety:      rules.FixSafe,
-		}},
-		Options: []rules.OptionMetadata{{
-			Name:     "allow-comment",
-			Summary:  "allow an explanatory comment",
-			Kind:     rules.OptionBoolean,
-			Required: false,
-			Default:  reportOptionValue(rules.BooleanOption(false)),
-		}},
-		KnownLimitations: []string{"does not inspect generated files"},
-		Examples: []rules.Example{{
-			Title:     "ignored result",
-			Incorrect: "target()\n",
-			Correct:   "_ = target()\n",
-		}},
-	}})
+	registry, err := rules.NewRegistry(
+		documentedRule{
+			metadata: rules.Metadata{
+				ID: "example-rule",
+				Summary: "reports one observable defect",
+				Documentation: "Reports calls whose result is ignored.",
+				DefaultSeverity: rules.SeverityWarn,
+				Presets: []rules.Preset{rules.PresetCorrectness},
+				MinimumGoVersion: "1.22",
+				Requirement: rules.RequireSyntax,
+				NodeInterests: []rules.NodeKind{rules.NodeCallExpr},
+				RunOnGenerated: false,
+				Categories: []rules.Category{rules.CategoryCorrectness},
+				Fixes: []rules.FixMetadata{
+					{
+						Name: "rewrite",
+						Description: "replace the ignored call",
+						Safety: rules.FixSafe,
+					},
+				},
+				Options: []rules.OptionMetadata{
+					{
+						Name: "allow-comment",
+						Summary: "allow an explanatory comment",
+						Kind: rules.OptionBoolean,
+						Required: false,
+						Default: reportOptionValue(
+							rules.BooleanOption(false),
+						),
+					},
+				},
+				KnownLimitations: []string{"does not inspect generated files"},
+				Examples: []rules.Example{
+					{
+						Title: "ignored result",
+						Incorrect: "target()\n",
+						Correct: "_ = target()\n",
+					},
+				},
+			},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +222,9 @@ func TestRenderRuleTextUsesCanonicalMetadata(t *testing.T) {
 	}
 }
 
-func reportOptionValue(value rules.OptionValue) *rules.OptionValue { return &value }
+func reportOptionValue(value rules.OptionValue) *rules.OptionValue {
+	return &value
+}
 
 func TestRenderRuleCatalogMarkdownUsesCanonicalMetadataAndIDOrder(t *testing.T) {
 	t.Parallel()
@@ -196,55 +233,67 @@ func TestRenderRuleCatalogMarkdownUsesCanonicalMetadataAndIDOrder(t *testing.T) 
 	}
 
 	registry, err := rules.NewRegistry(
-		documentedRule{metadata: rules.Metadata{
-			ID:               "zeta-rule",
-			Summary:          "reports the later rule",
-			Documentation:    "The later rule has no fixes or options.",
-			DefaultSeverity:  rules.SeverityOff,
-			Presets:          []rules.Preset{rules.PresetMigration},
-			MinimumGoVersion: "1.25",
-			Requirement:      rules.RequireLexical,
-			Categories:       []rules.Category{rules.CategoryMigration},
-			Examples: []rules.Example{{
-				Incorrect: "old()",
-				Correct:   "new()",
-			}},
-		}},
-		packageDocumentedRule{metadata: rules.Metadata{
-			ID:                       "alpha-rule",
-			Summary:                  "reports the first rule",
-			Documentation:            "The first rule exercises every documented metadata section.",
-			DefaultSeverity:          rules.SeverityWarn,
-			Presets:                  []rules.Preset{rules.PresetCorrectness, rules.PresetStyle},
-			MinimumGoVersion:         "1.25",
-			Requirement:              rules.RequireTypes,
-			RequiresDependencySyntax: true,
-			RunOnGenerated:           true,
-			RunDespiteTypeErrors:     true,
-			Categories:               []rules.Category{rules.CategoryCorrectness, rules.CategorySafety},
-			Fixes: []rules.FixMetadata{{
-				Name:        "rewrite",
-				Description: "replace the defective expression",
-				Safety:      rules.FixSafe,
-			}},
-			Options: []rules.OptionMetadata{{
-				Name:    "allow-comment",
-				Summary: "allow an explanatory comment",
-				Kind:    rules.OptionBoolean,
-				Default: reportOptionValue(rules.BooleanOption(false)),
-			}},
-			Deprecation: &rules.Deprecation{
-				Since:       "1.3",
-				Replacement: "zeta-rule",
-				Message:     "use the later rule",
+		documentedRule{
+			metadata: rules.Metadata{
+				ID: "zeta-rule",
+				Summary: "reports the later rule",
+				Documentation: "The later rule has no fixes or options.",
+				DefaultSeverity: rules.SeverityOff,
+				Presets: []rules.Preset{rules.PresetMigration},
+				MinimumGoVersion: "1.25",
+				Requirement: rules.RequireLexical,
+				Categories: []rules.Category{rules.CategoryMigration},
+				Examples: []rules.Example{{Incorrect: "old()", Correct: "new()"}},
 			},
-			KnownLimitations: []string{"does not inspect dynamic calls"},
-			Examples: []rules.Example{{
-				Title:     "Replace a call",
-				Incorrect: "bad()",
-				Correct:   "good()",
-			}},
-		}},
+		},
+		packageDocumentedRule{
+			metadata: rules.Metadata{
+				ID: "alpha-rule",
+				Summary: "reports the first rule",
+				Documentation: "The first rule exercises every documented metadata section.",
+				DefaultSeverity: rules.SeverityWarn,
+				Presets: []rules.Preset{rules.PresetCorrectness, rules.PresetStyle},
+				MinimumGoVersion: "1.25",
+				Requirement: rules.RequireTypes,
+				RequiresDependencySyntax: true,
+				RunOnGenerated: true,
+				RunDespiteTypeErrors: true,
+				Categories: []rules.Category{
+					rules.CategoryCorrectness,
+					rules.CategorySafety,
+				},
+				Fixes: []rules.FixMetadata{
+					{
+						Name: "rewrite",
+						Description: "replace the defective expression",
+						Safety: rules.FixSafe,
+					},
+				},
+				Options: []rules.OptionMetadata{
+					{
+						Name: "allow-comment",
+						Summary: "allow an explanatory comment",
+						Kind: rules.OptionBoolean,
+						Default: reportOptionValue(
+							rules.BooleanOption(false),
+						),
+					},
+				},
+				Deprecation: &rules.Deprecation{
+					Since: "1.3",
+					Replacement: "zeta-rule",
+					Message: "use the later rule",
+				},
+				KnownLimitations: []string{"does not inspect dynamic calls"},
+				Examples: []rules.Example{
+					{
+						Title: "Replace a call",
+						Incorrect: "bad()",
+						Correct: "good()",
+					},
+				},
+			},
+		},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -259,7 +308,9 @@ func TestRenderRuleCatalogMarkdownUsesCanonicalMetadataAndIDOrder(t *testing.T) 
 <!-- Code generated by go generate ./internal/report; DO NOT EDIT. -->
 
 This catalog is rendered from the same immutable rule metadata used by the
-registry, scheduler, configuration decoder, and ` + "`gox explain`" + `.
+registry, scheduler, configuration decoder, and ` +
+		"`gox explain`" +
+		`.
 Preset membership and defaults describe the current development binary and are
 not stable release promises.
 
@@ -274,29 +325,45 @@ reports the first rule
 
 The first rule exercises every documented metadata section.
 
-- Default severity: ` + "`warn`" + `
-- Presets: ` + "`correctness`, `style`" + `
-- Minimum Go: ` + "`1.25`" + `
+- Default severity: ` +
+		"`warn`" +
+		`
+- Presets: ` +
+		"`correctness`, `style`" +
+		`
+- Minimum Go: ` +
+		"`1.25`" +
+		`
 - Analysis tier: types
 - Node interests: none
 - Dependency syntax: required
 - Generated files: included
 - Type-error packages: included
-- Categories: ` + "`correctness`, `safety`" + `
+- Categories: ` +
+		"`correctness`, `safety`" +
+		`
 
 ### Deprecation
 
-- Since: ` + "`1.3`" + `
-- Replacement: ` + "`zeta-rule`" + `
+- Since: ` +
+		"`1.3`" +
+		`
+- Replacement: ` +
+		"`zeta-rule`" +
+		`
 - Message: use the later rule
 
 ### Fixes
 
-- ` + "`rewrite` (`safe`)" + `: replace the defective expression
+- ` +
+		"`rewrite` (`safe`)" +
+		`: replace the defective expression
 
 ### Configuration
 
-- ` + "`allow-comment` (`boolean`; optional, default `false`)" + `: allow an explanatory comment
+- ` +
+		"`allow-comment` (`boolean`; optional, default `false`)" +
+		`: allow an explanatory comment
 
 ### Known limitations
 
@@ -306,15 +373,23 @@ The first rule exercises every documented metadata section.
 
 **Incorrect**
 
-` + "```go" + `
+` +
+		"```go" +
+		`
 bad()
-` + "```" + `
+` +
+		"```" +
+		`
 
 **Correct**
 
-` + "```go" + `
+` +
+		"```go" +
+		`
 good()
-` + "```" + `
+` +
+		"```" +
+		`
 
 ## zeta-rule
 
@@ -322,15 +397,23 @@ reports the later rule
 
 The later rule has no fixes or options.
 
-- Default severity: ` + "`off`" + `
-- Presets: ` + "`migration`" + `
-- Minimum Go: ` + "`1.25`" + `
+- Default severity: ` +
+		"`off`" +
+		`
+- Presets: ` +
+		"`migration`" +
+		`
+- Minimum Go: ` +
+		"`1.25`" +
+		`
 - Analysis tier: lexical source
 - Node interests: none
 - Dependency syntax: not required
 - Generated files: excluded
 - Type-error packages: not applicable
-- Categories: ` + "`migration`" + `
+- Categories: ` +
+		"`migration`" +
+		`
 
 ### Fixes
 
@@ -348,15 +431,23 @@ None documented.
 
 **Incorrect**
 
-` + "```go" + `
+` +
+		"```go" +
+		`
 old()
-` + "```" + `
+` +
+		"```" +
+		`
 
 **Correct**
 
-` + "```go" + `
+` +
+		"```go" +
+		`
 new()
-` + "```" + `
+` +
+		"```" +
+		`
 `
 	if string(got) != want {
 		t.Fatalf("RenderRuleCatalogMarkdown() =\n%s\nwant:\n%s", got, want)
@@ -366,20 +457,26 @@ new()
 func TestRenderRuleCatalogMarkdownProtectsExampleCodeFences(t *testing.T) {
 	t.Parallel()
 
-	registry, err := rules.NewRegistry(documentedRule{metadata: rules.Metadata{
-		ID:               "fenced-example",
-		Summary:          "documents source containing Markdown fences",
-		Documentation:    "The source remains one intact Go code block.",
-		DefaultSeverity:  rules.SeverityOff,
-		Presets:          []rules.Preset{rules.PresetMigration},
-		MinimumGoVersion: "1.25",
-		Requirement:      rules.RequireLexical,
-		Categories:       []rules.Category{rules.CategoryMigration},
-		Examples: []rules.Example{{
-			Incorrect: "var value = \"```\"",
-			Correct:   "var value = \"safe\"",
-		}},
-	}})
+	registry, err := rules.NewRegistry(
+		documentedRule{
+			metadata: rules.Metadata{
+				ID: "fenced-example",
+				Summary: "documents source containing Markdown fences",
+				Documentation: "The source remains one intact Go code block.",
+				DefaultSeverity: rules.SeverityOff,
+				Presets: []rules.Preset{rules.PresetMigration},
+				MinimumGoVersion: "1.25",
+				Requirement: rules.RequireLexical,
+				Categories: []rules.Category{rules.CategoryMigration},
+				Examples: []rules.Example{
+					{
+						Incorrect: "var value = \"```\"",
+						Correct: "var value = \"safe\"",
+					},
+				},
+			},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

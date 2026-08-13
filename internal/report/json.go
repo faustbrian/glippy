@@ -14,29 +14,29 @@ const (
 
 type Outcome struct {
 	Category string `json:"category"`
-	ExitCode int    `json:"exit_code"`
+	ExitCode int `json:"exit_code"`
 }
 
 type Summary struct {
-	Files    int  `json:"files"`
-	Changed  int  `json:"changed"`
+	Files int `json:"files"`
+	Changed int `json:"changed"`
 	Complete bool `json:"complete"`
 }
 
 type FileStatus string
 
 const (
-	FilePending           FileStatus = "pending"
-	FileUnchanged         FileStatus = "unchanged"
-	FileDifferent         FileStatus = "different"
-	FileFormatted         FileStatus = "formatted"
-	FileConflict          FileStatus = "conflict"
-	FileFailed            FileStatus = "failed"
+	FilePending FileStatus = "pending"
+	FileUnchanged FileStatus = "unchanged"
+	FileDifferent FileStatus = "different"
+	FileFormatted FileStatus = "formatted"
+	FileConflict FileStatus = "conflict"
+	FileFailed FileStatus = "failed"
 	FilePossiblyFormatted FileStatus = "possibly_formatted"
 )
 
 type File struct {
-	Path   string     `json:"path"`
+	Path string `json:"path"`
 	Status FileStatus `json:"status"`
 }
 
@@ -45,13 +45,13 @@ type Error struct {
 }
 
 type Result struct {
-	SchemaVersion int     `json:"schema_version"`
-	Command       string  `json:"command"`
-	Mode          string  `json:"mode"`
-	Outcome       Outcome `json:"outcome"`
-	Summary       Summary `json:"summary"`
-	Files         []File  `json:"files"`
-	Errors        []Error `json:"errors"`
+	SchemaVersion int `json:"schema_version"`
+	Command string `json:"command"`
+	Mode string `json:"mode"`
+	Outcome Outcome `json:"outcome"`
+	Summary Summary `json:"summary"`
+	Files []File `json:"files"`
+	Errors []Error `json:"errors"`
 }
 
 func NewFormatResult(
@@ -69,12 +69,12 @@ func NewFormatResult(
 	}
 	return Result{
 		SchemaVersion: SchemaVersion,
-		Command:       "fmt",
-		Mode:          mode,
-		Outcome:       Outcome{Category: category, ExitCode: exitCode},
-		Summary:       Summary{Files: selected, Changed: changed, Complete: complete},
-		Files:         files,
-		Errors:        errs,
+		Command: "fmt",
+		Mode: mode,
+		Outcome: Outcome{Category: category, ExitCode: exitCode},
+		Summary: Summary{Files: selected, Changed: changed, Complete: complete},
+		Files: files,
+		Errors: errs,
 	}
 }
 

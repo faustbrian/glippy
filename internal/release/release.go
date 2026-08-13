@@ -25,9 +25,9 @@ import (
 )
 
 const (
-	productName    = "gox"
+	productName = "gox"
 	manifestSchema = 1
-	linkedVersion  = "github.com/faustbrian/gox/internal/version.linked"
+	linkedVersion = "github.com/faustbrian/gox/internal/version.linked"
 )
 
 var defaultTargets = []Target{
@@ -39,38 +39,38 @@ var defaultTargets = []Target{
 
 // Target identifies one release operating system and architecture.
 type Target struct {
-	GOOS   string `json:"goos"`
+	GOOS string `json:"goos"`
 	GOARCH string `json:"goarch"`
 }
 
 // Options selects one deterministic release build.
 type Options struct {
-	Root           string
-	Output         string
-	Version        string
+	Root string
+	Output string
+	Version string
 	SourceRevision string
-	GoBinary       string
-	GitBinary      string
-	Targets        []Target
+	GoBinary string
+	GitBinary string
+	Targets []Target
 }
 
 // Artifact records one archived binary and its content identity.
 type Artifact struct {
-	File   string `json:"file"`
-	GOOS   string `json:"goos"`
+	File string `json:"file"`
+	GOOS string `json:"goos"`
 	GOARCH string `json:"goarch"`
 	SHA256 string `json:"sha256"`
-	Size   int64  `json:"size"`
+	Size int64 `json:"size"`
 }
 
 // Manifest binds release artifacts to source, version, and build toolchain.
 type Manifest struct {
-	SchemaVersion  int        `json:"schema_version"`
-	Product        string     `json:"product"`
-	Version        string     `json:"version"`
-	SourceRevision string     `json:"source_revision"`
-	GoVersion      string     `json:"go_version"`
-	Artifacts      []Artifact `json:"artifacts"`
+	SchemaVersion int `json:"schema_version"`
+	Product string `json:"product"`
+	Version string `json:"version"`
+	SourceRevision string `json:"source_revision"`
+	GoVersion string `json:"go_version"`
+	Artifacts []Artifact `json:"artifacts"`
 }
 
 // DefaultTargets returns the admitted prototype release targets.
@@ -100,7 +100,10 @@ func Build(ctx context.Context, options Options) (manifest Manifest, resultErr e
 	defer func() {
 		if sourcePending {
 			if err := os.RemoveAll(sourceRoot); err != nil {
-				resultErr = errors.Join(resultErr, fmt.Errorf("remove release source snapshot: %w", err))
+				resultErr = errors.Join(
+					resultErr,
+					fmt.Errorf("remove release source snapshot: %w", err),
+				)
 			}
 		}
 	}()
@@ -116,7 +119,10 @@ func Build(ctx context.Context, options Options) (manifest Manifest, resultErr e
 	defer func() {
 		if cachePending {
 			if err := os.RemoveAll(cacheRoot); err != nil {
-				resultErr = errors.Join(resultErr, fmt.Errorf("remove release build cache: %w", err))
+				resultErr = errors.Join(
+					resultErr,
+					fmt.Errorf("remove release build cache: %w", err),
+				)
 			}
 		}
 	}()
@@ -132,18 +138,21 @@ func Build(ctx context.Context, options Options) (manifest Manifest, resultErr e
 	defer func() {
 		if !complete {
 			if err := removeOwnedOutput(output); err != nil {
-				resultErr = errors.Join(resultErr, fmt.Errorf("remove failed release output: %w", err))
+				resultErr = errors.Join(
+					resultErr,
+					fmt.Errorf("remove failed release output: %w", err),
+				)
 			}
 		}
 	}()
 
 	manifest = Manifest{
-		SchemaVersion:  manifestSchema,
-		Product:        productName,
-		Version:        options.Version,
+		SchemaVersion: manifestSchema,
+		Product: productName,
+		Version: options.Version,
 		SourceRevision: options.SourceRevision,
-		GoVersion:      goVersion,
-		Artifacts:      make([]Artifact, 0, len(options.Targets)),
+		GoVersion: goVersion,
+		Artifacts: make([]Artifact, 0, len(options.Targets)),
 	}
 	for _, target := range options.Targets {
 		artifact, err := buildTarget(ctx, options, output, target, cacheRoot)
@@ -161,35 +170,48 @@ func Build(ctx context.Context, options Options) (manifest Manifest, resultErr e
 	if err := writeExclusive(output.root, manifestName, manifestBytes, 0o644); err != nil {
 		return Manifest{}, fmt.Errorf("write release manifest: %w", err)
 	}
-	checksums := make([]checksum, 0, len(manifest.Artifacts)+1)
+	checksums := make([]checksum, 0, len(manifest.Artifacts) + 1)
 	for _, artifact := range manifest.Artifacts {
-		checksums = append(checksums, checksum{name: artifact.File, digest: artifact.SHA256})
+		checksums = append(
+			checksums,
+			checksum{name: artifact.File, digest: artifact.SHA256},
+		)
 	}
 	manifestDigest := sha256.Sum256(manifestBytes)
-	checksums = append(checksums, checksum{name: manifestName, digest: hex.EncodeToString(manifestDigest[:])})
-	sort.Slice(checksums, func(left, right int) bool { return checksums[left].name < checksums[right].name })
+	checksums = append(
+		checksums,
+		checksum{name: manifestName, digest: hex.EncodeToString(manifestDigest[:])},
+	)
+	sort.Slice(
+		checksums,
+		func(left, right int) bool {
+			return checksums[left].name < checksums[right].name
+		},
+	)
 	var checksumText strings.Builder
 	for _, item := range checksums {
 		fmt.Fprintf(&checksumText, "%s  %s\n", item.digest, item.name)
 	}
 	checksumName := productName + "_" + options.Version + "_checksums.txt"
-	if err := writeExclusive(
-		output.root,
-		checksumName,
-		[]byte(checksumText.String()),
-		0o644,
-	); err != nil {
+	if err := writeExclusive(output.root, checksumName, []byte(checksumText.String()), 0o644);
+		err != nil {
 		return Manifest{}, fmt.Errorf("write release checksums: %w", err)
 	}
 	if err := output.close(); err != nil {
 		return Manifest{}, fmt.Errorf("close release output before publication: %w", err)
 	}
 	if err := os.RemoveAll(cacheRoot); err != nil {
-		return Manifest{}, fmt.Errorf("remove release build cache before publication: %w", err)
+		return Manifest{}, fmt.Errorf(
+			"remove release build cache before publication: %w",
+			err,
+		)
 	}
 	cachePending = false
 	if err := os.RemoveAll(sourceRoot); err != nil {
-		return Manifest{}, fmt.Errorf("remove release source snapshot before publication: %w", err)
+		return Manifest{}, fmt.Errorf(
+			"remove release source snapshot before publication: %w",
+			err,
+		)
 	}
 	sourcePending = false
 	if err := output.publish(); err != nil {
@@ -208,7 +230,13 @@ func exportSource(ctx context.Context, options Options) (result string, resultEr
 	defer func() {
 		if !keep {
 			if err := os.RemoveAll(root); err != nil {
-				resultErr = errors.Join(resultErr, fmt.Errorf("remove failed release source snapshot: %w", err))
+				resultErr = errors.Join(
+					resultErr,
+					fmt.Errorf(
+						"remove failed release source snapshot: %w",
+						err,
+					),
+				)
 			}
 		}
 	}()
@@ -257,9 +285,14 @@ func extractSourceArchive(root string, input io.Reader) error {
 			return fmt.Errorf("read release source archive: %w", err)
 		}
 		name := filepath.Clean(header.Name)
-		if name == "." || filepath.IsAbs(name) || name == ".." ||
-			strings.HasPrefix(name, ".."+string(filepath.Separator)) {
-			return fmt.Errorf("release source archive path %q escapes snapshot", header.Name)
+		if name == "." ||
+			filepath.IsAbs(name) ||
+			name == ".." ||
+			strings.HasPrefix(name, ".." + string(filepath.Separator)) {
+			return fmt.Errorf(
+				"release source archive path %q escapes snapshot",
+				header.Name,
+			)
 		}
 		path := filepath.Join(root, name)
 		switch header.Typeflag {
@@ -274,7 +307,7 @@ func extractSourceArchive(root string, input io.Reader) error {
 				return fmt.Errorf("create release source parent: %w", err)
 			}
 			mode := os.FileMode(header.Mode).Perm()
-			file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+			file, err := os.OpenFile(path, os.O_WRONLY | os.O_CREATE | os.O_EXCL, mode)
 			if err != nil {
 				return fmt.Errorf("create release source file: %w", err)
 			}
@@ -285,11 +318,18 @@ func extractSourceArchive(root string, input io.Reader) error {
 			}
 		case tar.TypeSymlink:
 			if filepath.IsAbs(header.Linkname) {
-				return fmt.Errorf("release source symlink %q has an absolute target", header.Name)
+				return fmt.Errorf(
+					"release source symlink %q has an absolute target",
+					header.Name,
+				)
 			}
 			target := filepath.Clean(filepath.Join(filepath.Dir(name), header.Linkname))
-			if target == ".." || strings.HasPrefix(target, ".."+string(filepath.Separator)) {
-				return fmt.Errorf("release source symlink %q escapes snapshot", header.Name)
+			if target == ".." ||
+				strings.HasPrefix(target, ".." + string(filepath.Separator)) {
+				return fmt.Errorf(
+					"release source symlink %q escapes snapshot",
+					header.Name,
+				)
 			}
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				return fmt.Errorf("create release source symlink parent: %w", err)
@@ -298,17 +338,21 @@ func extractSourceArchive(root string, input io.Reader) error {
 				return fmt.Errorf("create release source symlink: %w", err)
 			}
 		default:
-			return fmt.Errorf("release source archive entry %q has unsupported type %d", header.Name, header.Typeflag)
+			return fmt.Errorf(
+				"release source archive entry %q has unsupported type %d",
+				header.Name,
+				header.Typeflag,
+			)
 		}
 	}
 }
 
 type ownedOutput struct {
-	path      string
+	path string
 	finalPath string
-	root      *os.Root
-	identity  os.FileInfo
-	closed    bool
+	root *os.Root
+	identity os.FileInfo
+	closed bool
 	published bool
 }
 
@@ -352,7 +396,9 @@ func (output *ownedOutput) validateIdentity() error {
 	if err != nil {
 		return err
 	}
-	if current.Mode()&os.ModeSymlink != 0 || !current.IsDir() || !os.SameFile(output.identity, current) {
+	if current.Mode() & os.ModeSymlink != 0 ||
+		!current.IsDir() ||
+		!os.SameFile(output.identity, current) {
 		return errors.New("release output identity changed")
 	}
 	return nil
@@ -410,7 +456,7 @@ func removePrivateOutput(path string, root *os.Root) error {
 }
 
 type checksum struct {
-	name   string
+	name string
 	digest string
 }
 
@@ -443,12 +489,18 @@ func validateOptions(options Options) (Options, error) {
 		return Options{}, fmt.Errorf("inspect release output: %w", err)
 	}
 	if semver.Canonical(options.Version) != options.Version {
-		return Options{}, fmt.Errorf("release version %q is not canonical semantic version", options.Version)
+		return Options{}, fmt.Errorf(
+			"release version %q is not canonical semantic version",
+			options.Version,
+		)
 	}
 	revision, err := hex.DecodeString(options.SourceRevision)
-	if err != nil || len(revision) != 20 && len(revision) != 32 ||
+	if err != nil ||
+		len(revision) != 20 && len(revision) != 32 ||
 		strings.ToLower(options.SourceRevision) != options.SourceRevision {
-		return Options{}, errors.New("source revision must be a lowercase 40- or 64-character hexadecimal digest")
+		return Options{}, errors.New(
+			"source revision must be a lowercase 40- or 64-character hexadecimal digest",
+		)
 	}
 	if options.GoBinary == "" {
 		options.GoBinary = "go"
@@ -461,18 +513,29 @@ func validateOptions(options Options) (Options, error) {
 	} else {
 		options.Targets = append([]Target(nil), options.Targets...)
 	}
-	sort.Slice(options.Targets, func(left, right int) bool {
-		if options.Targets[left].GOOS != options.Targets[right].GOOS {
-			return options.Targets[left].GOOS < options.Targets[right].GOOS
-		}
-		return options.Targets[left].GOARCH < options.Targets[right].GOARCH
-	})
+	sort.Slice(
+		options.Targets,
+		func(left, right int) bool {
+			if options.Targets[left].GOOS != options.Targets[right].GOOS {
+				return options.Targets[left].GOOS < options.Targets[right].GOOS
+			}
+			return options.Targets[left].GOARCH < options.Targets[right].GOARCH
+		},
+	)
 	for index, target := range options.Targets {
 		if !supportedTarget(target) {
-			return Options{}, fmt.Errorf("unsupported release target %s/%s", target.GOOS, target.GOARCH)
+			return Options{}, fmt.Errorf(
+				"unsupported release target %s/%s",
+				target.GOOS,
+				target.GOARCH,
+			)
 		}
-		if index > 0 && target == options.Targets[index-1] {
-			return Options{}, fmt.Errorf("duplicate release target %s/%s", target.GOOS, target.GOARCH)
+		if index > 0 && target == options.Targets[index - 1] {
+			return Options{}, fmt.Errorf(
+				"duplicate release target %s/%s",
+				target.GOOS,
+				target.GOARCH,
+			)
 		}
 	}
 	options.Root = root
@@ -542,11 +605,20 @@ func verifyModuleBoundary(root string) error {
 		}
 		resolvedTarget, err := filepath.EvalSymlinks(target)
 		if err != nil {
-			return fmt.Errorf("resolve local module replacement %q: %w", replacement.New.Path, err)
+			return fmt.Errorf(
+				"resolve local module replacement %q: %w",
+				replacement.New.Path,
+				err,
+			)
 		}
 		relative, err := filepath.Rel(resolvedRoot, resolvedTarget)
-		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return fmt.Errorf("local module replacement %q is outside release root", replacement.New.Path)
+		if err != nil ||
+			relative == ".." ||
+			strings.HasPrefix(relative, ".." + string(filepath.Separator)) {
+			return fmt.Errorf(
+				"local module replacement %q is outside release root",
+				replacement.New.Path,
+			)
 		}
 	}
 	return nil
@@ -587,7 +659,9 @@ func buildTarget(
 	if err != nil {
 		return Artifact{}, fmt.Errorf("create release build directory: %w", err)
 	}
-	defer func() { resultErr = errors.Join(resultErr, os.RemoveAll(temporary)) }()
+	defer func() {
+		resultErr = errors.Join(resultErr, os.RemoveAll(temporary))
+	}()
 	binary := filepath.Join(temporary, productName)
 	linkerFlags := "-s -w -X " + linkedVersion + "=" + options.Version
 	command := exec.CommandContext(
@@ -597,7 +671,7 @@ func buildTarget(
 		"-mod=readonly",
 		"-trimpath",
 		"-buildvcs=false",
-		"-ldflags="+linkerFlags,
+		"-ldflags=" + linkerFlags,
 		"-o",
 		binary,
 		"./cmd/gox",
@@ -605,20 +679,45 @@ func buildTarget(
 	command.Dir = options.Root
 	command.Env = buildEnvironment(target.GOOS, target.GOARCH, cacheRoot)
 	if output, err := command.CombinedOutput(); err != nil {
-		return Artifact{}, fmt.Errorf("build release target %s/%s: %w: %s", target.GOOS, target.GOARCH, err, output)
+		return Artifact{}, fmt.Errorf(
+			"build release target %s/%s: %w: %s",
+			target.GOOS,
+			target.GOARCH,
+			err,
+			output,
+		)
 	}
-	name := fmt.Sprintf("%s_%s_%s_%s.tar.gz", productName, options.Version, target.GOOS, target.GOARCH)
+	name := fmt.Sprintf(
+		"%s_%s_%s_%s.tar.gz",
+		productName,
+		options.Version,
+		target.GOOS,
+		target.GOARCH,
+	)
 	var encoded bytes.Buffer
 	if err := archiveBinary(&encoded, binary); err != nil {
-		return Artifact{}, fmt.Errorf("archive release target %s/%s: %w", target.GOOS, target.GOARCH, err)
+		return Artifact{}, fmt.Errorf(
+			"archive release target %s/%s: %w",
+			target.GOOS,
+			target.GOARCH,
+			err,
+		)
 	}
 	if err := writeExclusive(output.root, name, encoded.Bytes(), 0o644); err != nil {
-		return Artifact{}, fmt.Errorf("write release target %s/%s: %w", target.GOOS, target.GOARCH, err)
+		return Artifact{}, fmt.Errorf(
+			"write release target %s/%s: %w",
+			target.GOOS,
+			target.GOARCH,
+			err,
+		)
 	}
 	digest := sha256.Sum256(encoded.Bytes())
 	return Artifact{
-		File: name, GOOS: target.GOOS, GOARCH: target.GOARCH,
-		SHA256: hex.EncodeToString(digest[:]), Size: int64(encoded.Len()),
+		File: name,
+		GOOS: target.GOOS,
+		GOARCH: target.GOARCH,
+		SHA256: hex.EncodeToString(digest[:]),
+		Size: int64(encoded.Len()),
 	}, nil
 }
 
@@ -656,7 +755,7 @@ func buildEnvironment(goos, goarch string, cacheRoot ...string) []string {
 	sort.Strings(names)
 	environment := make([]string, 0, len(names))
 	for _, name := range names {
-		environment = append(environment, name+"="+values[name])
+		environment = append(environment, name + "=" + values[name])
 	}
 	return environment
 }
@@ -679,7 +778,7 @@ func gitEnvironment() []string {
 	sort.Strings(names)
 	environment := make([]string, 0, len(names))
 	for _, name := range names {
-		environment = append(environment, name+"="+values[name])
+		environment = append(environment, name + "=" + values[name])
 	}
 	return environment
 }
@@ -702,8 +801,12 @@ func archiveBinary(output io.Writer, binary string) (resultErr error) {
 	compressed.Header.OS = 255
 	archiveWriter := tar.NewWriter(compressed)
 	header := &tar.Header{
-		Name: productName, Mode: 0o755, Size: information.Size(),
-		ModTime: time.Unix(0, 0).UTC(), Typeflag: tar.TypeReg, Format: tar.FormatUSTAR,
+		Name: productName,
+		Mode: 0o755,
+		Size: information.Size(),
+		ModTime: time.Unix(0, 0).UTC(),
+		Typeflag: tar.TypeReg,
+		Format: tar.FormatUSTAR,
 	}
 	if err := archiveWriter.WriteHeader(header); err != nil {
 		return err
@@ -720,12 +823,19 @@ func archiveBinary(output io.Writer, binary string) (resultErr error) {
 	return nil
 }
 
-func writeExclusive(root *os.Root, path string, content []byte, mode os.FileMode) (resultErr error) {
-	file, err := root.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+func writeExclusive(
+	root *os.Root,
+	path string,
+	content []byte,
+	mode os.FileMode,
+) (resultErr error) {
+	file, err := root.OpenFile(path, os.O_WRONLY | os.O_CREATE | os.O_EXCL, mode)
 	if err != nil {
 		return err
 	}
-	defer func() { resultErr = errors.Join(resultErr, file.Close()) }()
+	defer func() {
+		resultErr = errors.Join(resultErr, file.Close())
+	}()
 	if _, err := file.Write(content); err != nil {
 		return err
 	}

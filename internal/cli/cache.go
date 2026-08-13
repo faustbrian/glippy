@@ -23,24 +23,28 @@ import (
 
 const (
 	cacheDirectoryEnvironment = "GOX_CACHE_DIR"
-	formatterCacheMode        = "gox-v1"
-	staleCacheTemporaryAge    = 24 * time.Hour
+	formatterCacheMode = "gox-v1"
+	staleCacheTemporaryAge = 24 * time.Hour
 )
 
 var (
 	developmentCacheToolIdentityOnce sync.Once
-	developmentCacheToolIdentity     string
-	developmentCacheToolIdentityErr  error
+	developmentCacheToolIdentity string
+	developmentCacheToolIdentityErr error
 )
 
 type packageAnalysisError struct {
 	exitCode int
-	err      error
+	err error
 }
 
-func (e *packageAnalysisError) Error() string { return e.err.Error() }
+func (e *packageAnalysisError) Error() string {
+	return e.err.Error()
+}
 
-func (e *packageAnalysisError) Unwrap() error { return e.err }
+func (e *packageAnalysisError) Unwrap() error {
+	return e.err
+}
 
 func newPackageAnalysisError(exitCode int, format string, arguments ...any) error {
 	return &packageAnalysisError{exitCode: exitCode, err: fmt.Errorf(format, arguments...)}
@@ -85,9 +89,12 @@ func runPackageAnalysis(
 			err,
 		)
 	}
-	store, err := cache.OpenValidated(root, func(resolved string) error {
-		return requireExternalCacheRoot(resolved, task.root)
-	})
+	store, err := cache.OpenValidated(
+		root,
+		func(resolved string) error {
+			return requireExternalCacheRoot(resolved, task.root)
+		},
+	)
 	if err != nil {
 		var classified *packageAnalysisError
 		if errors.As(err, &classified) {
@@ -101,22 +108,25 @@ func runPackageAnalysis(
 	}
 	runOptions := task.options.analysis
 	runOptions.Cache = &analysis.PackageCacheOptions{
-		Store:           store,
-		ToolVersion:     toolIdentity,
-		BuildGoVersion:  runtime.Version(),
+		Store: store,
+		ToolVersion: toolIdentity,
+		BuildGoVersion: runtime.Version(),
 		SourceGoVersion: task.options.sourceGoVersion,
-		Configuration:   task.options.configurationDigest,
-		CGOEnabled:      cgoEnabled,
-		FormatterMode:   formatterCacheMode,
+		Configuration: task.options.configurationDigest,
+		CGOEnabled: cgoEnabled,
+		FormatterMode: formatterCacheMode,
 	}
 	result, runErr := analysis.RunPackages(ctx, registry, runOptions, loadOptions)
 	var pruneErr error
 	if ctx.Err() == nil {
-		_, pruneErr = store.Prune(ctx, cache.PruneOptions{
-			MaxEntries:           task.options.cache.MaxEntries,
-			MaxBytes:             task.options.cache.MaxBytes,
-			StaleTemporaryBefore: time.Now().Add(-staleCacheTemporaryAge),
-		})
+		_, pruneErr = store.Prune(
+			ctx,
+			cache.PruneOptions{
+				MaxEntries: task.options.cache.MaxEntries,
+				MaxBytes: task.options.cache.MaxBytes,
+				StaleTemporaryBefore: time.Now().Add(-staleCacheTemporaryAge),
+			},
+		)
 		if pruneErr != nil {
 			pruneErr = newPackageAnalysisError(
 				ExitFilesystemError,
@@ -141,26 +151,30 @@ func currentCacheToolIdentity() (string, error) {
 	if version != "devel" {
 		return version, nil
 	}
-	developmentCacheToolIdentityOnce.Do(func() {
-		path, err := os.Executable()
-		if err != nil {
-			developmentCacheToolIdentityErr = err
-			return
-		}
-		file, err := os.Open(path)
-		if err != nil {
-			developmentCacheToolIdentityErr = err
-			return
-		}
-		developmentCacheToolIdentity, developmentCacheToolIdentityErr =
-			resolvedCacheToolIdentity(version, file)
-		if closeErr := file.Close(); closeErr != nil {
-			developmentCacheToolIdentityErr = errors.Join(
-				developmentCacheToolIdentityErr,
-				closeErr,
+	developmentCacheToolIdentityOnce.Do(
+		func() {
+			path, err := os.Executable()
+			if err != nil {
+				developmentCacheToolIdentityErr = err
+				return
+			}
+			file, err := os.Open(path)
+			if err != nil {
+				developmentCacheToolIdentityErr = err
+				return
+			}
+			developmentCacheToolIdentity, developmentCacheToolIdentityErr = resolvedCacheToolIdentity(
+				version,
+				file,
 			)
-		}
-	})
+			if closeErr := file.Close(); closeErr != nil {
+				developmentCacheToolIdentityErr = errors.Join(
+					developmentCacheToolIdentityErr,
+					closeErr,
+				)
+			}
+		},
+	)
 	return developmentCacheToolIdentity, developmentCacheToolIdentityErr
 }
 
@@ -262,5 +276,6 @@ func pathWithin(root, candidate string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("compare analysis cache and project roots: %w", err)
 	}
-	return relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)), nil
+	return relative != ".." &&
+		!strings.HasPrefix(relative, ".." + string(filepath.Separator)), nil
 }

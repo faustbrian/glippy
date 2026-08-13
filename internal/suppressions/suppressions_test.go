@@ -28,9 +28,12 @@ func run() {
 }
 `
 	file := loadFile(t, input)
-	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
-		KnownRules: []string{"file-rule", "line-rule", "next-rule", "range-rule"},
-	})
+	index, problems := suppressions.Parse(
+		file,
+		suppressions.ParseOptions{
+			KnownRules: []string{"file-rule", "line-rule", "next-rule", "range-rule"},
+		},
+	)
 	if len(problems) != 0 {
 		t.Fatalf("Parse() problems = %#v", problems)
 	}
@@ -42,36 +45,69 @@ func run() {
 	if index.Directives()[0].RuleID == "mutated" {
 		t.Fatal("Directives() exposed mutable index state")
 	}
-	if directives := index.Directives(); directives[3].ExpiresOn != "2026-09-01" ||
-		directives[3].Reason != "paired setup" {
+	if directives := index.Directives();
+		directives[3].ExpiresOn != "2026-09-01" || directives[3].Reason != "paired setup" {
 		t.Fatalf("range expiry metadata = %#v", directives[3])
 	}
 
 	tests := []struct {
-		rule       string
-		target     string
+		rule string
+		target string
 		suppressed bool
-		scope      suppressions.Scope
+		scope suppressions.Scope
 	}{
-		{rule: "file-rule", target: "outsideRange()", suppressed: true, scope: suppressions.ScopeFile},
-		{rule: "line-rule", target: "lineTarget()", suppressed: true, scope: suppressions.ScopeLine},
+		{
+			rule: "file-rule",
+			target: "outsideRange()",
+			suppressed: true,
+			scope: suppressions.ScopeFile,
+		},
+		{
+			rule: "line-rule",
+			target: "lineTarget()",
+			suppressed: true,
+			scope: suppressions.ScopeLine,
+		},
 		{rule: "line-rule", target: "nextTarget()", suppressed: false},
-		{rule: "next-rule", target: "nextTarget()", suppressed: true, scope: suppressions.ScopeNextLine},
+		{
+			rule: "next-rule",
+			target: "nextTarget()",
+			suppressed: true,
+			scope: suppressions.ScopeNextLine,
+		},
 		{rule: "next-rule", target: "outsideNext()", suppressed: false},
-		{rule: "range-rule", target: "rangeTarget()", suppressed: true, scope: suppressions.ScopeRange},
+		{
+			rule: "range-rule",
+			target: "rangeTarget()",
+			suppressed: true,
+			scope: suppressions.ScopeRange,
+		},
 		{rule: "range-rule", target: "outsideRange()", suppressed: false},
 	}
 	for _, test := range tests {
-		t.Run(test.rule+"/"+test.target, func(t *testing.T) {
-			t.Parallel()
-			match, found := index.Match(diagnostic(file, test.rule, rangeOf(input, test.target)))
-			if found != test.suppressed {
-				t.Fatalf("Match() found = %v, want %v", found, test.suppressed)
-			}
-			if found && match.Scope != test.scope {
-				t.Fatalf("Match() scope = %v, want %v", match.Scope, test.scope)
-			}
-		})
+		t.Run(
+			test.rule + "/" + test.target,
+			func(t *testing.T) {
+				t.Parallel()
+				match, found := index.Match(
+					diagnostic(file, test.rule, rangeOf(input, test.target)),
+				)
+				if found != test.suppressed {
+					t.Fatalf(
+						"Match() found = %v, want %v",
+						found,
+						test.suppressed,
+					)
+				}
+				if found && match.Scope != test.scope {
+					t.Fatalf(
+						"Match() scope = %v, want %v",
+						match.Scope,
+						test.scope,
+					)
+				}
+			},
+		)
 	}
 }
 
@@ -79,9 +115,9 @@ func TestValidateStablePreservesPhysicalSuppressionTargets(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		before  string
-		after   string
+		name string
+		before string
+		after string
 		wantErr bool
 	}{
 		{
@@ -132,32 +168,39 @@ func TestValidateStablePreservesPhysicalSuppressionTargets(t *testing.T) {
 				"package sample\n\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
 		},
 		{
-			name:    "unregistered rule still has stable syntax ownership",
-			before:  "package sample\n//gox:ignore future-rule\nfunc run(){first();second()}\n",
-			after:   "package sample\n//gox:ignore future-rule\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
+			name: "unregistered rule still has stable syntax ownership",
+			before: "package sample\n//gox:ignore future-rule\nfunc run(){first();second()}\n",
+			after: "package sample\n//gox:ignore future-rule\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
 			wantErr: true,
 		},
 		{
-			name:   "malformed direct suppression has no target contract",
+			name: "malformed direct suppression has no target contract",
 			before: "package sample\n//gox:ignore duplicate-condition extra\nfunc run(){first();second()}\n",
-			after:  "package sample\n//gox:ignore duplicate-condition extra\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
+			after: "package sample\n//gox:ignore duplicate-condition extra\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
 		},
 		{
-			name:   "unknown directive has no target contract",
+			name: "unknown directive has no target contract",
 			before: "package sample\n//gox:unknown duplicate-condition\nfunc run(){first();second()}\n",
-			after:  "package sample\n//gox:unknown duplicate-condition\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
+			after: "package sample\n//gox:unknown duplicate-condition\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			before := loadFile(t, test.before)
-			after := loadFile(t, test.after)
-			err := suppressions.ValidateStable(before, after)
-			if (err != nil) != test.wantErr {
-				t.Fatalf("ValidateStable() error = %v, wantErr %v", err, test.wantErr)
-			}
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				before := loadFile(t, test.before)
+				after := loadFile(t, test.after)
+				err := suppressions.ValidateStable(before, after)
+				if (err != nil) != test.wantErr {
+					t.Fatalf(
+						"ValidateStable() error = %v, wantErr %v",
+						err,
+						test.wantErr,
+					)
+				}
+			},
+		)
 	}
 }
 
@@ -175,10 +218,10 @@ package sample
 func run() {}
 `
 	file := loadFile(t, input)
-	_, problems := suppressions.Parse(file, suppressions.ParseOptions{
-		KnownRules:    []string{"known-rule"},
-		RequireReason: true,
-	})
+	_, problems := suppressions.Parse(
+		file,
+		suppressions.ParseOptions{KnownRules: []string{"known-rule"}, RequireReason: true},
+	)
 	want := []suppressions.ProblemKind{
 		suppressions.ProblemMissingReason,
 		suppressions.ProblemMalformed,
@@ -210,9 +253,10 @@ func TestParseRequiresDeterministicRangePairs(t *testing.T) {
 func run() {}
 `
 	file := loadFile(t, input)
-	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
-		KnownRules: []string{"unmatched-rule", "nested-rule"},
-	})
+	index, problems := suppressions.Parse(
+		file,
+		suppressions.ParseOptions{KnownRules: []string{"unmatched-rule", "nested-rule"}},
+	)
 	want := []suppressions.ProblemKind{
 		suppressions.ProblemUnmatchedRangeEnd,
 		suppressions.ProblemUnclosedRange,
@@ -225,7 +269,8 @@ func run() {}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Parse() problem kinds = %#v, want %#v", got, want)
 	}
-	if _, found := index.Match(diagnostic(file, "nested-rule", rangeOf(input, "func run"))); found {
+	if _, found := index.Match(diagnostic(file, "nested-rule", rangeOf(input, "func run")));
+		found {
 		t.Fatal("an unclosed suppression range must not suppress diagnostics")
 	}
 }
@@ -234,16 +279,20 @@ func TestParseRejectsDuplicateKnownRuleConfiguration(t *testing.T) {
 	t.Parallel()
 
 	file := loadFile(t, "package sample\n")
-	_, problems := suppressions.Parse(file, suppressions.ParseOptions{
-		KnownRules: []string{"known-rule", "known-rule"},
-	})
+	_, problems := suppressions.Parse(
+		file,
+		suppressions.ParseOptions{KnownRules: []string{"known-rule", "known-rule"}},
+	)
 	if len(problems) != 1 || problems[0].Kind != suppressions.ProblemInvalidConfiguration {
 		t.Fatalf("Parse() problems = %#v", problems)
 	}
-	_, problems = suppressions.Parse(file, suppressions.ParseOptions{
-		KnownRules:   []string{"known-rule"},
-		ExpiryCutoff: "2026-02-30",
-	})
+	_, problems = suppressions.Parse(
+		file,
+		suppressions.ParseOptions{
+			KnownRules: []string{"known-rule"},
+			ExpiryCutoff: "2026-02-30",
+		},
+	)
 	if len(problems) != 1 || problems[0].Kind != suppressions.ProblemInvalidConfiguration {
 		t.Fatalf("Parse() invalid cutoff problems = %#v", problems)
 	}
@@ -254,10 +303,10 @@ func TestParseAcceptsTabsAndCRLFAtDirectiveBoundaries(t *testing.T) {
 
 	input := "package sample\r\n\r\nfunc run() {\r\n\t//gox:ignore\tnext-rule\t--\tlegacy call\r\n\tnextTarget()\r\n}\r\n"
 	file := loadFile(t, input)
-	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
-		KnownRules:    []string{"next-rule"},
-		RequireReason: true,
-	})
+	index, problems := suppressions.Parse(
+		file,
+		suppressions.ParseOptions{KnownRules: []string{"next-rule"}, RequireReason: true},
+	)
 	if len(problems) != 0 {
 		t.Fatalf("Parse() problems = %#v", problems)
 	}
@@ -282,10 +331,13 @@ func run() {
 }
 `
 	file := loadFile(t, input)
-	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
-		KnownRules:   []string{"active-rule", "expired-rule", "invalid-rule"},
-		ExpiryCutoff: "2026-08-11",
-	})
+	index, problems := suppressions.Parse(
+		file,
+		suppressions.ParseOptions{
+			KnownRules: []string{"active-rule", "expired-rule", "invalid-rule"},
+			ExpiryCutoff: "2026-08-11",
+		},
+	)
 	want := []suppressions.ProblemKind{
 		suppressions.ProblemExpired,
 		suppressions.ProblemInvalidExpiry,
@@ -297,14 +349,24 @@ func run() {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Parse() problem kinds = %#v, want %#v", got, want)
 	}
-	active, found := index.Match(diagnostic(file, "active-rule", rangeOf(input, "activeTarget()")))
-	if !found || active.ExpiresOn != "2026-08-12" || active.Reason != "temporary compatibility" {
+	active, found := index.Match(
+		diagnostic(file, "active-rule", rangeOf(input, "activeTarget()")),
+	)
+	if !found ||
+		active.ExpiresOn != "2026-08-12" ||
+		active.Reason != "temporary compatibility" {
 		t.Fatalf("Match(active) = %#v, %v", active, found)
 	}
-	if _, found := index.Match(diagnostic(file, "expired-rule", rangeOf(input, "expiredTarget()"))); found {
+	if _, found := index.Match(
+		diagnostic(file, "expired-rule", rangeOf(input, "expiredTarget()")),
+	);
+		found {
 		t.Fatal("expired suppression hid its diagnostic")
 	}
-	if _, found := index.Match(diagnostic(file, "invalid-rule", rangeOf(input, "invalidTarget()"))); found {
+	if _, found := index.Match(
+		diagnostic(file, "invalid-rule", rangeOf(input, "invalidTarget()")),
+	);
+		found {
 		t.Fatal("invalid suppression expiry hid its diagnostic")
 	}
 }
@@ -322,17 +384,25 @@ func run() {
 }
 `
 	file := loadFile(t, input)
-	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
-		KnownRules: []string{"active-rule", "missing-rule"},
-	})
+	index, problems := suppressions.Parse(
+		file,
+		suppressions.ParseOptions{KnownRules: []string{"active-rule", "missing-rule"}},
+	)
 	if len(problems) != 1 || problems[0].Kind != suppressions.ProblemMissingReason {
 		t.Fatalf("Parse() problems = %#v", problems)
 	}
-	active, found := index.Match(diagnostic(file, "active-rule", rangeOf(input, "activeTarget()")))
-	if !found || active.ExpiresOn != "2026-08-12" || active.Reason != "temporary compatibility" {
+	active, found := index.Match(
+		diagnostic(file, "active-rule", rangeOf(input, "activeTarget()")),
+	)
+	if !found ||
+		active.ExpiresOn != "2026-08-12" ||
+		active.Reason != "temporary compatibility" {
 		t.Fatalf("Match(active) = %#v, %v", active, found)
 	}
-	if _, found := index.Match(diagnostic(file, "missing-rule", rangeOf(input, "missingTarget()"))); found {
+	if _, found := index.Match(
+		diagnostic(file, "missing-rule", rangeOf(input, "missingTarget()")),
+	);
+		found {
 		t.Fatal("expiry metadata without a human reason hid its diagnostic")
 	}
 }
@@ -342,9 +412,10 @@ func TestIndexDoesNotMatchAnotherSourceVersion(t *testing.T) {
 
 	input := "package sample\nfunc run() {\n\ttarget() //gox:ignore-line known-rule\n}\n"
 	file := loadFile(t, input)
-	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
-		KnownRules: []string{"known-rule"},
-	})
+	index, problems := suppressions.Parse(
+		file,
+		suppressions.ParseOptions{KnownRules: []string{"known-rule"}},
+	)
 	if len(problems) != 0 {
 		t.Fatalf("Parse() problems = %#v", problems)
 	}
@@ -352,21 +423,31 @@ func TestIndexDoesNotMatchAnotherSourceVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, found := index.Match(diagnostic(other, "known-rule", rangeOf(string(other.Bytes()), "target()"))); found {
+	if _, found := index.Match(
+		diagnostic(other, "known-rule", rangeOf(string(other.Bytes()), "target()")),
+	);
+		found {
 		t.Fatal("Match() accepted a range from another source identity")
 	}
-	stale, err := source.Load("sample.go", []byte(strings.Replace(input, "target", "targot", 1)))
+	stale, err := source.Load(
+		"sample.go",
+		[]byte(strings.Replace(input, "target", "targot", 1)),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, found := index.Match(diagnostic(stale, "known-rule", rangeOf(string(stale.Bytes()), "targot()"))); found {
+	if _, found := index.Match(
+		diagnostic(stale, "known-rule", rangeOf(string(stale.Bytes()), "targot()")),
+	);
+		found {
 		t.Fatal("Match() accepted a range from another source version")
 	}
 	invalid := diagnostic(file, "known-rule", source.Range{Start: 0, End: len(input) + 1})
 	if _, found := index.Match(invalid); found {
 		t.Fatal("Match() accepted an out-of-bounds diagnostic range")
 	}
-	if _, found := index.Match(diagnostic(file, "known-rule", rangeOf(input, "target()"))); !found {
+	if _, found := index.Match(diagnostic(file, "known-rule", rangeOf(input, "target()")));
+		!found {
 		t.Fatal("Match() rejected its own source identity")
 	}
 }
@@ -382,9 +463,12 @@ package sample
 func run() { target() }
 `
 	file := loadFile(t, input)
-	index, problems := suppressions.Parse(file, suppressions.ParseOptions{
-		KnownRules: []string{"used-rule", "unused-rule", "visible-rule"},
-	})
+	index, problems := suppressions.Parse(
+		file,
+		suppressions.ParseOptions{
+			KnownRules: []string{"used-rule", "unused-rule", "visible-rule"},
+		},
+	)
 	if len(problems) != 0 {
 		t.Fatalf("Parse() problems = %#v", problems)
 	}
@@ -393,11 +477,13 @@ func run() { target() }
 	if err != nil {
 		t.Fatal(err)
 	}
-	application := index.Apply([]rules.Diagnostic{
-		diagnostic(file, "used-rule", target),
-		diagnostic(file, "visible-rule", target),
-		diagnostic(other, "used-rule", target),
-	})
+	application := index.Apply(
+		[]rules.Diagnostic{
+			diagnostic(file, "used-rule", target),
+			diagnostic(file, "visible-rule", target),
+			diagnostic(other, "used-rule", target),
+		},
+	)
 	if len(application.Suppressed) != 1 ||
 		application.Suppressed[0].Directive.Reason != "broad waiver" {
 		t.Fatalf("Apply() suppressed = %#v", application.Suppressed)
@@ -410,47 +496,66 @@ func run() { target() }
 	if len(application.Unused) != 2 {
 		t.Fatalf("Apply() unused = %#v", application.Unused)
 	}
-	if got := []string{application.Unused[0].Reason, application.Unused[1].Reason}; !reflect.DeepEqual(got, []string{"redundant waiver", "no finding"}) {
+	if got := []string{application.Unused[0].Reason, application.Unused[1].Reason};
+		!reflect.DeepEqual(got, []string{"redundant waiver", "no finding"}) {
 		t.Fatalf("Apply() unused reasons = %#v", got)
 	}
 }
 
 func FuzzParse(f *testing.F) {
 	f.Add([]byte("package sample\n//gox:ignore known-rule -- reason\nfunc run() {}\n"))
-	f.Add([]byte("package sample\n//gox:ignore known-rule -- expires=2026-08-11 temporary\nfunc run() {}\n"))
-	f.Add([]byte("package sample\n//gox:ignore known-rule -- expires=2026-02-30 invalid\nfunc run() {}\n"))
+	f.Add(
+		[]byte(
+			"package sample\n//gox:ignore known-rule -- expires=2026-08-11 temporary\nfunc run() {}\n",
+		),
+	)
+	f.Add(
+		[]byte(
+			"package sample\n//gox:ignore known-rule -- expires=2026-02-30 invalid\nfunc run() {}\n",
+		),
+	)
 	f.Add([]byte("//gox:ignore-file known-rule\r\npackage sample\r\n"))
-	f.Add([]byte("package sample\n//gox:ignore-start known-rule\n//gox:ignore-end known-rule\n"))
+	f.Add(
+		[]byte(
+			"package sample\n//gox:ignore-start known-rule\n//gox:ignore-end known-rule\n",
+		),
+	)
 	f.Add([]byte("package sample\n//gox:ignore known-rule\nfunc run(){first();second()}\n"))
-	f.Fuzz(func(t *testing.T, input []byte) {
-		file, _ := source.Load("fuzz.go", input)
-		if file == nil {
-			return
-		}
-		if err := suppressions.ValidateStable(file, file); err != nil {
-			t.Fatalf("ValidateStable() rejected identical source: %v", err)
-		}
-		options := suppressions.ParseOptions{
-			KnownRules:   []string{"known-rule"},
-			ExpiryCutoff: "2026-08-11",
-		}
-		first, firstProblems := suppressions.Parse(file, options)
-		second, secondProblems := suppressions.Parse(file, options)
-		if !reflect.DeepEqual(first.Directives(), second.Directives()) ||
-			!reflect.DeepEqual(firstProblems, secondProblems) {
-			t.Fatal("Parse() is nondeterministic")
-		}
-		for _, directive := range first.Directives() {
-			if !validRange(directive.Range, len(input)) || !validRange(directive.Target, len(input)) {
-				t.Fatalf("directive has invalid physical ranges: %#v", directive)
+	f.Fuzz(
+		func(t *testing.T, input []byte) {
+			file, _ := source.Load("fuzz.go", input)
+			if file == nil {
+				return
 			}
-		}
-		for _, problem := range firstProblems {
-			if !validRange(problem.Range, len(input)) {
-				t.Fatalf("problem has invalid physical range: %#v", problem)
+			if err := suppressions.ValidateStable(file, file); err != nil {
+				t.Fatalf("ValidateStable() rejected identical source: %v", err)
 			}
-		}
-	})
+			options := suppressions.ParseOptions{
+				KnownRules: []string{"known-rule"},
+				ExpiryCutoff: "2026-08-11",
+			}
+			first, firstProblems := suppressions.Parse(file, options)
+			second, secondProblems := suppressions.Parse(file, options)
+			if !reflect.DeepEqual(first.Directives(), second.Directives()) ||
+				!reflect.DeepEqual(firstProblems, secondProblems) {
+				t.Fatal("Parse() is nondeterministic")
+			}
+			for _, directive := range first.Directives() {
+				if !validRange(directive.Range, len(input)) ||
+					!validRange(directive.Target, len(input)) {
+					t.Fatalf(
+						"directive has invalid physical ranges: %#v",
+						directive,
+					)
+				}
+			}
+			for _, problem := range firstProblems {
+				if !validRange(problem.Range, len(input)) {
+					t.Fatalf("problem has invalid physical range: %#v", problem)
+				}
+			}
+		},
+	)
 }
 
 func loadFile(t *testing.T, input string) *source.File {
@@ -470,9 +575,9 @@ func rangeOf(input, target string) source.Range {
 func diagnostic(file *source.File, ruleID string, sourceRange source.Range) rules.Diagnostic {
 	return rules.Diagnostic{
 		RuleID: ruleID,
-		Path:   file.Path(),
+		Path: file.Path(),
 		Digest: file.Digest(),
-		Range:  sourceRange,
+		Range: sourceRange,
 	}
 }
 

@@ -21,11 +21,13 @@ func TestStorePersistsIndependentVerifiedPayloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
 	key, err := BuildKey(testKeyInput())
 	if err != nil {
 		t.Fatal(err)
@@ -59,19 +61,18 @@ func TestStoreRejectsConcurrentDifferentValuesForOneKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
 	key, err := BuildKey(testKeyInput())
 	if err != nil {
 		t.Fatal(err)
 	}
-	payloads := [][]byte{
-		bytes.Repeat([]byte("a"), 1<<20),
-		bytes.Repeat([]byte("b"), 1<<20),
-	}
+	payloads := [][]byte{bytes.Repeat([]byte("a"), 1 << 20), bytes.Repeat([]byte("b"), 1 << 20)}
 	start := make(chan struct{})
 	results := make(chan error, len(payloads))
 	for _, payload := range payloads {
@@ -117,20 +118,19 @@ func TestStoresRejectConcurrentDifferentValuesAcrossHandles(t *testing.T) {
 			t.Fatal(err)
 		}
 		stores[index] = store
-		t.Cleanup(func() {
-			if err := store.Close(); err != nil {
-				t.Error(err)
-			}
-		})
+		t.Cleanup(
+			func() {
+				if err := store.Close(); err != nil {
+					t.Error(err)
+				}
+			},
+		)
 	}
 	key, err := BuildKey(testKeyInput())
 	if err != nil {
 		t.Fatal(err)
 	}
-	payloads := [][]byte{
-		bytes.Repeat([]byte("a"), 1<<20),
-		bytes.Repeat([]byte("b"), 1<<20),
-	}
+	payloads := [][]byte{bytes.Repeat([]byte("a"), 1 << 20), bytes.Repeat([]byte("b"), 1 << 20)}
 	start := make(chan struct{})
 	results := make(chan error, len(stores))
 	for index, store := range stores {
@@ -166,11 +166,13 @@ func TestStoreTreatsCorruptionAsAMissAndRepairsIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
 	key, err := BuildKey(testKeyInput())
 	if err != nil {
 		t.Fatal(err)
@@ -179,7 +181,8 @@ func TestStoreTreatsCorruptionAsAMissAndRepairsIt(t *testing.T) {
 	if err := store.Put(context.Background(), key, payload); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, entryName(key)), []byte("corrupt"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, entryName(key)), []byte("corrupt"), 0o600);
+		err != nil {
 		t.Fatal(err)
 	}
 	got, found, err := store.Get(context.Background(), key)
@@ -209,11 +212,13 @@ func TestStorePrunesCorruptAndOldestEntriesWithinLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
 	keys := make([]Key, 4)
 	for index := range keys {
 		input := testKeyInput()
@@ -222,15 +227,17 @@ func TestStorePrunesCorruptAndOldestEntriesWithinLimits(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := store.Put(context.Background(), keys[index], []byte("payload")); err != nil {
+		if err := store.Put(context.Background(), keys[index], []byte("payload"));
+			err != nil {
 			t.Fatal(err)
 		}
-		stamp := time.Unix(int64(index+1), 0)
+		stamp := time.Unix(int64(index + 1), 0)
 		if err := store.root.Chtimes(entryName(keys[index]), stamp, stamp); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(root, entryName(keys[3])), []byte("corrupt"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, entryName(keys[3])), []byte("corrupt"), 0o600);
+		err != nil {
 		t.Fatal(err)
 	}
 	unknown := filepath.Join(root, entryVersion, "keep-me")
@@ -253,22 +260,23 @@ func TestStorePrunesCorruptAndOldestEntriesWithinLimits(t *testing.T) {
 	}
 
 	encodedSize := int64(headerSize + len("payload"))
-	result, err := store.Prune(context.Background(), PruneOptions{
-		MaxEntries: 3,
-		MaxBytes:   2 * encodedSize,
-	})
+	result, err := store.Prune(
+		context.Background(),
+		PruneOptions{MaxEntries: 3, MaxBytes: 2 * encodedSize},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result != (PruneResult{
-		EntriesBefore:  4,
-		BytesBefore:    3*encodedSize + int64(len("corrupt")),
-		EntriesRemoved: 2,
-		BytesRemoved:   encodedSize + int64(len("corrupt")),
-		CorruptRemoved: 1,
-		EntriesAfter:   2,
-		BytesAfter:     2 * encodedSize,
-	}) {
+	if result !=
+		(PruneResult{
+			EntriesBefore: 4,
+			BytesBefore: 3 * encodedSize + int64(len("corrupt")),
+			EntriesRemoved: 2,
+			BytesRemoved: encodedSize + int64(len("corrupt")),
+			CorruptRemoved: 1,
+			EntriesAfter: 2,
+			BytesAfter: 2 * encodedSize,
+		}) {
 		t.Fatalf("Prune() = %#v", result)
 	}
 	for index, key := range keys {
@@ -284,7 +292,8 @@ func TestStorePrunesCorruptAndOldestEntriesWithinLimits(t *testing.T) {
 	if contents, err := os.ReadFile(unknown); err != nil || string(contents) != "caller-owned" {
 		t.Fatalf("unknown cache file = %q, %v", contents, err)
 	}
-	if contents, err := os.ReadFile(temporary); err != nil || string(contents) != "in-progress" {
+	if contents, err := os.ReadFile(temporary);
+		err != nil || string(contents) != "in-progress" {
 		t.Fatalf("temporary cache file = %q, %v", contents, err)
 	}
 	if information, err := os.Stat(directory); err != nil || !information.IsDir() {
@@ -300,11 +309,13 @@ func TestStorePruneRemovesOnlyCanonicalStaleTemporaryEntries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
 	key, err := BuildKey(testKeyInput())
 	if err != nil {
 		t.Fatal(err)
@@ -322,25 +333,32 @@ func TestStorePruneRemovesOnlyCanonicalStaleTemporaryEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{staleName, freshName, unknownName} {
-		if err := os.WriteFile(filepath.Join(root, name), []byte("temporary"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("temporary"), 0o600);
+			err != nil {
 			t.Fatal(err)
 		}
 	}
 	cutoff := time.Unix(1_000, 0)
-	if err := store.root.Chtimes(staleName, cutoff.Add(-time.Second), cutoff.Add(-time.Second)); err != nil {
+	if err := store.root.Chtimes(staleName, cutoff.Add(-time.Second), cutoff.Add(-time.Second));
+		err != nil {
 		t.Fatal(err)
 	}
 	if err := store.root.Chtimes(freshName, cutoff, cutoff); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.root.Chtimes(unknownName, cutoff.Add(-time.Second), cutoff.Add(-time.Second)); err != nil {
+	if err := store.root.Chtimes(
+		unknownName,
+		cutoff.Add(-time.Second),
+		cutoff.Add(-time.Second),
+	);
+		err != nil {
 		t.Fatal(err)
 	}
 
-	result, err := store.Prune(context.Background(), PruneOptions{
-		MaxEntries:           1,
-		StaleTemporaryBefore: cutoff,
-	})
+	result, err := store.Prune(
+		context.Background(),
+		PruneOptions{MaxEntries: 1, StaleTemporaryBefore: cutoff},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,8 +369,8 @@ func TestStorePruneRemovesOnlyCanonicalStaleTemporaryEntries(t *testing.T) {
 		t.Fatalf("stale canonical temporary remains: %v", err)
 	}
 	for _, name := range []string{freshName, unknownName} {
-		if contents, err := os.ReadFile(filepath.Join(root, name)); err != nil ||
-			string(contents) != "temporary" {
+		if contents, err := os.ReadFile(filepath.Join(root, name));
+			err != nil || string(contents) != "temporary" {
 			t.Fatalf("preserved temporary %q = %q, %v", name, contents, err)
 		}
 	}
@@ -365,11 +383,13 @@ func TestStorePruneBreaksAgeTiesByCanonicalKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
 	keys := make([]Key, 2)
 	for index := range keys {
 		input := testKeyInput()
@@ -378,7 +398,8 @@ func TestStorePruneBreaksAgeTiesByCanonicalKey(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := store.Put(context.Background(), keys[index], []byte("payload")); err != nil {
+		if err := store.Put(context.Background(), keys[index], []byte("payload"));
+			err != nil {
 			t.Fatal(err)
 		}
 		stamp := time.Unix(1, 0)
@@ -386,7 +407,12 @@ func TestStorePruneBreaksAgeTiesByCanonicalKey(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	sort.Slice(keys, func(left, right int) bool { return keys[left].String() < keys[right].String() })
+	sort.Slice(
+		keys,
+		func(left, right int) bool {
+			return keys[left].String() < keys[right].String()
+		},
+	)
 	if _, err := store.Prune(context.Background(), PruneOptions{MaxEntries: 1}); err != nil {
 		t.Fatal(err)
 	}
@@ -412,11 +438,13 @@ func TestStorePruneRacesEqualWritersAcrossHandlesWithoutInvalidData(t *testing.T
 			t.Fatal(err)
 		}
 		stores[index] = store
-		t.Cleanup(func() {
-			if err := store.Close(); err != nil {
-				t.Error(err)
-			}
-		})
+		t.Cleanup(
+			func() {
+				if err := store.Close(); err != nil {
+					t.Error(err)
+				}
+			},
+		)
 	}
 	key, err := BuildKey(testKeyInput())
 	if err != nil {
@@ -454,7 +482,8 @@ func TestStorePruneRacesEqualWritersAcrossHandlesWithoutInvalidData(t *testing.T
 			if _, err := stores[1].Prune(
 				context.Background(),
 				PruneOptions{MaxBytes: 1},
-			); err != nil {
+			);
+				err != nil {
 				errors_ <- err
 				return
 			}
@@ -481,10 +510,7 @@ func TestStorePruneRejectsInvalidOrCanceledRequests(t *testing.T) {
 	t.Parallel()
 
 	var nilStore *Store
-	if _, err := nilStore.Prune(
-		context.Background(),
-		PruneOptions{MaxEntries: 1},
-	); err == nil {
+	if _, err := nilStore.Prune(context.Background(), PruneOptions{MaxEntries: 1}); err == nil {
 		t.Fatal("Prune() accepted a nil store")
 	}
 	store, err := Open(t.TempDir())
@@ -493,30 +519,40 @@ func TestStorePruneRejectsInvalidOrCanceledRequests(t *testing.T) {
 	}
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	for _, test := range []struct {
-		name    string
-		context context.Context
-		options PruneOptions
-	}{
-		{name: "nil context", options: PruneOptions{MaxEntries: 1}},
-		{name: "canceled", context: canceled, options: PruneOptions{MaxEntries: 1}},
-		{name: "no limit", context: context.Background()},
-		{name: "negative entries", context: context.Background(), options: PruneOptions{MaxEntries: -1}},
-		{name: "negative bytes", context: context.Background(), options: PruneOptions{MaxBytes: -1}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			if _, err := store.Prune(test.context, test.options); err == nil {
-				t.Fatalf("Prune() accepted %s", test.name)
-			}
-		})
+	for _, test := range
+		[]struct {
+			name string
+			context context.Context
+			options PruneOptions
+		}{
+			{name: "nil context", options: PruneOptions{MaxEntries: 1}},
+			{name: "canceled", context: canceled, options: PruneOptions{MaxEntries: 1}},
+			{name: "no limit", context: context.Background()},
+			{
+				name: "negative entries",
+				context: context.Background(),
+				options: PruneOptions{MaxEntries: -1},
+			},
+			{
+				name: "negative bytes",
+				context: context.Background(),
+				options: PruneOptions{MaxBytes: -1},
+			},
+		} {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				if _, err := store.Prune(test.context, test.options); err == nil {
+					t.Fatalf("Prune() accepted %s", test.name)
+				}
+			},
+		)
 	}
 	if err := store.root.RemoveAll(entryVersion); err != nil {
 		t.Fatal(err)
 	}
-	if result, err := store.Prune(
-		context.Background(),
-		PruneOptions{MaxEntries: 1},
-	); err != nil || result != (PruneResult{}) {
+	if result, err := store.Prune(context.Background(), PruneOptions{MaxEntries: 1});
+		err != nil || result != (PruneResult{}) {
 		t.Fatalf("Prune() after external cache deletion = %#v, %v", result, err)
 	}
 	if err := store.Close(); err != nil {
@@ -561,7 +597,7 @@ func TestStoreRejectsInvalidOrCanceledRequests(t *testing.T) {
 	if err := store.Put(canceled, key, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Put() cancellation error = %v", err)
 	}
-	if err := store.Put(context.Background(), key, make([]byte, MaxEntrySize+1)); err == nil {
+	if err := store.Put(context.Background(), key, make([]byte, MaxEntrySize + 1)); err == nil {
 		t.Fatal("Put() accepted an oversized payload")
 	}
 	if err := store.Close(); err != nil {
@@ -587,28 +623,33 @@ func TestOpenValidatedPinsResolvedRootBeforeValidationReturns(t *testing.T) {
 		t.Fatal(err)
 	}
 	cacheRoot := filepath.Join(link, "analysis")
-	store, err := OpenValidated(cacheRoot, func(resolved string) error {
-		resolvedExternal, err := filepath.EvalSymlinks(external)
-		if err != nil {
-			return err
-		}
-		want := filepath.Join(resolvedExternal, "analysis")
-		if resolved != want {
-			t.Fatalf("validated root = %q, want %q", resolved, want)
-		}
-		if err := os.Remove(link); err != nil {
-			return err
-		}
-		return os.Symlink(project, link)
-	})
+	store, err := OpenValidated(
+		cacheRoot,
+		func(resolved string) error {
+			resolvedExternal, err := filepath.EvalSymlinks(external)
+			if err != nil {
+				return err
+			}
+			want := filepath.Join(resolvedExternal, "analysis")
+			if resolved != want {
+				t.Fatalf("validated root = %q, want %q", resolved, want)
+			}
+			if err := os.Remove(link); err != nil {
+				return err
+			}
+			return os.Symlink(project, link)
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
 	key, err := BuildKey(testKeyInput())
 	if err != nil {
 		t.Fatal(err)
@@ -628,7 +669,12 @@ func TestOpenValidatedRejectsBeforeCreatingRoot(t *testing.T) {
 	parent := t.TempDir()
 	cacheRoot := filepath.Join(parent, "cache", "analysis")
 	want := errors.New("rejected cache root")
-	store, err := OpenValidated(cacheRoot, func(string) error { return want })
+	store, err := OpenValidated(
+		cacheRoot,
+		func(string) error {
+			return want
+		},
+	)
 	if store != nil || !errors.Is(err, want) {
 		t.Fatalf("OpenValidated() = %#v, %v", store, err)
 	}
@@ -648,11 +694,13 @@ func TestStoreRefusesAnEscapingShardSymlink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
 	key, err := BuildKey(testKeyInput())
 	if err != nil {
 		t.Fatal(err)

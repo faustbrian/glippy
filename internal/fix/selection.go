@@ -10,9 +10,9 @@ import (
 
 // SelectionOptions identifies the independently authorized fix classes.
 type SelectionOptions struct {
-	AllowSafe       bool
+	AllowSafe bool
 	AllowSuggestion bool
-	AllowUnsafe     bool
+	AllowUnsafe bool
 }
 
 // SelectSafe chooses the only safe named fix offered by each diagnostic.
@@ -34,10 +34,10 @@ func Select(diagnostics []rules.Diagnostic, options SelectionOptions) ([]Selecti
 		case 0:
 			continue
 		case 1:
-			selections = append(selections, Selection{
-				Diagnostic: diagnostic,
-				FixName:    authorizedNames[0],
-			})
+			selections = append(
+				selections,
+				Selection{Diagnostic: diagnostic, FixName: authorizedNames[0]},
+			)
 		default:
 			slices.Sort(authorizedNames)
 			return nil, fmt.Errorf(

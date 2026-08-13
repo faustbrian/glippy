@@ -11,18 +11,18 @@ import (
 )
 
 var (
-	ruleIDPattern    = regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`)
+	ruleIDPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`)
 	goVersionPattern = regexp.MustCompile(`^1\.(?:0|[1-9][0-9]*)$`)
 )
 
 type registryEntry struct {
-	rule     Rule
+	rule Rule
 	metadata Metadata
 }
 
 // Registry is an immutable, ID-ordered native rule set.
 type Registry struct {
-	ids     []string
+	ids []string
 	entries map[string]registryEntry
 }
 
@@ -138,7 +138,8 @@ func (r *Registry) ResolveConfiguredForGoVersion(
 		return nil, fmt.Errorf("resolve requires a registry")
 	}
 	if sourceGoVersion != "" &&
-		(!version.IsValid(sourceGoVersion) || version.Lang(sourceGoVersion) != sourceGoVersion) {
+		(!version.IsValid(sourceGoVersion) ||
+			version.Lang(sourceGoVersion) != sourceGoVersion) {
 		return nil, fmt.Errorf("invalid source Go version %q", sourceGoVersion)
 	}
 	if !validPreset(preset) {
@@ -186,7 +187,7 @@ func (r *Registry) ResolveConfiguredForGoVersion(
 			continue
 		}
 		if sourceGoVersion != "" &&
-			version.Compare(sourceGoVersion, "go"+metadata.MinimumGoVersion) < 0 {
+			version.Compare(sourceGoVersion, "go" + metadata.MinimumGoVersion) < 0 {
 			continue
 		}
 		configured := options[id]
@@ -194,7 +195,11 @@ func (r *Registry) ResolveConfiguredForGoVersion(
 		for _, option := range metadata.Options {
 			value, found := configured.values[option.Name]
 			if option.Required && !found {
-				return nil, fmt.Errorf("rule %q is missing required option %q", id, option.Name)
+				return nil, fmt.Errorf(
+					"rule %q is missing required option %q",
+					id,
+					option.Name,
+				)
 			}
 			if !found && option.Default != nil {
 				value, found = *option.Default, true
@@ -203,12 +208,15 @@ func (r *Registry) ResolveConfiguredForGoVersion(
 				resolvedValues[option.Name] = value
 			}
 		}
-		selection = append(selection, Selection{
-			ID:          id,
-			Severity:    severity,
-			Requirement: metadata.Requirement,
-			Options:     NewOptionSet(resolvedValues),
-		})
+		selection = append(
+			selection,
+			Selection{
+				ID: id,
+				Severity: severity,
+				Requirement: metadata.Requirement,
+				Options: NewOptionSet(resolvedValues),
+			},
+		)
 	}
 	return selection, nil
 }
@@ -248,8 +256,12 @@ func nilRule(nativeRule Rule) bool {
 	}
 	value := reflect.ValueOf(nativeRule)
 	switch value.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
-		reflect.Pointer, reflect.Slice:
+	case reflect.Chan,
+		reflect.Func,
+		reflect.Interface,
+		reflect.Map,
+		reflect.Pointer,
+		reflect.Slice:
 		return value.IsNil()
 	default:
 		return false
@@ -278,7 +290,11 @@ func validateMetadata(metadata Metadata, packageWide bool) error {
 		return fmt.Errorf("%s: documentation is required", metadata.ID)
 	}
 	if !validSeverity(metadata.DefaultSeverity) {
-		return fmt.Errorf("%s: invalid default severity %q", metadata.ID, metadata.DefaultSeverity)
+		return fmt.Errorf(
+			"%s: invalid default severity %q",
+			metadata.ID,
+			metadata.DefaultSeverity,
+		)
 	}
 	if len(metadata.Presets) == 0 {
 		return fmt.Errorf("%s: at least one preset is required", metadata.ID)
@@ -287,31 +303,58 @@ func validateMetadata(metadata Metadata, packageWide bool) error {
 		return fmt.Errorf("%s: %w", metadata.ID, err)
 	}
 	if !goVersionPattern.MatchString(metadata.MinimumGoVersion) {
-		return fmt.Errorf("%s: invalid minimum Go version %q", metadata.ID, metadata.MinimumGoVersion)
+		return fmt.Errorf(
+			"%s: invalid minimum Go version %q",
+			metadata.ID,
+			metadata.MinimumGoVersion,
+		)
 	}
 	if metadata.Requirement < RequireLexical || metadata.Requirement > RequireSSA {
-		return fmt.Errorf("%s: invalid analysis requirement %d", metadata.ID, metadata.Requirement)
+		return fmt.Errorf(
+			"%s: invalid analysis requirement %d",
+			metadata.ID,
+			metadata.Requirement,
+		)
 	}
 	if metadata.RunDespiteTypeErrors && metadata.Requirement < RequireTypes {
-		return fmt.Errorf("%s: cheap-tier rule cannot opt into type-error packages", metadata.ID)
+		return fmt.Errorf(
+			"%s: cheap-tier rule cannot opt into type-error packages",
+			metadata.ID,
+		)
 	}
 	if packageWide && metadata.Requirement != RequireTypes {
 		return fmt.Errorf("%s: package-wide rule must require types", metadata.ID)
 	}
-	if metadata.RequiresDependencySyntax && (!packageWide || metadata.Requirement != RequireTypes) {
-		return fmt.Errorf("%s: dependency syntax requires a package-wide types rule", metadata.ID)
+	if metadata.RequiresDependencySyntax &&
+		(!packageWide || metadata.Requirement != RequireTypes) {
+		return fmt.Errorf(
+			"%s: dependency syntax requires a package-wide types rule",
+			metadata.ID,
+		)
 	}
 	if metadata.Requirement == RequireSyntax && len(metadata.NodeInterests) == 0 {
-		return fmt.Errorf("%s: %s rule must declare node interests", metadata.ID, metadata.Requirement)
+		return fmt.Errorf(
+			"%s: %s rule must declare node interests",
+			metadata.ID,
+			metadata.Requirement,
+		)
 	}
 	if metadata.Requirement == RequireTypes && packageWide && len(metadata.NodeInterests) != 0 {
-		return fmt.Errorf("%s: package-wide rule must not declare node interests", metadata.ID)
+		return fmt.Errorf(
+			"%s: package-wide rule must not declare node interests",
+			metadata.ID,
+		)
 	}
-	if metadata.Requirement == RequireTypes && !packageWide && len(metadata.NodeInterests) == 0 {
+	if metadata.Requirement == RequireTypes &&
+		!packageWide &&
+		len(metadata.NodeInterests) == 0 {
 		return fmt.Errorf("%s: types rule must declare node interests", metadata.ID)
 	}
 	if metadata.Requirement == RequireControlFlow && len(metadata.NodeInterests) != 0 {
-		return fmt.Errorf("%s: control flow rule must not declare node interests", metadata.ID)
+		return fmt.Errorf(
+			"%s: control flow rule must not declare node interests",
+			metadata.ID,
+		)
 	}
 	if metadata.Requirement == RequireSSA && len(metadata.NodeInterests) != 0 {
 		return fmt.Errorf("%s: SSA rule must not declare node interests", metadata.ID)
@@ -319,7 +362,8 @@ func validateMetadata(metadata Metadata, packageWide bool) error {
 	if metadata.Requirement == RequireSSA && metadata.RunDespiteTypeErrors {
 		return fmt.Errorf("%s: SSA rule cannot run on type-error packages", metadata.ID)
 	}
-	if err := validateUnique(metadata.NodeInterests, validNodeKind, "node interest"); err != nil {
+	if err := validateUnique(metadata.NodeInterests, validNodeKind, "node interest");
+		err != nil {
 		return fmt.Errorf("%s: %w", metadata.ID, err)
 	}
 	if len(metadata.Categories) == 0 {
@@ -350,10 +394,18 @@ func validateMetadata(metadata Metadata, packageWide bool) error {
 			return fmt.Errorf("%s: invalid option kind %q", metadata.ID, option.Kind)
 		}
 		if option.Required && option.Default != nil {
-			return fmt.Errorf("%s: required option %q must not declare a default", metadata.ID, option.Name)
+			return fmt.Errorf(
+				"%s: required option %q must not declare a default",
+				metadata.ID,
+				option.Name,
+			)
 		}
 		if !option.Required && option.Default == nil {
-			return fmt.Errorf("%s: optional option %q requires a default", metadata.ID, option.Name)
+			return fmt.Errorf(
+				"%s: optional option %q requires a default",
+				metadata.ID,
+				option.Name,
+			)
 		}
 		if option.Default != nil && option.Default.kind != option.Kind {
 			return fmt.Errorf(
@@ -381,8 +433,12 @@ func validateMetadata(metadata Metadata, packageWide bool) error {
 		return fmt.Errorf("%s: at least one example is required", metadata.ID)
 	}
 	for _, example := range metadata.Examples {
-		if strings.TrimSpace(example.Incorrect) == "" || strings.TrimSpace(example.Correct) == "" {
-			return fmt.Errorf("%s: examples require incorrect and correct source", metadata.ID)
+		if strings.TrimSpace(example.Incorrect) == "" ||
+			strings.TrimSpace(example.Correct) == "" {
+			return fmt.Errorf(
+				"%s: examples require incorrect and correct source",
+				metadata.ID,
+			)
 		}
 	}
 	return nil
@@ -413,8 +469,12 @@ func validSeverity(value Severity) bool {
 
 func validPreset(value Preset) bool {
 	switch value {
-	case PresetCorrectness, PresetSuspicious, PresetPerformance,
-		PresetComplexity, PresetStyle, PresetMigration:
+	case PresetCorrectness,
+		PresetSuspicious,
+		PresetPerformance,
+		PresetComplexity,
+		PresetStyle,
+		PresetMigration:
 		return true
 	default:
 		return false
@@ -423,9 +483,14 @@ func validPreset(value Preset) bool {
 
 func validCategory(value Category) bool {
 	switch value {
-	case CategoryCorrectness, CategorySafety, CategorySuspicious,
-		CategoryPerformance, CategoryComplexity, CategoryStyle,
-		CategoryMigration, CategoryMaintainability:
+	case CategoryCorrectness,
+		CategorySafety,
+		CategorySuspicious,
+		CategoryPerformance,
+		CategoryComplexity,
+		CategoryStyle,
+		CategoryMigration,
+		CategoryMaintainability:
 		return true
 	default:
 		return false

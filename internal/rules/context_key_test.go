@@ -18,19 +18,23 @@ type benchmarkContextKeyTypesRule struct{}
 
 func (benchmarkContextKeyTypesRule) Metadata() rules.Metadata {
 	return rules.Metadata{
-		ID: "benchmark-context-key-types", Summary: "provides a types traversal baseline",
-		Documentation:    "Provides a no-op typed call traversal for benchmark comparison.",
-		DefaultSeverity:  rules.SeverityWarn,
-		Presets:          []rules.Preset{rules.PresetSuspicious},
+		ID: "benchmark-context-key-types",
+		Summary: "provides a types traversal baseline",
+		Documentation: "Provides a no-op typed call traversal for benchmark comparison.",
+		DefaultSeverity: rules.SeverityWarn,
+		Presets: []rules.Preset{rules.PresetSuspicious},
 		MinimumGoVersion: "1.26",
-		Requirement:      rules.RequireTypes,
-		NodeInterests:    []rules.NodeKind{rules.NodeCallExpr},
-		Categories:       []rules.Category{rules.CategoryCorrectness},
-		Examples:         []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+		Requirement: rules.RequireTypes,
+		NodeInterests: []rules.NodeKind{rules.NodeCallExpr},
+		Categories: []rules.Category{rules.CategoryCorrectness},
+		Examples: []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
 	}
 }
 
-func (benchmarkContextKeyTypesRule) RunTypes(*rules.TypesContext, ast.Node) ([]rules.Finding, error) {
+func (benchmarkContextKeyTypesRule) RunTypes(
+	*rules.TypesContext,
+	ast.Node,
+) ([]rules.Finding, error) {
 	return nil, nil
 }
 
@@ -75,12 +79,21 @@ func genericSlice[P ~[]byte](ctx c.Context, key P) {
 	for index, expected := range want {
 		offset := strings.Index(input[searchStart:], expected.expression)
 		if offset < 0 {
-			t.Fatalf("input does not contain %q after %d", expected.expression, searchStart)
+			t.Fatalf(
+				"input does not contain %q after %d",
+				expected.expression,
+				searchStart,
+			)
 		}
 		offset += searchStart
 		diagnostic := result.Files[0].Diagnostics[index]
-		if diagnostic.RuleID != "context-key" || diagnostic.MessageKey != expected.messageKey ||
-			diagnostic.Range != (source.Range{Start: offset, End: offset + len(expected.expression)}) ||
+		if diagnostic.RuleID != "context-key" ||
+			diagnostic.MessageKey != expected.messageKey ||
+			diagnostic.Range !=
+				(source.Range{
+					Start: offset,
+					End: offset + len(expected.expression),
+				}) ||
 			len(diagnostic.Fixes) != 0 {
 			t.Fatalf("diagnostic %d = %#v", index, diagnostic)
 		}
@@ -131,21 +144,30 @@ func BenchmarkContextKeySharedTypes(b *testing.B) {
 		filepath.Join(root, "go.mod"),
 		[]byte("module example.com/contextkeybenchmark\n\ngo 1.26.0\n"),
 		0o600,
-	); err != nil {
+	);
+		err != nil {
 		b.Fatal(err)
 	}
 	var input strings.Builder
-	input.WriteString("package sample\nimport \"context\"\nfunc attach(ctx context.Context) {\n")
+	input.WriteString(
+		"package sample\nimport \"context\"\nfunc attach(ctx context.Context) {\n",
+	)
 	for index := range 100 {
 		fmt.Fprintf(&input, "context.WithValue(ctx, \"key-%d\", %d)\n", index, index)
 	}
 	input.WriteString("}\n")
-	if err := os.WriteFile(filepath.Join(root, "sample.go"), []byte(input.String()), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "sample.go"), []byte(input.String()), 0o600);
+		err != nil {
 		b.Fatal(err)
 	}
-	loaded, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
-		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes,
-	})
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireTypes,
+		},
+	)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -157,8 +179,8 @@ func BenchmarkContextKeySharedTypes(b *testing.B) {
 		rules.PresetSuspicious,
 		map[string]rules.Severity{
 			"defer-in-infinite-loop": rules.SeverityOff,
-			"errors-is-arguments":    rules.SeverityOff,
-			"nilness":                rules.SeverityOff,
+			"errors-is-arguments": rules.SeverityOff,
+			"nilness": rules.SeverityOff,
 		},
 	)
 	if err != nil {
@@ -173,12 +195,30 @@ func BenchmarkContextKeySharedTypes(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	b.Run("baseline", func(b *testing.B) {
-		benchmarkContextKeyExecution(b, loaded, baselineRegistry, baselineSelection, 0)
-	})
-	b.Run("context-key", func(b *testing.B) {
-		benchmarkContextKeyExecution(b, loaded, contextRegistry, contextSelection, 100)
-	})
+	b.Run(
+		"baseline",
+		func(b *testing.B) {
+			benchmarkContextKeyExecution(
+				b,
+				loaded,
+				baselineRegistry,
+				baselineSelection,
+				0,
+			)
+		},
+	)
+	b.Run(
+		"context-key",
+		func(b *testing.B) {
+			benchmarkContextKeyExecution(
+				b,
+				loaded,
+				contextRegistry,
+				contextSelection,
+				100,
+			)
+		},
+	)
 }
 
 func benchmarkContextKeyExecution(
@@ -191,7 +231,12 @@ func benchmarkContextKeyExecution(
 	b.Helper()
 	b.ReportAllocs()
 	for range b.N {
-		diagnostics, err := analysis.RunTypes(context.Background(), loaded, registry, selection)
+		diagnostics, err := analysis.RunTypes(
+			context.Background(),
+			loaded,
+			registry,
+			selection,
+		)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -204,42 +249,61 @@ func benchmarkContextKeyExecution(
 func TestContextKeyHonorsSuppressionGeneratedTypeErrorAndSeverityPolicies(t *testing.T) {
 	t.Parallel()
 
-	suppressed := runContextKey(t, `package sample
+	suppressed := runContextKey(
+		t,
+		`package sample
 import "context"
 func run(ctx context.Context) {
 	//gox:ignore context-key -- compatibility boundary
 	context.WithValue(ctx, "key", 1)
 }
-`, nil)
-	if len(suppressed.Files) != 1 || len(suppressed.Files[0].Diagnostics) != 0 ||
+`,
+		nil,
+	)
+	if len(suppressed.Files) != 1 ||
+		len(suppressed.Files[0].Diagnostics) != 0 ||
 		len(suppressed.Files[0].Suppressed) != 1 ||
 		suppressed.Files[0].Suppressed[0].Diagnostic.RuleID != "context-key" {
 		t.Fatalf("suppressed result = %#v", suppressed)
 	}
 
-	generated := runContextKey(t, `// Code generated by fixture. DO NOT EDIT.
+	generated := runContextKey(
+		t,
+		`// Code generated by fixture. DO NOT EDIT.
 package sample
 import "context"
 func run(ctx context.Context) { context.WithValue(ctx, "key", 1) }
-`, nil)
+`,
+		nil,
+	)
 	if len(generated.Files) != 1 || len(generated.Files[0].Diagnostics) != 0 {
 		t.Fatalf("generated result = %#v", generated)
 	}
 
-	illTyped := runContextKey(t, `package sample
+	illTyped := runContextKey(
+		t,
+		`package sample
 import "context"
 func run(ctx context.Context) { missing(); context.WithValue(ctx, "key", 1) }
-`, nil)
-	if len(illTyped.LoadDiagnostics) == 0 || len(illTyped.Files) != 1 ||
+`,
+		nil,
+	)
+	if len(illTyped.LoadDiagnostics) == 0 ||
+		len(illTyped.Files) != 1 ||
 		len(illTyped.Files[0].Diagnostics) != 0 {
 		t.Fatalf("ill-typed result = %#v", illTyped)
 	}
 
-	severity := runContextKey(t, `package sample
+	severity := runContextKey(
+		t,
+		`package sample
 import "context"
 func run(ctx context.Context) { context.WithValue(ctx, "key", 1) }
-`, map[string]rules.Severity{"context-key": rules.SeverityError})
-	if len(severity.Files) != 1 || len(severity.Files[0].Diagnostics) != 1 ||
+`,
+		map[string]rules.Severity{"context-key": rules.SeverityError},
+	)
+	if len(severity.Files) != 1 ||
+		len(severity.Files[0].Diagnostics) != 1 ||
 		severity.Files[0].Diagnostics[0].Severity != rules.SeverityError {
 		t.Fatalf("severity result = %#v", severity)
 	}
@@ -253,11 +317,17 @@ func TestDefaultRegistryDocumentsContextKeyWithoutAFix(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadata, found := registry.Metadata("context-key")
-	if !found || metadata.Requirement != rules.RequireTypes ||
-		metadata.DefaultSeverity != rules.SeverityWarn || metadata.MinimumGoVersion != "1.25" ||
-		metadata.RunOnGenerated || metadata.RunDespiteTypeErrors || len(metadata.Fixes) != 0 ||
-		len(metadata.Presets) != 1 || metadata.Presets[0] != rules.PresetSuspicious ||
-		len(metadata.Examples) == 0 || len(metadata.KnownLimitations) == 0 {
+	if !found ||
+		metadata.Requirement != rules.RequireTypes ||
+		metadata.DefaultSeverity != rules.SeverityWarn ||
+		metadata.MinimumGoVersion != "1.25" ||
+		metadata.RunOnGenerated ||
+		metadata.RunDespiteTypeErrors ||
+		len(metadata.Fixes) != 0 ||
+		len(metadata.Presets) != 1 ||
+		metadata.Presets[0] != rules.PresetSuspicious ||
+		len(metadata.Examples) == 0 ||
+		len(metadata.KnownLimitations) == 0 {
 		t.Fatalf("metadata = %#v, found = %v", metadata, found)
 	}
 }
@@ -273,7 +343,8 @@ func runContextKey(
 		filepath.Join(root, "go.mod"),
 		[]byte("module example.com/contextkey\n\ngo 1.26.0\n"),
 		0o600,
-	); err != nil {
+	);
+		err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "sample.go"), []byte(input), 0o600); err != nil {

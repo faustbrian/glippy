@@ -14,33 +14,33 @@ import (
 )
 
 type activeTypesRule struct {
-	rule     rules.TypesRule
+	rule rules.TypesRule
 	metadata rules.Metadata
 	severity rules.Severity
-	options  rules.OptionSet
+	options rules.OptionSet
 }
 
 type activePackageRule struct {
-	rule     rules.PackageRule
+	rule rules.PackageRule
 	metadata rules.Metadata
 	severity rules.Severity
-	options  rules.OptionSet
+	options rules.OptionSet
 }
 
 type typedSyntaxFile struct {
-	path   string
+	path string
 	source *source.File
 	syntax *ast.File
 }
 
 type typedPackageFile struct {
 	package_ *packages.Package
-	file     typedSyntaxFile
+	file typedSyntaxFile
 }
 
 type ownedPackageSource struct {
 	package_ *packages.Package
-	source   *source.File
+	source *source.File
 }
 
 // RunTypes executes selected types-tier rules through one shared package AST
@@ -93,75 +93,83 @@ func RunTypes(
 			return nil, err
 		}
 		pkg, file := work.package_, work.file
-		if !anyTypesRuleEligible(
-			dispatch,
-			file.source.Metadata().Generated,
-			pkg.IllTyped,
-		) {
+		if !anyTypesRuleEligible(dispatch, file.source.Metadata().Generated, pkg.IllTyped) {
 			continue
 		}
 		ruleContexts := make(map[string]*rules.TypesContext)
 		var runErr error
-		ast.Inspect(file.syntax, func(node ast.Node) bool {
-			if runErr != nil {
-				return false
-			}
-			if node == nil {
-				return true
-			}
-			if err := ctx.Err(); err != nil {
-				runErr = err
-				return false
-			}
-			kind, found := rules.KindOf(node)
-			if !found {
-				return true
-			}
-			for _, active := range dispatch[kind] {
-				if file.source.Metadata().Generated && !active.metadata.RunOnGenerated {
-					continue
-				}
-				if pkg.IllTyped && !active.metadata.RunDespiteTypeErrors {
-					continue
-				}
-				ruleContext := ruleContexts[active.metadata.ID]
-				if ruleContext == nil {
-					ruleContext = rules.NewTypesContext(
-						file.source,
-						pkg.Fset,
-						pkg.ID,
-						pkg.Types,
-						pkg.TypesInfo,
-						pkg.IllTyped,
-						active.options,
-					)
-					ruleContexts[active.metadata.ID] = ruleContext
-				}
-				findings, err := active.rule.RunTypes(ruleContext, node)
-				if contextErr := ctx.Err(); contextErr != nil {
-					runErr = contextErr
+		ast.Inspect(
+			file.syntax,
+			func(node ast.Node) bool {
+				if runErr != nil {
 					return false
 				}
-				if err != nil {
-					runErr = fmt.Errorf("%s: %w", active.metadata.ID, err)
+				if node == nil {
+					return true
+				}
+				if err := ctx.Err(); err != nil {
+					runErr = err
 					return false
 				}
-				for _, finding := range findings {
-					diagnostic, err := diagnosticForFinding(
-						file.source,
-						active.metadata,
-						active.severity,
-						finding,
-					)
-					if err != nil {
-						runErr = fmt.Errorf("%s: %w", active.metadata.ID, err)
+				kind, found := rules.KindOf(node)
+				if !found {
+					return true
+				}
+				for _, active := range dispatch[kind] {
+					if file.source.Metadata().Generated &&
+						!active.metadata.RunOnGenerated {
+						continue
+					}
+					if pkg.IllTyped && !active.metadata.RunDespiteTypeErrors {
+						continue
+					}
+					ruleContext := ruleContexts[active.metadata.ID]
+					if ruleContext == nil {
+						ruleContext = rules.NewTypesContext(
+							file.source,
+							pkg.Fset,
+							pkg.ID,
+							pkg.Types,
+							pkg.TypesInfo,
+							pkg.IllTyped,
+							active.options,
+						)
+						ruleContexts[active.metadata.ID] = ruleContext
+					}
+					findings, err := active.rule.RunTypes(ruleContext, node)
+					if contextErr := ctx.Err(); contextErr != nil {
+						runErr = contextErr
 						return false
 					}
-					diagnostics = append(diagnostics, diagnostic)
+					if err != nil {
+						runErr = fmt.Errorf(
+							"%s: %w",
+							active.metadata.ID,
+							err,
+						)
+						return false
+					}
+					for _, finding := range findings {
+						diagnostic, err := diagnosticForFinding(
+							file.source,
+							active.metadata,
+							active.severity,
+							finding,
+						)
+						if err != nil {
+							runErr = fmt.Errorf(
+								"%s: %w",
+								active.metadata.ID,
+								err,
+							)
+							return false
+						}
+						diagnostics = append(diagnostics, diagnostic)
+					}
 				}
-			}
-			return true
-		})
+				return true
+			},
+		)
 		if runErr != nil {
 			return nil, runErr
 		}
@@ -193,7 +201,12 @@ func prepareTypesRules(
 	selection []rules.Selection,
 ) (map[rules.NodeKind][]activeTypesRule, []activePackageRule, error) {
 	ordered := slices.Clone(selection)
-	sort.Slice(ordered, func(left, right int) bool { return ordered[left].ID < ordered[right].ID })
+	sort.Slice(
+		ordered,
+		func(left, right int) bool {
+			return ordered[left].ID < ordered[right].ID
+		},
+	)
 	dispatch := make(map[rules.NodeKind][]activeTypesRule)
 	packageRules := make([]activePackageRule, 0)
 	previousID := ""
@@ -202,8 +215,13 @@ func prepareTypesRules(
 			return nil, nil, fmt.Errorf("selected rule %q more than once", selected.ID)
 		}
 		previousID = selected.ID
-		if selected.Severity != rules.SeverityWarn && selected.Severity != rules.SeverityError {
-			return nil, nil, fmt.Errorf("selected rule %q has invalid severity %q", selected.ID, selected.Severity)
+		if selected.Severity != rules.SeverityWarn &&
+			selected.Severity != rules.SeverityError {
+			return nil, nil, fmt.Errorf(
+				"selected rule %q has invalid severity %q",
+				selected.ID,
+				selected.Severity,
+			)
 		}
 		nativeRule, found := registry.Lookup(selected.ID)
 		if !found {
@@ -211,7 +229,10 @@ func prepareTypesRules(
 		}
 		metadata, _ := registry.Metadata(selected.ID)
 		if selected.Requirement != metadata.Requirement {
-			return nil, nil, fmt.Errorf("selected rule %q requirement does not match registry", selected.ID)
+			return nil, nil, fmt.Errorf(
+				"selected rule %q requirement does not match registry",
+				selected.ID,
+			)
 		}
 		if metadata.Requirement != rules.RequireTypes {
 			return nil, nil, fmt.Errorf(
@@ -223,23 +244,40 @@ func prepareTypesRules(
 		typedRule, typed := nativeRule.(rules.TypesRule)
 		packageRule, packageWide := nativeRule.(rules.PackageRule)
 		if typed && packageWide {
-			return nil, nil, fmt.Errorf("selected rule %q implements ambiguous types execution", selected.ID)
+			return nil, nil, fmt.Errorf(
+				"selected rule %q implements ambiguous types execution",
+				selected.ID,
+			)
 		}
 		if implementsNonTypesExecution(nativeRule) {
-			return nil, nil, fmt.Errorf("selected rule %q implements ambiguous types execution", selected.ID)
+			return nil, nil, fmt.Errorf(
+				"selected rule %q implements ambiguous types execution",
+				selected.ID,
+			)
 		}
 		if packageWide {
-			packageRules = append(packageRules, activePackageRule{
-				rule: packageRule, metadata: metadata, severity: selected.Severity,
-				options: selected.Options,
-			})
+			packageRules = append(
+				packageRules,
+				activePackageRule{
+					rule: packageRule,
+					metadata: metadata,
+					severity: selected.Severity,
+					options: selected.Options,
+				},
+			)
 			continue
 		}
 		if !typed {
-			return nil, nil, fmt.Errorf("selected rule %q does not implement types execution", selected.ID)
+			return nil, nil, fmt.Errorf(
+				"selected rule %q does not implement types execution",
+				selected.ID,
+			)
 		}
 		active := activeTypesRule{
-			rule: typedRule, metadata: metadata, severity: selected.Severity, options: selected.Options,
+			rule: typedRule,
+			metadata: metadata,
+			severity: selected.Severity,
+			options: selected.Options,
 		}
 		for _, interest := range metadata.NodeInterests {
 			dispatch[interest] = append(dispatch[interest], active)
@@ -275,7 +313,10 @@ func runNativePackageRules(
 				return nil, err
 			}
 			if pkg.TypesSizes == nil {
-				return nil, fmt.Errorf("typed package %q is missing type sizes", pkg.ID)
+				return nil, fmt.Errorf(
+					"typed package %q is missing type sizes",
+					pkg.ID,
+				)
 			}
 			if pkg.IllTyped && !active.metadata.RunDespiteTypeErrors {
 				continue
@@ -288,8 +329,14 @@ func runNativePackageRules(
 			targetCount := 0
 			for _, file := range files {
 				target := owners[file.path] == pkg.ID &&
-					(!file.source.Metadata().Generated || active.metadata.RunOnGenerated)
-				packageFile := rules.NewPackageFile(file.source, file.syntax, pkg.Fset, target)
+					(!file.source.Metadata().Generated ||
+						active.metadata.RunOnGenerated)
+				packageFile := rules.NewPackageFile(
+					file.source,
+					file.syntax,
+					pkg.Fset,
+					target,
+				)
 				packageFiles = append(packageFiles, packageFile)
 				if target {
 					targetCount++
@@ -331,10 +378,16 @@ func runNativePackageRules(
 			for _, finding := range findings {
 				file := finding.File.Source()
 				if file == nil || !finding.File.Target() {
-					return nil, fmt.Errorf("%s: package finding requires an owned target file", active.metadata.ID)
+					return nil, fmt.Errorf(
+						"%s: package finding requires an owned target file",
+						active.metadata.ID,
+					)
 				}
 				if !ruleContext.OwnsTarget(finding.File) {
-					return nil, fmt.Errorf("%s: package finding must use a target from the same package callback", active.metadata.ID)
+					return nil, fmt.Errorf(
+						"%s: package finding must use a target from the same package callback",
+						active.metadata.ID,
+					)
 				}
 				diagnostic, err := diagnosticForFinding(
 					file,
@@ -365,7 +418,10 @@ func packageDependencies(
 		}
 		switch state[pkg] {
 		case 1:
-			return fmt.Errorf("native dependency graph contains an import cycle at %q", pkg.ID)
+			return fmt.Errorf(
+				"native dependency graph contains an import cycle at %q",
+				pkg.ID,
+			)
 		case 2:
 			return nil
 		}
@@ -384,8 +440,14 @@ func packageDependencies(
 		if pkg == root {
 			return nil
 		}
-		if pkg.Fset == nil || pkg.Types == nil || pkg.TypesInfo == nil || pkg.TypesSizes == nil {
-			return fmt.Errorf("typed dependency %q is missing required type information", pkg.ID)
+		if pkg.Fset == nil ||
+			pkg.Types == nil ||
+			pkg.TypesInfo == nil ||
+			pkg.TypesSizes == nil {
+			return fmt.Errorf(
+				"typed dependency %q is missing required type information",
+				pkg.ID,
+			)
 		}
 		files, err := packageSyntaxFiles(pkg, sources)
 		if err != nil {
@@ -393,11 +455,25 @@ func packageDependencies(
 		}
 		packageFiles := make([]rules.PackageFile, len(files))
 		for index, file := range files {
-			packageFiles[index] = rules.NewPackageFile(file.source, file.syntax, pkg.Fset, false)
+			packageFiles[index] = rules.NewPackageFile(
+				file.source,
+				file.syntax,
+				pkg.Fset,
+				false,
+			)
 		}
-		result = append(result, rules.NewPackageDependency(
-			pkg.Fset, pkg.ID, pkg.Types, pkg.TypesInfo, pkg.TypesSizes, pkg.IllTyped, packageFiles,
-		))
+		result = append(
+			result,
+			rules.NewPackageDependency(
+				pkg.Fset,
+				pkg.ID,
+				pkg.Types,
+				pkg.TypesInfo,
+				pkg.TypesSizes,
+				pkg.IllTyped,
+				packageFiles,
+			),
+		)
 		return nil
 	}
 	if err := visit(root); err != nil {
@@ -406,28 +482,47 @@ func packageDependencies(
 	return result, nil
 }
 
-func packageSyntaxFiles(pkg *packages.Package, sources PackageSourceSet) ([]typedSyntaxFile, error) {
+func packageSyntaxFiles(
+	pkg *packages.Package,
+	sources PackageSourceSet,
+) ([]typedSyntaxFile, error) {
 	files := make([]typedSyntaxFile, 0, len(pkg.Syntax))
 	seen := make(map[string]struct{}, len(pkg.Syntax))
 	editable := make(map[string]struct{}, len(pkg.GoFiles))
 	for _, path := range pkg.GoFiles {
 		path = filepath.Clean(path)
 		if !filepath.IsAbs(path) || path == "" {
-			return nil, fmt.Errorf("typed package %q has invalid original source path %q", pkg.ID, path)
+			return nil, fmt.Errorf(
+				"typed package %q has invalid original source path %q",
+				pkg.ID,
+				path,
+			)
 		}
 		editable[path] = struct{}{}
 	}
 	for index, syntax := range pkg.Syntax {
 		if syntax == nil {
-			return nil, fmt.Errorf("typed package %q syntax file %d is nil", pkg.ID, index)
+			return nil, fmt.Errorf(
+				"typed package %q syntax file %d is nil",
+				pkg.ID,
+				index,
+			)
 		}
 		position := pkg.Fset.PositionFor(syntax.Pos(), false)
 		path := filepath.Clean(position.Filename)
 		if !filepath.IsAbs(path) || path != position.Filename {
-			return nil, fmt.Errorf("typed package %q has non-normalized source path %q", pkg.ID, position.Filename)
+			return nil, fmt.Errorf(
+				"typed package %q has non-normalized source path %q",
+				pkg.ID,
+				position.Filename,
+			)
 		}
 		if _, duplicate := seen[path]; duplicate {
-			return nil, fmt.Errorf("typed package %q repeats source path %q", pkg.ID, path)
+			return nil, fmt.Errorf(
+				"typed package %q repeats source path %q",
+				pkg.ID,
+				path,
+			)
 		}
 		seen[path] = struct{}{}
 		if _, found := editable[path]; !found {
@@ -435,14 +530,23 @@ func packageSyntaxFiles(pkg *packages.Package, sources PackageSourceSet) ([]type
 		}
 		physical, found := sources.Lookup(path)
 		if !found {
-			return nil, fmt.Errorf("typed package %q source %q was not captured", pkg.ID, path)
+			return nil, fmt.Errorf(
+				"typed package %q source %q was not captured",
+				pkg.ID,
+				path,
+			)
 		}
 		if !physical.CanFormat() {
 			continue
 		}
 		files = append(files, typedSyntaxFile{path: path, source: physical, syntax: syntax})
 	}
-	sort.Slice(files, func(left, right int) bool { return files[left].path < files[right].path })
+	sort.Slice(
+		files,
+		func(left, right int) bool {
+			return files[left].path < files[right].path
+		},
+	)
 	return files, nil
 }
 
@@ -455,11 +559,19 @@ func canonicalPackageSourceFiles(
 		for _, path := range pkg.GoFiles {
 			path = filepath.Clean(path)
 			if !filepath.IsAbs(path) || path == "" {
-				return nil, fmt.Errorf("typed package %q has invalid original source path %q", pkg.ID, path)
+				return nil, fmt.Errorf(
+					"typed package %q has invalid original source path %q",
+					pkg.ID,
+					path,
+				)
 			}
 			physical, found := sources.Lookup(path)
 			if !found {
-				return nil, fmt.Errorf("typed package %q original source %q was not captured", pkg.ID, path)
+				return nil, fmt.Errorf(
+					"typed package %q original source %q was not captured",
+					pkg.ID,
+					path,
+				)
 			}
 			if !physical.CanFormat() {
 				continue
@@ -490,7 +602,10 @@ func canonicalTypedFiles(
 	byPath := make(map[string]typedPackageFile)
 	for _, pkg := range packages_ {
 		if pkg.Fset == nil || pkg.Types == nil || pkg.TypesInfo == nil {
-			return nil, fmt.Errorf("typed package %q is missing required type information", pkg.ID)
+			return nil, fmt.Errorf(
+				"typed package %q is missing required type information",
+				pkg.ID,
+			)
 		}
 		files, err := packageSyntaxFiles(pkg, sources)
 		if err != nil {

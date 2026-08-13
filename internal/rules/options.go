@@ -10,15 +10,17 @@ import (
 
 // OptionValue is one immutable typed rule configuration value.
 type OptionValue struct {
-	kind     OptionKind
-	boolean  bool
-	integer  int64
-	text     string
+	kind OptionKind
+	boolean bool
+	integer int64
+	text string
 	strings_ []string
 }
 
 // Kind returns the declared scalar kind of this value.
-func (v OptionValue) Kind() OptionKind { return v.kind }
+func (v OptionValue) Kind() OptionKind {
+	return v.kind
+}
 
 // String renders one deterministic human-readable option value.
 func (v OptionValue) String() string {

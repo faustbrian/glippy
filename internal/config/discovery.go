@@ -8,8 +8,8 @@ import (
 
 // Selection identifies the project boundary and configuration for one input.
 type Selection struct {
-	Root     string
-	Path     string
+	Root string
+	Path string
 	Explicit bool
 }
 
@@ -46,14 +46,25 @@ func discover(inputPath, explicitPath string, requireInput bool) (Selection, err
 	if explicitPath != "" {
 		absoluteConfiguration, err := filepath.Abs(explicitPath)
 		if err != nil {
-			return Selection{}, fmt.Errorf("resolve configuration path %q: %w", explicitPath, err)
+			return Selection{}, fmt.Errorf(
+				"resolve configuration path %q: %w",
+				explicitPath,
+				err,
+			)
 		}
 		info, err := os.Stat(absoluteConfiguration)
 		if err != nil {
-			return Selection{}, fmt.Errorf("inspect configuration path %q: %w", absoluteConfiguration, err)
+			return Selection{}, fmt.Errorf(
+				"inspect configuration path %q: %w",
+				absoluteConfiguration,
+				err,
+			)
 		}
 		if !info.Mode().IsRegular() {
-			return Selection{}, fmt.Errorf("configuration path %q is not a regular file", absoluteConfiguration)
+			return Selection{}, fmt.Errorf(
+				"configuration path %q is not a regular file",
+				absoluteConfiguration,
+			)
 		}
 		return Selection{Root: root, Path: absoluteConfiguration, Explicit: true}, nil
 	}
@@ -75,7 +86,11 @@ func findProjectRoot(start string) (string, error) {
 			case err == nil:
 				return directory, nil
 			case !os.IsNotExist(err):
-				return "", fmt.Errorf("inspect project marker in %q: %w", directory, err)
+				return "", fmt.Errorf(
+					"inspect project marker in %q: %w",
+					directory,
+					err,
+				)
 			}
 		}
 		parent := filepath.Dir(directory)
@@ -91,7 +106,10 @@ func findConfiguration(root string) (string, error) {
 		info, err := os.Stat(candidate)
 		switch {
 		case err == nil && !info.Mode().IsRegular():
-			return "", fmt.Errorf("configuration path %q is not a regular file", candidate)
+			return "", fmt.Errorf(
+				"configuration path %q is not a regular file",
+				candidate,
+			)
 		case err == nil:
 			return candidate, nil
 		case !os.IsNotExist(err):

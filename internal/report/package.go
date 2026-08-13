@@ -16,16 +16,16 @@ import (
 // LintPackageDiagnostic is one stable package-loading, parse, or type error.
 type LintPackageDiagnostic struct {
 	PackageID string `json:"package_id"`
-	Kind      string `json:"kind"`
-	Position  string `json:"position,omitempty"`
-	Message   string `json:"message"`
+	Kind string `json:"kind"`
+	Position string `json:"position,omitempty"`
+	Message string `json:"message"`
 }
 
 // LintSourceProblem is one source-model failure retained outside rule results.
 type LintSourceProblem struct {
-	Path         string `json:"path"`
+	Path string `json:"path"`
 	SourceDigest string `json:"source_digest"`
-	Message      string `json:"message"`
+	Message string `json:"message"`
 }
 
 // NewPackageLintResult adds typed prerequisite and source-model problems to a
@@ -98,12 +98,20 @@ func RenderPackageLintText(
 func mapPackageDiagnostics(input []analysis.PackageDiagnostic) ([]LintPackageDiagnostic, error) {
 	result := make([]LintPackageDiagnostic, len(input))
 	for index, diagnostic := range input {
-		if strings.TrimSpace(diagnostic.PackageID) == "" || strings.TrimSpace(diagnostic.Message) == "" {
-			return nil, fmt.Errorf("package diagnostic %d requires package ID and message", index)
+		if strings.TrimSpace(diagnostic.PackageID) == "" ||
+			strings.TrimSpace(diagnostic.Message) == "" {
+			return nil, fmt.Errorf(
+				"package diagnostic %d requires package ID and message",
+				index,
+			)
 		}
 		kind, valid := packageDiagnosticKind(diagnostic.Kind)
 		if !valid {
-			return nil, fmt.Errorf("package diagnostic %d has unsupported package diagnostic kind %d", index, diagnostic.Kind)
+			return nil, fmt.Errorf(
+				"package diagnostic %d has unsupported package diagnostic kind %d",
+				index,
+				diagnostic.Kind,
+			)
 		}
 		position := diagnostic.Position
 		if position == "-" {
@@ -111,50 +119,62 @@ func mapPackageDiagnostics(input []analysis.PackageDiagnostic) ([]LintPackageDia
 		}
 		result[index] = LintPackageDiagnostic{
 			PackageID: diagnostic.PackageID,
-			Kind:      kind,
-			Position:  position,
-			Message:   diagnostic.Message,
+			Kind: kind,
+			Position: position,
+			Message: diagnostic.Message,
 		}
 	}
-	sort.Slice(result, func(left, right int) bool {
-		first, second := result[left], result[right]
-		if order := cmp.Compare(first.PackageID, second.PackageID); order != 0 {
-			return order < 0
-		}
-		if order := cmp.Compare(first.Position, second.Position); order != 0 {
-			return order < 0
-		}
-		if order := cmp.Compare(first.Message, second.Message); order != 0 {
-			return order < 0
-		}
-		return first.Kind < second.Kind
-	})
+	sort.Slice(
+		result,
+		func(left, right int) bool {
+			first, second := result[left], result[right]
+			if order := cmp.Compare(first.PackageID, second.PackageID); order != 0 {
+				return order < 0
+			}
+			if order := cmp.Compare(first.Position, second.Position); order != 0 {
+				return order < 0
+			}
+			if order := cmp.Compare(first.Message, second.Message); order != 0 {
+				return order < 0
+			}
+			return first.Kind < second.Kind
+		},
+	)
 	return result, nil
 }
 
 func mapSourceProblems(input []analysis.PackageSourceProblem) ([]LintSourceProblem, error) {
 	ordered := slices.Clone(input)
-	sort.Slice(ordered, func(left, right int) bool {
-		if ordered[left].Path != ordered[right].Path {
-			return ordered[left].Path < ordered[right].Path
-		}
-		return ordered[left].Message < ordered[right].Message
-	})
+	sort.Slice(
+		ordered,
+		func(left, right int) bool {
+			if ordered[left].Path != ordered[right].Path {
+				return ordered[left].Path < ordered[right].Path
+			}
+			return ordered[left].Message < ordered[right].Message
+		},
+	)
 	result := make([]LintSourceProblem, len(ordered))
 	for index, problem := range ordered {
 		if !filepath.IsAbs(problem.Path) || filepath.Clean(problem.Path) != problem.Path {
-			return nil, fmt.Errorf("source problem path %q is not normalized absolute", problem.Path)
+			return nil, fmt.Errorf(
+				"source problem path %q is not normalized absolute",
+				problem.Path,
+			)
 		}
 		if strings.TrimSpace(problem.Message) == "" {
 			return nil, fmt.Errorf("source problem %q has no message", problem.Path)
 		}
 		if problem.Digest == (source.Digest{}) {
-			return nil, fmt.Errorf("source problem %q has no source digest", problem.Path)
+			return nil, fmt.Errorf(
+				"source problem %q has no source digest",
+				problem.Path,
+			)
 		}
 		result[index] = LintSourceProblem{
-			Path:         problem.Path,
+			Path: problem.Path,
 			SourceDigest: encodeDigest(problem.Digest),
-			Message:      problem.Message,
+			Message: problem.Message,
 		}
 	}
 	return result, nil

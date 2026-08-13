@@ -47,7 +47,10 @@ func TestDiscoverSearchesForConfigurationOnlyAtOrAboveBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	if selection.Root != moduleRoot || selection.Path != repositoryConfiguration {
-		t.Fatalf("Discover() = %#v, want module root with repository configuration", selection)
+		t.Fatalf(
+			"Discover() = %#v, want module root with repository configuration",
+			selection,
+		)
 	}
 }
 
@@ -110,8 +113,8 @@ func TestDiscoverRecognizesModuleWorkspaceAndRepositoryBoundaries(t *testing.T) 
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		marker    string
+		name string
+		marker string
 		directory bool
 	}{
 		{name: "module", marker: "go.mod"},
@@ -120,68 +123,94 @@ func TestDiscoverRecognizesModuleWorkspaceAndRepositoryBoundaries(t *testing.T) 
 		{name: "worktree file", marker: ".git"},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			root := t.TempDir()
-			markerPath := filepath.Join(root, test.marker)
-			if test.directory {
-				if err := os.Mkdir(markerPath, 0o755); err != nil {
+				root := t.TempDir()
+				markerPath := filepath.Join(root, test.marker)
+				if test.directory {
+					if err := os.Mkdir(markerPath, 0o755); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					writeTestFile(t, markerPath)
+				}
+				configurationPath := filepath.Join(root, config.Filename)
+				writeTestFile(t, configurationPath)
+				inputPath := filepath.Join(root, "nested", "source.go")
+				writeTestFile(t, inputPath)
+
+				selection, err := config.Discover(inputPath, "")
+				if err != nil {
 					t.Fatal(err)
 				}
-			} else {
-				writeTestFile(t, markerPath)
-			}
-			configurationPath := filepath.Join(root, config.Filename)
-			writeTestFile(t, configurationPath)
-			inputPath := filepath.Join(root, "nested", "source.go")
-			writeTestFile(t, inputPath)
-
-			selection, err := config.Discover(inputPath, "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if selection.Root != root || selection.Path != configurationPath {
-				t.Fatalf("Discover() = %#v, want boundary %q", selection, root)
-			}
-		})
+				if selection.Root != root || selection.Path != configurationPath {
+					t.Fatalf(
+						"Discover() = %#v, want boundary %q",
+						selection,
+						root,
+					)
+				}
+			},
+		)
 	}
 }
 
 func TestDiscoverRejectsUnusableInputAndConfigurationPaths(t *testing.T) {
 	t.Parallel()
 
-	t.Run("missing input", func(t *testing.T) {
-		t.Parallel()
-		if _, err := config.Discover(filepath.Join(t.TempDir(), "missing.go"), ""); err == nil {
-			t.Fatal("Discover() error = nil, want missing-input failure")
-		}
-	})
+	t.Run(
+		"missing input",
+		func(t *testing.T) {
+			t.Parallel()
+			if _, err := config.Discover(filepath.Join(t.TempDir(), "missing.go"), "");
+				err == nil {
+				t.Fatal("Discover() error = nil, want missing-input failure")
+			}
+		},
+	)
 
-	t.Run("missing explicit configuration", func(t *testing.T) {
-		t.Parallel()
-		root := t.TempDir()
-		writeTestFile(t, filepath.Join(root, "go.mod"))
-		inputPath := filepath.Join(root, "source.go")
-		writeTestFile(t, inputPath)
-		if _, err := config.Discover(inputPath, filepath.Join(root, "missing.toml")); err == nil {
-			t.Fatal("Discover() error = nil, want missing-configuration failure")
-		}
-	})
+	t.Run(
+		"missing explicit configuration",
+		func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			writeTestFile(t, filepath.Join(root, "go.mod"))
+			inputPath := filepath.Join(root, "source.go")
+			writeTestFile(t, inputPath)
+			if _, err := config.Discover(
+				inputPath,
+				filepath.Join(root, "missing.toml"),
+			);
+				err == nil {
+				t.Fatal(
+					"Discover() error = nil, want missing-configuration failure",
+				)
+			}
+		},
+	)
 
-	t.Run("configuration directory", func(t *testing.T) {
-		t.Parallel()
-		root := t.TempDir()
-		writeTestFile(t, filepath.Join(root, "go.mod"))
-		if err := os.Mkdir(filepath.Join(root, config.Filename), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		inputPath := filepath.Join(root, "source.go")
-		writeTestFile(t, inputPath)
-		if _, err := config.Discover(inputPath, ""); err == nil {
-			t.Fatal("Discover() error = nil, want non-file configuration failure")
-		}
-	})
+	t.Run(
+		"configuration directory",
+		func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			writeTestFile(t, filepath.Join(root, "go.mod"))
+			if err := os.Mkdir(filepath.Join(root, config.Filename), 0o755);
+				err != nil {
+				t.Fatal(err)
+			}
+			inputPath := filepath.Join(root, "source.go")
+			writeTestFile(t, inputPath)
+			if _, err := config.Discover(inputPath, ""); err == nil {
+				t.Fatal(
+					"Discover() error = nil, want non-file configuration failure",
+				)
+			}
+		},
+	)
 }
 
 func TestDiscoverFileContextUsesNonexistentEditorPath(t *testing.T) {

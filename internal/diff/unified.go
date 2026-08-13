@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	contextLines    = 3
+	contextLines = 3
 	maximumLCSCells = 1_000_000
-	maximumWork     = 4_000_000
-	maximumDepth    = 128
+	maximumWork = 4_000_000
+	maximumDepth = 128
 )
 
 type operationKind uint8
@@ -30,8 +30,8 @@ type operation struct {
 
 type differ struct {
 	before []string
-	after  []string
-	work   int
+	after []string
+	work int
 }
 
 // Unified returns a three-line-context unified diff. Labels are quoted when
@@ -46,16 +46,25 @@ func Unified(beforeLabel, afterLabel string, before, after []byte) string {
 	return render(quoteLabel(beforeLabel), quoteLabel(afterLabel), operations)
 }
 
-func (d *differ) rangeOperations(beforeStart, beforeEnd, afterStart, afterEnd, depth int) []operation {
-	result := make([]operation, 0, beforeEnd-beforeStart+afterEnd-afterStart)
-	for beforeStart < beforeEnd && afterStart < afterEnd && d.before[beforeStart] == d.after[afterStart] {
-		result = append(result, operation{kind: operationEqual, line: d.before[beforeStart]})
+func (d *differ) rangeOperations(
+	beforeStart, beforeEnd, afterStart, afterEnd, depth int,
+) []operation {
+	result := make([]operation, 0, beforeEnd - beforeStart + afterEnd - afterStart)
+	for beforeStart < beforeEnd &&
+		afterStart < afterEnd &&
+		d.before[beforeStart] == d.after[afterStart] {
+		result = append(
+			result,
+			operation{kind: operationEqual, line: d.before[beforeStart]},
+		)
 		beforeStart++
 		afterStart++
 	}
 	beforeSuffix := beforeEnd
 	afterSuffix := afterEnd
-	for beforeStart < beforeSuffix && afterStart < afterSuffix && d.before[beforeSuffix-1] == d.after[afterSuffix-1] {
+	for beforeStart < beforeSuffix &&
+		afterStart < afterSuffix &&
+		d.before[beforeSuffix - 1] == d.after[afterSuffix - 1] {
 		beforeSuffix--
 		afterSuffix--
 	}
@@ -76,16 +85,40 @@ func (d *differ) rangeOperations(beforeStart, beforeEnd, afterStart, afterEnd, d
 	}
 	anchors := d.patienceAnchors(beforeStart, beforeSuffix, afterStart, afterSuffix)
 	if len(anchors) == 0 {
-		result = append(result, d.boundedLCS(beforeStart, beforeSuffix, afterStart, afterSuffix)...)
+		result = append(
+			result,
+			d.boundedLCS(beforeStart, beforeSuffix, afterStart, afterSuffix)...,
+		)
 		return appendLines(result, operationEqual, d.before[beforeSuffix:beforeEnd])
 	}
 	previousBefore, previousAfter := beforeStart, afterStart
 	for _, anchor := range anchors {
-		result = append(result, d.rangeOperations(previousBefore, anchor.before, previousAfter, anchor.after, depth+1)...)
-		result = append(result, operation{kind: operationEqual, line: d.before[anchor.before]})
-		previousBefore, previousAfter = anchor.before+1, anchor.after+1
+		result = append(
+			result,
+			d.rangeOperations(
+				previousBefore,
+				anchor.before,
+				previousAfter,
+				anchor.after,
+				depth + 1,
+			)...,
+		)
+		result = append(
+			result,
+			operation{kind: operationEqual, line: d.before[anchor.before]},
+		)
+		previousBefore, previousAfter = anchor.before + 1, anchor.after + 1
 	}
-	result = append(result, d.rangeOperations(previousBefore, beforeSuffix, previousAfter, afterSuffix, depth+1)...)
+	result = append(
+		result,
+		d.rangeOperations(
+			previousBefore,
+			beforeSuffix,
+			previousAfter,
+			afterSuffix,
+			depth + 1,
+		)...,
+	)
 	return appendLines(result, operationEqual, d.before[beforeSuffix:beforeEnd])
 }
 
@@ -96,18 +129,18 @@ type linePosition struct {
 
 type anchor struct {
 	before int
-	after  int
+	after int
 }
 
 func (d *differ) patienceAnchors(beforeStart, beforeEnd, afterStart, afterEnd int) []anchor {
-	beforePositions := make(map[string]linePosition, beforeEnd-beforeStart)
+	beforePositions := make(map[string]linePosition, beforeEnd - beforeStart)
 	for index := beforeStart; index < beforeEnd; index++ {
 		position := beforePositions[d.before[index]]
 		position.count++
 		position.index = index
 		beforePositions[d.before[index]] = position
 	}
-	afterPositions := make(map[string]linePosition, afterEnd-afterStart)
+	afterPositions := make(map[string]linePosition, afterEnd - afterStart)
 	for index := afterStart; index < afterEnd; index++ {
 		position := afterPositions[d.after[index]]
 		position.count++
@@ -119,7 +152,10 @@ func (d *differ) patienceAnchors(beforeStart, beforeEnd, afterStart, afterEnd in
 		beforePosition := beforePositions[d.before[index]]
 		afterPosition, exists := afterPositions[d.before[index]]
 		if beforePosition.count == 1 && exists && afterPosition.count == 1 {
-			candidates = append(candidates, anchor{before: index, after: afterPosition.index})
+			candidates = append(
+				candidates,
+				anchor{before: index, after: afterPosition.index},
+			)
 		}
 	}
 	if len(candidates) == 0 {
@@ -130,7 +166,7 @@ func (d *differ) patienceAnchors(beforeStart, beforeEnd, afterStart, afterEnd in
 	for index, candidate := range candidates {
 		low, high := 0, len(tails)
 		for low < high {
-			middle := low + (high-low)/2
+			middle := low + (high - low) / 2
 			if candidates[tails[middle]].after < candidate.after {
 				low = middle + 1
 			} else {
@@ -139,7 +175,7 @@ func (d *differ) patienceAnchors(beforeStart, beforeEnd, afterStart, afterEnd in
 		}
 		previous[index] = -1
 		if low > 0 {
-			previous[index] = tails[low-1]
+			previous[index] = tails[low - 1]
 		}
 		if low == len(tails) {
 			tails = append(tails, index)
@@ -148,7 +184,9 @@ func (d *differ) patienceAnchors(beforeStart, beforeEnd, afterStart, afterEnd in
 		}
 	}
 	anchors := make([]anchor, len(tails))
-	for candidateIndex, outputIndex := tails[len(tails)-1], len(anchors)-1; outputIndex >= 0; outputIndex-- {
+	for candidateIndex, outputIndex := tails[len(tails) - 1], len(anchors) - 1;
+		outputIndex >= 0;
+		outputIndex-- {
 		anchors[outputIndex] = candidates[candidateIndex]
 		candidateIndex = previous[candidateIndex]
 	}
@@ -156,14 +194,15 @@ func (d *differ) patienceAnchors(beforeStart, beforeEnd, afterStart, afterEnd in
 }
 
 func (d *differ) boundedLCS(beforeStart, beforeEnd, afterStart, afterEnd int) []operation {
-	beforeCount, afterCount := beforeEnd-beforeStart, afterEnd-afterStart
-	if beforeCount > maximumLCSCells/(afterCount+1) || (beforeCount+1)*(afterCount+1) > maximumLCSCells {
+	beforeCount, afterCount := beforeEnd - beforeStart, afterEnd - afterStart
+	if beforeCount > maximumLCSCells / (afterCount + 1) ||
+		(beforeCount + 1) * (afterCount + 1) > maximumLCSCells {
 		result := appendLines(nil, operationDelete, d.before[beforeStart:beforeEnd])
 		return appendLines(result, operationInsert, d.after[afterStart:afterEnd])
 	}
 	columns := afterCount + 1
 	cells := (beforeCount + 1) * columns
-	if cells > maximumWork-d.work {
+	if cells > maximumWork - d.work {
 		result := appendLines(nil, operationDelete, d.before[beforeStart:beforeEnd])
 		return appendLines(result, operationInsert, d.after[afterStart:afterEnd])
 	}
@@ -171,32 +210,57 @@ func (d *differ) boundedLCS(beforeStart, beforeEnd, afterStart, afterEnd int) []
 	matrix := make([]uint32, cells)
 	for beforeIndex := beforeCount - 1; beforeIndex >= 0; beforeIndex-- {
 		for afterIndex := afterCount - 1; afterIndex >= 0; afterIndex-- {
-			cell := beforeIndex*columns + afterIndex
-			if d.before[beforeStart+beforeIndex] == d.after[afterStart+afterIndex] {
-				matrix[cell] = matrix[(beforeIndex+1)*columns+afterIndex+1] + 1
+			cell := beforeIndex * columns + afterIndex
+			if d.before[beforeStart + beforeIndex] == d.after[afterStart + afterIndex] {
+				matrix[cell] = matrix[(beforeIndex + 1) * columns +
+					afterIndex +
+					1] +
+					1
 			} else {
-				matrix[cell] = max(matrix[(beforeIndex+1)*columns+afterIndex], matrix[beforeIndex*columns+afterIndex+1])
+				matrix[cell] = max(
+					matrix[(beforeIndex + 1) * columns + afterIndex],
+					matrix[beforeIndex * columns + afterIndex + 1],
+				)
 			}
 		}
 	}
-	result := make([]operation, 0, beforeCount+afterCount)
+	result := make([]operation, 0, beforeCount + afterCount)
 	beforeIndex, afterIndex := 0, 0
 	for beforeIndex < beforeCount && afterIndex < afterCount {
 		switch {
-		case d.before[beforeStart+beforeIndex] == d.after[afterStart+afterIndex]:
-			result = append(result, operation{kind: operationEqual, line: d.before[beforeStart+beforeIndex]})
+		case d.before[beforeStart + beforeIndex] == d.after[afterStart + afterIndex]:
+			result = append(
+				result,
+				operation{
+					kind: operationEqual,
+					line: d.before[beforeStart + beforeIndex],
+				},
+			)
 			beforeIndex++
 			afterIndex++
-		case matrix[(beforeIndex+1)*columns+afterIndex] >= matrix[beforeIndex*columns+afterIndex+1]:
-			result = append(result, operation{kind: operationDelete, line: d.before[beforeStart+beforeIndex]})
+		case matrix[(beforeIndex + 1) * columns + afterIndex] >=
+			matrix[beforeIndex * columns + afterIndex + 1]:
+			result = append(
+				result,
+				operation{
+					kind: operationDelete,
+					line: d.before[beforeStart + beforeIndex],
+				},
+			)
 			beforeIndex++
 		default:
-			result = append(result, operation{kind: operationInsert, line: d.after[afterStart+afterIndex]})
+			result = append(
+				result,
+				operation{
+					kind: operationInsert,
+					line: d.after[afterStart + afterIndex],
+				},
+			)
 			afterIndex++
 		}
 	}
-	result = appendLines(result, operationDelete, d.before[beforeStart+beforeIndex:beforeEnd])
-	return appendLines(result, operationInsert, d.after[afterStart+afterIndex:afterEnd])
+	result = appendLines(result, operationDelete, d.before[beforeStart + beforeIndex:beforeEnd])
+	return appendLines(result, operationInsert, d.after[afterStart + afterIndex:afterEnd])
 }
 
 func appendLines(operations []operation, kind operationKind, lines []string) []operation {
@@ -211,8 +275,8 @@ func splitLines(value string) []string {
 		return nil
 	}
 	lines := strings.SplitAfter(value, "\n")
-	if lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
+	if lines[len(lines) - 1] == "" {
+		lines = lines[:len(lines) - 1]
 	}
 	return lines
 }
@@ -227,12 +291,17 @@ func render(beforeLabel, afterLabel string, operations []operation) string {
 	if len(changed) == 0 {
 		return ""
 	}
-	type hunk struct{ start, end int }
+	type hunk struct {
+		start, end int
+	}
 	hunks := make([]hunk, 0)
 	for _, index := range changed {
-		start, end := max(0, index-contextLines), min(len(operations), index+contextLines+1)
-		if len(hunks) > 0 && start <= hunks[len(hunks)-1].end {
-			hunks[len(hunks)-1].end = max(hunks[len(hunks)-1].end, end)
+		start, end := max(
+			0,
+			index - contextLines,
+		), min(len(operations), index + contextLines + 1)
+		if len(hunks) > 0 && start <= hunks[len(hunks) - 1].end {
+			hunks[len(hunks) - 1].end = max(hunks[len(hunks) - 1].end, end)
 		} else {
 			hunks = append(hunks, hunk{start: start, end: end})
 		}
@@ -246,7 +315,12 @@ func render(beforeLabel, afterLabel string, operations []operation) string {
 			operationIndex++
 		}
 		oldCount, newCount := countLines(operations[hunk.start:hunk.end])
-		fmt.Fprintf(&output, "@@ %s %s @@\n", rangeLabel('-', oldLine, oldCount), rangeLabel('+', newLine, newCount))
+		fmt.Fprintf(
+			&output,
+			"@@ %s %s @@\n",
+			rangeLabel('-', oldLine, oldCount),
+			rangeLabel('+', newLine, newCount),
+		)
 		for operationIndex < hunk.end {
 			operation := operations[operationIndex]
 			prefix := byte(' ')
@@ -292,7 +366,7 @@ func countLines(operations []operation) (int, int) {
 
 func rangeLabel(prefix byte, start, count int) string {
 	if count == 0 {
-		return fmt.Sprintf("%c%d,0", prefix, start-1)
+		return fmt.Sprintf("%c%d,0", prefix, start - 1)
 	}
 	if count == 1 {
 		return fmt.Sprintf("%c%d", prefix, start)

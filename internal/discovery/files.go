@@ -13,8 +13,8 @@ import (
 
 // File is one normalized Go source selected from an immutable discovery pass.
 type File struct {
-	Path             string
-	Explicit         bool
+	Path string
+	Explicit bool
 	TraversesSymlink bool
 }
 
@@ -47,7 +47,10 @@ func GoFiles(ctx context.Context, inputs []string, options Options) ([]File, err
 		}
 		if info.IsDir() {
 			if root == "" || !withinRoot(root, path) {
-				return nil, fmt.Errorf("recursive input %q is outside the authorized project root", path)
+				return nil, fmt.Errorf(
+					"recursive input %q is outside the authorized project root",
+					path,
+				)
 			}
 			hasSymlink, err := hasSymlinkComponent(root, path)
 			if err != nil {
@@ -56,12 +59,13 @@ func GoFiles(ctx context.Context, inputs []string, options Options) ([]File, err
 			if hasSymlink {
 				return nil, fmt.Errorf("recursive input %q crosses a symlink", path)
 			}
-			if err := walkGoFiles(ctx, path, fixtureWithinRoot(root, path), selected); err != nil {
+			if err := walkGoFiles(ctx, path, fixtureWithinRoot(root, path), selected);
+				err != nil {
 				return nil, err
 			}
 			continue
 		}
-		symlink := info.Mode()&os.ModeSymlink != 0
+		symlink := info.Mode() & os.ModeSymlink != 0
 		if symlink {
 			target, err := os.Stat(path)
 			if err != nil {
@@ -83,17 +87,18 @@ func GoFiles(ctx context.Context, inputs []string, options Options) ([]File, err
 			}
 			symlink = symlink || traversesSymlink
 		}
-		selected[path] = File{
-			Path:             path,
-			Explicit:         true,
-			TraversesSymlink: symlink,
-		}
+		selected[path] = File{Path: path, Explicit: true, TraversesSymlink: symlink}
 	}
 	files := make([]File, 0, len(selected))
 	for _, file := range selected {
 		files = append(files, file)
 	}
-	sort.Slice(files, func(left, right int) bool { return files[left].Path < files[right].Path })
+	sort.Slice(
+		files,
+		func(left, right int) bool {
+			return files[left].Path < files[right].Path
+		},
+	)
 	return files, nil
 }
 
@@ -117,7 +122,9 @@ func normalizeRoot(root string) (string, error) {
 
 func withinRoot(root, path string) bool {
 	relative, err := filepath.Rel(root, path)
-	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+	return err == nil &&
+		relative != ".." &&
+		!strings.HasPrefix(relative, ".." + string(filepath.Separator))
 }
 
 func excludedWithinRoot(root, path string) bool {
@@ -161,40 +168,51 @@ func hasSymlinkComponent(root, path string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
+		if info.Mode() & os.ModeSymlink != 0 {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-func walkGoFiles(ctx context.Context, root string, includeFixtures bool, selected map[string]File) error {
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if path != root && entry.IsDir() {
-			if excludedDirectory(entry.Name()) || (!includeFixtures && isFixtureDirectory(entry.Name())) {
-				return filepath.SkipDir
+func walkGoFiles(
+	ctx context.Context,
+	root string,
+	includeFixtures bool,
+	selected map[string]File,
+) error {
+	err := filepath.WalkDir(
+		root,
+		func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
 			}
-		}
-		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Ext(path) != ".go" {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if path != root && entry.IsDir() {
+				if excludedDirectory(entry.Name()) ||
+					(!includeFixtures && isFixtureDirectory(entry.Name())) {
+					return filepath.SkipDir
+				}
+			}
+			if entry.IsDir() ||
+				entry.Type() & os.ModeSymlink != 0 ||
+				filepath.Ext(path) != ".go" {
+				return nil
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if info.Mode().IsRegular() {
+				if _, exists := selected[path]; !exists {
+					selected[path] = File{Path: path}
+				}
+			}
 			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if info.Mode().IsRegular() {
-			if _, exists := selected[path]; !exists {
-				selected[path] = File{Path: path}
-			}
-		}
-		return nil
-	})
+		},
+	)
 	if err != nil {
 		return fmt.Errorf("discover Go files below %q: %w", root, err)
 	}

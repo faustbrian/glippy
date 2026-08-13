@@ -12,12 +12,12 @@ import (
 // PackageResult is one suppression-aware package analysis run over a shared
 // typed load.
 type PackageResult struct {
-	Requirement     rules.Requirement
-	Selection       []rules.Selection
+	Requirement rules.Requirement
+	Selection []rules.Selection
 	LoadDiagnostics []PackageDiagnostic
-	SourceProblems  []PackageSourceProblem
-	Sources         PackageSourceSet
-	Files           []Result
+	SourceProblems []PackageSourceProblem
+	Sources PackageSourceSet
+	Files []Result
 }
 
 // RunPackages resolves a typed rule plan, loads its maximum prerequisite once,
@@ -47,15 +47,18 @@ func RunPackages(
 		return PackageResult{}, fmt.Errorf("resolve package analysis rules: %w", err)
 	}
 	result := PackageResult{
-		Requirement:     rules.MaximumRequirement(selection),
-		Selection:       slices.Clone(selection),
+		Requirement: rules.MaximumRequirement(selection),
+		Selection: slices.Clone(selection),
 		LoadDiagnostics: []PackageDiagnostic{},
-		SourceProblems:  []PackageSourceProblem{},
-		Files:           []Result{},
+		SourceProblems: []PackageSourceProblem{},
+		Files: []Result{},
 	}
 	for _, selected := range selection {
 		switch selected.Requirement {
-		case rules.RequireSyntax, rules.RequireTypes, rules.RequireControlFlow, rules.RequireSSA:
+		case rules.RequireSyntax,
+			rules.RequireTypes,
+			rules.RequireControlFlow,
+			rules.RequireSSA:
 		default:
 			return result, fmt.Errorf(
 				"selected rule %q requires %s; %s rules are not implemented by package analysis",
@@ -67,10 +70,15 @@ func RunPackages(
 	}
 	switch result.Requirement {
 	case rules.RequireLexical, rules.RequireSyntax:
-		return result, fmt.Errorf("package analysis requires at least one types-tier, CFG-tier, or SSA-tier rule")
+		return result, fmt.Errorf(
+			"package analysis requires at least one types-tier, CFG-tier, or SSA-tier rule",
+		)
 	case rules.RequireTypes, rules.RequireControlFlow, rules.RequireSSA:
 	default:
-		return result, fmt.Errorf("package analysis has invalid requirement %d", result.Requirement)
+		return result, fmt.Errorf(
+			"package analysis has invalid requirement %d",
+			result.Requirement,
+		)
 	}
 
 	loadOptions.Requirement = result.Requirement
@@ -163,25 +171,33 @@ func RunPackages(
 		delete(nativeByPath, file.Path())
 		diagnostics = OrderDiagnostics(diagnostics)
 
-		index, problems := suppressions.Parse(file, suppressions.ParseOptions{
-			KnownRules:    registry.IDs(),
-			RequireReason: options.RequireSuppressionReason,
-			ExpiryCutoff:  options.SuppressionExpiryCutoff,
-		})
+		index, problems := suppressions.Parse(
+			file,
+			suppressions.ParseOptions{
+				KnownRules: registry.IDs(),
+				RequireReason: options.RequireSuppressionReason,
+				ExpiryCutoff: options.SuppressionExpiryCutoff,
+			},
+		)
 		application := index.Apply(diagnostics)
-		result.Files = append(result.Files, Result{
-			Path:                file.Path(),
-			Digest:              file.Digest(),
-			Requirement:         result.Requirement,
-			Selection:           slices.Clone(selection),
-			Diagnostics:         application.Diagnostics,
-			Suppressed:          application.Suppressed,
-			UnusedSuppressions:  application.Unused,
-			SuppressionProblems: problems,
-		})
+		result.Files = append(
+			result.Files,
+			Result{
+				Path: file.Path(),
+				Digest: file.Digest(),
+				Requirement: result.Requirement,
+				Selection: slices.Clone(selection),
+				Diagnostics: application.Diagnostics,
+				Suppressed: application.Suppressed,
+				UnusedSuppressions: application.Unused,
+				SuppressionProblems: problems,
+			},
+		)
 	}
 	if len(nativeByPath) != 0 {
-		return result, fmt.Errorf("package diagnostics reference an unselected package source")
+		return result, fmt.Errorf(
+			"package diagnostics reference an unselected package source",
+		)
 	}
 	return result, nil
 }
@@ -202,7 +218,10 @@ func nativePackageRulesNeedDependencies(
 	return false, nil
 }
 
-func selectRequirement(selection []rules.Selection, requirement rules.Requirement) []rules.Selection {
+func selectRequirement(
+	selection []rules.Selection,
+	requirement rules.Requirement,
+) []rules.Selection {
 	result := make([]rules.Selection, 0, len(selection))
 	for _, selected := range selection {
 		if selected.Requirement == requirement {

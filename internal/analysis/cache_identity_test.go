@@ -74,40 +74,79 @@ func TestBuildPackageCacheKeyCapturesLoadedGraphDeterministically(t *testing.T) 
 	}
 	dependency.ExportFile = fixture.exportFile
 
-	assertPackageCacheKeyChanges(t, fixture.input, canonical, func(input *packageCacheKeyInput) {
-		file, err := source.Load(fixture.rootSource, []byte("package root\nvar Changed int\n"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		input.Loaded.Sources.files = clonePackageSourceFiles(input.Loaded.Sources.files)
-		input.Loaded.Sources.files[fixture.rootSource] = file
-	})
-	assertPackageCacheKeyChanges(t, fixture.input, canonical, func(input *packageCacheKeyInput) {
-		input.LoadOptions.Tests = true
-	})
-	assertPackageCacheKeyChanges(t, fixture.input, canonical, func(input *packageCacheKeyInput) {
-		input.LoadOptions.Env = replacePackageCacheEnvironment(input.LoadOptions.Env, "GOAMD64=v3")
-	})
-	assertPackageCacheKeyChanges(t, fixture.input, canonical, func(input *packageCacheKeyInput) {
-		input.LoadOptions.Overlay = map[string][]byte{fixture.rootSource: []byte("overlay changed")}
-	})
-	assertPackageCacheKeyChanges(t, fixture.input, canonical, func(input *packageCacheKeyInput) {
-		input.Facts = map[string]cache.Digest{"dependency:fact": cache.DigestOf([]byte("changed"))}
-	})
+	assertPackageCacheKeyChanges(
+		t,
+		fixture.input,
+		canonical,
+		func(input *packageCacheKeyInput) {
+			file, err := source.Load(
+				fixture.rootSource,
+				[]byte("package root\nvar Changed int\n"),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			input.Loaded.Sources.files = clonePackageSourceFiles(
+				input.Loaded.Sources.files,
+			)
+			input.Loaded.Sources.files[fixture.rootSource] = file
+		},
+	)
+	assertPackageCacheKeyChanges(
+		t,
+		fixture.input,
+		canonical,
+		func(input *packageCacheKeyInput) {
+			input.LoadOptions.Tests = true
+		},
+	)
+	assertPackageCacheKeyChanges(
+		t,
+		fixture.input,
+		canonical,
+		func(input *packageCacheKeyInput) {
+			input.LoadOptions.Env = replacePackageCacheEnvironment(
+				input.LoadOptions.Env,
+				"GOAMD64=v3",
+			)
+		},
+	)
+	assertPackageCacheKeyChanges(
+		t,
+		fixture.input,
+		canonical,
+		func(input *packageCacheKeyInput) {
+			input.LoadOptions.Overlay = map[string][]byte{
+				fixture.rootSource: []byte("overlay changed"),
+			}
+		},
+	)
+	assertPackageCacheKeyChanges(
+		t,
+		fixture.input,
+		canonical,
+		func(input *packageCacheKeyInput) {
+			input.Facts = map[string]cache.Digest{
+				"dependency:fact": cache.DigestOf([]byte("changed")),
+			}
+		},
+	)
 
-	for _, path := range []string{
-		fixture.rootModule,
-		fixture.rootSum,
-		fixture.workspace,
-		fixture.workspaceSum,
-		fixture.vendorModules,
-		fixture.exportFile,
-	} {
+	for _, path := range
+		[]string{
+			fixture.rootModule,
+			fixture.rootSum,
+			fixture.workspace,
+			fixture.workspaceSum,
+			fixture.vendorModules,
+			fixture.exportFile,
+		} {
 		original, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, append(slices.Clone(original), 'x'), 0o600); err != nil {
+		if err := os.WriteFile(path, append(slices.Clone(original), 'x'), 0o600);
+			err != nil {
 			t.Fatal(err)
 		}
 		changed, err := buildPackageCacheKey(fixture.input)
@@ -127,51 +166,110 @@ func TestBuildPackageCacheKeyRejectsIncompleteGraphs(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
+		name string
 		mutate func(*packageCacheKeyInput)
 	}{
-		{name: "ambient environment", mutate: func(input *packageCacheKeyInput) { input.LoadOptions.Env = nil }},
-		{name: "ambient Go environment", mutate: func(input *packageCacheKeyInput) {
-			input.LoadOptions.Env = replacePackageCacheEnvironment(input.LoadOptions.Env, "GOENV=default")
-		}},
-		{name: "ambient CGO", mutate: func(input *packageCacheKeyInput) {
-			input.LoadOptions.Env = replacePackageCacheEnvironment(input.LoadOptions.Env, "CGO_ENABLED=")
-		}},
-		{name: "GOOS", mutate: func(input *packageCacheKeyInput) { input.LoadOptions.GOOS = "" }},
-		{name: "GOARCH", mutate: func(input *packageCacheKeyInput) { input.LoadOptions.GOARCH = "" }},
-		{name: "load diagnostics", mutate: func(input *packageCacheKeyInput) {
-			input.Loaded.Diagnostics = []PackageDiagnostic{{Message: "broken"}}
-		}},
-		{name: "ill typed package", mutate: func(input *packageCacheKeyInput) {
-			input.Loaded.Packages[0].IllTyped = true
-		}},
-		{name: "missing root source", mutate: func(input *packageCacheKeyInput) {
-			input.Loaded.Sources.files = clonePackageSourceFiles(input.Loaded.Sources.files)
-			delete(input.Loaded.Sources.files, input.Loaded.Packages[0].CompiledGoFiles[0])
-		}},
-		{name: "root replaced by dependency export", mutate: func(input *packageCacheKeyInput) {
-			rootPath := input.Loaded.Packages[0].CompiledGoFiles[0]
-			dependency := input.Loaded.Packages[0].Imports["example.com/dependency"]
-			input.Loaded.Sources.paths = []string{dependency.CompiledGoFiles[0]}
-			input.Loaded.Sources.files = map[string]*source.File{
-				dependency.CompiledGoFiles[0]: input.Loaded.Sources.files[rootPath],
-			}
-			input.Loaded.Packages[0].ExportFile = dependency.ExportFile
-		}},
-		{name: "missing dependency evidence", mutate: func(input *packageCacheKeyInput) {
-			dependency := input.Loaded.Packages[0].Imports["example.com/dependency"]
-			dependency.ExportFile = ""
-		}},
+		{
+			name: "ambient environment",
+			mutate: func(input *packageCacheKeyInput) {
+				input.LoadOptions.Env = nil
+			},
+		},
+		{
+			name: "ambient Go environment",
+			mutate: func(input *packageCacheKeyInput) {
+				input.LoadOptions.Env = replacePackageCacheEnvironment(
+					input.LoadOptions.Env,
+					"GOENV=default",
+				)
+			},
+		},
+		{
+			name: "ambient CGO",
+			mutate: func(input *packageCacheKeyInput) {
+				input.LoadOptions.Env = replacePackageCacheEnvironment(
+					input.LoadOptions.Env,
+					"CGO_ENABLED=",
+				)
+			},
+		},
+		{
+			name: "GOOS",
+			mutate: func(input *packageCacheKeyInput) {
+				input.LoadOptions.GOOS = ""
+			},
+		},
+		{
+			name: "GOARCH",
+			mutate: func(input *packageCacheKeyInput) {
+				input.LoadOptions.GOARCH = ""
+			},
+		},
+		{
+			name: "load diagnostics",
+			mutate: func(input *packageCacheKeyInput) {
+				input.Loaded.Diagnostics = []PackageDiagnostic{{Message: "broken"}}
+			},
+		},
+		{
+			name: "ill typed package",
+			mutate: func(input *packageCacheKeyInput) {
+				input.Loaded.Packages[0].IllTyped = true
+			},
+		},
+		{
+			name: "missing root source",
+			mutate: func(input *packageCacheKeyInput) {
+				input.Loaded.Sources.files = clonePackageSourceFiles(
+					input.Loaded.Sources.files,
+				)
+				delete(
+					input.Loaded.Sources.files,
+					input.Loaded.Packages[0].CompiledGoFiles[0],
+				)
+			},
+		},
+		{
+			name: "root replaced by dependency export",
+			mutate: func(input *packageCacheKeyInput) {
+				rootPath := input.Loaded.Packages[0].CompiledGoFiles[0]
+				dependency := input.
+					Loaded.
+					Packages[0].
+					Imports["example.com/dependency"]
+				input.Loaded.Sources.paths = []string{dependency.CompiledGoFiles[0]}
+				input.Loaded.Sources.files = map[string]*source.File{
+					dependency.CompiledGoFiles[0]: input.
+						Loaded.
+						Sources.
+						files[rootPath],
+				}
+				input.Loaded.Packages[0].ExportFile = dependency.ExportFile
+			},
+		},
+		{
+			name: "missing dependency evidence",
+			mutate: func(input *packageCacheKeyInput) {
+				dependency := input.
+					Loaded.
+					Packages[0].
+					Imports["example.com/dependency"]
+				dependency.ExportFile = ""
+			},
+		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			fixture := newPackageCacheIdentityFixture(t)
-			input := fixture.input
-			test.mutate(&input)
-			if _, err := buildPackageCacheKey(input); err == nil {
-				t.Fatalf("buildPackageCacheKey() accepted %s", test.name)
-			}
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				fixture := newPackageCacheIdentityFixture(t)
+				input := fixture.input
+				test.mutate(&input)
+				if _, err := buildPackageCacheKey(input); err == nil {
+					t.Fatalf("buildPackageCacheKey() accepted %s", test.name)
+				}
+			},
+		)
 	}
 }
 
@@ -207,38 +305,49 @@ func TestBuildPackageCacheKeyAcceptsCompletePackageLoad(t *testing.T) {
 		"package root\nimport _ \"example.com/root/dependency\"\n",
 	)
 	loadOptions := PackageLoadOptions{
-		Dir: root, Patterns: []string{"."}, Requirement: rules.RequireTypes,
-		LoadDependencySyntax: true, ModuleMode: ModuleReadonly,
-		Env:  append(os.Environ(), "CGO_ENABLED=0", "GOENV=off"),
-		GOOS: runtime.GOOS, GOARCH: runtime.GOARCH,
+		Dir: root,
+		Patterns: []string{"."},
+		Requirement: rules.RequireTypes,
+		LoadDependencySyntax: true,
+		ModuleMode: ModuleReadonly,
+		Env: append(os.Environ(), "CGO_ENABLED=0", "GOENV=off"),
+		GOOS: runtime.GOOS,
+		GOARCH: runtime.GOARCH,
 	}
 	loaded, err := LoadPackages(context.Background(), loadOptions)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := buildPackageCacheKey(packageCacheKeyInput{
-		Namespace: "typed-analysis:test", ToolVersion: "v0.1.0",
-		BuildGoVersion: runtime.Version(), SourceGoVersion: "1.26",
-		Configuration: cache.DigestOf([]byte("configuration")),
-		Rules: []cache.RuleInput{{
-			ID: "test", Severity: "warn", Options: cache.DigestOf(nil),
-		}},
-		FormatterMode: "gox-v1", LoadOptions: loadOptions, Loaded: loaded,
-		Facts: map[string]cache.Digest{},
-	}); err != nil {
+	if _, err := buildPackageCacheKey(
+		packageCacheKeyInput{
+			Namespace: "typed-analysis:test",
+			ToolVersion: "v0.1.0",
+			BuildGoVersion: runtime.Version(),
+			SourceGoVersion: "1.26",
+			Configuration: cache.DigestOf([]byte("configuration")),
+			Rules: []cache.RuleInput{
+				{ID: "test", Severity: "warn", Options: cache.DigestOf(nil)},
+			},
+			FormatterMode: "gox-v1",
+			LoadOptions: loadOptions,
+			Loaded: loaded,
+			Facts: map[string]cache.Digest{},
+		},
+	);
+		err != nil {
 		t.Fatal(err)
 	}
 }
 
 type packageCacheIdentityFixture struct {
-	input         packageCacheKeyInput
-	rootSource    string
-	rootModule    string
-	rootSum       string
-	workspace     string
-	workspaceSum  string
+	input packageCacheKeyInput
+	rootSource string
+	rootModule string
+	rootSum string
+	workspace string
+	workspaceSum string
 	vendorModules string
-	exportFile    string
+	exportFile string
 }
 
 func newPackageCacheIdentityFixture(t *testing.T) packageCacheIdentityFixture {
@@ -246,13 +355,43 @@ func newPackageCacheIdentityFixture(t *testing.T) packageCacheIdentityFixture {
 	root := t.TempDir()
 	dependencyRoot := t.TempDir()
 	rootSource := writePackageCacheFile(t, root, "root.go", "package root\n")
-	dependencySource := writePackageCacheFile(t, dependencyRoot, "dependency.go", "package dependency\n")
-	rootModule := writePackageCacheFile(t, root, "go.mod", "module example.com/root\n\ngo 1.26\n")
-	rootSum := writePackageCacheFile(t, root, "go.sum", "example.com/dependency v1.0.0 h1:sum\n")
+	dependencySource := writePackageCacheFile(
+		t,
+		dependencyRoot,
+		"dependency.go",
+		"package dependency\n",
+	)
+	rootModule := writePackageCacheFile(
+		t,
+		root,
+		"go.mod",
+		"module example.com/root\n\ngo 1.26\n",
+	)
+	rootSum := writePackageCacheFile(
+		t,
+		root,
+		"go.sum",
+		"example.com/dependency v1.0.0 h1:sum\n",
+	)
 	workspace := writePackageCacheFile(t, root, "go.work", "go 1.26\n\nuse .\n")
-	workspaceSum := writePackageCacheFile(t, root, "go.work.sum", "example.com/dependency v1.0.0 h1:sum\n")
-	vendorModules := writePackageCacheFile(t, root, "vendor/modules.txt", "# example.com/dependency v1.0.0\n")
-	dependencyModule := writePackageCacheFile(t, dependencyRoot, "go.mod", "module example.com/dependency\n\ngo 1.26\n")
+	workspaceSum := writePackageCacheFile(
+		t,
+		root,
+		"go.work.sum",
+		"example.com/dependency v1.0.0 h1:sum\n",
+	)
+	vendorModules := writePackageCacheFile(
+		t,
+		root,
+		"vendor/modules.txt",
+		"# example.com/dependency v1.0.0\n",
+	)
+	dependencyModule := writePackageCacheFile(
+		t,
+		dependencyRoot,
+		"go.mod",
+		"module example.com/dependency\n\ngo 1.26\n",
+	)
 	writePackageCacheFile(t, dependencyRoot, "go.sum", "")
 	exportFile := writePackageCacheFile(t, dependencyRoot, "dependency.a", "export data")
 	rootFile, err := source.Load(rootSource, []byte("package root\n"))
@@ -260,53 +399,66 @@ func newPackageCacheIdentityFixture(t *testing.T) packageCacheIdentityFixture {
 		t.Fatal(err)
 	}
 	dependency := &packages.Package{
-		ID:              "example.com/dependency",
-		Name:            "dependency",
-		PkgPath:         "example.com/dependency",
-		GoFiles:         []string{dependencySource},
+		ID: "example.com/dependency",
+		Name: "dependency",
+		PkgPath: "example.com/dependency",
+		GoFiles: []string{dependencySource},
 		CompiledGoFiles: []string{dependencySource},
-		ExportFile:      exportFile,
+		ExportFile: exportFile,
 		Module: &packages.Module{
-			Path: "example.com/dependency", Version: "v1.0.0",
-			GoMod: dependencyModule, GoVersion: "1.26",
+			Path: "example.com/dependency",
+			Version: "v1.0.0",
+			GoMod: dependencyModule,
+			GoVersion: "1.26",
 		},
 		Imports: map[string]*packages.Package{},
 	}
 	rootPackage := &packages.Package{
-		ID:              "example.com/root",
-		Name:            "root",
-		PkgPath:         "example.com/root",
-		GoFiles:         []string{rootSource},
+		ID: "example.com/root",
+		Name: "root",
+		PkgPath: "example.com/root",
+		GoFiles: []string{rootSource},
 		CompiledGoFiles: []string{rootSource},
 		Module: &packages.Module{
-			Path: "example.com/root", GoMod: rootModule, GoVersion: "1.26", Main: true,
+			Path: "example.com/root",
+			GoMod: rootModule,
+			GoVersion: "1.26",
+			Main: true,
 		},
 		Imports: map[string]*packages.Package{"example.com/dependency": dependency},
 	}
 	input := packageCacheKeyInput{
-		Namespace:       "typed-analysis:example-rule",
-		ToolVersion:     "v0.1.0",
-		BuildGoVersion:  "go1.26.5",
+		Namespace: "typed-analysis:example-rule",
+		ToolVersion: "v0.1.0",
+		BuildGoVersion: "go1.26.5",
 		SourceGoVersion: "1.26",
-		Configuration:   cache.DigestOf([]byte("configuration")),
-		Rules: []cache.RuleInput{{
-			ID: "example-rule", Severity: "warn", Options: cache.DigestOf(nil),
-		}},
-		CGOEnabled:    false,
+		Configuration: cache.DigestOf([]byte("configuration")),
+		Rules: []cache.RuleInput{
+			{ID: "example-rule", Severity: "warn", Options: cache.DigestOf(nil)},
+		},
+		CGOEnabled: false,
 		FormatterMode: "gox-v1",
 		LoadOptions: PackageLoadOptions{
-			Dir: root, Patterns: []string{".", "./..."}, Requirement: rules.RequireTypes,
-			Tests: false, LoadDependencySyntax: false,
-			BuildTags: []string{"integration", "linux"}, ModuleMode: ModuleVendor,
+			Dir: root,
+			Patterns: []string{".", "./..."},
+			Requirement: rules.RequireTypes,
+			Tests: false,
+			LoadDependencySyntax: false,
+			BuildTags: []string{"integration", "linux"},
+			ModuleMode: ModuleVendor,
 			Env: []string{
-				"GOWORK=" + workspace, "GOAMD64=v1", "GOENV=off", "CGO_ENABLED=0",
+				"GOWORK=" + workspace,
+				"GOAMD64=v1",
+				"GOENV=off",
+				"CGO_ENABLED=0",
 			},
 			Overlay: map[string][]byte{rootSource: []byte("overlay")},
-			GOOS:    "linux", GOARCH: "amd64",
+			GOOS: "linux",
+			GOARCH: "amd64",
 		},
 		Loaded: PackageLoadResult{
 			Requirement: rules.RequireTypes,
-			Packages:    []*packages.Package{rootPackage},
+			Packages: []*packages.Package{rootPackage},
 			Sources: PackageSourceSet{
 				paths: []string{rootSource},
 				files: map[string]*source.File{rootSource: rootFile},
@@ -315,9 +467,14 @@ func newPackageCacheIdentityFixture(t *testing.T) packageCacheIdentityFixture {
 		Facts: map[string]cache.Digest{"dependency:fact": cache.DigestOf([]byte("fact"))},
 	}
 	return packageCacheIdentityFixture{
-		input: input, rootSource: rootSource, rootModule: rootModule, rootSum: rootSum,
-		workspace: workspace, workspaceSum: workspaceSum,
-		vendorModules: vendorModules, exportFile: exportFile,
+		input: input,
+		rootSource: rootSource,
+		rootModule: rootModule,
+		rootSum: rootSum,
+		workspace: workspace,
+		workspaceSum: workspaceSum,
+		vendorModules: vendorModules,
+		exportFile: exportFile,
 	}
 }
 
@@ -350,7 +507,7 @@ func replacePackageCacheEnvironment(environment []string, replacement string) []
 	result := slices.Clone(environment)
 	name, _, _ := strings.Cut(replacement, "=")
 	for index, entry := range result {
-		if strings.HasPrefix(entry, name+"=") {
+		if strings.HasPrefix(entry, name + "=") {
 			result[index] = replacement
 			return result
 		}

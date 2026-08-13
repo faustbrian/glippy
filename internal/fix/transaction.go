@@ -13,8 +13,8 @@ import (
 type WriteStatus string
 
 const (
-	WriteNotPerformed      WriteStatus = "not-performed"
-	WriteCompleted         WriteStatus = "completed"
+	WriteNotPerformed WriteStatus = "not-performed"
+	WriteCompleted WriteStatus = "completed"
 	WritePossiblyCompleted WriteStatus = "possibly-completed"
 )
 
@@ -31,12 +31,16 @@ func CoordinateAndReplace(
 	options Options,
 ) (Transaction, error) {
 	if snapshot == nil {
-		return Transaction{Status: WriteNotPerformed}, errors.New("fix transaction requires a filesystem snapshot")
+		return Transaction{
+			Status: WriteNotPerformed,
+		}, errors.New("fix transaction requires a filesystem snapshot")
 	}
 	input := snapshot.Bytes()
 	file, err := source.Load(snapshot.Path(), input)
 	if err != nil {
-		return Transaction{Status: WriteNotPerformed}, fmt.Errorf("load fix transaction source: %w", err)
+		return Transaction{
+			Status: WriteNotPerformed,
+		}, fmt.Errorf("load fix transaction source: %w", err)
 	}
 	result, err := Coordinate(file, selections, options)
 	if err != nil {

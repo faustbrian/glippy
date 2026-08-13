@@ -1105,3 +1105,23 @@ promising a count, retains candidate-specific real-defect, toolchain-boundary,
 false-positive, tier, fix-safety, cost, and dogfood evidence, and rejects
 formatter-layout duplication or catalog copying. This closes the Phase 5 rule
 roadmap deliverable without changing the 90% release gate.
+
+Gox now adopts its own formatter across all 121 formatter-selected tracked Go
+files. The root schema-version-1 configuration fixes width, tab measurement,
+and the default correctness preset; the repository-owned GitHub Actions gate
+builds Gox and runs its non-mutating combined check after full tests, race
+tests, vet, and module-metadata validation. Complete layout review exposed
+selector assignment targets whose fit decision incorrectly included the
+independently breakable right-hand call; the shared assignment boundary now
+preserves flat targets that fit through their operator while retaining
+over-width and communication-clause breaks. The migrated tree is a
+zero-difference Gox fixed point and all local gates pass with Go 1.26.5 and
+disposable caches. An initial CI rehearsal
+incorrectly forced `GOWORK=off`, causing the two tests that create temporary
+workspaces to fail; focused evidence proved the environment override as the
+first divergence, and its removal restored the complete suite. This is the
+second documented repository adoption alongside the maintainer-approved
+`pkg/prompts` migration. Final human review of the complete Gox layout remains
+part of the maintainer's pre-tag release-candidate review rather than a reopened
+Phase 2 gate. Overall progress remains 90% until the complete Phase 5
+integration and release-candidate audit is recorded.

@@ -30,25 +30,27 @@ const (
 // declaration or statement list may be nil.
 type FragmentSyntax struct {
 	Declarations []ast.Decl
-	Statements   []ast.Stmt
-	Expression   ast.Expr
+	Statements []ast.Stmt
+	Expression ast.Expr
 }
 
 // FragmentError reports one syntax failure at a physical fragment byte offset.
 type FragmentError struct {
-	Path    string
-	Offset  int
-	Line    int
-	Column  int
+	Path string
+	Offset int
+	Line int
+	Column int
 	Message string
 }
 
 type fragmentBoundaryError struct {
-	offset  int
+	offset int
 	message string
 }
 
-func (e *fragmentBoundaryError) Error() string { return e.message }
+func (e *fragmentBoundaryError) Error() string {
+	return e.message
+}
 
 func (e *FragmentError) Error() string {
 	return fmt.Sprintf("%s:%d:%d: %s", e.Path, e.Line, e.Column, e.Message)
@@ -57,26 +59,26 @@ func (e *FragmentError) Error() string {
 // Fragment is an immutable physical source fragment parsed through a fixed
 // synthetic Go file. Synthetic wrapper bytes never enter its physical ledger.
 type Fragment struct {
-	kind       FragmentKind
-	path       string
-	bytes      []byte
-	digest     Digest
-	tokenFile  *token.File
+	kind FragmentKind
+	path string
+	bytes []byte
+	digest Digest
+	tokenFile *token.File
 	prefixSize int
 	mappedSize int
-	syntax     FragmentSyntax
-	tokens     []Token
-	pieces     []Piece
-	trivia     []Trivia
-	comments   []Comment
+	syntax FragmentSyntax
+	tokens []Token
+	pieces []Piece
+	trivia []Trivia
+	comments []Comment
 	directives []Directive
-	metadata   Metadata
-	parseErr   error
+	metadata Metadata
+	parseErr error
 }
 
 type fragmentWrapper struct {
-	prefix                 string
-	suffix                 string
+	prefix string
+	suffix string
 	trimTrailingWhitespace bool
 }
 
@@ -96,7 +98,7 @@ func LoadFragment(path string, kind FragmentKind, input []byte) (*Fragment, erro
 	if wrapper.trimTrailingWhitespace {
 		parsedInput = bytes.TrimRight(physical, " \t\r\n")
 	}
-	synthetic := make([]byte, 0, len(wrapper.prefix)+len(parsedInput)+len(wrapper.suffix))
+	synthetic := make([]byte, 0, len(wrapper.prefix) + len(parsedInput) + len(wrapper.suffix))
 	synthetic = append(synthetic, wrapper.prefix...)
 	synthetic = append(synthetic, parsedInput...)
 	synthetic = append(synthetic, wrapper.suffix...)
@@ -135,26 +137,32 @@ func LoadFragment(path string, kind FragmentKind, input []byte) (*Fragment, erro
 			len(parsedInput),
 		)
 	}
-	mappedParseErr := mapFragmentParseError(cleanPath, physical, len(wrapper.prefix), len(parsedInput), parseErr)
+	mappedParseErr := mapFragmentParseError(
+		cleanPath,
+		physical,
+		len(wrapper.prefix),
+		len(parsedInput),
+		parseErr,
+	)
 	mappedBoundaryErr := mapFragmentBoundaryError(cleanPath, physical, boundaryErr)
 	loadErr := errors.Join(mappedParseErr, scanErr, ledgerErr, directiveErr, mappedBoundaryErr)
 
 	return &Fragment{
-		kind:       kind,
-		path:       cleanPath,
-		bytes:      physical,
-		digest:     sha256.Sum256(physical),
-		tokenFile:  tokenFile,
+		kind: kind,
+		path: cleanPath,
+		bytes: physical,
+		digest: sha256.Sum256(physical),
+		tokenFile: tokenFile,
 		prefixSize: len(wrapper.prefix),
 		mappedSize: len(parsedInput),
-		syntax:     syntax,
-		tokens:     tokens,
-		pieces:     pieces,
-		trivia:     trivia,
-		comments:   comments,
+		syntax: syntax,
+		tokens: tokens,
+		pieces: pieces,
+		trivia: trivia,
+		comments: comments,
 		directives: directives,
-		metadata:   metadata,
-		parseErr:   loadErr,
+		metadata: metadata,
+		parseErr: loadErr,
 	}, loadErr
 }
 
@@ -169,8 +177,8 @@ func wrapperForFragment(kind FragmentKind) (fragmentWrapper, error) {
 		}, nil
 	case FragmentExpression:
 		return fragmentWrapper{
-			prefix:                 "package goxfragment\nvar _ = (\n",
-			suffix:                 " )\n",
+			prefix: "package goxfragment\nvar _ = (\n",
+			suffix: " )\n",
 			trimTrailingWhitespace: true,
 		}, nil
 	default:
@@ -190,69 +198,98 @@ func selectFragmentSyntax(
 	}
 	switch kind {
 	case FragmentDeclaration:
-		if err := validateFragmentNodes(file.Decls, tokenFile, prefixSize, physicalSize); err != nil {
+		if err := validateFragmentNodes(file.Decls, tokenFile, prefixSize, physicalSize);
+			err != nil {
 			return FragmentSyntax{}, err
 		}
 		return FragmentSyntax{Declarations: slices.Clone(file.Decls)}, nil
 	case FragmentStatement:
 		if len(file.Decls) == 0 {
-			return FragmentSyntax{}, &fragmentBoundaryError{message: "statement fragment changed its selected boundary"}
+			return FragmentSyntax{}, &fragmentBoundaryError{
+				message: "statement fragment changed its selected boundary",
+			}
 		}
 		function, ok := file.Decls[0].(*ast.FuncDecl)
 		if !ok || function.Name.Name != "goxfragment" || function.Body == nil {
-			return FragmentSyntax{}, &fragmentBoundaryError{message: "statement fragment changed its selected boundary"}
+			return FragmentSyntax{}, &fragmentBoundaryError{
+				message: "statement fragment changed its selected boundary",
+			}
 		}
 		closing := tokenFile.Offset(function.Body.Rbrace) - prefixSize
 		if closing >= 0 && closing < physicalSize {
 			return FragmentSyntax{}, &fragmentBoundaryError{
-				offset: closing, message: "statement fragment escaped its selected boundary",
+				offset: closing,
+				message: "statement fragment escaped its selected boundary",
 			}
 		}
 		if len(file.Decls) != 1 {
 			offset := tokenFile.Offset(file.Decls[1].Pos()) - prefixSize
 			return FragmentSyntax{}, &fragmentBoundaryError{
-				offset: offset, message: "statement fragment escaped its selected boundary",
+				offset: offset,
+				message: "statement fragment escaped its selected boundary",
 			}
 		}
 		if reference := syntheticFunctionReference(function); reference.IsValid() {
 			return FragmentSyntax{}, &fragmentBoundaryError{
-				offset:  tokenFile.Offset(reference) - prefixSize,
+				offset: tokenFile.Offset(reference) - prefixSize,
 				message: "statement fragment relies on content outside its selected boundary",
 			}
 		}
-		if err := validateFragmentNodes(function.Body.List, tokenFile, prefixSize, physicalSize); err != nil {
+		if err := validateFragmentNodes(
+			function.Body.List,
+			tokenFile,
+			prefixSize,
+			physicalSize,
+		);
+			err != nil {
 			return FragmentSyntax{}, err
 		}
 		return FragmentSyntax{Statements: slices.Clone(function.Body.List)}, nil
 	case FragmentExpression:
 		if len(file.Decls) == 0 {
-			return FragmentSyntax{}, &fragmentBoundaryError{message: "expression fragment changed its selected boundary"}
+			return FragmentSyntax{}, &fragmentBoundaryError{
+				message: "expression fragment changed its selected boundary",
+			}
 		}
 		declaration, ok := file.Decls[0].(*ast.GenDecl)
 		if !ok || declaration.Tok != token.VAR || len(declaration.Specs) != 1 {
-			return FragmentSyntax{}, &fragmentBoundaryError{message: "expression fragment changed its selected boundary"}
+			return FragmentSyntax{}, &fragmentBoundaryError{
+				message: "expression fragment changed its selected boundary",
+			}
 		}
 		specification, ok := declaration.Specs[0].(*ast.ValueSpec)
 		if !ok || len(specification.Values) != 1 {
-			return FragmentSyntax{}, &fragmentBoundaryError{message: "expression fragment changed its selected boundary"}
+			return FragmentSyntax{}, &fragmentBoundaryError{
+				message: "expression fragment changed its selected boundary",
+			}
 		}
 		parenthesized, ok := specification.Values[0].(*ast.ParenExpr)
 		if !ok || parenthesized.X == nil {
-			return FragmentSyntax{}, &fragmentBoundaryError{message: "expression fragment changed its selected boundary"}
+			return FragmentSyntax{}, &fragmentBoundaryError{
+				message: "expression fragment changed its selected boundary",
+			}
 		}
 		closing := tokenFile.Offset(parenthesized.Rparen) - prefixSize
 		if closing < physicalSize {
 			return FragmentSyntax{}, &fragmentBoundaryError{
-				offset: closing, message: "expression fragment escaped its selected boundary",
+				offset: closing,
+				message: "expression fragment escaped its selected boundary",
 			}
 		}
 		if len(file.Decls) != 1 {
 			offset := tokenFile.Offset(file.Decls[1].Pos()) - prefixSize
 			return FragmentSyntax{}, &fragmentBoundaryError{
-				offset: offset, message: "expression fragment escaped its selected boundary",
+				offset: offset,
+				message: "expression fragment escaped its selected boundary",
 			}
 		}
-		if err := validateFragmentNodes([]ast.Expr{parenthesized.X}, tokenFile, prefixSize, physicalSize); err != nil {
+		if err := validateFragmentNodes(
+			[]ast.Expr{parenthesized.X},
+			tokenFile,
+			prefixSize,
+			physicalSize,
+		);
+			err != nil {
 			return FragmentSyntax{}, err
 		}
 		return FragmentSyntax{Expression: parenthesized.X}, nil
@@ -277,7 +314,10 @@ func validateFragmentNodes[T ast.Node](
 			if start > physicalSize {
 				start = physicalSize
 			}
-			return &fragmentBoundaryError{offset: start, message: "fragment syntax escaped its selected boundary"}
+			return &fragmentBoundaryError{
+				offset: start,
+				message: "fragment syntax escaped its selected boundary",
+			}
 		}
 	}
 	return nil
@@ -289,27 +329,33 @@ func syntheticFunctionReference(function *ast.FuncDecl) token.Pos {
 		return token.NoPos
 	}
 	position := token.NoPos
-	ast.Inspect(function.Body, func(node ast.Node) bool {
-		if literal, ok := node.(*ast.CompositeLit); ok && !fragmentCompositeIsProvenStruct(literal.Type, nil) {
-			for _, element := range literal.Elts {
-				keyed, ok := element.(*ast.KeyValueExpr)
-				if !ok {
-					continue
-				}
-				identifier, ok := keyed.Key.(*ast.Ident)
-				if ok && identifier.Name == "goxfragment" && identifier.Obj == nil {
-					position = identifier.Pos()
-					return false
+	ast.Inspect(
+		function.Body,
+		func(node ast.Node) bool {
+			if literal, ok := node.(*ast.CompositeLit);
+				ok && !fragmentCompositeIsProvenStruct(literal.Type, nil) {
+				for _, element := range literal.Elts {
+					keyed, ok := element.(*ast.KeyValueExpr)
+					if !ok {
+						continue
+					}
+					identifier, ok := keyed.Key.(*ast.Ident)
+					if ok &&
+						identifier.Name == "goxfragment" &&
+						identifier.Obj == nil {
+						position = identifier.Pos()
+						return false
+					}
 				}
 			}
-		}
-		identifier, ok := node.(*ast.Ident)
-		if ok && identifier.Obj == wrapper {
-			position = identifier.Pos()
-			return false
-		}
-		return !position.IsValid()
-	})
+			identifier, ok := node.(*ast.Ident)
+			if ok && identifier.Obj == wrapper {
+				position = identifier.Pos()
+				return false
+			}
+			return !position.IsValid()
+		},
+	)
 	return position
 }
 
@@ -351,22 +397,35 @@ func classifyFragmentDirectives(
 		}
 		kind, found := directiveKind(item.Raw)
 		if found {
-			result = append(result, Directive{Kind: kind, Range: item.Range, Raw: item.Raw})
+			result = append(
+				result,
+				Directive{Kind: kind, Range: item.Range, Raw: item.Raw},
+			)
 		}
 	}
-	result = append(result, cgoDirectives(tokens, syntax, func(position token.Pos) (int, bool) {
-		if !position.IsValid() || tokenFile == nil {
-			return 0, false
-		}
-		offset := tokenFile.Offset(position) - prefixSize
-		return offset, offset >= 0
-	})...)
-	sort.SliceStable(result, func(left, right int) bool {
-		if result[left].Range.Start != result[right].Range.Start {
-			return result[left].Range.Start < result[right].Range.Start
-		}
-		return result[left].Kind < result[right].Kind
-	})
+	result = append(
+		result,
+		cgoDirectives(
+			tokens,
+			syntax,
+			func(position token.Pos) (int, bool) {
+				if !position.IsValid() || tokenFile == nil {
+					return 0, false
+				}
+				offset := tokenFile.Offset(position) - prefixSize
+				return offset, offset >= 0
+			},
+		)...,
+	)
+	sort.SliceStable(
+		result,
+		func(left, right int) bool {
+			if result[left].Range.Start != result[right].Range.Start {
+				return result[left].Range.Start < result[right].Range.Start
+			}
+			return result[left].Kind < result[right].Kind
+		},
+	)
 	return result
 }
 
@@ -383,7 +442,10 @@ func validateFragmentDirectives(path string, physical []byte, directives []Direc
 				path,
 				physical,
 				directive.Range.Start,
-				fmt.Sprintf("directive at fragment byte %d requires complete-file placement", directive.Range.Start),
+				fmt.Sprintf(
+					"directive at fragment byte %d requires complete-file placement",
+					directive.Range.Start,
+				),
 			),
 		)
 	}
@@ -396,9 +458,19 @@ func mapFragmentBoundaryError(path string, physical []byte, boundaryErr error) e
 	}
 	var located *fragmentBoundaryError
 	if !errors.As(boundaryErr, &located) {
-		return newFragmentError(path, physical, 0, sanitizeFragmentMessage(boundaryErr.Error()))
+		return newFragmentError(
+			path,
+			physical,
+			0,
+			sanitizeFragmentMessage(boundaryErr.Error()),
+		)
 	}
-	return newFragmentError(path, physical, located.offset, sanitizeFragmentMessage(located.message))
+	return newFragmentError(
+		path,
+		physical,
+		located.offset,
+		sanitizeFragmentMessage(located.message),
+	)
 }
 
 func mapFragmentParseError(
@@ -413,7 +485,12 @@ func mapFragmentParseError(
 	}
 	var parseErrors scanner.ErrorList
 	if !errors.As(parseErr, &parseErrors) {
-		return newFragmentError(path, physical, 0, sanitizeFragmentMessage(parseErr.Error()))
+		return newFragmentError(
+			path,
+			physical,
+			0,
+			sanitizeFragmentMessage(parseErr.Error()),
+		)
 	}
 	var result error
 	for _, parseError := range parseErrors {
@@ -429,7 +506,12 @@ func mapFragmentParseError(
 		}
 		result = errors.Join(
 			result,
-			newFragmentError(path, physical, offset, sanitizeFragmentMessage(parseError.Msg)),
+			newFragmentError(
+				path,
+				physical,
+				offset,
+				sanitizeFragmentMessage(parseError.Msg),
+			),
 		)
 	}
 	return result
@@ -444,7 +526,11 @@ func newFragmentError(path string, physical []byte, offset int, message string) 
 	}
 	line, column := fragmentLineColumn(physical, offset)
 	return &FragmentError{
-		Path: path, Offset: offset, Line: line, Column: column, Message: message,
+		Path: path,
+		Offset: offset,
+		Line: line,
+		Column: column,
+		Message: message,
 	}
 }
 
@@ -479,17 +565,28 @@ func ValidateFragmentEquivalent(before, after *Fragment) error {
 	if !equivalentTokens(before.tokens, after.tokens) {
 		return errors.New("normalized lexical tokens changed")
 	}
-	if !slices.EqualFunc(before.comments, after.comments, func(left, right Comment) bool {
-		return left.Raw == right.Raw
-	}) {
+	if !slices.EqualFunc(
+		before.comments,
+		after.comments,
+		func(left, right Comment) bool {
+			return left.Raw == right.Raw
+		},
+	) {
 		return errors.New("comment identity or ordering changed")
 	}
-	if !slices.Equal(commentOwnershipFingerprint(before.tokens), commentOwnershipFingerprint(after.tokens)) {
+	if !slices.Equal(
+		commentOwnershipFingerprint(before.tokens),
+		commentOwnershipFingerprint(after.tokens),
+	) {
 		return errors.New("comment source ownership changed")
 	}
-	if !slices.EqualFunc(before.directives, after.directives, func(left, right Directive) bool {
-		return left.Kind == right.Kind && left.Raw == right.Raw
-	}) {
+	if !slices.EqualFunc(
+		before.directives,
+		after.directives,
+		func(left, right Directive) bool {
+			return left.Kind == right.Kind && left.Raw == right.Raw
+		},
+	) {
 		return errors.New("directive identity or ordering changed")
 	}
 	beforeAnchors, err := directiveLineAnchors(before.bytes, before.tokens, before.directives)
@@ -531,19 +628,29 @@ func fragmentSyntaxFingerprint(kind FragmentKind, syntax FragmentSyntax) (string
 }
 
 // Kind returns the explicit grammar boundary used to parse the fragment.
-func (f *Fragment) Kind() FragmentKind { return f.kind }
+func (f *Fragment) Kind() FragmentKind {
+	return f.kind
+}
 
 // Path returns the normalized physical source identity supplied to LoadFragment.
-func (f *Fragment) Path() string { return f.path }
+func (f *Fragment) Path() string {
+	return f.path
+}
 
 // Digest returns the exact physical fragment digest.
-func (f *Fragment) Digest() Digest { return f.digest }
+func (f *Fragment) Digest() Digest {
+	return f.digest
+}
 
 // Bytes returns an independent copy of the physical fragment bytes.
-func (f *Fragment) Bytes() []byte { return bytes.Clone(f.bytes) }
+func (f *Fragment) Bytes() []byte {
+	return bytes.Clone(f.bytes)
+}
 
 // Tokens returns the physical token ledger without synthetic wrapper tokens.
-func (f *Fragment) Tokens() []Token { return slices.Clone(f.tokens) }
+func (f *Fragment) Tokens() []Token {
+	return slices.Clone(f.tokens)
+}
 
 // Pieces returns the physical reconstruction ledger without wrapper bytes.
 func (f *Fragment) Pieces() []Piece {
@@ -556,20 +663,30 @@ func (f *Fragment) Pieces() []Piece {
 }
 
 // Trivia returns exact physical token gaps in source order.
-func (f *Fragment) Trivia() []Trivia { return slices.Clone(f.trivia) }
+func (f *Fragment) Trivia() []Trivia {
+	return slices.Clone(f.trivia)
+}
 
 // Comments returns exact physical comments with stable fragment identities.
-func (f *Fragment) Comments() []Comment { return slices.Clone(f.comments) }
+func (f *Fragment) Comments() []Comment {
+	return slices.Clone(f.comments)
+}
 
 // Directives returns classified physical comment directives.
-func (f *Fragment) Directives() []Directive { return slices.Clone(f.directives) }
+func (f *Fragment) Directives() []Directive {
+	return slices.Clone(f.directives)
+}
 
 // Metadata returns physical fragment metadata.
-func (f *Fragment) Metadata() Metadata { return f.metadata }
+func (f *Fragment) Metadata() Metadata {
+	return f.metadata
+}
 
 // CanFormat reports whether parsing and physical reconstruction accepted the
 // selected fragment boundary.
-func (f *Fragment) CanFormat() bool { return f.parseErr == nil }
+func (f *Fragment) CanFormat() bool {
+	return f.parseErr == nil
+}
 
 // ReadSyntax provides an isolated selected AST boundary to a run-owned
 // consumer.
@@ -585,7 +702,7 @@ func (f *Fragment) ReadSyntax(read func(FragmentSyntax) error) error {
 	if wrapper.trimTrailingWhitespace {
 		parsedInput = bytes.TrimRight(f.bytes, " \t\r\n")
 	}
-	synthetic := make([]byte, 0, len(wrapper.prefix)+len(parsedInput)+len(wrapper.suffix))
+	synthetic := make([]byte, 0, len(wrapper.prefix) + len(parsedInput) + len(wrapper.suffix))
 	synthetic = append(synthetic, wrapper.prefix...)
 	synthetic = append(synthetic, parsedInput...)
 	synthetic = append(synthetic, wrapper.suffix...)
@@ -618,9 +735,13 @@ func (f *Fragment) RawToken(position token.Pos) (string, bool) {
 	if !found {
 		return "", false
 	}
-	index, found := slices.BinarySearchFunc(f.tokens, offset, func(item Token, target int) int {
-		return item.Range.Start - target
-	})
+	index, found := slices.BinarySearchFunc(
+		f.tokens,
+		offset,
+		func(item Token, target int) int {
+			return item.Range.Start - target
+		},
+	)
 	if !found {
 		return "", false
 	}
@@ -639,7 +760,9 @@ func (f *Fragment) PhysicalOffset(position token.Pos) (int, bool) {
 
 // Slice returns exact physical fragment text for a valid byte range.
 func (f *Fragment) Slice(sourceRange Range) (string, bool) {
-	if sourceRange.Start < 0 || sourceRange.End < sourceRange.Start || sourceRange.End > len(f.bytes) {
+	if sourceRange.Start < 0 ||
+		sourceRange.End < sourceRange.Start ||
+		sourceRange.End > len(f.bytes) {
 		return "", false
 	}
 	return string(f.bytes[sourceRange.Start:sourceRange.End]), true

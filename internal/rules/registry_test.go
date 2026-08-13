@@ -12,7 +12,9 @@ type metadataRule struct {
 	metadata rules.Metadata
 }
 
-func (r metadataRule) Metadata() rules.Metadata { return r.metadata }
+func (r metadataRule) Metadata() rules.Metadata {
+	return r.metadata
+}
 
 type pointerMetadataRule struct {
 	metadata rules.Metadata
@@ -22,9 +24,13 @@ type packageMetadataRule struct {
 	metadata rules.Metadata
 }
 
-func (r *pointerMetadataRule) Metadata() rules.Metadata { return r.metadata }
+func (r *pointerMetadataRule) Metadata() rules.Metadata {
+	return r.metadata
+}
 
-func (r packageMetadataRule) Metadata() rules.Metadata { return r.metadata }
+func (r packageMetadataRule) Metadata() rules.Metadata {
+	return r.metadata
+}
 
 func (r packageMetadataRule) RunPackage(*rules.PackageContext) ([]rules.PackageFinding, error) {
 	return nil, nil
@@ -42,15 +48,20 @@ func TestRegistryValidatesPackageWideRuleMetadata(t *testing.T) {
 
 	withInterests := metadata
 	withInterests.NodeInterests = []rules.NodeKind{rules.NodeFile}
-	if _, err := rules.NewRegistry(packageMetadataRule{metadata: withInterests}); err == nil ||
-		!strings.Contains(err.Error(), "package-wide rule must not declare node interests") {
+	if _, err := rules.NewRegistry(packageMetadataRule{metadata: withInterests});
+		err == nil ||
+			!strings.Contains(
+				err.Error(),
+				"package-wide rule must not declare node interests",
+			) {
 		t.Fatalf("NewRegistry() package-wide interests error = %v", err)
 	}
 
 	cheap := metadata
 	cheap.Requirement = rules.RequireSyntax
-	if _, err := rules.NewRegistry(packageMetadataRule{metadata: cheap}); err == nil ||
-		!strings.Contains(err.Error(), "package-wide rule must require types") {
+	if _, err := rules.NewRegistry(packageMetadataRule{metadata: cheap});
+		err == nil ||
+			!strings.Contains(err.Error(), "package-wide rule must require types") {
 		t.Fatalf("NewRegistry() package-wide requirement error = %v", err)
 	}
 
@@ -63,8 +74,12 @@ func TestRegistryValidatesPackageWideRuleMetadata(t *testing.T) {
 	nodeScoped := validMetadata("node-scoped-dependencies")
 	nodeScoped.Requirement = rules.RequireTypes
 	nodeScoped.RequiresDependencySyntax = true
-	if _, err := rules.NewRegistry(metadataRule{metadata: nodeScoped}); err == nil ||
-		!strings.Contains(err.Error(), "dependency syntax requires a package-wide types rule") {
+	if _, err := rules.NewRegistry(metadataRule{metadata: nodeScoped});
+		err == nil ||
+			!strings.Contains(
+				err.Error(),
+				"dependency syntax requires a package-wide types rule",
+			) {
 		t.Fatalf("NewRegistry() node-scoped dependency syntax error = %v", err)
 	}
 }
@@ -78,7 +93,8 @@ func TestRegistryValidatesAndOrdersNativeRuleMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := registry.IDs(), []string{"a-first", "z-last"}; !reflect.DeepEqual(got, want) {
+	if got, want := registry.IDs(), []string{"a-first", "z-last"};
+		!reflect.DeepEqual(got, want) {
 		t.Fatalf("IDs() = %#v, want %#v", got, want)
 	}
 	if _, found := registry.Lookup("a-first"); !found {
@@ -92,12 +108,15 @@ func TestRegistryValidatesAndOrdersNativeRuleMetadata(t *testing.T) {
 	metadata.KnownLimitations[0] = "mutated result metadata"
 	metadata, _ = registry.Metadata("a-first")
 	if metadata.KnownLimitations[0] != "does not inspect generated files" {
-		t.Fatalf("Metadata() returned mutable known limitations: %#v", metadata.KnownLimitations)
+		t.Fatalf(
+			"Metadata() returned mutable known limitations: %#v",
+			metadata.KnownLimitations,
+		)
 	}
 
 	duplicate := metadataRule{metadata: validMetadata("a-first")}
-	if _, err := rules.NewRegistry(earlier, duplicate); err == nil ||
-		!strings.Contains(err.Error(), "duplicate rule ID \"a-first\"") {
+	if _, err := rules.NewRegistry(earlier, duplicate);
+		err == nil || !strings.Contains(err.Error(), "duplicate rule ID \"a-first\"") {
 		t.Fatalf("NewRegistry() duplicate error = %v", err)
 	}
 }
@@ -106,8 +125,8 @@ func TestRegistryRejectsTypedNilRules(t *testing.T) {
 	t.Parallel()
 
 	var nativeRule *pointerMetadataRule
-	if _, err := rules.NewRegistry(nativeRule); err == nil ||
-		!strings.Contains(err.Error(), "rule 0 is nil") {
+	if _, err := rules.NewRegistry(nativeRule);
+		err == nil || !strings.Contains(err.Error(), "rule 0 is nil") {
 		t.Fatalf("NewRegistry() typed nil error = %v", err)
 	}
 }
@@ -116,28 +135,36 @@ func TestRegistryRejectsIncompleteOrInconsistentMetadata(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		mutate    func(*rules.Metadata)
+		name string
+		mutate func(*rules.Metadata)
 		wantError string
 	}{
 		{
-			name:      "unstable identifier",
-			mutate:    func(metadata *rules.Metadata) { metadata.ID = "Bad_ID" },
+			name: "unstable identifier",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.ID = "Bad_ID"
+			},
 			wantError: "invalid rule ID",
 		},
 		{
-			name:      "missing documentation",
-			mutate:    func(metadata *rules.Metadata) { metadata.Documentation = "" },
+			name: "missing documentation",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.Documentation = ""
+			},
 			wantError: "documentation is required",
 		},
 		{
-			name:      "invalid severity",
-			mutate:    func(metadata *rules.Metadata) { metadata.DefaultSeverity = "fatal" },
+			name: "invalid severity",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.DefaultSeverity = "fatal"
+			},
 			wantError: "invalid default severity",
 		},
 		{
-			name:      "syntax rule without node interests",
-			mutate:    func(metadata *rules.Metadata) { metadata.NodeInterests = nil },
+			name: "syntax rule without node interests",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.NodeInterests = nil
+			},
 			wantError: "syntax rule must declare node interests",
 		},
 		{
@@ -179,8 +206,10 @@ func TestRegistryRejectsIncompleteOrInconsistentMetadata(t *testing.T) {
 			wantError: "cheap-tier rule cannot opt into type-error packages",
 		},
 		{
-			name:      "missing behavioral examples",
-			mutate:    func(metadata *rules.Metadata) { metadata.Examples = nil },
+			name: "missing behavioral examples",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.Examples = nil
+			},
 			wantError: "at least one example is required",
 		},
 		{
@@ -229,15 +258,22 @@ func TestRegistryRejectsIncompleteOrInconsistentMetadata(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			metadata := validMetadata("example-rule")
-			test.mutate(&metadata)
-			_, err := rules.NewRegistry(metadataRule{metadata: metadata})
-			if err == nil || !strings.Contains(err.Error(), test.wantError) {
-				t.Fatalf("NewRegistry() error = %v, want %q", err, test.wantError)
-			}
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				metadata := validMetadata("example-rule")
+				test.mutate(&metadata)
+				_, err := rules.NewRegistry(metadataRule{metadata: metadata})
+				if err == nil || !strings.Contains(err.Error(), test.wantError) {
+					t.Fatalf(
+						"NewRegistry() error = %v, want %q",
+						err,
+						test.wantError,
+					)
+				}
+			},
+		)
 	}
 }
 
@@ -257,14 +293,18 @@ func TestRegistryResolvesPresetOverridesAndMaximumRequirement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	selection, err := registry.Resolve(rules.PresetCorrectness, map[string]rules.Severity{
-		"correctness-rule": rules.SeverityOff,
-		"suspicious-rule":  rules.SeverityError,
-	})
+	selection, err := registry.Resolve(
+		rules.PresetCorrectness,
+		map[string]rules.Severity{
+			"correctness-rule": rules.SeverityOff,
+			"suspicious-rule": rules.SeverityError,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(selection) != 1 || selection[0].ID != "suspicious-rule" ||
+	if len(selection) != 1 ||
+		selection[0].ID != "suspicious-rule" ||
 		selection[0].Severity != rules.SeverityError {
 		t.Fatalf("Resolve() = %#v", selection)
 	}
@@ -272,9 +312,11 @@ func TestRegistryResolvesPresetOverridesAndMaximumRequirement(t *testing.T) {
 		t.Fatalf("MaximumRequirement() = %v, want %v", got, rules.RequireTypes)
 	}
 
-	if _, err := registry.Resolve(rules.PresetCorrectness, map[string]rules.Severity{
-		"missing-rule": rules.SeverityWarn,
-	}); err == nil || !strings.Contains(err.Error(), "unknown rule \"missing-rule\"") {
+	if _, err := registry.Resolve(
+		rules.PresetCorrectness,
+		map[string]rules.Severity{"missing-rule": rules.SeverityWarn},
+	);
+		err == nil || !strings.Contains(err.Error(), "unknown rule \"missing-rule\"") {
 		t.Fatalf("Resolve() unknown rule error = %v", err)
 	}
 }
@@ -290,10 +332,10 @@ func TestRegistryReportsInvalidOverridesInRuleIDOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 128 {
-		_, err := registry.Resolve(rules.PresetCorrectness, map[string]rules.Severity{
-			"z-last":  "invalid-z",
-			"a-first": "invalid-a",
-		})
+		_, err := registry.Resolve(
+			rules.PresetCorrectness,
+			map[string]rules.Severity{"z-last": "invalid-z", "a-first": "invalid-a"},
+		)
 		if err == nil || !strings.Contains(err.Error(), "invalid-a") {
 			t.Fatalf("Resolve() first invalid override error = %v", err)
 		}
@@ -310,9 +352,9 @@ func TestRegistryResolvesTypedRuleOptionsForEnabledRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	configured := rules.NewOptionSet(map[string]rules.OptionValue{
-		"allow-comment": rules.BooleanOption(true),
-	})
+	configured := rules.NewOptionSet(
+		map[string]rules.OptionValue{"allow-comment": rules.BooleanOption(true)},
+	)
 	selection, err := registry.ResolveConfigured(
 		rules.PresetCorrectness,
 		nil,
@@ -329,32 +371,35 @@ func TestRegistryResolvesTypedRuleOptionsForEnabledRules(t *testing.T) {
 		t.Fatalf("resolved allow-comment = %t, %t", allow, found)
 	}
 
-	if _, err := registry.ResolveConfigured(rules.PresetCorrectness, nil, nil); err == nil ||
-		!strings.Contains(err.Error(), "required option \"allow-comment\"") {
+	if _, err := registry.ResolveConfigured(rules.PresetCorrectness, nil, nil);
+		err == nil || !strings.Contains(err.Error(), "required option \"allow-comment\"") {
 		t.Fatalf("ResolveConfigured() missing required option error = %v", err)
 	}
 	disabled, err := registry.ResolveConfigured(rules.PresetSuspicious, nil, nil)
 	if err != nil || len(disabled) != 0 {
 		t.Fatalf("ResolveConfigured() disabled required option = %#v, %v", disabled, err)
 	}
-	unknown := rules.NewOptionSet(map[string]rules.OptionValue{
-		"unknown": rules.BooleanOption(true),
-	})
+	unknown := rules.NewOptionSet(
+		map[string]rules.OptionValue{"unknown": rules.BooleanOption(true)},
+	)
 	if _, err := registry.ResolveConfigured(
 		rules.PresetCorrectness,
 		nil,
 		map[string]rules.OptionSet{"configured-rule": unknown},
-	); err == nil || !strings.Contains(err.Error(), "unknown option \"unknown\"") {
+	);
+		err == nil || !strings.Contains(err.Error(), "unknown option \"unknown\"") {
 		t.Fatalf("ResolveConfigured() unknown option error = %v", err)
 	}
-	wrongKind := rules.NewOptionSet(map[string]rules.OptionValue{
-		"allow-comment": rules.StringOption("yes"),
-	})
+	wrongKind := rules.NewOptionSet(
+		map[string]rules.OptionValue{"allow-comment": rules.StringOption("yes")},
+	)
 	if _, err := registry.ResolveConfigured(
 		rules.PresetCorrectness,
 		nil,
 		map[string]rules.OptionSet{"configured-rule": wrongKind},
-	); err == nil || !strings.Contains(err.Error(), "has kind \"string\"; want \"boolean\"") {
+	);
+		err == nil ||
+			!strings.Contains(err.Error(), "has kind \"string\"; want \"boolean\"") {
 		t.Fatalf("ResolveConfigured() wrong option kind error = %v", err)
 	}
 }
@@ -409,40 +454,44 @@ func TestRegistryFiltersRulesBySelectedSourceVersion(t *testing.T) {
 		nil,
 		nil,
 		"1.25",
-	); err == nil || !strings.Contains(err.Error(), "invalid source Go version") {
+	);
+		err == nil || !strings.Contains(err.Error(), "invalid source Go version") {
 		t.Fatalf("ResolveConfiguredForGoVersion() invalid version error = %v", err)
 	}
 }
 
 func validMetadata(id string) rules.Metadata {
 	return rules.Metadata{
-		ID:               id,
-		Summary:          "reports one observable defect",
-		Documentation:    "Full rule documentation.",
-		DefaultSeverity:  rules.SeverityWarn,
-		Presets:          []rules.Preset{rules.PresetCorrectness},
+		ID: id,
+		Summary: "reports one observable defect",
+		Documentation: "Full rule documentation.",
+		DefaultSeverity: rules.SeverityWarn,
+		Presets: []rules.Preset{rules.PresetCorrectness},
 		MinimumGoVersion: "1.22",
-		Requirement:      rules.RequireSyntax,
-		NodeInterests:    []rules.NodeKind{rules.NodeCallExpr},
-		RunOnGenerated:   false,
-		Categories:       []rules.Category{rules.CategoryCorrectness},
-		Fixes: []rules.FixMetadata{{
-			Name:        "remove-empty",
-			Description: "remove the ineffective expression",
-			Safety:      rules.FixSafe,
-		}},
-		Options: []rules.OptionMetadata{{
-			Name:    "allow-comment",
-			Summary: "allow an explanatory comment",
-			Kind:    rules.OptionBoolean,
-			Default: optionValue(rules.BooleanOption(false)),
-		}},
+		Requirement: rules.RequireSyntax,
+		NodeInterests: []rules.NodeKind{rules.NodeCallExpr},
+		RunOnGenerated: false,
+		Categories: []rules.Category{rules.CategoryCorrectness},
+		Fixes: []rules.FixMetadata{
+			{
+				Name: "remove-empty",
+				Description: "remove the ineffective expression",
+				Safety: rules.FixSafe,
+			},
+		},
+		Options: []rules.OptionMetadata{
+			{
+				Name: "allow-comment",
+				Summary: "allow an explanatory comment",
+				Kind: rules.OptionBoolean,
+				Default: optionValue(rules.BooleanOption(false)),
+			},
+		},
 		KnownLimitations: []string{"does not inspect generated files"},
-		Examples: []rules.Example{{
-			Incorrect: "empty()",
-			Correct:   "work()",
-		}},
+		Examples: []rules.Example{{Incorrect: "empty()", Correct: "work()"}},
 	}
 }
 
-func optionValue(value rules.OptionValue) *rules.OptionValue { return &value }
+func optionValue(value rules.OptionValue) *rules.OptionValue {
+	return &value
+}

@@ -45,8 +45,8 @@ func (r Requirement) String() string {
 type Severity string
 
 const (
-	SeverityOff   Severity = "off"
-	SeverityWarn  Severity = "warn"
+	SeverityOff Severity = "off"
+	SeverityWarn Severity = "warn"
 	SeverityError Severity = "error"
 )
 
@@ -55,24 +55,24 @@ type Preset string
 
 const (
 	PresetCorrectness Preset = "correctness"
-	PresetSuspicious  Preset = "suspicious"
+	PresetSuspicious Preset = "suspicious"
 	PresetPerformance Preset = "performance"
-	PresetComplexity  Preset = "complexity"
-	PresetStyle       Preset = "style"
-	PresetMigration   Preset = "migration"
+	PresetComplexity Preset = "complexity"
+	PresetStyle Preset = "style"
+	PresetMigration Preset = "migration"
 )
 
 // Category classifies the observable concern reported by a rule.
 type Category string
 
 const (
-	CategoryCorrectness     Category = "correctness"
-	CategorySafety          Category = "safety"
-	CategorySuspicious      Category = "suspicious"
-	CategoryPerformance     Category = "performance"
-	CategoryComplexity      Category = "complexity"
-	CategoryStyle           Category = "style"
-	CategoryMigration       Category = "migration"
+	CategoryCorrectness Category = "correctness"
+	CategorySafety Category = "safety"
+	CategorySuspicious Category = "suspicious"
+	CategoryPerformance Category = "performance"
+	CategoryComplexity Category = "complexity"
+	CategoryStyle Category = "style"
+	CategoryMigration Category = "migration"
 	CategoryMaintainability Category = "maintainability"
 )
 
@@ -80,16 +80,16 @@ const (
 type FixSafety string
 
 const (
-	FixSafe       FixSafety = "safe"
+	FixSafe FixSafety = "safe"
 	FixSuggestion FixSafety = "suggestion"
-	FixUnsafe     FixSafety = "unsafe"
+	FixUnsafe FixSafety = "unsafe"
 )
 
 // FixMetadata describes one named transformation a rule may offer.
 type FixMetadata struct {
-	Name        string
+	Name string
 	Description string
-	Safety      FixSafety
+	Safety FixSafety
 }
 
 // OptionKind is the scalar type accepted by one rule option.
@@ -98,52 +98,52 @@ type OptionKind string
 const (
 	OptionBoolean OptionKind = "boolean"
 	OptionInteger OptionKind = "integer"
-	OptionString  OptionKind = "string"
+	OptionString OptionKind = "string"
 	OptionStrings OptionKind = "strings"
 )
 
 // OptionMetadata is one typed configuration field owned by a rule.
 type OptionMetadata struct {
-	Name     string
-	Summary  string
-	Kind     OptionKind
+	Name string
+	Summary string
+	Kind OptionKind
 	Required bool
-	Default  *OptionValue
+	Default *OptionValue
 }
 
 // Deprecation records a rule replacement without silently changing its ID.
 type Deprecation struct {
-	Since       string
+	Since string
 	Replacement string
-	Message     string
+	Message string
 }
 
 // Example is one paired incorrect and correct rule example.
 type Example struct {
-	Title     string
+	Title string
 	Incorrect string
-	Correct   string
+	Correct string
 }
 
 // Metadata is the canonical rule documentation and scheduling contract.
 type Metadata struct {
-	ID                       string
-	Summary                  string
-	Documentation            string
-	DefaultSeverity          Severity
-	Presets                  []Preset
-	MinimumGoVersion         string
-	Requirement              Requirement
-	NodeInterests            []NodeKind
+	ID string
+	Summary string
+	Documentation string
+	DefaultSeverity Severity
+	Presets []Preset
+	MinimumGoVersion string
+	Requirement Requirement
+	NodeInterests []NodeKind
 	RequiresDependencySyntax bool
-	RunOnGenerated           bool
-	RunDespiteTypeErrors     bool
-	Categories               []Category
-	Fixes                    []FixMetadata
-	Options                  []OptionMetadata
-	Deprecation              *Deprecation
-	KnownLimitations         []string
-	Examples                 []Example
+	RunOnGenerated bool
+	RunDespiteTypeErrors bool
+	Categories []Category
+	Fixes []FixMetadata
+	Options []OptionMetadata
+	Deprecation *Deprecation
+	KnownLimitations []string
+	Examples []Example
 }
 
 // Rule is the common metadata boundary implemented by every native rule.
@@ -193,7 +193,7 @@ type SSARule interface {
 
 // Context is the immutable per-file syntax rule context.
 type Context struct {
-	file    *source.File
+	file *source.File
 	options OptionSet
 }
 
@@ -204,59 +204,61 @@ func NewContext(file *source.File, options OptionSet) *Context {
 
 // TypesContext binds one package AST to its exact immutable physical source.
 type TypesContext struct {
-	file      *source.File
-	fileSet   *token.FileSet
+	file *source.File
+	fileSet *token.FileSet
 	packageID string
-	package_  *types.Package
-	info      *types.Info
-	illTyped  bool
-	options   OptionSet
+	package_ *types.Package
+	info *types.Info
+	illTyped bool
+	options OptionSet
 }
 
 // PackageFile binds one package AST to its exact immutable physical source and
 // records whether the current package invocation owns reporter-visible output
 // for that file.
 type PackageFile struct {
-	file      *source.File
-	syntax    *ast.File
-	fileSet   *token.FileSet
-	target    bool
+	file *source.File
+	syntax *ast.File
+	fileSet *token.FileSet
+	target bool
 	contextID *packageContextID
 }
 
-type packageContextID struct{ marker byte }
+type packageContextID struct {
+	marker byte
+}
 
 // PackageContext exposes one shared typed package and its canonical physical
 // source mapping to a package-wide native rule.
 type PackageContext struct {
-	fileSet      *token.FileSet
-	packageID    string
-	package_     *types.Package
-	info         *types.Info
-	sizes        types.Sizes
-	illTyped     bool
-	files        []PackageFile
+	fileSet *token.FileSet
+	packageID string
+	package_ *types.Package
+	info *types.Info
+	sizes types.Sizes
+	illTyped bool
+	files []PackageFile
 	dependencies []PackageDependency
-	options      OptionSet
-	contextID    *packageContextID
+	options OptionSet
+	contextID *packageContextID
 }
 
 // PackageDependency is one immutable dependency package view exposed only to
 // package-wide rules that declare dependency syntax in canonical metadata.
 type PackageDependency struct {
-	fileSet   *token.FileSet
+	fileSet *token.FileSet
 	packageID string
-	package_  *types.Package
-	info      *types.Info
-	sizes     types.Sizes
-	illTyped  bool
-	files     []PackageFile
+	package_ *types.Package
+	info *types.Info
+	sizes types.Sizes
+	illTyped bool
+	files []PackageFile
 }
 
 // PackageFinding binds one ordinary finding to the owned physical file it
 // targets.
 type PackageFinding struct {
-	File    PackageFile
+	File PackageFile
 	Finding Finding
 }
 
@@ -288,16 +290,16 @@ func NewPackageContext(
 		files[index].contextID = contextID
 	}
 	return &PackageContext{
-		fileSet:      fileSet,
-		packageID:    packageID,
-		package_:     package_,
-		info:         info,
-		sizes:        sizes,
-		illTyped:     illTyped,
-		files:        files,
+		fileSet: fileSet,
+		packageID: packageID,
+		package_: package_,
+		info: info,
+		sizes: sizes,
+		illTyped: illTyped,
+		files: files,
 		dependencies: slices.Clone(dependencies),
-		options:      options,
-		contextID:    contextID,
+		options: options,
+		contextID: contextID,
 	}
 }
 
@@ -317,19 +319,30 @@ func NewPackageDependency(
 		files[index].contextID = nil
 	}
 	return PackageDependency{
-		fileSet: fileSet, packageID: packageID, package_: package_, info: info,
-		sizes: sizes, illTyped: illTyped, files: files,
+		fileSet: fileSet,
+		packageID: packageID,
+		package_: package_,
+		info: info,
+		sizes: sizes,
+		illTyped: illTyped,
+		files: files,
 	}
 }
 
 // Source returns the exact immutable source captured for this package file.
-func (f PackageFile) Source() *source.File { return f.file }
+func (f PackageFile) Source() *source.File {
+	return f.file
+}
 
 // Syntax returns the shared package AST for this physical file.
-func (f PackageFile) Syntax() *ast.File { return f.syntax }
+func (f PackageFile) Syntax() *ast.File {
+	return f.syntax
+}
 
 // Target reports whether this package invocation owns diagnostics for the file.
-func (f PackageFile) Target() bool { return f.target }
+func (f PackageFile) Target() bool {
+	return f.target
+}
 
 // Range maps an AST node to this package file's exact physical byte range.
 func (f PackageFile) Range(node ast.Node) (source.Range, error) {
@@ -342,7 +355,9 @@ func (f PackageFile) Range(node ast.Node) (source.Range, error) {
 // PositionRange maps package positions to this exact physical source.
 func (f PackageFile) PositionRange(start, end token.Pos) (source.Range, error) {
 	if f.file == nil || f.fileSet == nil {
-		return source.Range{}, fmt.Errorf("package range requires source and package positions")
+		return source.Range{}, fmt.Errorf(
+			"package range requires source and package positions",
+		)
 	}
 	if !start.IsValid() || !end.IsValid() {
 		return source.Range{}, fmt.Errorf("package range positions are invalid")
@@ -350,11 +365,15 @@ func (f PackageFile) PositionRange(start, end token.Pos) (source.Range, error) {
 	physicalStart := f.fileSet.PositionFor(start, false)
 	physicalEnd := f.fileSet.PositionFor(end, false)
 	if physicalStart.Filename != f.file.Path() || physicalEnd.Filename != f.file.Path() {
-		return source.Range{}, fmt.Errorf("package range positions belong to another source file")
+		return source.Range{}, fmt.Errorf(
+			"package range positions belong to another source file",
+		)
 	}
 	range_ := source.Range{Start: physicalStart.Offset, End: physicalEnd.Offset}
 	if _, valid := f.file.Slice(range_); !valid {
-		return source.Range{}, fmt.Errorf("package positions map to an invalid physical range")
+		return source.Range{}, fmt.Errorf(
+			"package positions map to an invalid physical range",
+		)
 	}
 	return range_, nil
 }
@@ -362,15 +381,21 @@ func (f PackageFile) PositionRange(start, end token.Pos) (source.Range, error) {
 // TokenRange maps a package position to this file's exact lexical token.
 func (f PackageFile) TokenRange(position token.Pos) (source.Range, error) {
 	if f.file == nil || f.fileSet == nil || !position.IsValid() {
-		return source.Range{}, fmt.Errorf("package token range requires source and a package position")
+		return source.Range{}, fmt.Errorf(
+			"package token range requires source and a package position",
+		)
 	}
 	physical := f.fileSet.PositionFor(position, false)
 	if physical.Filename != f.file.Path() {
-		return source.Range{}, fmt.Errorf("package token position belongs to another source file")
+		return source.Range{}, fmt.Errorf(
+			"package token position belongs to another source file",
+		)
 	}
 	range_, found := f.file.TokenRangeAtOffset(physical.Offset)
 	if !found {
-		return source.Range{}, fmt.Errorf("package token position does not identify a physical token")
+		return source.Range{}, fmt.Errorf(
+			"package token position does not identify a physical token",
+		)
 	}
 	return range_, nil
 }
@@ -393,26 +418,40 @@ func (c *PackageContext) Dependencies() []PackageDependency {
 }
 
 // PackageID returns the opaque go/packages identity for this dependency.
-func (d PackageDependency) PackageID() string { return d.packageID }
+func (d PackageDependency) PackageID() string {
+	return d.packageID
+}
 
 // Package returns the shared read-only go/types package for this dependency.
-func (d PackageDependency) Package() *types.Package { return d.package_ }
+func (d PackageDependency) Package() *types.Package {
+	return d.package_
+}
 
 // Info returns the shared read-only type information for dependency AST nodes.
-func (d PackageDependency) Info() *types.Info { return d.info }
+func (d PackageDependency) Info() *types.Info {
+	return d.info
+}
 
 // Sizes returns the dependency's architecture-specific type sizes.
-func (d PackageDependency) Sizes() types.Sizes { return d.sizes }
+func (d PackageDependency) Sizes() types.Sizes {
+	return d.sizes
+}
 
 // FileSet returns the dependency's shared read-only position mapping.
-func (d PackageDependency) FileSet() *token.FileSet { return d.fileSet }
+func (d PackageDependency) FileSet() *token.FileSet {
+	return d.fileSet
+}
 
 // IllTyped reports whether dependency loading encountered type errors.
-func (d PackageDependency) IllTyped() bool { return d.illTyped }
+func (d PackageDependency) IllTyped() bool {
+	return d.illTyped
+}
 
 // Files returns independent, non-target dependency file descriptors in
 // canonical physical path order.
-func (d PackageDependency) Files() []PackageFile { return slices.Clone(d.files) }
+func (d PackageDependency) Files() []PackageFile {
+	return slices.Clone(d.files)
+}
 
 // OwnsTarget reports whether a descriptor came from this exact callback and is
 // eligible for reporter-visible output.
@@ -421,8 +460,10 @@ func (c *PackageContext) OwnsTarget(file PackageFile) bool {
 		return false
 	}
 	for _, candidate := range c.files {
-		if candidate.contextID == file.contextID && candidate.target &&
-			candidate.file == file.file && candidate.syntax == file.syntax &&
+		if candidate.contextID == file.contextID &&
+			candidate.target &&
+			candidate.file == file.file &&
+			candidate.syntax == file.syntax &&
 			candidate.fileSet == file.fileSet {
 			return true
 		}
@@ -471,7 +512,9 @@ func (c *PackageContext) FileSet() *token.FileSet {
 }
 
 // IllTyped reports whether package loading encountered type errors.
-func (c *PackageContext) IllTyped() bool { return c != nil && c.illTyped }
+func (c *PackageContext) IllTyped() bool {
+	return c != nil && c.illTyped
+}
 
 // BooleanOption returns one configured boolean rule option.
 func (c *PackageContext) BooleanOption(name string) (bool, bool) {
@@ -509,19 +552,19 @@ func (c *PackageContext) StringsOption(name string) ([]string, bool) {
 // exact immutable physical source.
 type ControlFlowContext struct {
 	typesContext *TypesContext
-	function     ast.Node
-	body         *ast.BlockStmt
-	graph        *cfg.CFG
+	function ast.Node
+	body *ast.BlockStmt
+	graph *cfg.CFG
 }
 
 // SSAContext binds one source function to its shared SSA program, typed
 // package, and exact immutable physical source.
 type SSAContext struct {
 	typesContext *TypesContext
-	program      *ssa.Program
-	ssaPackage   *ssa.Package
-	function     *ssa.Function
-	syntax       ast.Node
+	program *ssa.Program
+	ssaPackage *ssa.Package
+	function *ssa.Function
+	syntax ast.Node
 }
 
 // NewSSAContext constructs one read-only SSA rule context.
@@ -534,10 +577,10 @@ func NewSSAContext(
 ) *SSAContext {
 	return &SSAContext{
 		typesContext: typesContext,
-		program:      program,
-		ssaPackage:   ssaPackage,
-		function:     function,
-		syntax:       syntax,
+		program: program,
+		ssaPackage: ssaPackage,
+		function: function,
+		syntax: syntax,
 	}
 }
 
@@ -683,9 +726,9 @@ func NewControlFlowContext(
 ) *ControlFlowContext {
 	return &ControlFlowContext{
 		typesContext: typesContext,
-		function:     function,
-		body:         body,
-		graph:        graph,
+		function: function,
+		body: body,
+		graph: graph,
 	}
 }
 
@@ -809,13 +852,13 @@ func NewTypesContext(
 	options OptionSet,
 ) *TypesContext {
 	return &TypesContext{
-		file:      file,
-		fileSet:   fileSet,
+		file: file,
+		fileSet: fileSet,
 		packageID: packageID,
-		package_:  package_,
-		info:      info,
-		illTyped:  illTyped,
-		options:   options,
+		package_: package_,
+		info: info,
+		illTyped: illTyped,
+		options: options,
 	}
 }
 
@@ -899,7 +942,9 @@ func (c *TypesContext) Range(node ast.Node) (source.Range, error) {
 // PositionRange maps package positions to the exact current physical source.
 func (c *TypesContext) PositionRange(start, end token.Pos) (source.Range, error) {
 	if c == nil || c.file == nil || c.fileSet == nil {
-		return source.Range{}, fmt.Errorf("typed range requires source and package positions")
+		return source.Range{}, fmt.Errorf(
+			"typed range requires source and package positions",
+		)
 	}
 	if !start.IsValid() || !end.IsValid() {
 		return source.Range{}, fmt.Errorf("typed range positions are invalid")
@@ -907,11 +952,15 @@ func (c *TypesContext) PositionRange(start, end token.Pos) (source.Range, error)
 	physicalStart := c.fileSet.PositionFor(start, false)
 	physicalEnd := c.fileSet.PositionFor(end, false)
 	if physicalStart.Filename != c.file.Path() || physicalEnd.Filename != c.file.Path() {
-		return source.Range{}, fmt.Errorf("typed range positions belong to another source file")
+		return source.Range{}, fmt.Errorf(
+			"typed range positions belong to another source file",
+		)
 	}
 	range_ := source.Range{Start: physicalStart.Offset, End: physicalEnd.Offset}
 	if _, valid := c.file.Slice(range_); !valid {
-		return source.Range{}, fmt.Errorf("typed positions map to an invalid physical range")
+		return source.Range{}, fmt.Errorf(
+			"typed positions map to an invalid physical range",
+		)
 	}
 	return range_, nil
 }
@@ -919,15 +968,21 @@ func (c *TypesContext) PositionRange(start, end token.Pos) (source.Range, error)
 // TokenRange maps a package position to the exact physical lexical token.
 func (c *TypesContext) TokenRange(position token.Pos) (source.Range, error) {
 	if c == nil || c.file == nil || c.fileSet == nil || !position.IsValid() {
-		return source.Range{}, fmt.Errorf("typed token range requires source and a package position")
+		return source.Range{}, fmt.Errorf(
+			"typed token range requires source and a package position",
+		)
 	}
 	physical := c.fileSet.PositionFor(position, false)
 	if physical.Filename != c.file.Path() {
-		return source.Range{}, fmt.Errorf("typed token position belongs to another source file")
+		return source.Range{}, fmt.Errorf(
+			"typed token position belongs to another source file",
+		)
 	}
 	range_, found := c.file.TokenRangeAtOffset(physical.Offset)
 	if !found {
-		return source.Range{}, fmt.Errorf("typed token position does not identify a physical token")
+		return source.Range{}, fmt.Errorf(
+			"typed token position does not identify a physical token",
+		)
 	}
 	return range_, nil
 }
@@ -941,7 +996,9 @@ func (c *Context) Range(node ast.Node) (source.Range, error) {
 	end, endFound := c.file.PhysicalOffset(node.End())
 	result := source.Range{Start: start, End: end}
 	if !startFound || !endFound {
-		return source.Range{}, fmt.Errorf("syntax node positions do not map to physical source")
+		return source.Range{}, fmt.Errorf(
+			"syntax node positions do not map to physical source",
+		)
 	}
 	if _, valid := c.file.Slice(result); !valid {
 		return source.Range{}, fmt.Errorf("syntax node maps to an invalid physical range")
@@ -951,55 +1008,55 @@ func (c *Context) Range(node ast.Node) (source.Range, error) {
 
 // Related identifies a secondary physical source range.
 type Related struct {
-	Range   source.Range
+	Range source.Range
 	Message string
 }
 
 // Edit is one exact byte replacement proposed by a fix.
 type Edit struct {
-	Range   source.Range
+	Range source.Range
 	NewText string
 }
 
 // Fix is one named, safety-classified set of source edits.
 type Fix struct {
-	Name   string
+	Name string
 	Safety FixSafety
-	Edits  []Edit
+	Edits []Edit
 }
 
 // Finding is the rule-owned portion of a diagnostic.
 type Finding struct {
 	MessageKey string
-	Message    string
-	Range      source.Range
-	Related    []Related
-	Notes      []string
-	Help       string
-	Fixes      []Fix
+	Message string
+	Range source.Range
+	Related []Related
+	Notes []string
+	Help string
+	Fixes []Fix
 }
 
 // Diagnostic is one source-versioned, reporter-ready lint diagnostic.
 type Diagnostic struct {
-	RuleID     string
-	Severity   Severity
+	RuleID string
+	Severity Severity
 	MessageKey string
-	Message    string
-	Path       string
-	Digest     source.Digest
-	Range      source.Range
-	Related    []Related
-	Notes      []string
-	Help       string
-	Fixes      []Fix
+	Message string
+	Path string
+	Digest source.Digest
+	Range source.Range
+	Related []Related
+	Notes []string
+	Help string
+	Fixes []Fix
 }
 
 // Selection is one enabled rule with its resolved severity and cost.
 type Selection struct {
-	ID          string
-	Severity    Severity
+	ID string
+	Severity Severity
 	Requirement Requirement
-	Options     OptionSet
+	Options OptionSet
 }
 
 // File returns the exact immutable source version for the syntax rule.

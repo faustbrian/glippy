@@ -18,11 +18,10 @@ import (
 )
 
 const (
-	entryMagic          = "GOXCACHE\x01"
-	entryVersion        = "v1"
-	headerSize          = len(entryMagic) + sha256.Size + sha256.Size + 8
+	entryMagic = "GOXCACHE\x01"
+	entryVersion = "v1"
+	headerSize = len(entryMagic) + sha256.Size + sha256.Size + 8
 	temporaryRandomSize = 8
-
 	// MaxEntrySize bounds one decoded cache value.
 	MaxEntrySize = 16 << 20
 )
@@ -40,8 +39,8 @@ const (
 
 // Store is one rooted, content-verifying persistent cache.
 type Store struct {
-	mu     sync.RWMutex
-	root   *os.Root
+	mu sync.RWMutex
+	root *os.Root
 	closed bool
 }
 
@@ -116,8 +115,8 @@ func openRootNoFollow(path string) (*os.Root, error) {
 	for _, component := range strings.Split(relative, string(filepath.Separator)) {
 		information, statErr := root.Lstat(component)
 		if errors.Is(statErr, fs.ErrNotExist) {
-			if mkdirErr := root.Mkdir(component, 0o700); mkdirErr != nil &&
-				!errors.Is(mkdirErr, fs.ErrExist) {
+			if mkdirErr := root.Mkdir(component, 0o700);
+				mkdirErr != nil && !errors.Is(mkdirErr, fs.ErrExist) {
 				_ = root.Close()
 				return nil, mkdirErr
 			}
@@ -127,9 +126,12 @@ func openRootNoFollow(path string) (*os.Root, error) {
 			_ = root.Close()
 			return nil, statErr
 		}
-		if information.Mode()&os.ModeSymlink != 0 || !information.IsDir() {
+		if information.Mode() & os.ModeSymlink != 0 || !information.IsDir() {
 			_ = root.Close()
-			return nil, fmt.Errorf("cache root component %q is not a directory", component)
+			return nil, fmt.Errorf(
+				"cache root component %q is not a directory",
+				component,
+			)
 		}
 		next, openErr := root.OpenRoot(component)
 		if openErr != nil {
@@ -143,7 +145,10 @@ func openRootNoFollow(path string) (*os.Root, error) {
 			if statErr != nil {
 				return nil, statErr
 			}
-			return nil, fmt.Errorf("cache root component %q changed while opening", component)
+			return nil, fmt.Errorf(
+				"cache root component %q changed while opening",
+				component,
+			)
 		}
 		if closeErr := root.Close(); closeErr != nil {
 			_ = next.Close()
@@ -208,7 +213,11 @@ func (s *Store) Put(ctx context.Context, key Key, payload []byte) (resultErr err
 		return fmt.Errorf("cache put requires a non-zero key")
 	}
 	if len(payload) > MaxEntrySize {
-		return fmt.Errorf("cache payload is %d bytes; maximum is %d", len(payload), MaxEntrySize)
+		return fmt.Errorf(
+			"cache payload is %d bytes; maximum is %d",
+			len(payload),
+			MaxEntrySize,
+		)
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -232,7 +241,8 @@ func (s *Store) Put(ctx context.Context, key Key, payload []byte) (resultErr err
 		}
 		return fmt.Errorf("%w for key %s", ErrConflict, key)
 	case entryCorrupt:
-		if err := s.root.Remove(entryName(key)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if err := s.root.Remove(entryName(key));
+			err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("remove corrupt cache entry: %w", err)
 		}
 	}
@@ -247,13 +257,16 @@ func (s *Store) Put(ctx context.Context, key Key, payload []byte) (resultErr err
 	if err != nil {
 		return err
 	}
-	file, err := s.root.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	file, err := s.root.OpenFile(temporary, os.O_WRONLY | os.O_CREATE | os.O_EXCL, 0o600)
 	if err != nil {
 		return fmt.Errorf("create cache temporary entry: %w", err)
 	}
 	defer func() {
 		if err := s.root.Remove(temporary); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			resultErr = errors.Join(resultErr, fmt.Errorf("remove cache temporary entry: %w", err))
+			resultErr = errors.Join(
+				resultErr,
+				fmt.Errorf("remove cache temporary entry: %w", err),
+			)
 		}
 	}()
 	encoded := encodeEntry(key, payload)
@@ -297,11 +310,12 @@ func (s *Store) load(key Key) ([]byte, entryState, error) {
 	if err != nil {
 		return nil, entryMissing, fmt.Errorf("stat cache entry: %w", err)
 	}
-	if !information.Mode().IsRegular() || information.Size() < int64(headerSize) ||
-		information.Size() > int64(headerSize+MaxEntrySize) {
+	if !information.Mode().IsRegular() ||
+		information.Size() < int64(headerSize) ||
+		information.Size() > int64(headerSize + MaxEntrySize) {
 		return nil, entryCorrupt, nil
 	}
-	encoded, err := io.ReadAll(io.LimitReader(file, int64(headerSize+MaxEntrySize+1)))
+	encoded, err := io.ReadAll(io.LimitReader(file, int64(headerSize + MaxEntrySize + 1)))
 	if err != nil {
 		return nil, entryMissing, fmt.Errorf("read cache entry: %w", err)
 	}
@@ -313,7 +327,7 @@ func (s *Store) load(key Key) ([]byte, entryState, error) {
 }
 
 func encodeEntry(key Key, payload []byte) []byte {
-	encoded := make([]byte, headerSize+len(payload))
+	encoded := make([]byte, headerSize + len(payload))
 	copy(encoded, entryMagic)
 	offset := len(entryMagic)
 	copy(encoded[offset:], key[:])
@@ -331,14 +345,14 @@ func decodeEntry(key Key, encoded []byte) ([]byte, bool) {
 		return nil, false
 	}
 	offset := len(entryMagic)
-	if !bytes.Equal(encoded[offset:offset+len(key)], key[:]) {
+	if !bytes.Equal(encoded[offset:offset + len(key)], key[:]) {
 		return nil, false
 	}
 	offset += len(key)
-	wantDigest := encoded[offset : offset+sha256.Size]
+	wantDigest := encoded[offset:offset + sha256.Size]
 	offset += sha256.Size
-	length := binary.BigEndian.Uint64(encoded[offset : offset+8])
-	if length > MaxEntrySize || length != uint64(len(encoded)-headerSize) {
+	length := binary.BigEndian.Uint64(encoded[offset:offset + 8])
+	if length > MaxEntrySize || length != uint64(len(encoded) - headerSize) {
 		return nil, false
 	}
 	payload := encoded[headerSize:]
@@ -349,10 +363,12 @@ func decodeEntry(key Key, encoded []byte) ([]byte, bool) {
 	return bytes.Clone(payload), true
 }
 
-func entryShard(key Key) string { return filepath.Join(entryVersion, key.String()[:2]) }
+func entryShard(key Key) string {
+	return filepath.Join(entryVersion, key.String()[:2])
+}
 
 func entryName(key Key) string {
-	return filepath.Join(entryShard(key), key.String()+".cache")
+	return filepath.Join(entryShard(key), key.String() + ".cache")
 }
 
 func temporaryName(key Key) (string, error) {
@@ -362,6 +378,6 @@ func temporaryName(key Key) (string, error) {
 	}
 	return filepath.Join(
 		entryShard(key),
-		"."+key.String()+"."+hex.EncodeToString(suffix[:])+".tmp",
+		"." + key.String() + "." + hex.EncodeToString(suffix[:]) + ".tmp",
 	), nil
 }

@@ -75,3 +75,35 @@ corpus, equivalence, idempotency, fuzz, bounded-rendering, and migration-review
 evidence, the Phase 1 formatter prototype exit gate is restored. Existing safe
 filesystem, configuration, and CLI proof supports the 45% Phase 2 milestone;
 production-usable formatter release requirements remain open.
+
+## Repository Adoption, 2026-08-13
+
+The earlier disposable audit has now become a repository-owned migration.
+Starting from `333b88d`, Gox selected 121 tracked Go files and formatted them
+through its validated write path. The resulting Go source patch contains
+22,196 insertions and 10,844 deletions; no non-Go source was rewritten by the
+formatter. A root `.gox.toml` fixes schema version 1, width 100, tab width 8,
+and the correctness preset as the repository policy.
+
+Review of the complete migration exposed two ordinary assignment targets whose
+selector chains broke only because the right-hand call did not fit. Assignment
+lowering now measures an ordinary left-hand side through its operator and lets
+the right-hand side choose its layout independently. The exact production
+shape has a focused regression, independently over-width assignment targets
+remain breakable, and communication-clause assignments retain their coupled
+receive layout.
+
+The formatted tree is a zero-difference `gox check ./...` fixed point. The
+complete ordinary and race test suites, `go vet ./...`, and `go mod tidy
+-diff` pass with Go 1.26.5 and task-owned disposable build and module caches.
+The first CI rehearsal incorrectly exported `GOWORK=off`, which disabled the
+temporary workspaces owned by two package-loading tests. Those exact tests fail
+with the override and pass without it; removing the override restores the full
+suite without changing formatter output or package-loading behavior.
+
+The repository now carries a non-mutating GitHub Actions gate that builds Gox
+from the checked-out source and runs its own combined check after the test,
+race, vet, and module-metadata gates. This makes Gox the repository's sole
+formatter authority and converts the earlier snapshot review into continuous
+self-adoption evidence. Final maintainer review of the release candidate still
+owns the human acceptance boundary for this complete repository layout.

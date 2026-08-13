@@ -9,7 +9,7 @@ import (
 
 type factObjectIdentity struct {
 	PackagePath string `json:"package"`
-	ObjectPath  string `json:"path"`
+	ObjectPath string `json:"path"`
 }
 
 type factObjectEncoder struct {
@@ -17,11 +17,13 @@ type factObjectEncoder struct {
 }
 
 type factObjectResolver struct {
-	pkg     *types.Package
+	pkg *types.Package
 	encoder objectpath.Encoder
 }
 
-func newFactObjectEncoder() *factObjectEncoder { return new(factObjectEncoder) }
+func newFactObjectEncoder() *factObjectEncoder {
+	return new(factObjectEncoder)
+}
 
 func newFactObjectResolver(pkg *types.Package) (*factObjectResolver, error) {
 	if pkg == nil {
@@ -39,7 +41,10 @@ func (e *factObjectEncoder) Identity(object types.Object) (factObjectIdentity, e
 	}
 	pkg := object.Pkg()
 	if pkg == nil || pkg.Path() == "" {
-		return factObjectIdentity{}, fmt.Errorf("fact object %s has no package identity", object.Name())
+		return factObjectIdentity{}, fmt.Errorf(
+			"fact object %s has no package identity",
+			object.Name(),
+		)
 	}
 	path, err := e.encoder.For(object)
 	if err != nil {

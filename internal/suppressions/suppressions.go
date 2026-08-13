@@ -30,70 +30,70 @@ const (
 type ProblemKind string
 
 const (
-	ProblemMalformed            ProblemKind = "malformed"
-	ProblemUnknownRule          ProblemKind = "unknown-rule"
-	ProblemMissingReason        ProblemKind = "missing-reason"
-	ProblemInvalidExpiry        ProblemKind = "invalid-expiry"
-	ProblemExpired              ProblemKind = "expired"
-	ProblemMisplacedFileScope   ProblemKind = "misplaced-file-scope"
-	ProblemUnmatchedRangeEnd    ProblemKind = "unmatched-range-end"
-	ProblemNestedRange          ProblemKind = "nested-range"
-	ProblemUnclosedRange        ProblemKind = "unclosed-range"
+	ProblemMalformed ProblemKind = "malformed"
+	ProblemUnknownRule ProblemKind = "unknown-rule"
+	ProblemMissingReason ProblemKind = "missing-reason"
+	ProblemInvalidExpiry ProblemKind = "invalid-expiry"
+	ProblemExpired ProblemKind = "expired"
+	ProblemMisplacedFileScope ProblemKind = "misplaced-file-scope"
+	ProblemUnmatchedRangeEnd ProblemKind = "unmatched-range-end"
+	ProblemNestedRange ProblemKind = "nested-range"
+	ProblemUnclosedRange ProblemKind = "unclosed-range"
 	ProblemInvalidConfiguration ProblemKind = "invalid-configuration"
 )
 
 // Problem is one source-ordered suppression diagnostic.
 type Problem struct {
-	Kind    ProblemKind
-	Range   source.Range
+	Kind ProblemKind
+	Range source.Range
 	Message string
 }
 
 // Directive is one validated exact-rule suppression.
 type Directive struct {
-	Scope     Scope
-	RuleID    string
-	Range     source.Range
-	Target    source.Range
-	Reason    string
+	Scope Scope
+	RuleID string
+	Range source.Range
+	Target source.Range
+	Reason string
 	ExpiresOn string
 }
 
 // ParseOptions supplies registry, reason, and deterministic expiry policy.
 type ParseOptions struct {
-	KnownRules    []string
+	KnownRules []string
 	RequireReason bool
-	ExpiryCutoff  string
+	ExpiryCutoff string
 }
 
 // Index is an immutable source-ordered suppression set.
 type Index struct {
 	directives []Directive
-	path       string
-	digest     source.Digest
-	size       int
+	path string
+	digest source.Digest
+	size int
 }
 
 // SuppressedDiagnostic binds one removed diagnostic to its owning directive.
 type SuppressedDiagnostic struct {
 	Diagnostic rules.Diagnostic
-	Directive  Directive
+	Directive Directive
 }
 
 // Application is one deterministic suppression pass over ordered diagnostics.
 type Application struct {
 	Diagnostics []rules.Diagnostic
-	Suppressed  []SuppressedDiagnostic
-	Unused      []Directive
+	Suppressed []SuppressedDiagnostic
+	Unused []Directive
 }
 
 type parsedDirective struct {
-	scope     Scope
-	rangeEnd  bool
-	ruleID    string
-	reason    string
+	scope Scope
+	rangeEnd bool
+	ruleID string
+	reason string
 	expiresOn string
-	range_    source.Range
+	range_ source.Range
 }
 
 type physicalSource interface {
@@ -104,8 +104,8 @@ type physicalSource interface {
 
 type ownershipFingerprint struct {
 	directive int
-	start     int
-	end       int
+	start int
+	end int
 }
 
 // Directives returns an independent source-ordered suppression snapshot.
@@ -123,9 +123,13 @@ func ValidateStable(before, after physicalSource) error {
 	}
 	beforeOwnership := suppressionOwnership(before)
 	afterOwnership := suppressionOwnership(after)
-	if !slices.EqualFunc(beforeOwnership, afterOwnership, func(left, right ownershipFingerprint) bool {
-		return left == right
-	}) {
+	if !slices.EqualFunc(
+		beforeOwnership,
+		afterOwnership,
+		func(left, right ownershipFingerprint) bool {
+			return left == right
+		},
+	) {
 		return errors.New("suppression ownership changed")
 	}
 	return nil
@@ -138,16 +142,20 @@ func Parse(file *source.File, options ParseOptions) (Index, []Problem) {
 		return Index{}, []Problem{*configurationProblem}
 	}
 	if options.ExpiryCutoff != "" && !validDate(options.ExpiryCutoff) {
-		return Index{}, []Problem{{
-			Kind:    ProblemInvalidConfiguration,
-			Message: "suppression expiry cutoff must be a valid YYYY-MM-DD date",
-		}}
+		return Index{}, []Problem{
+			{
+				Kind: ProblemInvalidConfiguration,
+				Message: "suppression expiry cutoff must be a valid YYYY-MM-DD date",
+			},
+		}
 	}
 	if file == nil {
-		return Index{}, []Problem{{
-			Kind:    ProblemInvalidConfiguration,
-			Message: "suppression parsing requires a source file",
-		}}
+		return Index{}, []Problem{
+			{
+				Kind: ProblemInvalidConfiguration,
+				Message: "suppression parsing requires a source file",
+			},
+		}
 	}
 
 	input := file.Bytes()
@@ -180,32 +188,46 @@ func Parse(file *source.File, options ParseOptions) (Index, []Problem) {
 		if parsed.rangeEnd {
 			opened, found := openRanges[parsed.ruleID]
 			if !found {
-				problems = append(problems, Problem{
-					Kind:    ProblemUnmatchedRangeEnd,
-					Range:   parsed.range_,
-					Message: "suppression range end has no matching start for " + parsed.ruleID,
-				})
+				problems = append(
+					problems,
+					Problem{
+						Kind: ProblemUnmatchedRangeEnd,
+						Range: parsed.range_,
+						Message: "suppression range end has no matching start for " +
+							parsed.ruleID,
+					},
+				)
 				continue
 			}
-			directives = append(directives, Directive{
-				Scope:     ScopeRange,
-				RuleID:    parsed.ruleID,
-				Range:     opened.range_,
-				Target:    source.Range{Start: opened.range_.End, End: parsed.range_.Start},
-				Reason:    opened.reason,
-				ExpiresOn: opened.expiresOn,
-			})
+			directives = append(
+				directives,
+				Directive{
+					Scope: ScopeRange,
+					RuleID: parsed.ruleID,
+					Range: opened.range_,
+					Target: source.Range{
+						Start: opened.range_.End,
+						End: parsed.range_.Start,
+					},
+					Reason: opened.reason,
+					ExpiresOn: opened.expiresOn,
+				},
+			)
 			delete(openRanges, parsed.ruleID)
 			continue
 		}
 
 		if parsed.scope == ScopeRange {
 			if _, found := openRanges[parsed.ruleID]; found {
-				problems = append(problems, Problem{
-					Kind:    ProblemNestedRange,
-					Range:   parsed.range_,
-					Message: "suppression range is already open for " + parsed.ruleID,
-				})
+				problems = append(
+					problems,
+					Problem{
+						Kind: ProblemNestedRange,
+						Range: parsed.range_,
+						Message: "suppression range is already open for " +
+							parsed.ruleID,
+					},
+				)
 				continue
 			}
 			openRanges[parsed.ruleID] = parsed
@@ -220,55 +242,70 @@ func Parse(file *source.File, options ParseOptions) (Index, []Problem) {
 			target = nextLineRange(input, parsed.range_.End)
 		case ScopeFile:
 			if parsed.range_.Start >= packageOffset {
-				problems = append(problems, Problem{
-					Kind:    ProblemMisplacedFileScope,
-					Range:   parsed.range_,
-					Message: "file suppression must appear before the package clause",
-				})
+				problems = append(
+					problems,
+					Problem{
+						Kind: ProblemMisplacedFileScope,
+						Range: parsed.range_,
+						Message: "file suppression must appear before the package clause",
+					},
+				)
 				continue
 			}
 			target = source.Range{Start: 0, End: len(input)}
 		}
-		directives = append(directives, Directive{
-			Scope:     parsed.scope,
-			RuleID:    parsed.ruleID,
-			Range:     parsed.range_,
-			Target:    target,
-			Reason:    parsed.reason,
-			ExpiresOn: parsed.expiresOn,
-		})
+		directives = append(
+			directives,
+			Directive{
+				Scope: parsed.scope,
+				RuleID: parsed.ruleID,
+				Range: parsed.range_,
+				Target: target,
+				Reason: parsed.reason,
+				ExpiresOn: parsed.expiresOn,
+			},
+		)
 	}
 
 	for _, opened := range openRanges {
-		problems = append(problems, Problem{
-			Kind:    ProblemUnclosedRange,
-			Range:   opened.range_,
-			Message: "suppression range is not closed for " + opened.ruleID,
-		})
+		problems = append(
+			problems,
+			Problem{
+				Kind: ProblemUnclosedRange,
+				Range: opened.range_,
+				Message: "suppression range is not closed for " + opened.ruleID,
+			},
+		)
 	}
-	slices.SortFunc(problems, func(left, right Problem) int {
-		if order := cmp.Compare(left.Range.Start, right.Range.Start); order != 0 {
-			return order
-		}
-		if order := cmp.Compare(left.Range.End, right.Range.End); order != 0 {
-			return order
-		}
-		if order := cmp.Compare(left.Kind, right.Kind); order != 0 {
-			return order
-		}
-		return cmp.Compare(left.Message, right.Message)
-	})
-	slices.SortFunc(directives, func(left, right Directive) int {
-		if order := cmp.Compare(left.Range.Start, right.Range.Start); order != 0 {
-			return order
-		}
-		return cmp.Compare(left.RuleID, right.RuleID)
-	})
+	slices.SortFunc(
+		problems,
+		func(left, right Problem) int {
+			if order := cmp.Compare(left.Range.Start, right.Range.Start); order != 0 {
+				return order
+			}
+			if order := cmp.Compare(left.Range.End, right.Range.End); order != 0 {
+				return order
+			}
+			if order := cmp.Compare(left.Kind, right.Kind); order != 0 {
+				return order
+			}
+			return cmp.Compare(left.Message, right.Message)
+		},
+	)
+	slices.SortFunc(
+		directives,
+		func(left, right Directive) int {
+			if order := cmp.Compare(left.Range.Start, right.Range.Start); order != 0 {
+				return order
+			}
+			return cmp.Compare(left.RuleID, right.RuleID)
+		},
+	)
 	return Index{
 		directives: directives,
-		path:       file.Path(),
-		digest:     file.Digest(),
-		size:       len(input),
+		path: file.Path(),
+		digest: file.Digest(),
+		size: len(input),
 	}, problems
 }
 
@@ -285,8 +322,8 @@ func (i Index) Match(diagnostic rules.Diagnostic) (Directive, bool) {
 func (i Index) Apply(diagnostics []rules.Diagnostic) Application {
 	result := Application{
 		Diagnostics: make([]rules.Diagnostic, 0, len(diagnostics)),
-		Suppressed:  make([]SuppressedDiagnostic, 0),
-		Unused:      make([]Directive, 0, len(i.directives)),
+		Suppressed: make([]SuppressedDiagnostic, 0),
+		Unused: make([]Directive, 0, len(i.directives)),
 	}
 	used := make([]bool, len(i.directives))
 	for _, diagnostic := range diagnostics {
@@ -296,10 +333,13 @@ func (i Index) Apply(diagnostics []rules.Diagnostic) Application {
 			continue
 		}
 		used[index] = true
-		result.Suppressed = append(result.Suppressed, SuppressedDiagnostic{
-			Diagnostic: diagnostic,
-			Directive:  i.directives[index],
-		})
+		result.Suppressed = append(
+			result.Suppressed,
+			SuppressedDiagnostic{
+				Diagnostic: diagnostic,
+				Directive: i.directives[index],
+			},
+		)
 	}
 	for index, directive := range i.directives {
 		if !used[index] {
@@ -313,7 +353,8 @@ func (i Index) matchIndex(diagnostic rules.Diagnostic) (int, bool) {
 	if diagnostic.Path != i.path || diagnostic.Digest != i.digest {
 		return 0, false
 	}
-	if diagnostic.Range.Start < 0 || diagnostic.Range.End < diagnostic.Range.Start ||
+	if diagnostic.Range.Start < 0 ||
+		diagnostic.Range.End < diagnostic.Range.Start ||
 		diagnostic.Range.End > i.size {
 		return 0, false
 	}
@@ -334,14 +375,15 @@ func knownRuleSet(ruleIDs []string) (map[string]struct{}, *Problem) {
 	for _, ruleID := range ruleIDs {
 		if strings.TrimSpace(ruleID) == "" {
 			return nil, &Problem{
-				Kind:    ProblemInvalidConfiguration,
+				Kind: ProblemInvalidConfiguration,
 				Message: "known suppression rule IDs must not be empty",
 			}
 		}
 		if _, duplicate := known[ruleID]; duplicate {
 			return nil, &Problem{
-				Kind:    ProblemInvalidConfiguration,
-				Message: "known suppression rule ID appears more than once: " + ruleID,
+				Kind: ProblemInvalidConfiguration,
+				Message: "known suppression rule ID appears more than once: " +
+					ruleID,
 			}
 		}
 		known[ruleID] = struct{}{}
@@ -361,8 +403,8 @@ func parseDirective(
 	}
 	if _, found := known[parsed.ruleID]; !found {
 		return parsedDirective{}, &Problem{
-			Kind:    ProblemUnknownRule,
-			Range:   candidate.Range,
+			Kind: ProblemUnknownRule,
+			Range: candidate.Range,
 			Message: "suppression names unknown rule " + parsed.ruleID,
 		}
 	}
@@ -372,15 +414,15 @@ func parseDirective(
 	}
 	if requireReason && !parsed.rangeEnd && parsed.reason == "" {
 		return parsedDirective{}, &Problem{
-			Kind:    ProblemMissingReason,
-			Range:   candidate.Range,
+			Kind: ProblemMissingReason,
+			Range: candidate.Range,
 			Message: "suppression requires a non-empty reason",
 		}
 	}
 	if expiryCutoff != "" && parsed.expiresOn != "" && parsed.expiresOn <= expiryCutoff {
 		return parsedDirective{}, &Problem{
-			Kind:    ProblemExpired,
-			Range:   candidate.Range,
+			Kind: ProblemExpired,
+			Range: candidate.Range,
 			Message: "suppression expired on " + parsed.expiresOn,
 		}
 	}
@@ -395,13 +437,14 @@ func parseDirectiveSyntax(candidate source.Directive) (parsedDirective, *Problem
 	return validateDirectiveSyntax(candidate, parsed, reason, hasReason)
 }
 
-func parseDirectiveShape(
-	candidate source.Directive,
-) (parsedDirective, string, bool, *Problem) {
+func parseDirectiveShape(candidate source.Directive) (parsedDirective, string, bool, *Problem) {
 	text := strings.TrimSpace(strings.TrimPrefix(candidate.Raw, "//gox:"))
 	separator := strings.IndexFunc(text, unicode.IsSpace)
 	if separator < 0 {
-		return parsedDirective{}, "", false, malformed(candidate.Range, "suppression directive requires a rule ID")
+		return parsedDirective{}, "", false, malformed(
+			candidate.Range,
+			"suppression directive requires a rule ID",
+		)
 	}
 	label, rest := text[:separator], text[separator:]
 	rest = strings.TrimSpace(rest)
@@ -419,13 +462,19 @@ func parseDirectiveShape(
 	case "ignore-file":
 		parsed.scope = ScopeFile
 	default:
-		return parsedDirective{}, "", false, malformed(candidate.Range, "unknown suppression directive "+label)
+		return parsedDirective{}, "", false, malformed(
+			candidate.Range,
+			"unknown suppression directive " + label,
+		)
 	}
 
 	ruleText, reason, hasReason := splitReason(rest)
 	fields := strings.Fields(ruleText)
 	if len(fields) != 1 {
-		return parsedDirective{}, "", false, malformed(candidate.Range, "suppression directive requires exactly one rule ID")
+		return parsedDirective{}, "", false, malformed(
+			candidate.Range,
+			"suppression directive requires exactly one rule ID",
+		)
 	}
 	parsed.ruleID = fields[0]
 	return parsed, reason, hasReason, nil
@@ -439,22 +488,28 @@ func validateDirectiveSyntax(
 ) (parsedDirective, *Problem) {
 	if parsed.rangeEnd {
 		if hasReason {
-			return parsedDirective{}, malformed(candidate.Range, "suppression range end must not include a reason")
+			return parsedDirective{}, malformed(
+				candidate.Range,
+				"suppression range end must not include a reason",
+			)
 		}
 		return parsed, nil
 	}
 	parsed.reason = reason
 	if hasReason {
 		var expiryProblem *Problem
-		parsed.reason, parsed.expiresOn, expiryProblem = parseExpiryMetadata(reason, candidate.Range)
+		parsed.reason, parsed.expiresOn, expiryProblem = parseExpiryMetadata(
+			reason,
+			candidate.Range,
+		)
 		if expiryProblem != nil {
 			return parsedDirective{}, expiryProblem
 		}
 	}
 	if hasReason && parsed.reason == "" {
 		return parsedDirective{}, &Problem{
-			Kind:    ProblemMissingReason,
-			Range:   candidate.Range,
+			Kind: ProblemMissingReason,
+			Range: candidate.Range,
 			Message: "suppression requires a non-empty reason",
 		}
 	}
@@ -474,10 +529,12 @@ func suppressionOwnership(unit physicalSource) []ownershipFingerprint {
 	}
 
 	result := make([]ownershipFingerprint, 0)
-	openRanges := make(map[string]struct {
-		directive int
-		parsed    parsedDirective
-	})
+	openRanges := make(
+		map[string]struct {
+			directive int
+			parsed parsedDirective
+		},
+	)
 	directiveIndex := 0
 	for _, candidate := range unit.Directives() {
 		if candidate.Kind != source.DirectiveGoxSuppression {
@@ -494,14 +551,17 @@ func suppressionOwnership(unit physicalSource) []ownershipFingerprint {
 			if !found {
 				continue
 			}
-			result = append(result, ownershipFingerprintForRange(
-				opened.directive,
-				tokenStarts,
-				source.Range{
-					Start: opened.parsed.range_.End,
-					End:   parsed.range_.Start,
-				},
-			))
+			result = append(
+				result,
+				ownershipFingerprintForRange(
+					opened.directive,
+					tokenStarts,
+					source.Range{
+						Start: opened.parsed.range_.End,
+						End: parsed.range_.Start,
+					},
+				),
+			)
 			delete(openRanges, parsed.ruleID)
 			continue
 		}
@@ -511,7 +571,7 @@ func suppressionOwnership(unit physicalSource) []ownershipFingerprint {
 			}
 			openRanges[parsed.ruleID] = struct {
 				directive int
-				parsed    parsedDirective
+				parsed parsedDirective
 			}{directive: current, parsed: parsed}
 			continue
 		}
@@ -532,9 +592,12 @@ func suppressionOwnership(unit physicalSource) []ownershipFingerprint {
 		}
 		result = append(result, ownershipFingerprintForRange(current, tokenStarts, target))
 	}
-	slices.SortFunc(result, func(left, right ownershipFingerprint) int {
-		return cmp.Compare(left.directive, right.directive)
-	})
+	slices.SortFunc(
+		result,
+		func(left, right ownershipFingerprint) int {
+			return cmp.Compare(left.directive, right.directive)
+		},
+	)
 	return result
 }
 
@@ -574,8 +637,8 @@ func parseExpiryMetadata(reason string, sourceRange source.Range) (string, strin
 	expiresOn := strings.TrimPrefix(field, "expires=")
 	if !validDate(expiresOn) {
 		return "", "", &Problem{
-			Kind:    ProblemInvalidExpiry,
-			Range:   sourceRange,
+			Kind: ProblemInvalidExpiry,
+			Range: sourceRange,
 			Message: "suppression expiry must be a valid YYYY-MM-DD date",
 		}
 	}
@@ -592,7 +655,7 @@ func splitReason(rest string) (ruleID, reason string, found bool) {
 	if separator < 0 {
 		return strings.TrimSpace(rest), "", false
 	}
-	return strings.TrimSpace(rest[:separator]), strings.TrimSpace(rest[separator+2:]), true
+	return strings.TrimSpace(rest[:separator]), strings.TrimSpace(rest[separator + 2:]), true
 }
 
 func malformed(sourceRange source.Range, message string) *Problem {

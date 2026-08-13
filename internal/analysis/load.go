@@ -32,7 +32,6 @@ const (
 	ModuleReadonly ModuleMode = "readonly"
 	// ModuleVendor loads dependencies from the selected vendor tree.
 	ModuleVendor ModuleMode = "vendor"
-
 	// DefaultMaxPackages bounds the complete package graph retained by one
 	// typed analysis load.
 	DefaultMaxPackages = 10_000
@@ -46,51 +45,51 @@ const (
 
 // PackageLoadOptions defines one run-owned Go package loading request.
 type PackageLoadOptions struct {
-	Dir                  string
-	Patterns             []string
-	Requirement          rules.Requirement
-	Tests                bool
+	Dir string
+	Patterns []string
+	Requirement rules.Requirement
+	Tests bool
 	LoadDependencySyntax bool
-	BuildTags            []string
-	ModuleMode           ModuleMode
-	Env                  []string
-	Overlay              map[string][]byte
-	AllowNetwork         bool
-	GOOS                 string
-	GOARCH               string
-	MaxPackages          int
-	MaxSourceFiles       int
-	MaxSourceBytes       int64
+	BuildTags []string
+	ModuleMode ModuleMode
+	Env []string
+	Overlay map[string][]byte
+	AllowNetwork bool
+	GOOS string
+	GOARCH string
+	MaxPackages int
+	MaxSourceFiles int
+	MaxSourceBytes int64
 }
 
 // PackageDiagnostic is one canonical package-loading or type-checking error.
 type PackageDiagnostic struct {
 	PackageID string
-	Position  string
-	Message   string
-	Kind      packages.ErrorKind
+	Position string
+	Message string
+	Kind packages.ErrorKind
 }
 
 // PackageLoadResult owns one compatible typed package graph for a run.
 type PackageLoadResult struct {
 	Requirement rules.Requirement
-	Packages    []*packages.Package
+	Packages []*packages.Package
 	Diagnostics []PackageDiagnostic
-	Sources     PackageSourceSet
+	Sources PackageSourceSet
 }
 
 // PackageSourceSet is one immutable index of the exact bytes parsed by a
 // package load.
 type PackageSourceSet struct {
-	paths    []string
-	files    map[string]*source.File
+	paths []string
+	files map[string]*source.File
 	problems []PackageSourceProblem
 }
 
 // PackageSourceProblem records why one captured source is diagnostic-only.
 type PackageSourceProblem struct {
-	Path    string
-	Digest  source.Digest
+	Path string
+	Digest source.Digest
 	Message string
 }
 
@@ -104,7 +103,9 @@ func clonePackageLoadOptions(options PackageLoadOptions) PackageLoadOptions {
 }
 
 // Paths returns normalized physical source identities in canonical order.
-func (s PackageSourceSet) Paths() []string { return slices.Clone(s.paths) }
+func (s PackageSourceSet) Paths() []string {
+	return slices.Clone(s.paths)
+}
 
 // Lookup returns the immutable source version parsed for path.
 func (s PackageSourceSet) Lookup(path string) (*source.File, bool) {
@@ -136,16 +137,25 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 			options.Requirement,
 		)
 	}
-	if options.Dir == "" || !filepath.IsAbs(options.Dir) || filepath.Clean(options.Dir) != options.Dir {
-		return PackageLoadResult{}, fmt.Errorf("package loading directory %q is not normalized absolute", options.Dir)
+	if options.Dir == "" ||
+		!filepath.IsAbs(options.Dir) ||
+		filepath.Clean(options.Dir) != options.Dir {
+		return PackageLoadResult{}, fmt.Errorf(
+			"package loading directory %q is not normalized absolute",
+			options.Dir,
+		)
 	}
 	if len(options.Patterns) == 0 {
-		return PackageLoadResult{}, fmt.Errorf("package loading requires at least one pattern")
+		return PackageLoadResult{}, fmt.Errorf(
+			"package loading requires at least one pattern",
+		)
 	}
 	patterns := slices.Clone(options.Patterns)
 	for _, pattern := range patterns {
 		if strings.TrimSpace(pattern) == "" {
-			return PackageLoadResult{}, fmt.Errorf("package loading patterns must not be empty")
+			return PackageLoadResult{}, fmt.Errorf(
+				"package loading patterns must not be empty",
+			)
 		}
 	}
 	if err := validatePackageOverlay(options.Overlay); err != nil {
@@ -161,16 +171,19 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 	}
 	sourceCollector := newPackageSourceCollector(limits)
 
-	loaded, err := packages.Load(&packages.Config{
-		Context:    ctx,
-		Mode:       packageLoadMode(options),
-		Dir:        options.Dir,
-		Env:        packageLoadEnvironment(options),
-		BuildFlags: buildFlags,
-		Tests:      options.Tests,
-		Overlay:    cloneOverlay(options.Overlay),
-		ParseFile:  sourceCollector.parseFile,
-	}, patterns...)
+	loaded, err := packages.Load(
+		&packages.Config{
+			Context: ctx,
+			Mode: packageLoadMode(options),
+			Dir: options.Dir,
+			Env: packageLoadEnvironment(options),
+			BuildFlags: buildFlags,
+			Tests: options.Tests,
+			Overlay: cloneOverlay(options.Overlay),
+			ParseFile: sourceCollector.parseFile,
+		},
+		patterns...,
+	)
 	if contextErr := ctx.Err(); contextErr != nil {
 		return PackageLoadResult{}, contextErr
 	}
@@ -184,7 +197,8 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 	if err != nil {
 		return PackageLoadResult{}, err
 	}
-	if err := capturePackageOriginalSources(ordered, options.Overlay, sourceCollector); err != nil {
+	if err := capturePackageOriginalSources(ordered, options.Overlay, sourceCollector);
+		err != nil {
 		return PackageLoadResult{}, err
 	}
 	sources, err := sourceCollector.result()
@@ -200,9 +214,9 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 	orderPackageDiagnostics(diagnostics)
 	return PackageLoadResult{
 		Requirement: options.Requirement,
-		Packages:    ordered,
+		Packages: ordered,
 		Diagnostics: diagnostics,
-		Sources:     sources,
+		Sources: sources,
 	}, nil
 }
 
@@ -214,7 +228,10 @@ func validatePackageOverlay(overlay map[string][]byte) error {
 	sort.Strings(paths)
 	for _, path := range paths {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-			return fmt.Errorf("package overlay path %q is not normalized absolute", path)
+			return fmt.Errorf(
+				"package overlay path %q is not normalized absolute",
+				path,
+			)
 		}
 		if err := source.ValidateSize(int64(len(overlay[path]))); err != nil {
 			return fmt.Errorf("package overlay %q: %w", path, err)
@@ -225,13 +242,19 @@ func validatePackageOverlay(overlay map[string][]byte) error {
 
 func resolvePackageResourceLimits(options PackageLoadOptions) (packageResourceLimits, error) {
 	if options.MaxPackages < 0 {
-		return packageResourceLimits{}, fmt.Errorf("maximum package count must not be negative")
+		return packageResourceLimits{}, fmt.Errorf(
+			"maximum package count must not be negative",
+		)
 	}
 	if options.MaxSourceFiles < 0 {
-		return packageResourceLimits{}, fmt.Errorf("maximum typed source file count must not be negative")
+		return packageResourceLimits{}, fmt.Errorf(
+			"maximum typed source file count must not be negative",
+		)
 	}
 	if options.MaxSourceBytes < 0 {
-		return packageResourceLimits{}, fmt.Errorf("maximum typed source byte count must not be negative")
+		return packageResourceLimits{}, fmt.Errorf(
+			"maximum typed source byte count must not be negative",
+		)
 	}
 	if options.MaxPackages > DefaultMaxPackages {
 		return packageResourceLimits{}, fmt.Errorf(
@@ -266,7 +289,7 @@ func resolvePackageResourceLimits(options PackageLoadOptions) (packageResourceLi
 
 func defaultPackageResourceLimits() packageResourceLimits {
 	return packageResourceLimits{
-		maxPackages:    DefaultMaxPackages,
+		maxPackages: DefaultMaxPackages,
 		maxSourceFiles: DefaultMaxSourceFiles,
 		maxSourceBytes: DefaultMaxSourceBytes,
 	}
@@ -276,8 +299,8 @@ func validatePackageGraphLimit(roots []*packages.Package, limit int) error {
 	visited := make(map[string]struct{})
 	stack := slices.Clone(roots)
 	for len(stack) > 0 {
-		pkg := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
+		pkg := stack[len(stack) - 1]
+		stack = stack[:len(stack) - 1]
 		if pkg == nil {
 			continue
 		}
@@ -305,33 +328,33 @@ func validatePackageGraphLimit(roots []*packages.Package, limit int) error {
 }
 
 type packageSourceCollector struct {
-	mu       sync.Mutex
-	files    map[string]*source.File
+	mu sync.Mutex
+	files map[string]*source.File
 	problems map[string]PackageSourceProblem
-	errors   map[string]map[string]error
-	seen     map[string]sourceReservation
-	limits   packageResourceLimits
-	bytes    int64
+	errors map[string]map[string]error
+	seen map[string]sourceReservation
+	limits packageResourceLimits
+	bytes int64
 }
 
 type packageResourceLimits struct {
-	maxPackages    int
+	maxPackages int
 	maxSourceFiles int
 	maxSourceBytes int64
 }
 
 type sourceReservation struct {
 	digest [sha256.Size]byte
-	size   int64
+	size int64
 }
 
 func newPackageSourceCollector(limits packageResourceLimits) *packageSourceCollector {
 	return &packageSourceCollector{
-		files:    make(map[string]*source.File),
+		files: make(map[string]*source.File),
 		problems: make(map[string]PackageSourceProblem),
-		errors:   make(map[string]map[string]error),
-		seen:     make(map[string]sourceReservation),
-		limits:   limits,
+		errors: make(map[string]map[string]error),
+		seen: make(map[string]sourceReservation),
+		limits: limits,
 	}
 }
 
@@ -341,20 +364,24 @@ func (c *packageSourceCollector) parseFile(
 	input []byte,
 ) (*ast.File, error) {
 	if err := c.admit(filename, input); err != nil {
-		return nil, scanner.ErrorList{&scanner.Error{
-			Pos: token.Position{Filename: filename, Line: 1, Column: 1},
-			Msg: err.Error(),
-		}}
+		return nil, scanner.ErrorList{
+			&scanner.Error{
+				Pos: token.Position{Filename: filename, Line: 1, Column: 1},
+				Msg: err.Error(),
+			},
+		}
 	}
 	physical, sourceErr := source.Load(filename, input)
 	c.add(filename, physical, sourceErr)
 	if physical == nil {
-		return nil, scanner.ErrorList{&scanner.Error{
-			Pos: token.Position{Filename: filename, Line: 1, Column: 1},
-			Msg: sourceErr.Error(),
-		}}
+		return nil, scanner.ErrorList{
+			&scanner.Error{
+				Pos: token.Position{Filename: filename, Line: 1, Column: 1},
+				Msg: sourceErr.Error(),
+			},
+		}
 	}
-	return parser.ParseFile(fileSet, filename, input, parser.AllErrors|parser.ParseComments)
+	return parser.ParseFile(fileSet, filename, input, parser.AllErrors | parser.ParseComments)
 }
 
 func (c *packageSourceCollector) admit(filename string, input []byte) error {
@@ -369,18 +396,21 @@ func (c *packageSourceCollector) admit(filename string, input []byte) error {
 	reservation := sourceReservation{digest: sha256.Sum256(input), size: int64(len(input))}
 	if previous, found := c.seen[path]; found {
 		if previous != reservation {
-			err := fmt.Errorf("package parser returned incompatible source versions for %q", path)
+			err := fmt.Errorf(
+				"package parser returned incompatible source versions for %q",
+				path,
+			)
 			c.addError(path, err)
 			return err
 		}
 		return nil
 	}
-	if len(c.seen)+1 > c.limits.maxSourceFiles {
+	if len(c.seen) + 1 > c.limits.maxSourceFiles {
 		err := fmt.Errorf("typed source set exceeds %d-file limit", c.limits.maxSourceFiles)
 		c.addError("", err)
 		return err
 	}
-	if int64(len(input)) > c.limits.maxSourceBytes-c.bytes {
+	if int64(len(input)) > c.limits.maxSourceBytes - c.bytes {
 		err := fmt.Errorf("typed source set exceeds %d-byte limit", c.limits.maxSourceBytes)
 		c.addError("", err)
 		return err
@@ -407,7 +437,11 @@ func capturePackageOriginalSources(
 		for _, path := range pkg.GoFiles {
 			path = filepath.Clean(path)
 			if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-				return fmt.Errorf("package %q has non-normalized original source path %q", pkg.ID, path)
+				return fmt.Errorf(
+					"package %q has non-normalized original source path %q",
+					pkg.ID,
+					path,
+				)
 			}
 			paths[path] = struct{}{}
 		}
@@ -446,24 +480,46 @@ func (c *packageSourceCollector) add(filename string, file *source.File, sourceE
 		path = file.Path()
 	}
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		c.addError(path, fmt.Errorf("package parser returned non-normalized source path %q", path))
+		c.addError(
+			path,
+			fmt.Errorf("package parser returned non-normalized source path %q", path),
+		)
 		return
 	}
 	if file == nil {
-		c.addError(path, fmt.Errorf("package parser did not capture source %q: %w", path, sourceErr))
+		c.addError(
+			path,
+			fmt.Errorf("package parser did not capture source %q: %w", path, sourceErr),
+		)
 		return
 	}
 	if previous, found := c.files[path]; found {
 		if previous.Digest() != file.Digest() {
-			c.addError(path, fmt.Errorf("package parser returned incompatible source versions for %q", path))
+			c.addError(
+				path,
+				fmt.Errorf(
+					"package parser returned incompatible source versions for %q",
+					path,
+				),
+			)
 		}
 	} else {
 		c.files[path] = file
 	}
 	if sourceErr != nil {
-		problem := PackageSourceProblem{Path: path, Digest: file.Digest(), Message: sourceErr.Error()}
+		problem := PackageSourceProblem{
+			Path: path,
+			Digest: file.Digest(),
+			Message: sourceErr.Error(),
+		}
 		if previous, found := c.problems[path]; found && previous != problem {
-			c.addError(path, fmt.Errorf("package parser returned incompatible source problems for %q", path))
+			c.addError(
+				path,
+				fmt.Errorf(
+					"package parser returned incompatible source problems for %q",
+					path,
+				),
+			)
 		} else {
 			c.problems[path] = problem
 		}
@@ -513,12 +569,15 @@ func (c *packageSourceCollector) result() (PackageSourceSet, error) {
 	for _, problem := range c.problems {
 		problems = append(problems, problem)
 	}
-	sort.Slice(problems, func(left, right int) bool {
-		if problems[left].Path != problems[right].Path {
-			return problems[left].Path < problems[right].Path
-		}
-		return problems[left].Message < problems[right].Message
-	})
+	sort.Slice(
+		problems,
+		func(left, right int) bool {
+			if problems[left].Path != problems[right].Path {
+				return problems[left].Path < problems[right].Path
+			}
+			return problems[left].Message < problems[right].Message
+		},
+	)
 	return PackageSourceSet{paths: paths, files: files, problems: problems}, nil
 }
 
@@ -562,7 +621,7 @@ func packageBuildFlags(options PackageLoadOptions) ([]string, error) {
 	tags = slices.Compact(tags)
 	flags := []string{"-mod=" + string(mode)}
 	if len(tags) > 0 {
-		flags = append(flags, "-tags="+strings.Join(tags, ","))
+		flags = append(flags, "-tags=" + strings.Join(tags, ","))
 	}
 	return flags, nil
 }
@@ -572,8 +631,10 @@ func validBuildTag(tag string) bool {
 		return false
 	}
 	for _, character := range tag {
-		if !unicode.IsLetter(character) && !unicode.IsDigit(character) &&
-			character != '_' && character != '.' {
+		if !unicode.IsLetter(character) &&
+			!unicode.IsDigit(character) &&
+			character != '_' &&
+			character != '.' {
 			return false
 		}
 	}
@@ -585,9 +646,7 @@ func packageLoadEnvironment(options PackageLoadOptions) []string {
 	if environment == nil {
 		environment = os.Environ()
 	}
-	replacements := map[string]string{
-		"GOPACKAGESDRIVER": "off",
-	}
+	replacements := map[string]string{"GOPACKAGESDRIVER": "off"}
 	if !options.AllowNetwork {
 		replacements["GOPROXY"] = "off"
 		replacements["GONOPROXY"] = "none"
@@ -601,7 +660,7 @@ func packageLoadEnvironment(options PackageLoadOptions) []string {
 	if options.GOARCH != "" {
 		replacements["GOARCH"] = options.GOARCH
 	}
-	values := make(map[string]string, len(environment)+len(replacements))
+	values := make(map[string]string, len(environment) + len(replacements))
 	for _, entry := range environment {
 		name, value, found := strings.Cut(entry, "=")
 		if found && name != "" {
@@ -644,14 +703,17 @@ func canonicalPackages(loaded []*packages.Package) ([]*packages.Package, error) 
 			return nil, fmt.Errorf("loaded package %d has no ID", index)
 		}
 		if previous, found := byID[pkg.ID]; found && previous != pkg {
-			return nil, fmt.Errorf("package load returned incompatible duplicate ID %q", pkg.ID)
+			return nil, fmt.Errorf(
+				"package load returned incompatible duplicate ID %q",
+				pkg.ID,
+			)
 		}
 		byID[pkg.ID] = pkg
 	}
 	testMainIDs := make(map[string]struct{})
 	for _, pkg := range byID {
 		if pkg.ForTest != "" {
-			testMainIDs[pkg.ForTest+".test"] = struct{}{}
+			testMainIDs[pkg.ForTest + ".test"] = struct{}{}
 		}
 	}
 	for id := range testMainIDs {
@@ -685,12 +747,15 @@ func packageDiagnostics(roots []*packages.Package) []PackageDiagnostic {
 		}
 		visited[pkg.ID] = struct{}{}
 		for _, issue := range pkg.Errors {
-			diagnostics = append(diagnostics, PackageDiagnostic{
-				PackageID: pkg.ID,
-				Position:  issue.Pos,
-				Message:   issue.Msg,
-				Kind:      issue.Kind,
-			})
+			diagnostics = append(
+				diagnostics,
+				PackageDiagnostic{
+					PackageID: pkg.ID,
+					Position: issue.Pos,
+					Message: issue.Msg,
+					Kind: issue.Kind,
+				},
+			)
 		}
 		imports := make([]string, 0, len(pkg.Imports))
 		for path := range pkg.Imports {
@@ -724,17 +789,22 @@ func cgoBoundaryDiagnostics(
 			if syntax == nil || pkg.Fset == nil {
 				continue
 			}
-			compiled[filepath.Clean(pkg.Fset.PositionFor(syntax.Pos(), false).Filename)] = struct{}{}
+			compiled[filepath.Clean(
+				pkg.Fset.PositionFor(syntax.Pos(), false).Filename,
+			)] = struct{}{}
 		}
 		if _, found := compiled[file.Path()]; found || !sourceImportsC(file) {
 			continue
 		}
-		diagnostics = append(diagnostics, PackageDiagnostic{
-			PackageID: pkg.ID,
-			Position:  file.Path(),
-			Message:   "typed analysis is unavailable for cgo source; syntax analysis remains available",
-			Kind:      packages.UnknownError,
-		})
+		diagnostics = append(
+			diagnostics,
+			PackageDiagnostic{
+				PackageID: pkg.ID,
+				Position: file.Path(),
+				Message: "typed analysis is unavailable for cgo source; syntax analysis remains available",
+				Kind: packages.UnknownError,
+			},
+		)
 	}
 	orderPackageDiagnostics(diagnostics)
 	return diagnostics, nil
@@ -745,31 +815,36 @@ func sourceImportsC(file *source.File) bool {
 		return false
 	}
 	found := false
-	_ = file.ReadSyntax(func(syntax *ast.File) error {
-		for _, imported := range syntax.Imports {
-			path, err := strconv.Unquote(imported.Path.Value)
-			if err == nil && path == "C" {
-				found = true
-				break
+	_ = file.ReadSyntax(
+		func(syntax *ast.File) error {
+			for _, imported := range syntax.Imports {
+				path, err := strconv.Unquote(imported.Path.Value)
+				if err == nil && path == "C" {
+					found = true
+					break
+				}
 			}
-		}
-		return nil
-	})
+			return nil
+		},
+	)
 	return found
 }
 
 func orderPackageDiagnostics(diagnostics []PackageDiagnostic) {
-	sort.Slice(diagnostics, func(left, right int) bool {
-		first, second := diagnostics[left], diagnostics[right]
-		if first.PackageID != second.PackageID {
-			return first.PackageID < second.PackageID
-		}
-		if first.Position != second.Position {
-			return first.Position < second.Position
-		}
-		if first.Message != second.Message {
-			return first.Message < second.Message
-		}
-		return first.Kind < second.Kind
-	})
+	sort.Slice(
+		diagnostics,
+		func(left, right int) bool {
+			first, second := diagnostics[left], diagnostics[right]
+			if first.PackageID != second.PackageID {
+				return first.PackageID < second.PackageID
+			}
+			if first.Position != second.Position {
+				return first.Position < second.Position
+			}
+			if first.Message != second.Message {
+				return first.Message < second.Message
+			}
+			return first.Kind < second.Kind
+		},
+	)
 }

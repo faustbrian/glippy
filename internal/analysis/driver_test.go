@@ -37,11 +37,13 @@ func visible() { target() }
 			if err != nil {
 				return nil, err
 			}
-			return []rules.Finding{{
-				MessageKey: "call",
-				Message:    "call requires review",
-				Range:      sourceRange,
-			}}, nil
+			return []rules.Finding{
+				{
+					MessageKey: "call",
+					Message: "call requires review",
+					Range: sourceRange,
+				},
+			}, nil
 		},
 	}
 	unusedRule := syntaxRule{
@@ -55,12 +57,15 @@ func visible() { target() }
 		t.Fatal(err)
 	}
 
-	result, err := analysis.Run(context.Background(), file, registry, analysis.RunOptions{
-		Preset: rules.PresetCorrectness,
-		Overrides: map[string]rules.Severity{
-			"call-rule": rules.SeverityError,
+	result, err := analysis.Run(
+		context.Background(),
+		file,
+		registry,
+		analysis.RunOptions{
+			Preset: rules.PresetCorrectness,
+			Overrides: map[string]rules.Severity{"call-rule": rules.SeverityError},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,12 +87,17 @@ func visible() { target() }
 	}
 	visibleStart := strings.LastIndex(input, "target()")
 	if result.Diagnostics[0].Range.Start != visibleStart {
-		t.Fatalf("visible diagnostic start = %d, want %d", result.Diagnostics[0].Range.Start, visibleStart)
+		t.Fatalf(
+			"visible diagnostic start = %d, want %d",
+			result.Diagnostics[0].Range.Start,
+			visibleStart,
+		)
 	}
 	if len(result.Suppressed) != 1 || result.Suppressed[0].Directive.RuleID != "call-rule" {
 		t.Fatalf("Run() suppressed = %#v", result.Suppressed)
 	}
-	if len(result.UnusedSuppressions) != 1 || result.UnusedSuppressions[0].RuleID != "unused-rule" {
+	if len(result.UnusedSuppressions) != 1 ||
+		result.UnusedSuppressions[0].RuleID != "unused-rule" {
 		t.Fatalf("Run() unused suppressions = %#v", result.UnusedSuppressions)
 	}
 	if len(result.SuppressionProblems) != 1 ||
@@ -110,9 +120,12 @@ func TestRunRefusesUnsupportedRuleTiersBeforeExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := analysis.Run(context.Background(), file, registry, analysis.RunOptions{
-		Preset: rules.PresetCorrectness,
-	})
+	result, err := analysis.Run(
+		context.Background(),
+		file,
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+	)
 	if err == nil || !strings.Contains(err.Error(), "requires types") {
 		t.Fatalf("Run() error = %v, want unsupported types tier", err)
 	}
@@ -132,16 +145,23 @@ func TestRunEmptyRegistryProducesOneCompleteEmptyResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := analysis.Run(context.Background(), file, registry, analysis.RunOptions{
-		Preset: rules.PresetCorrectness,
-	})
+	result, err := analysis.Run(
+		context.Background(),
+		file,
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Requirement != rules.RequireLexical || len(result.Selection) != 0 ||
-		result.Path != file.Path() || result.Digest != file.Digest() ||
-		len(result.Diagnostics) != 0 || len(result.Suppressed) != 0 ||
-		len(result.UnusedSuppressions) != 0 || len(result.SuppressionProblems) != 0 {
+	if result.Requirement != rules.RequireLexical ||
+		len(result.Selection) != 0 ||
+		result.Path != file.Path() ||
+		result.Digest != file.Digest() ||
+		len(result.Diagnostics) != 0 ||
+		len(result.Suppressed) != 0 ||
+		len(result.UnusedSuppressions) != 0 ||
+		len(result.SuppressionProblems) != 0 {
 		t.Fatalf("Run() = %#v", result)
 	}
 }
@@ -154,9 +174,14 @@ func TestRunRoutesTypedOptionsToSyntaxRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadata := analysisMetadata("configured-rule", rules.NodeCallExpr, false)
-	metadata.Options = []rules.OptionMetadata{{
-		Name: "enabled", Summary: "enable reporting", Kind: rules.OptionBoolean, Required: true,
-	}}
+	metadata.Options = []rules.OptionMetadata{
+		{
+			Name: "enabled",
+			Summary: "enable reporting",
+			Kind: rules.OptionBoolean,
+			Required: true,
+		},
+	}
 	rule := syntaxRule{
 		metadata: metadata,
 		run: func(ctx *rules.Context, node ast.Node) ([]rules.Finding, error) {
@@ -171,14 +196,21 @@ func TestRunRoutesTypedOptionsToSyntaxRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = analysis.Run(context.Background(), file, registry, analysis.RunOptions{
-		Preset: rules.PresetCorrectness,
-		RuleOptions: map[string]rules.OptionSet{
-			"configured-rule": rules.NewOptionSet(map[string]rules.OptionValue{
-				"enabled": rules.BooleanOption(true),
-			}),
+	_, err = analysis.Run(
+		context.Background(),
+		file,
+		registry,
+		analysis.RunOptions{
+			Preset: rules.PresetCorrectness,
+			RuleOptions: map[string]rules.OptionSet{
+				"configured-rule": rules.NewOptionSet(
+					map[string]rules.OptionValue{
+						"enabled": rules.BooleanOption(true),
+					},
+				),
+			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

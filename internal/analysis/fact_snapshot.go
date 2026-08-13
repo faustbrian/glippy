@@ -22,26 +22,26 @@ var errFactSnapshotConflict = errors.New("fact snapshot conflicts with existing 
 
 type factTypeIdentity struct {
 	PackagePath string `json:"package"`
-	Name        string `json:"name"`
+	Name string `json:"name"`
 }
 
 type persistedFact struct {
-	Type  factTypeIdentity `json:"type"`
-	Value []byte           `json:"value"`
+	Type factTypeIdentity `json:"type"`
+	Value []byte `json:"value"`
 }
 
 type persistedObjectFact struct {
 	Object factObjectIdentity `json:"object"`
-	Type   factTypeIdentity   `json:"type"`
-	Value  []byte             `json:"value"`
+	Type factTypeIdentity `json:"type"`
+	Value []byte `json:"value"`
 }
 
 type packageFactSnapshot struct {
-	Version      int                   `json:"version"`
-	Analyzer     string                `json:"analyzer"`
-	PackagePath  string                `json:"package"`
-	PackageFacts []persistedFact       `json:"packageFacts"`
-	ObjectFacts  []persistedObjectFact `json:"objectFacts"`
+	Version int `json:"version"`
+	Analyzer string `json:"analyzer"`
+	PackagePath string `json:"package"`
+	PackageFacts []persistedFact `json:"packageFacts"`
+	ObjectFacts []persistedObjectFact `json:"objectFacts"`
 }
 
 func (s *analyzerFactSet) encodePackageFactSnapshot(
@@ -60,11 +60,11 @@ func (s *analyzerFactSet) encodePackageFactSnapshot(
 		identitiesByType[type_] = identity
 	}
 	snapshot := packageFactSnapshot{
-		Version:      factSnapshotVersion,
-		Analyzer:     analyzer.Name,
-		PackagePath:  current.Path(),
+		Version: factSnapshotVersion,
+		Analyzer: analyzer.Name,
+		PackagePath: current.Path(),
 		PackageFacts: []persistedFact{},
-		ObjectFacts:  []persistedObjectFact{},
+		ObjectFacts: []persistedObjectFact{},
 	}
 	for key, encoded := range s.packageValues {
 		if key.analyzer != analyzer || key.package_ != current {
@@ -72,11 +72,15 @@ func (s *analyzerFactSet) encodePackageFactSnapshot(
 		}
 		identity, found := identitiesByType[key.type_]
 		if !found {
-			return nil, fmt.Errorf("snapshot package fact has an undeclared type %v", key.type_)
+			return nil, fmt.Errorf(
+				"snapshot package fact has an undeclared type %v",
+				key.type_,
+			)
 		}
-		snapshot.PackageFacts = append(snapshot.PackageFacts, persistedFact{
-			Type: identity, Value: bytes.Clone(encoded),
-		})
+		snapshot.PackageFacts = append(
+			snapshot.PackageFacts,
+			persistedFact{Type: identity, Value: bytes.Clone(encoded)},
+		)
 	}
 	view, found := s.objectViews[objectFactViewKey{analyzer: analyzer, package_: current}]
 	if !found {
@@ -89,27 +93,46 @@ func (s *analyzerFactSet) encodePackageFactSnapshot(
 		}
 		object, err := encoder.Identity(key.object)
 		if err != nil {
-			return nil, fmt.Errorf("snapshot object fact %s: %w", key.object.Name(), err)
+			return nil, fmt.Errorf(
+				"snapshot object fact %s: %w",
+				key.object.Name(),
+				err,
+			)
 		}
 		identity, found := identitiesByType[key.type_]
 		if !found {
-			return nil, fmt.Errorf("snapshot object fact has an undeclared type %v", key.type_)
+			return nil, fmt.Errorf(
+				"snapshot object fact has an undeclared type %v",
+				key.type_,
+			)
 		}
-		snapshot.ObjectFacts = append(snapshot.ObjectFacts, persistedObjectFact{
-			Object: object,
-			Type:   identity,
-			Value:  bytes.Clone(encoded),
-		})
-	}
-	sort.Slice(snapshot.PackageFacts, func(left, right int) bool {
-		return lessFactTypeIdentity(
-			snapshot.PackageFacts[left].Type,
-			snapshot.PackageFacts[right].Type,
+		snapshot.ObjectFacts = append(
+			snapshot.ObjectFacts,
+			persistedObjectFact{
+				Object: object,
+				Type: identity,
+				Value: bytes.Clone(encoded),
+			},
 		)
-	})
-	sort.Slice(snapshot.ObjectFacts, func(left, right int) bool {
-		return lessPersistedObjectFact(snapshot.ObjectFacts[left], snapshot.ObjectFacts[right])
-	})
+	}
+	sort.Slice(
+		snapshot.PackageFacts,
+		func(left, right int) bool {
+			return lessFactTypeIdentity(
+				snapshot.PackageFacts[left].Type,
+				snapshot.PackageFacts[right].Type,
+			)
+		},
+	)
+	sort.Slice(
+		snapshot.ObjectFacts,
+		func(left, right int) bool {
+			return lessPersistedObjectFact(
+				snapshot.ObjectFacts[left],
+				snapshot.ObjectFacts[right],
+			)
+		},
+	)
 	if err := validateFactSnapshotOrder(snapshot); err != nil {
 		return nil, err
 	}
@@ -164,13 +187,18 @@ func (s *analyzerFactSet) restorePackageFactSnapshot(
 	for _, persisted := range snapshot.PackageFacts {
 		type_, found := typesByIdentity[persisted.Type]
 		if !found {
-			return fmt.Errorf("fact snapshot contains undeclared type %s", persisted.Type)
+			return fmt.Errorf(
+				"fact snapshot contains undeclared type %s",
+				persisted.Type,
+			)
 		}
 		if err := validatePersistedFact(type_, persisted.Value); err != nil {
 			return err
 		}
 		packageValues[packageFactKey{
-			analyzer: analyzer, package_: pkg.Types, type_: type_,
+			analyzer: analyzer,
+			package_: pkg.Types,
+			type_: type_,
 		}] = bytes.Clone(persisted.Value)
 	}
 	objectValues := make(map[objectFactKey][]byte, len(snapshot.ObjectFacts))
@@ -192,16 +220,25 @@ func (s *analyzerFactSet) restorePackageFactSnapshot(
 		}
 		type_, found := typesByIdentity[persisted.Type]
 		if !found {
-			return fmt.Errorf("fact snapshot contains undeclared type %s", persisted.Type)
+			return fmt.Errorf(
+				"fact snapshot contains undeclared type %s",
+				persisted.Type,
+			)
 		}
 		if err := validatePersistedFact(type_, persisted.Value); err != nil {
 			return err
 		}
-		objectValues[objectFactKey{object: object, type_: type_}] = bytes.Clone(persisted.Value)
+		objectValues[objectFactKey{object: object, type_: type_}] = bytes.Clone(
+			persisted.Value,
+		)
 	}
 	for key, value := range packageValues {
 		if existing, found := s.packageValues[key]; found && !bytes.Equal(existing, value) {
-			return fmt.Errorf("%w for package fact %s", errFactSnapshotConflict, key.type_)
+			return fmt.Errorf(
+				"%w for package fact %s",
+				errFactSnapshotConflict,
+				key.type_,
+			)
 		}
 	}
 	if err := s.beginObjectFacts(analyzer, pkg); err != nil {
@@ -253,10 +290,15 @@ func decodePackageFactSnapshot(encoded []byte) (packageFactSnapshot, error) {
 		return packageFactSnapshot{}, fmt.Errorf("fact snapshot is not canonically encoded")
 	}
 	if snapshot.Version != factSnapshotVersion {
-		return packageFactSnapshot{}, fmt.Errorf("fact snapshot version %d is unsupported", snapshot.Version)
+		return packageFactSnapshot{}, fmt.Errorf(
+			"fact snapshot version %d is unsupported",
+			snapshot.Version,
+		)
 	}
-	if snapshot.Analyzer == "" || snapshot.PackagePath == "" ||
-		snapshot.PackageFacts == nil || snapshot.ObjectFacts == nil {
+	if snapshot.Analyzer == "" ||
+		snapshot.PackagePath == "" ||
+		snapshot.PackageFacts == nil ||
+		snapshot.ObjectFacts == nil {
 		return packageFactSnapshot{}, fmt.Errorf("fact snapshot identity is incomplete")
 	}
 	if err := validateFactSnapshotOrder(snapshot); err != nil {
@@ -274,16 +316,26 @@ func declaredFactTypeIdentities(
 	result := make(map[factTypeIdentity]reflect.Type, len(analyzer.FactTypes))
 	for _, declared := range analyzer.FactTypes {
 		type_ := reflect.TypeOf(declared)
-		if type_ == nil || type_.Kind() != reflect.Pointer || type_.Elem().Name() == "" ||
+		if type_ == nil ||
+			type_.Kind() != reflect.Pointer ||
+			type_.Elem().Name() == "" ||
 			type_.Elem().PkgPath() == "" {
-			return nil, fmt.Errorf("analyzer %q has an unstable fact type %T", analyzer.Name, declared)
+			return nil, fmt.Errorf(
+				"analyzer %q has an unstable fact type %T",
+				analyzer.Name,
+				declared,
+			)
 		}
 		identity := factTypeIdentity{
 			PackagePath: type_.Elem().PkgPath(),
-			Name:        type_.Elem().Name(),
+			Name: type_.Elem().Name(),
 		}
 		if _, duplicate := result[identity]; duplicate {
-			return nil, fmt.Errorf("analyzer %q has duplicate fact identity %s", analyzer.Name, identity)
+			return nil, fmt.Errorf(
+				"analyzer %q has duplicate fact identity %s",
+				analyzer.Name,
+				identity,
+			)
 		}
 		result[identity] = type_
 	}
@@ -308,14 +360,17 @@ func validatePersistedFact(type_ reflect.Type, encoded []byte) error {
 func validateFactSnapshotOrder(snapshot packageFactSnapshot) error {
 	for index := 1; index < len(snapshot.PackageFacts); index++ {
 		if !lessFactTypeIdentity(
-			snapshot.PackageFacts[index-1].Type,
+			snapshot.PackageFacts[index - 1].Type,
 			snapshot.PackageFacts[index].Type,
 		) {
 			return fmt.Errorf("fact snapshot package facts are duplicated or unordered")
 		}
 	}
 	for index := 1; index < len(snapshot.ObjectFacts); index++ {
-		if !lessPersistedObjectFact(snapshot.ObjectFacts[index-1], snapshot.ObjectFacts[index]) {
+		if !lessPersistedObjectFact(
+			snapshot.ObjectFacts[index - 1],
+			snapshot.ObjectFacts[index],
+		) {
 			return fmt.Errorf("fact snapshot object facts are duplicated or unordered")
 		}
 	}
@@ -339,4 +394,6 @@ func lessPersistedObjectFact(left, right persistedObjectFact) bool {
 	return lessFactTypeIdentity(left.Type, right.Type)
 }
 
-func (i factTypeIdentity) String() string { return i.PackagePath + "." + i.Name }
+func (i factTypeIdentity) String() string {
+	return i.PackagePath + "." + i.Name
+}

@@ -14,14 +14,14 @@ type nilnessRule struct{}
 
 func (nilnessRule) Metadata() Metadata {
 	return Metadata{
-		ID:               "nilness",
-		Summary:          "detects operations on values proven to be nil",
-		Documentation:    "Reports nil dereferences, degenerate nil comparisons, nil channel and map operations, nil panics, and invalid nil-slice conversions when SSA dominance proves the value's nilness. The implementation reuses the current x/tools nilness analyzer over Gox's shared SSA function instead of constructing a second SSA program.",
-		DefaultSeverity:  SeverityWarn,
-		Presets:          []Preset{PresetSuspicious},
+		ID: "nilness",
+		Summary: "detects operations on values proven to be nil",
+		Documentation: "Reports nil dereferences, degenerate nil comparisons, nil channel and map operations, nil panics, and invalid nil-slice conversions when SSA dominance proves the value's nilness. The implementation reuses the current x/tools nilness analyzer over Gox's shared SSA function instead of constructing a second SSA program.",
+		DefaultSeverity: SeverityWarn,
+		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
-		Requirement:      RequireSSA,
-		Categories:       []Category{CategoryCorrectness, CategorySafety},
+		Requirement: RequireSSA,
+		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"Control-flow joins may lose nilness facts, so the rule intentionally misses some defects rather than guessing.",
 			"The shared SSA program does not yet import interprocedural no-return facts, so findings that depend on a callee terminating may be missed.",
@@ -39,35 +39,40 @@ func (nilnessRule) Metadata() Metadata {
 }`,
 			},
 			{
-				Title:     "Impossible nil comparison",
+				Title: "Impossible nil comparison",
 				Incorrect: "channel := make(chan int)\nif channel == nil { use(channel) }",
-				Correct:   "channel := make(chan int)\nuse(channel)",
+				Correct: "channel := make(chan int)\nuse(channel)",
 			},
 		},
 	}
 }
 
 func (nilnessRule) RunSSA(ctx *SSAContext) ([]Finding, error) {
-	if ctx == nil || ctx.Function() == nil || ctx.SSAPackage() == nil ||
-		ctx.Package() == nil || ctx.Info() == nil || ctx.FileSet() == nil {
+	if ctx == nil ||
+		ctx.Function() == nil ||
+		ctx.SSAPackage() == nil ||
+		ctx.Package() == nil ||
+		ctx.Info() == nil ||
+		ctx.FileSet() == nil {
 		return nil, fmt.Errorf("nilness requires a complete SSA context")
 	}
-	if len(nilness.Analyzer.Requires) != 1 || nilness.Analyzer.Requires[0] != buildssa.Analyzer {
+	if len(nilness.Analyzer.Requires) != 1 ||
+		nilness.Analyzer.Requires[0] != buildssa.Analyzer {
 		return nil, fmt.Errorf("x/tools nilness prerequisite contract changed")
 	}
 
 	diagnostics := make([]goanalysis.Diagnostic, 0)
 	pass := &goanalysis.Pass{
-		Analyzer:  nilness.Analyzer,
-		Fset:      ctx.FileSet(),
-		Pkg:       ctx.Package(),
+		Analyzer: nilness.Analyzer,
+		Fset: ctx.FileSet(),
+		Pkg: ctx.Package(),
 		TypesInfo: ctx.Info(),
 		Report: func(diagnostic goanalysis.Diagnostic) {
 			diagnostics = append(diagnostics, diagnostic)
 		},
 		ResultOf: map[*goanalysis.Analyzer]any{
 			buildssa.Analyzer: &buildssa.SSA{
-				Pkg:      ctx.SSAPackage(),
+				Pkg: ctx.SSAPackage(),
 				SrcFuncs: []*ssa.Function{ctx.Function()},
 			},
 		},
@@ -90,14 +95,20 @@ func (nilnessRule) RunSSA(ctx *SSAContext) ([]Finding, error) {
 			return nil, err
 		}
 		if !validNilnessCategory(diagnostic.Category) {
-			return nil, fmt.Errorf("x/tools nilness returned unknown category %q", diagnostic.Category)
+			return nil, fmt.Errorf(
+				"x/tools nilness returned unknown category %q",
+				diagnostic.Category,
+			)
 		}
-		findings = append(findings, Finding{
-			MessageKey: diagnostic.Category,
-			Message:    diagnostic.Message,
-			Range:      range_,
-			Help:       "run `gox explain nilness` for the rule contract and limitations",
-		})
+		findings = append(
+			findings,
+			Finding{
+				MessageKey: diagnostic.Category,
+				Message: diagnostic.Message,
+				Range: range_,
+				Help: "run `gox explain nilness` for the rule contract and limitations",
+			},
+		)
 	}
 	return findings, nil
 }
@@ -111,9 +122,14 @@ func validNilnessCategory(category string) bool {
 	}
 }
 
-func nilnessDiagnosticRange(ctx *SSAContext, diagnostic goanalysis.Diagnostic) (source.Range, error) {
+func nilnessDiagnosticRange(
+	ctx *SSAContext,
+	diagnostic goanalysis.Diagnostic,
+) (source.Range, error) {
 	if !diagnostic.Pos.IsValid() {
-		return source.Range{}, fmt.Errorf("x/tools nilness returned an invalid diagnostic position")
+		return source.Range{}, fmt.Errorf(
+			"x/tools nilness returned an invalid diagnostic position",
+		)
 	}
 	if diagnostic.End.IsValid() {
 		return ctx.PositionRange(diagnostic.Pos, diagnostic.End)

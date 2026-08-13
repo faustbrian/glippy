@@ -19,63 +19,63 @@ import (
 type RejectionReason string
 
 const (
-	RejectionMissingFix    RejectionReason = "missing-fix"
-	RejectionStaleSource   RejectionReason = "stale-source"
-	RejectionSuggestion    RejectionReason = "suggestion-not-selected"
-	RejectionUnsafe        RejectionReason = "unsafe"
+	RejectionMissingFix RejectionReason = "missing-fix"
+	RejectionStaleSource RejectionReason = "stale-source"
+	RejectionSuggestion RejectionReason = "suggestion-not-selected"
+	RejectionUnsafe RejectionReason = "unsafe"
 	RejectionInvalidSafety RejectionReason = "invalid-safety"
-	RejectionInvalidRange  RejectionReason = "invalid-range"
-	RejectionInvalidText   RejectionReason = "invalid-text"
-	RejectionConflict      RejectionReason = "conflict"
-	RejectionValidation    RejectionReason = "validation"
+	RejectionInvalidRange RejectionReason = "invalid-range"
+	RejectionInvalidText RejectionReason = "invalid-text"
+	RejectionConflict RejectionReason = "conflict"
+	RejectionValidation RejectionReason = "validation"
 )
 
 // Selection chooses one named fix from one source-versioned diagnostic.
 type Selection struct {
 	Diagnostic rules.Diagnostic
-	FixName    string
+	FixName string
 }
 
 // Options controls explicit non-default safety classes and formatter policy.
 type Options struct {
 	AllowSuggestion bool
-	AllowUnsafe     bool
-	Format          goxformat.Options
-	Validate        func(*source.File) error
+	AllowUnsafe bool
+	Format goxformat.Options
+	Validate func(*source.File) error
 }
 
 // Applied records one complete named fix included in the result.
 type Applied struct {
-	RuleID  string
+	RuleID string
 	FixName string
-	Range   source.Range
+	Range source.Range
 }
 
 // Rejection records one complete named fix left unapplied.
 type Rejection struct {
-	RuleID  string
+	RuleID string
 	FixName string
-	Range   source.Range
-	Reason  RejectionReason
+	Range source.Range
+	Reason RejectionReason
 	Message string
 }
 
 // Result is one validated, formatter-normalized in-memory transaction.
 type Result struct {
-	Bytes    []byte
-	Applied  []Applied
+	Bytes []byte
+	Applied []Applied
 	Rejected []Rejection
 }
 
 type candidate struct {
 	diagnostic rules.Diagnostic
-	fix        rules.Fix
-	span       source.Range
+	fix rules.Fix
+	span source.Range
 }
 
 type candidateEdit struct {
 	candidate int
-	edit      rules.Edit
+	edit rules.Edit
 }
 
 // Coordinate validates, coordinates, applies, reparses, and formats selected fixes.
@@ -86,15 +86,20 @@ func Coordinate(file *source.File, selections []Selection, options Options) (Res
 	if !file.CanFormat() {
 		return Result{}, errors.New("fix coordination requires valid Go source")
 	}
-	if options.Format.Width <= 0 || options.Format.TabWidth <= 0 || options.Format.FitBudget <= 0 {
+	if options.Format.Width <= 0 ||
+		options.Format.TabWidth <= 0 ||
+		options.Format.FitBudget <= 0 {
 		return Result{}, errors.New("fix coordination requires valid formatter options")
 	}
 
 	input := file.Bytes()
 	ordered := slices.Clone(selections)
-	sort.Slice(ordered, func(left, right int) bool {
-		return compareSelection(ordered[left], ordered[right]) < 0
-	})
+	sort.Slice(
+		ordered,
+		func(left, right int) bool {
+			return compareSelection(ordered[left], ordered[right]) < 0
+		},
+	)
 	candidates := make([]candidate, 0, len(ordered))
 	rejected := make([]Rejection, 0)
 	for _, selected := range ordered {
@@ -110,7 +115,14 @@ func Coordinate(file *source.File, selections []Selection, options Options) (Res
 	accepted := make([]candidate, 0, len(candidates))
 	for index, prepared := range candidates {
 		if conflicts[index] {
-			rejected = append(rejected, reject(prepared, RejectionConflict, "selected fix conflicts with another edit"))
+			rejected = append(
+				rejected,
+				reject(
+					prepared,
+					RejectionConflict,
+					"selected fix conflicts with another edit",
+				),
+			)
 			continue
 		}
 		accepted = append(accepted, prepared)
@@ -123,15 +135,30 @@ func Coordinate(file *source.File, selections []Selection, options Options) (Res
 	edited := applyCandidates(input, accepted)
 	editedFile, err := source.Load(file.Path(), edited)
 	if err != nil {
-		return rejectedTransaction(input, rejected, accepted, fmt.Sprintf("fixed source did not parse: %v", err)), nil
+		return rejectedTransaction(
+			input,
+			rejected,
+			accepted,
+			fmt.Sprintf("fixed source did not parse: %v", err),
+		), nil
 	}
 	formatted, err := goxformat.File(editedFile, options.Format)
 	if err != nil {
-		return rejectedTransaction(input, rejected, accepted, fmt.Sprintf("fixed source did not format: %v", err)), nil
+		return rejectedTransaction(
+			input,
+			rejected,
+			accepted,
+			fmt.Sprintf("fixed source did not format: %v", err),
+		), nil
 	}
 	formattedFile, err := source.Load(file.Path(), formatted)
 	if err != nil {
-		return rejectedTransaction(input, rejected, accepted, fmt.Sprintf("formatted fixed source did not parse: %v", err)), nil
+		return rejectedTransaction(
+			input,
+			rejected,
+			accepted,
+			fmt.Sprintf("formatted fixed source did not parse: %v", err),
+		), nil
 	}
 	if options.Validate != nil {
 		if err := options.Validate(formattedFile); err != nil {
@@ -146,9 +173,9 @@ func Coordinate(file *source.File, selections []Selection, options Options) (Res
 	applied := make([]Applied, len(accepted))
 	for index, prepared := range accepted {
 		applied[index] = Applied{
-			RuleID:  prepared.diagnostic.RuleID,
+			RuleID: prepared.diagnostic.RuleID,
 			FixName: prepared.fix.Name,
-			Range:   prepared.span,
+			Range: prepared.span,
 		}
 	}
 	sortApplied(applied)
@@ -164,11 +191,15 @@ func prepareCandidate(
 ) (candidate, *Rejection) {
 	base := candidate{
 		diagnostic: selected.Diagnostic,
-		fix:        rules.Fix{Name: selected.FixName},
-		span:       selected.Diagnostic.Range,
+		fix: rules.Fix{Name: selected.FixName},
+		span: selected.Diagnostic.Range,
 	}
 	if selected.Diagnostic.Path != file.Path() || selected.Diagnostic.Digest != file.Digest() {
-		rejection := reject(base, RejectionStaleSource, "diagnostic source identity does not match the selected file")
+		rejection := reject(
+			base,
+			RejectionStaleSource,
+			"diagnostic source identity does not match the selected file",
+		)
 		return candidate{}, &rejection
 	}
 	matched := make([]rules.Fix, 0, 1)
@@ -178,7 +209,11 @@ func prepareCandidate(
 		}
 	}
 	if len(matched) != 1 {
-		rejection := reject(base, RejectionMissingFix, "diagnostic does not contain exactly one selected fix")
+		rejection := reject(
+			base,
+			RejectionMissingFix,
+			"diagnostic does not contain exactly one selected fix",
+		)
 		return candidate{}, &rejection
 	}
 	base.fix = matched[0]
@@ -194,11 +229,19 @@ func prepareCandidate(
 	span := source.Range{Start: len(input), End: 0}
 	for _, edit := range base.fix.Edits {
 		if !validEditRange(input, edit.Range) {
-			rejection := reject(base, RejectionInvalidRange, "selected fix contains an invalid UTF-8 byte range")
+			rejection := reject(
+				base,
+				RejectionInvalidRange,
+				"selected fix contains an invalid UTF-8 byte range",
+			)
 			return candidate{}, &rejection
 		}
 		if !utf8.ValidString(edit.NewText) {
-			rejection := reject(base, RejectionInvalidText, "selected fix replacement is not valid UTF-8")
+			rejection := reject(
+				base,
+				RejectionInvalidText,
+				"selected fix replacement is not valid UTF-8",
+			)
 			return candidate{}, &rejection
 		}
 		span.Start = min(span.Start, edit.Range.Start)
@@ -208,10 +251,7 @@ func prepareCandidate(
 	return base, nil
 }
 
-func safetyRejection(
-	safety rules.FixSafety,
-	options Options,
-) (RejectionReason, string, bool) {
+func safetyRejection(safety rules.FixSafety, options Options) (RejectionReason, string, bool) {
 	switch safety {
 	case rules.FixSafe:
 		return "", "", false
@@ -231,7 +271,9 @@ func safetyRejection(
 }
 
 func validEditRange(input []byte, sourceRange source.Range) bool {
-	if sourceRange.Start < 0 || sourceRange.End < sourceRange.Start || sourceRange.End > len(input) {
+	if sourceRange.Start < 0 ||
+		sourceRange.End < sourceRange.Start ||
+		sourceRange.End > len(input) {
 		return false
 	}
 	return byteBoundary(input, sourceRange.Start) && byteBoundary(input, sourceRange.End)
@@ -249,19 +291,30 @@ func conflictingCandidates(candidates []candidate) []bool {
 			edits = append(edits, candidateEdit{candidate: candidateIndex, edit: edit})
 		}
 	}
-	sort.Slice(edits, func(left, right int) bool {
-		first, second := edits[left], edits[right]
-		if first.edit.Range.Start != second.edit.Range.Start {
-			return first.edit.Range.Start < second.edit.Range.Start
-		}
-		if first.edit.Range.End != second.edit.Range.End {
-			return first.edit.Range.End < second.edit.Range.End
-		}
-		if order := cmp.Compare(candidates[first.candidate].diagnostic.RuleID, candidates[second.candidate].diagnostic.RuleID); order != 0 {
-			return order < 0
-		}
-		return cmp.Compare(candidates[first.candidate].fix.Name, candidates[second.candidate].fix.Name) < 0
-	})
+	sort.Slice(
+		edits,
+		func(left, right int) bool {
+			first, second := edits[left], edits[right]
+			if first.edit.Range.Start != second.edit.Range.Start {
+				return first.edit.Range.Start < second.edit.Range.Start
+			}
+			if first.edit.Range.End != second.edit.Range.End {
+				return first.edit.Range.End < second.edit.Range.End
+			}
+			if order := cmp.Compare(
+				candidates[first.candidate].diagnostic.RuleID,
+				candidates[second.candidate].diagnostic.RuleID,
+			);
+				order != 0 {
+				return order < 0
+			}
+			return cmp.Compare(
+				candidates[first.candidate].fix.Name,
+				candidates[second.candidate].fix.Name,
+			) <
+				0
+		},
+	)
 
 	insertions := make(map[int]int)
 	activeCandidate := 0
@@ -305,23 +358,38 @@ func applyCandidates(input []byte, candidates []candidate) []byte {
 			edits = append(edits, candidateEdit{candidate: candidateIndex, edit: edit})
 		}
 	}
-	sort.Slice(edits, func(left, right int) bool {
-		first, second := edits[left], edits[right]
-		if first.edit.Range.Start != second.edit.Range.Start {
-			return first.edit.Range.Start > second.edit.Range.Start
-		}
-		if first.edit.Range.End != second.edit.Range.End {
-			return first.edit.Range.End > second.edit.Range.End
-		}
-		if order := cmp.Compare(candidates[first.candidate].diagnostic.RuleID, candidates[second.candidate].diagnostic.RuleID); order != 0 {
-			return order < 0
-		}
-		return cmp.Compare(candidates[first.candidate].fix.Name, candidates[second.candidate].fix.Name) < 0
-	})
+	sort.Slice(
+		edits,
+		func(left, right int) bool {
+			first, second := edits[left], edits[right]
+			if first.edit.Range.Start != second.edit.Range.Start {
+				return first.edit.Range.Start > second.edit.Range.Start
+			}
+			if first.edit.Range.End != second.edit.Range.End {
+				return first.edit.Range.End > second.edit.Range.End
+			}
+			if order := cmp.Compare(
+				candidates[first.candidate].diagnostic.RuleID,
+				candidates[second.candidate].diagnostic.RuleID,
+			);
+				order != 0 {
+				return order < 0
+			}
+			return cmp.Compare(
+				candidates[first.candidate].fix.Name,
+				candidates[second.candidate].fix.Name,
+			) <
+				0
+		},
+	)
 	result := bytes.Clone(input)
 	for _, selected := range edits {
 		edit := selected.edit
-		next := make([]byte, 0, len(result)-(edit.Range.End-edit.Range.Start)+len(edit.NewText))
+		next := make(
+			[]byte,
+			0,
+			len(result) - (edit.Range.End - edit.Range.Start) + len(edit.NewText),
+		)
 		next = append(next, result[:edit.Range.Start]...)
 		next = append(next, edit.NewText...)
 		next = append(next, result[edit.Range.End:]...)
@@ -345,10 +413,10 @@ func rejectedTransaction(
 
 func reject(prepared candidate, reason RejectionReason, message string) Rejection {
 	return Rejection{
-		RuleID:  prepared.diagnostic.RuleID,
+		RuleID: prepared.diagnostic.RuleID,
 		FixName: prepared.fix.Name,
-		Range:   prepared.span,
-		Reason:  reason,
+		Range: prepared.span,
+		Reason: reason,
 		Message: message,
 	}
 }
@@ -357,10 +425,12 @@ func compareSelection(left, right Selection) int {
 	if order := cmp.Compare(left.Diagnostic.Path, right.Diagnostic.Path); order != 0 {
 		return order
 	}
-	if order := bytes.Compare(left.Diagnostic.Digest[:], right.Diagnostic.Digest[:]); order != 0 {
+	if order := bytes.Compare(left.Diagnostic.Digest[:], right.Diagnostic.Digest[:]);
+		order != 0 {
 		return order
 	}
-	if order := cmp.Compare(left.Diagnostic.Range.Start, right.Diagnostic.Range.Start); order != 0 {
+	if order := cmp.Compare(left.Diagnostic.Range.Start, right.Diagnostic.Range.Start);
+		order != 0 {
 		return order
 	}
 	if order := cmp.Compare(left.Diagnostic.Range.End, right.Diagnostic.Range.End); order != 0 {
@@ -373,39 +443,45 @@ func compareSelection(left, right Selection) int {
 }
 
 func sortApplied(applied []Applied) {
-	sort.Slice(applied, func(left, right int) bool {
-		first, second := applied[left], applied[right]
-		if first.Range.Start != second.Range.Start {
-			return first.Range.Start < second.Range.Start
-		}
-		if first.Range.End != second.Range.End {
-			return first.Range.End < second.Range.End
-		}
-		if order := cmp.Compare(first.RuleID, second.RuleID); order != 0 {
-			return order < 0
-		}
-		return cmp.Compare(first.FixName, second.FixName) < 0
-	})
+	sort.Slice(
+		applied,
+		func(left, right int) bool {
+			first, second := applied[left], applied[right]
+			if first.Range.Start != second.Range.Start {
+				return first.Range.Start < second.Range.Start
+			}
+			if first.Range.End != second.Range.End {
+				return first.Range.End < second.Range.End
+			}
+			if order := cmp.Compare(first.RuleID, second.RuleID); order != 0 {
+				return order < 0
+			}
+			return cmp.Compare(first.FixName, second.FixName) < 0
+		},
+	)
 }
 
 func sortRejections(rejected []Rejection) {
-	sort.Slice(rejected, func(left, right int) bool {
-		first, second := rejected[left], rejected[right]
-		if first.Range.Start != second.Range.Start {
-			return first.Range.Start < second.Range.Start
-		}
-		if first.Range.End != second.Range.End {
-			return first.Range.End < second.Range.End
-		}
-		if order := cmp.Compare(first.RuleID, second.RuleID); order != 0 {
-			return order < 0
-		}
-		if order := cmp.Compare(first.FixName, second.FixName); order != 0 {
-			return order < 0
-		}
-		if order := cmp.Compare(first.Reason, second.Reason); order != 0 {
-			return order < 0
-		}
-		return cmp.Compare(first.Message, second.Message) < 0
-	})
+	sort.Slice(
+		rejected,
+		func(left, right int) bool {
+			first, second := rejected[left], rejected[right]
+			if first.Range.Start != second.Range.Start {
+				return first.Range.Start < second.Range.Start
+			}
+			if first.Range.End != second.Range.End {
+				return first.Range.End < second.Range.End
+			}
+			if order := cmp.Compare(first.RuleID, second.RuleID); order != 0 {
+				return order < 0
+			}
+			if order := cmp.Compare(first.FixName, second.FixName); order != 0 {
+				return order < 0
+			}
+			if order := cmp.Compare(first.Reason, second.Reason); order != 0 {
+				return order < 0
+			}
+			return cmp.Compare(first.Message, second.Message) < 0
+		},
+	)
 }

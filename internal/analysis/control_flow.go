@@ -13,15 +13,15 @@ import (
 )
 
 type activeControlFlowRule struct {
-	rule     rules.ControlFlowRule
+	rule rules.ControlFlowRule
 	metadata rules.Metadata
 	severity rules.Severity
-	options  rules.OptionSet
+	options rules.OptionSet
 }
 
 type functionBody struct {
 	function ast.Node
-	body     *ast.BlockStmt
+	body *ast.BlockStmt
 }
 
 // RunControlFlow executes selected CFG-tier rules once per function over one
@@ -116,7 +116,11 @@ func RunControlFlow(
 						finding,
 					)
 					if err != nil {
-						return nil, fmt.Errorf("%s: %w", active.metadata.ID, err)
+						return nil, fmt.Errorf(
+							"%s: %w",
+							active.metadata.ID,
+							err,
+						)
 					}
 					diagnostics = append(diagnostics, diagnostic)
 				}
@@ -131,7 +135,12 @@ func prepareControlFlowRules(
 	selection []rules.Selection,
 ) ([]activeControlFlowRule, error) {
 	ordered := slices.Clone(selection)
-	sort.Slice(ordered, func(left, right int) bool { return ordered[left].ID < ordered[right].ID })
+	sort.Slice(
+		ordered,
+		func(left, right int) bool {
+			return ordered[left].ID < ordered[right].ID
+		},
+	)
 	activeRules := make([]activeControlFlowRule, 0, len(ordered))
 	previousID := ""
 	for _, selected := range ordered {
@@ -139,8 +148,13 @@ func prepareControlFlowRules(
 			return nil, fmt.Errorf("selected rule %q more than once", selected.ID)
 		}
 		previousID = selected.ID
-		if selected.Severity != rules.SeverityWarn && selected.Severity != rules.SeverityError {
-			return nil, fmt.Errorf("selected rule %q has invalid severity %q", selected.ID, selected.Severity)
+		if selected.Severity != rules.SeverityWarn &&
+			selected.Severity != rules.SeverityError {
+			return nil, fmt.Errorf(
+				"selected rule %q has invalid severity %q",
+				selected.ID,
+				selected.Severity,
+			)
 		}
 		nativeRule, found := registry.Lookup(selected.ID)
 		if !found {
@@ -148,7 +162,10 @@ func prepareControlFlowRules(
 		}
 		metadata, _ := registry.Metadata(selected.ID)
 		if selected.Requirement != metadata.Requirement {
-			return nil, fmt.Errorf("selected rule %q requirement does not match registry", selected.ID)
+			return nil, fmt.Errorf(
+				"selected rule %q requirement does not match registry",
+				selected.ID,
+			)
 		}
 		if metadata.Requirement != rules.RequireControlFlow {
 			return nil, fmt.Errorf(
@@ -159,15 +176,26 @@ func prepareControlFlowRules(
 		}
 		controlFlowRule, found := nativeRule.(rules.ControlFlowRule)
 		if !found {
-			return nil, fmt.Errorf("selected rule %q does not implement control-flow execution", selected.ID)
+			return nil, fmt.Errorf(
+				"selected rule %q does not implement control-flow execution",
+				selected.ID,
+			)
 		}
 		if implementsOtherExecution(nativeRule) {
-			return nil, fmt.Errorf("selected rule %q implements ambiguous control-flow execution", selected.ID)
+			return nil, fmt.Errorf(
+				"selected rule %q implements ambiguous control-flow execution",
+				selected.ID,
+			)
 		}
-		activeRules = append(activeRules, activeControlFlowRule{
-			rule: controlFlowRule, metadata: metadata, severity: selected.Severity,
-			options: selected.Options,
-		})
+		activeRules = append(
+			activeRules,
+			activeControlFlowRule{
+				rule: controlFlowRule,
+				metadata: metadata,
+				severity: selected.Severity,
+				options: selected.Options,
+			},
+		)
 	}
 	return activeRules, nil
 }
@@ -199,19 +227,28 @@ func eligibleControlFlowRules(
 
 func functionBodies(file *ast.File) []functionBody {
 	functions := make([]functionBody, 0)
-	ast.Inspect(file, func(node ast.Node) bool {
-		switch node := node.(type) {
-		case *ast.FuncDecl:
-			if node.Body != nil {
-				functions = append(functions, functionBody{function: node, body: node.Body})
+	ast.Inspect(
+		file,
+		func(node ast.Node) bool {
+			switch node := node.(type) {
+			case *ast.FuncDecl:
+				if node.Body != nil {
+					functions = append(
+						functions,
+						functionBody{function: node, body: node.Body},
+					)
+				}
+			case *ast.FuncLit:
+				if node.Body != nil {
+					functions = append(
+						functions,
+						functionBody{function: node, body: node.Body},
+					)
+				}
 			}
-		case *ast.FuncLit:
-			if node.Body != nil {
-				functions = append(functions, functionBody{function: node, body: node.Body})
-			}
-		}
-		return true
-	})
+			return true
+		},
+	)
 	return functions
 }
 

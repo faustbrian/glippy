@@ -13,35 +13,39 @@ type deferInInfiniteLoopRule struct{}
 
 func (deferInInfiniteLoopRule) Metadata() Metadata {
 	return Metadata{
-		ID:               "defer-in-infinite-loop",
-		Summary:          "detects defers that cannot run inside infinite loops",
-		Documentation:    "A defer statement schedules work for function return or panic unwinding, not for the end of a loop iteration. This rule reports a defer in a conditionless for loop when the function control-flow graph cannot reach a return, built-in panic, or runtime.Goexit after that defer.",
-		DefaultSeverity:  SeverityWarn,
-		Presets:          []Preset{PresetSuspicious},
+		ID: "defer-in-infinite-loop",
+		Summary: "detects defers that cannot run inside infinite loops",
+		Documentation: "A defer statement schedules work for function return or panic unwinding, not for the end of a loop iteration. This rule reports a defer in a conditionless for loop when the function control-flow graph cannot reach a return, built-in panic, or runtime.Goexit after that defer.",
+		DefaultSeverity: SeverityWarn,
+		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
-		Requirement:      RequireControlFlow,
-		Categories:       []Category{CategoryCorrectness, CategorySuspicious},
+		Requirement: RequireControlFlow,
+		Categories: []Category{CategoryCorrectness, CategorySuspicious},
 		KnownLimitations: []string{
 			"Calls to functions that panic, terminate the goroutine, or terminate the process are not treated as exits unless they are the predeclared panic function or runtime.Goexit.",
 			"Generated files and packages with type errors are excluded.",
 		},
-		Examples: []Example{{
-			Title: "Release per-iteration resources explicitly",
-			Incorrect: `for {
+		Examples: []Example{
+			{
+				Title: "Release per-iteration resources explicitly",
+				Incorrect: `for {
 	defer cleanup()
 	work()
 }`,
-			Correct: `for {
+				Correct: `for {
 	work()
 	cleanup()
 }`,
-		}},
+			},
+		},
 	}
 }
 
 func (deferInInfiniteLoopRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding, error) {
 	if ctx == nil || ctx.Body() == nil || ctx.Graph() == nil || ctx.Info() == nil {
-		return nil, fmt.Errorf("defer-in-infinite-loop requires a complete control-flow context")
+		return nil, fmt.Errorf(
+			"defer-in-infinite-loop requires a complete control-flow context",
+		)
 	}
 
 	candidates := conditionlessLoopDefers(ctx.Body())
@@ -56,16 +60,22 @@ func (deferInInfiniteLoopRule) RunControlFlow(ctx *ControlFlowContext) ([]Findin
 		if !live || exitReachable[block] {
 			continue
 		}
-		range_, err := ctx.PositionRange(statement.Defer, statement.Defer+token.Pos(len("defer")))
+		range_, err := ctx.PositionRange(
+			statement.Defer,
+			statement.Defer + token.Pos(len("defer")),
+		)
 		if err != nil {
 			return nil, err
 		}
-		findings = append(findings, Finding{
-			MessageKey: "defer-never-runs",
-			Message:    "defer in this infinite loop cannot reach function exit and will never run",
-			Range:      range_,
-			Help:       "invoke the cleanup explicitly in each iteration or make a function exit reachable",
-		})
+		findings = append(
+			findings,
+			Finding{
+				MessageKey: "defer-never-runs",
+				Message: "defer in this infinite loop cannot reach function exit and will never run",
+				Range: range_,
+				Help: "invoke the cleanup explicitly in each iteration or make a function exit reachable",
+			},
+		)
 	}
 	return findings, nil
 }
@@ -74,29 +84,33 @@ func conditionlessLoopDefers(body *ast.BlockStmt) []*ast.DeferStmt {
 	result := make([]*ast.DeferStmt, 0)
 	conditionlessDepth := 0
 	enteredLoops := make([]bool, 0)
-	ast.Inspect(body, func(node ast.Node) bool {
-		if node == nil {
-			last := len(enteredLoops) - 1
-			if enteredLoops[last] {
-				conditionlessDepth--
+	ast.Inspect(
+		body,
+		func(node ast.Node) bool {
+			if node == nil {
+				last := len(enteredLoops) - 1
+				if enteredLoops[last] {
+					conditionlessDepth--
+				}
+				enteredLoops = enteredLoops[:last]
+				return true
 			}
-			enteredLoops = enteredLoops[:last]
+			if _, nestedFunction := node.(*ast.FuncLit); nestedFunction {
+				return false
+			}
+			loop, isLoop := node.(*ast.ForStmt)
+			enteredLoop := isLoop && loop.Cond == nil
+			enteredLoops = append(enteredLoops, enteredLoop)
+			if enteredLoop {
+				conditionlessDepth++
+			}
+			if statement, isDefer := node.(*ast.DeferStmt);
+				isDefer && conditionlessDepth > 0 {
+				result = append(result, statement)
+			}
 			return true
-		}
-		if _, nestedFunction := node.(*ast.FuncLit); nestedFunction {
-			return false
-		}
-		loop, isLoop := node.(*ast.ForStmt)
-		enteredLoop := isLoop && loop.Cond == nil
-		enteredLoops = append(enteredLoops, enteredLoop)
-		if enteredLoop {
-			conditionlessDepth++
-		}
-		if statement, isDefer := node.(*ast.DeferStmt); isDefer && conditionlessDepth > 0 {
-			result = append(result, statement)
-		}
-		return true
-	})
+		},
+	)
 	return result
 }
 
@@ -134,8 +148,8 @@ func blocksReachingDeferExecution(graph *cfg.CFG, info *types.Info) map[*cfg.Blo
 		}
 	}
 	for len(work) > 0 {
-		block := work[len(work)-1]
-		work = work[:len(work)-1]
+		block := work[len(work) - 1]
+		work = work[:len(work) - 1]
 		for _, predecessor := range predecessors[block] {
 			if reachesExit[predecessor] {
 				continue
@@ -176,6 +190,8 @@ func callExecutesDefers(call *ast.CallExpr, info *types.Info) bool {
 		return true
 	}
 	functionObject, ok := object.(*types.Func)
-	return ok && functionObject.Pkg() != nil && functionObject.Pkg().Path() == "runtime" &&
+	return ok &&
+		functionObject.Pkg() != nil &&
+		functionObject.Pkg().Path() == "runtime" &&
 		functionObject.Name() == "Goexit"
 }

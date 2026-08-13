@@ -157,9 +157,11 @@ return first || //nolint:example
 
 An ordinary assignment keeps its operator and first right-hand expression
 together. If that expression is a call, the argument list breaks independently
-rather than moving the callee away from `:=` or `=`. A line comment after the
-assignment operator is the exception and forces the right-hand side to the next
-line.
+rather than moving the callee away from `:=` or `=`. A selector-chain target
+that fits through the assignment operator remains flat when the right-hand side
+breaks; an independently over-width target still uses the selector-chain broken
+form. A line comment after the assignment operator is the exception and forces
+the right-hand side to the next line.
 
 A single selector remains atomic. A selector chain that does not fit breaks
 after each dot with one continuation indentation level. The tested chain is

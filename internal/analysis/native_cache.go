@@ -19,33 +19,33 @@ import (
 const nativePackageCacheEntryVersion = 1
 
 type nativePackageCacheEntry struct {
-	Version     int                         `json:"version"`
-	Requirement rules.Requirement           `json:"requirement"`
-	Rules       []nativeRuleSnapshot        `json:"rules"`
+	Version int `json:"version"`
+	Requirement rules.Requirement `json:"requirement"`
+	Rules []nativeRuleSnapshot `json:"rules"`
 	Diagnostics []nativePersistedDiagnostic `json:"diagnostics"`
 }
 
 type nativeRuleSnapshot struct {
-	ID                       string              `json:"id"`
-	Severity                 rules.Severity      `json:"severity"`
-	Requirement              rules.Requirement   `json:"requirement"`
-	Execution                string              `json:"execution"`
-	NodeInterests            []rules.NodeKind    `json:"nodeInterests"`
-	RequiresDependencySyntax bool                `json:"requiresDependencySyntax"`
-	RunOnGenerated           bool                `json:"runOnGenerated"`
-	RunDespiteTypeErrors     bool                `json:"runDespiteTypeErrors"`
-	MinimumGoVersion         string              `json:"minimumGoVersion"`
-	Fixes                    []nativeFixSnapshot `json:"fixes"`
-	OptionsDigest            string              `json:"optionsDigest"`
+	ID string `json:"id"`
+	Severity rules.Severity `json:"severity"`
+	Requirement rules.Requirement `json:"requirement"`
+	Execution string `json:"execution"`
+	NodeInterests []rules.NodeKind `json:"nodeInterests"`
+	RequiresDependencySyntax bool `json:"requiresDependencySyntax"`
+	RunOnGenerated bool `json:"runOnGenerated"`
+	RunDespiteTypeErrors bool `json:"runDespiteTypeErrors"`
+	MinimumGoVersion string `json:"minimumGoVersion"`
+	Fixes []nativeFixSnapshot `json:"fixes"`
+	OptionsDigest string `json:"optionsDigest"`
 }
 
 type nativeFixSnapshot struct {
-	Name   string          `json:"name"`
+	Name string `json:"name"`
 	Safety rules.FixSafety `json:"safety"`
 }
 
 type nativePersistedDiagnostic struct {
-	PackageID  string              `json:"packageId"`
+	PackageID string `json:"packageId"`
 	Diagnostic persistedDiagnostic `json:"diagnostic"`
 }
 
@@ -59,7 +59,11 @@ func runNativePackageAnalysis(
 	controlFlowSelection []rules.Selection,
 	ssaSelection []rules.Selection,
 ) ([]rules.Diagnostic, error) {
-	selection := make([]rules.Selection, 0, len(typesSelection)+len(controlFlowSelection)+len(ssaSelection))
+	selection := make(
+		[]rules.Selection,
+		0,
+		len(typesSelection) + len(controlFlowSelection) + len(ssaSelection),
+	)
 	selection = append(selection, typesSelection...)
 	selection = append(selection, controlFlowSelection...)
 	selection = append(selection, ssaSelection...)
@@ -110,14 +114,23 @@ func runNativePackageAnalysis(
 	if err != nil {
 		return nil, err
 	}
-	diagnostics := make([]rules.Diagnostic, 0, len(typedDiagnostics)+len(controlFlowDiagnostics)+len(ssaDiagnostics))
+	diagnostics := make(
+		[]rules.Diagnostic,
+		0,
+		len(typedDiagnostics) + len(controlFlowDiagnostics) + len(ssaDiagnostics),
+	)
 	diagnostics = append(diagnostics, typedDiagnostics...)
 	diagnostics = append(diagnostics, controlFlowDiagnostics...)
 	diagnostics = append(diagnostics, ssaDiagnostics...)
 	diagnostics = OrderDiagnostics(diagnostics)
 
 	if cacheable {
-		encoded, err := encodeNativePackageCacheEntry(selection, snapshots, loaded, diagnostics)
+		encoded, err := encodeNativePackageCacheEntry(
+			selection,
+			snapshots,
+			loaded,
+			diagnostics,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -138,19 +151,21 @@ func nativePackageCacheKey(
 	if plan == nil {
 		return cache.Key{}, false
 	}
-	key, err := buildPackageCacheKey(packageCacheKeyInput{
-		Namespace:       "native-analysis-v1",
-		ToolVersion:     plan.options.ToolVersion,
-		BuildGoVersion:  plan.options.BuildGoVersion,
-		SourceGoVersion: plan.options.SourceGoVersion,
-		Configuration:   plan.options.Configuration,
-		Rules:           plan.rules,
-		CGOEnabled:      plan.options.CGOEnabled,
-		FormatterMode:   plan.options.FormatterMode,
-		LoadOptions:     loadOptions,
-		Loaded:          loaded,
-		Facts:           map[string]cache.Digest{},
-	})
+	key, err := buildPackageCacheKey(
+		packageCacheKeyInput{
+			Namespace: "native-analysis-v1",
+			ToolVersion: plan.options.ToolVersion,
+			BuildGoVersion: plan.options.BuildGoVersion,
+			SourceGoVersion: plan.options.SourceGoVersion,
+			Configuration: plan.options.Configuration,
+			Rules: plan.rules,
+			CGOEnabled: plan.options.CGOEnabled,
+			FormatterMode: plan.options.FormatterMode,
+			LoadOptions: loadOptions,
+			Loaded: loaded,
+			Facts: map[string]cache.Digest{},
+		},
+	)
 	if err != nil {
 		return cache.Key{}, false
 	}
@@ -172,16 +187,28 @@ func nativeRuleSnapshots(
 	if _, err := prepareSSARules(registry, ssaSelection); err != nil {
 		return nil, err
 	}
-	selection := make([]rules.Selection, 0, len(typesSelection)+len(controlFlowSelection)+len(ssaSelection))
+	selection := make(
+		[]rules.Selection,
+		0,
+		len(typesSelection) + len(controlFlowSelection) + len(ssaSelection),
+	)
 	selection = append(selection, typesSelection...)
 	selection = append(selection, controlFlowSelection...)
 	selection = append(selection, ssaSelection...)
-	sort.Slice(selection, func(left, right int) bool { return selection[left].ID < selection[right].ID })
+	sort.Slice(
+		selection,
+		func(left, right int) bool {
+			return selection[left].ID < selection[right].ID
+		},
+	)
 	snapshots := make([]nativeRuleSnapshot, len(selection))
 	for index, selected := range selection {
 		rule, found := registry.Lookup(selected.ID)
 		if !found {
-			return nil, fmt.Errorf("native analysis cache selected rule %q is unknown", selected.ID)
+			return nil, fmt.Errorf(
+				"native analysis cache selected rule %q is unknown",
+				selected.ID,
+			)
 		}
 		metadata, _ := registry.Metadata(selected.ID)
 		execution := ""
@@ -197,7 +224,10 @@ func nativeRuleSnapshots(
 		case rules.RequireSSA:
 			execution = "ssa"
 		default:
-			return nil, fmt.Errorf("native analysis cache selected rule %q has invalid requirement", selected.ID)
+			return nil, fmt.Errorf(
+				"native analysis cache selected rule %q has invalid requirement",
+				selected.ID,
+			)
 		}
 		fixes := make([]nativeFixSnapshot, len(metadata.Fixes))
 		for fixIndex, fix := range metadata.Fixes {
@@ -205,17 +235,17 @@ func nativeRuleSnapshots(
 		}
 		optionsDigest := cache.DigestOf(selected.Options.CanonicalBytes())
 		snapshots[index] = nativeRuleSnapshot{
-			ID:                       selected.ID,
-			Severity:                 selected.Severity,
-			Requirement:              selected.Requirement,
-			Execution:                execution,
-			NodeInterests:            slices.Clone(metadata.NodeInterests),
+			ID: selected.ID,
+			Severity: selected.Severity,
+			Requirement: selected.Requirement,
+			Execution: execution,
+			NodeInterests: slices.Clone(metadata.NodeInterests),
 			RequiresDependencySyntax: metadata.RequiresDependencySyntax,
-			RunOnGenerated:           metadata.RunOnGenerated,
-			RunDespiteTypeErrors:     metadata.RunDespiteTypeErrors,
-			MinimumGoVersion:         metadata.MinimumGoVersion,
-			Fixes:                    fixes,
-			OptionsDigest:            hex.EncodeToString(optionsDigest[:]),
+			RunOnGenerated: metadata.RunOnGenerated,
+			RunDespiteTypeErrors: metadata.RunDespiteTypeErrors,
+			MinimumGoVersion: metadata.MinimumGoVersion,
+			Fixes: fixes,
+			OptionsDigest: hex.EncodeToString(optionsDigest[:]),
 		}
 	}
 	return snapshots, nil
@@ -254,9 +284,9 @@ func encodeNativePackageCacheEntry(
 		return nil, err
 	}
 	entry := nativePackageCacheEntry{
-		Version:     nativePackageCacheEntryVersion,
+		Version: nativePackageCacheEntryVersion,
 		Requirement: rules.MaximumRequirement(selection),
-		Rules:       slices.Clone(snapshots),
+		Rules: slices.Clone(snapshots),
 		Diagnostics: make([]nativePersistedDiagnostic, len(diagnostics)),
 	}
 	for index, diagnostic := range diagnostics {
@@ -265,7 +295,7 @@ func encodeNativePackageCacheEntry(
 			return nil, fmt.Errorf("native diagnostic %d source is not owned", index)
 		}
 		entry.Diagnostics[index] = nativePersistedDiagnostic{
-			PackageID:  owner,
+			PackageID: owner,
 			Diagnostic: persistDiagnostic(diagnostic),
 		}
 	}
@@ -291,7 +321,9 @@ func restoreNativePackageCacheEntry(
 	encoded []byte,
 ) ([]rules.Diagnostic, error) {
 	if registry == nil || len(selection) == 0 || len(snapshots) != len(selection) {
-		return nil, fmt.Errorf("restore native analysis cache entry requires selected rules")
+		return nil, fmt.Errorf(
+			"restore native analysis cache entry requires selected rules",
+		)
 	}
 	entry, err := decodeNativePackageCacheEntry(encoded)
 	if err != nil {
@@ -314,18 +346,31 @@ func restoreNativePackageCacheEntry(
 	active := make(map[string]activeRule, len(selection))
 	for _, selected := range selection {
 		if _, duplicate := active[selected.ID]; duplicate {
-			return nil, fmt.Errorf("native analysis cache selected rule %q is duplicated", selected.ID)
+			return nil, fmt.Errorf(
+				"native analysis cache selected rule %q is duplicated",
+				selected.ID,
+			)
 		}
 		rule, found := registry.Lookup(selected.ID)
 		if !found {
-			return nil, fmt.Errorf("native analysis cache selected rule %q is unknown", selected.ID)
+			return nil, fmt.Errorf(
+				"native analysis cache selected rule %q is unknown",
+				selected.ID,
+			)
 		}
 		if _, adapted := rule.(*packageAnalyzerRule); adapted {
-			return nil, fmt.Errorf("native analysis cache selected rule %q is adapted", selected.ID)
+			return nil, fmt.Errorf(
+				"native analysis cache selected rule %q is adapted",
+				selected.ID,
+			)
 		}
 		metadata, _ := registry.Metadata(selected.ID)
-		if metadata.Requirement != selected.Requirement || metadata.Requirement < rules.RequireTypes {
-			return nil, fmt.Errorf("native analysis cache selected rule %q has stale metadata", selected.ID)
+		if metadata.Requirement != selected.Requirement ||
+			metadata.Requirement < rules.RequireTypes {
+			return nil, fmt.Errorf(
+				"native analysis cache selected rule %q has stale metadata",
+				selected.ID,
+			)
 		}
 		active[selected.ID] = activeRule{metadata: metadata, severity: selected.Severity}
 	}
@@ -334,37 +379,65 @@ func restoreNativePackageCacheEntry(
 	for index, persisted := range entry.Diagnostics {
 		diagnostic, err := restorePersistedDiagnostic(persisted.Diagnostic)
 		if err != nil {
-			return nil, fmt.Errorf("restore cached native diagnostic %d: %w", index, err)
+			return nil, fmt.Errorf(
+				"restore cached native diagnostic %d: %w",
+				index,
+				err,
+			)
 		}
 		execution, found := active[diagnostic.RuleID]
 		if !found {
-			return nil, fmt.Errorf("cached native diagnostic %d rule is not selected", index)
+			return nil, fmt.Errorf(
+				"cached native diagnostic %d rule is not selected",
+				index,
+			)
 		}
 		if owner, found := owners[diagnostic.Path]; !found || owner != persisted.PackageID {
-			return nil, fmt.Errorf("cached native diagnostic %d source is not owned", index)
+			return nil, fmt.Errorf(
+				"cached native diagnostic %d source is not owned",
+				index,
+			)
 		}
 		file, found := loaded.Sources.Lookup(diagnostic.Path)
 		if !found {
-			return nil, fmt.Errorf("cached native diagnostic %d source is missing", index)
+			return nil, fmt.Errorf(
+				"cached native diagnostic %d source is missing",
+				index,
+			)
 		}
 		if file.Metadata().Generated && !execution.metadata.RunOnGenerated {
-			return nil, fmt.Errorf("cached native diagnostic %d is in an ineligible generated source", index)
+			return nil, fmt.Errorf(
+				"cached native diagnostic %d is in an ineligible generated source",
+				index,
+			)
 		}
 		finding := rules.Finding{
 			MessageKey: diagnostic.MessageKey,
-			Message:    diagnostic.Message,
-			Range:      diagnostic.Range,
-			Related:    diagnostic.Related,
-			Notes:      diagnostic.Notes,
-			Help:       diagnostic.Help,
-			Fixes:      diagnostic.Fixes,
+			Message: diagnostic.Message,
+			Range: diagnostic.Range,
+			Related: diagnostic.Related,
+			Notes: diagnostic.Notes,
+			Help: diagnostic.Help,
+			Fixes: diagnostic.Fixes,
 		}
-		validated, err := diagnosticForFinding(file, execution.metadata, execution.severity, finding)
+		validated, err := diagnosticForFinding(
+			file,
+			execution.metadata,
+			execution.severity,
+			finding,
+		)
 		if err != nil {
-			return nil, fmt.Errorf("validate cached native diagnostic %d: %w", index, err)
+			return nil, fmt.Errorf(
+				"validate cached native diagnostic %d: %w",
+				index,
+				err,
+			)
 		}
 		if !reflect.DeepEqual(validated, diagnostic) {
-			return nil, fmt.Errorf("cached native diagnostic %d identity is stale", index)
+			return nil, fmt.Errorf(
+				"cached native diagnostic %d identity is stale",
+				index,
+			)
 		}
 		diagnostics[index] = diagnostic
 	}
@@ -386,25 +459,42 @@ func decodeNativePackageCacheEntry(encoded []byte) (nativePackageCacheEntry, err
 	decoder.DisallowUnknownFields()
 	var entry nativePackageCacheEntry
 	if err := decoder.Decode(&entry); err != nil {
-		return nativePackageCacheEntry{}, fmt.Errorf("decode native analysis cache entry: %w", err)
+		return nativePackageCacheEntry{}, fmt.Errorf(
+			"decode native analysis cache entry: %w",
+			err,
+		)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return nativePackageCacheEntry{}, fmt.Errorf("decode native analysis cache entry trailing data")
+		return nativePackageCacheEntry{}, fmt.Errorf(
+			"decode native analysis cache entry trailing data",
+		)
 	}
 	canonical, err := json.Marshal(entry)
 	if err != nil {
-		return nativePackageCacheEntry{}, fmt.Errorf("re-encode native analysis cache entry: %w", err)
+		return nativePackageCacheEntry{}, fmt.Errorf(
+			"re-encode native analysis cache entry: %w",
+			err,
+		)
 	}
 	if !bytes.Equal(canonical, encoded) {
-		return nativePackageCacheEntry{}, fmt.Errorf("native analysis cache entry is not canonically encoded")
+		return nativePackageCacheEntry{}, fmt.Errorf(
+			"native analysis cache entry is not canonically encoded",
+		)
 	}
 	if entry.Version != nativePackageCacheEntryVersion {
-		return nativePackageCacheEntry{}, fmt.Errorf("native analysis cache entry version %d is unsupported", entry.Version)
+		return nativePackageCacheEntry{}, fmt.Errorf(
+			"native analysis cache entry version %d is unsupported",
+			entry.Version,
+		)
 	}
-	if entry.Requirement < rules.RequireTypes || entry.Requirement > rules.RequireSSA ||
-		entry.Rules == nil || entry.Diagnostics == nil {
-		return nativePackageCacheEntry{}, fmt.Errorf("native analysis cache entry identity is incomplete")
+	if entry.Requirement < rules.RequireTypes ||
+		entry.Requirement > rules.RequireSSA ||
+		entry.Rules == nil ||
+		entry.Diagnostics == nil {
+		return nativePackageCacheEntry{}, fmt.Errorf(
+			"native analysis cache entry identity is incomplete",
+		)
 	}
 	return entry, nil
 }

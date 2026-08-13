@@ -18,38 +18,35 @@ import (
 // temporaries older than an explicit cutoff. A zero size field leaves that
 // dimension unlimited; at least one positive size limit is required.
 type PruneOptions struct {
-	MaxEntries           int
-	MaxBytes             int64
+	MaxEntries int
+	MaxBytes int64
 	StaleTemporaryBefore time.Time
 }
 
 // PruneResult reports one best-effort snapshot of canonical cache entries.
 // Concurrent stores may change the root after it is scanned.
 type PruneResult struct {
-	EntriesBefore    int
-	BytesBefore      int64
-	EntriesRemoved   int
-	BytesRemoved     int64
-	CorruptRemoved   int
+	EntriesBefore int
+	BytesBefore int64
+	EntriesRemoved int
+	BytesRemoved int64
+	CorruptRemoved int
 	TemporaryRemoved int
-	EntriesAfter     int
-	BytesAfter       int64
+	EntriesAfter int
+	BytesAfter int64
 }
 
 type pruneCandidate struct {
-	key      Key
+	key Key
 	modified time.Time
-	size     int64
+	size int64
 }
 
 // Prune removes eligible stale publication temporaries and canonical corrupt
 // entries, then evicts the oldest valid entries until both configured limits
 // are satisfied. Publication time is represented by file modification time;
 // equal times are ordered by key.
-func (s *Store) Prune(
-	ctx context.Context,
-	options PruneOptions,
-) (PruneResult, error) {
+func (s *Store) Prune(ctx context.Context, options PruneOptions) (PruneResult, error) {
 	var result PruneResult
 	if ctx == nil {
 		return result, fmt.Errorf("cache prune requires a context")
@@ -79,12 +76,15 @@ func (s *Store) Prune(
 	if err != nil {
 		return result, err
 	}
-	sort.Slice(candidates, func(left, right int) bool {
-		if !candidates[left].modified.Equal(candidates[right].modified) {
-			return candidates[left].modified.Before(candidates[right].modified)
-		}
-		return candidates[left].key.String() < candidates[right].key.String()
-	})
+	sort.Slice(
+		candidates,
+		func(left, right int) bool {
+			if !candidates[left].modified.Equal(candidates[right].modified) {
+				return candidates[left].modified.Before(candidates[right].modified)
+			}
+			return candidates[left].key.String() < candidates[right].key.String()
+		},
+	)
 	remainingEntries := len(candidates)
 	remainingBytes := int64(0)
 	for _, candidate := range candidates {
@@ -128,7 +128,12 @@ func (s *Store) pruneCandidates(
 	if err != nil {
 		return nil, fmt.Errorf("read cache version directory: %w", err)
 	}
-	sort.Slice(shards, func(left, right int) bool { return shards[left].Name() < shards[right].Name() })
+	sort.Slice(
+		shards,
+		func(left, right int) bool {
+			return shards[left].Name() < shards[right].Name()
+		},
+	)
 	candidates := make([]pruneCandidate, 0)
 	for _, shard := range shards {
 		if err := ctx.Err(); err != nil {
@@ -142,7 +147,12 @@ func (s *Store) pruneCandidates(
 		if err != nil {
 			return nil, fmt.Errorf("read cache shard %q: %w", shard.Name(), err)
 		}
-		sort.Slice(entries, func(left, right int) bool { return entries[left].Name() < entries[right].Name() })
+		sort.Slice(
+			entries,
+			func(left, right int) bool {
+				return entries[left].Name() < entries[right].Name()
+			},
+		)
 		for _, entry := range entries {
 			information, err := entry.Info()
 			if errors.Is(err, fs.ErrNotExist) {
@@ -159,7 +169,10 @@ func (s *Store) pruneCandidates(
 				canonicalCacheTemporary(shard.Name(), entry.Name()) {
 				err := s.root.Remove(filepath.Join(shardName, entry.Name()))
 				if err != nil && !errors.Is(err, fs.ErrNotExist) {
-					return nil, fmt.Errorf("remove stale cache temporary during prune: %w", err)
+					return nil, fmt.Errorf(
+						"remove stale cache temporary during prune: %w",
+						err,
+					)
 				}
 				if err == nil {
 					result.TemporaryRemoved++
@@ -175,7 +188,10 @@ func (s *Store) pruneCandidates(
 			}
 			path := entryName(key)
 			result.EntriesBefore++
-			result.BytesBefore, err = addPruneBytes(result.BytesBefore, information.Size())
+			result.BytesBefore, err = addPruneBytes(
+				result.BytesBefore,
+				information.Size(),
+			)
 			if err != nil {
 				return nil, err
 			}
@@ -186,7 +202,10 @@ func (s *Store) pruneCandidates(
 			if state != entryValid {
 				err := s.root.Remove(path)
 				if err != nil && !errors.Is(err, fs.ErrNotExist) {
-					return nil, fmt.Errorf("remove corrupt cache entry during prune: %w", err)
+					return nil, fmt.Errorf(
+						"remove corrupt cache entry during prune: %w",
+						err,
+					)
 				}
 				if err == nil {
 					result.EntriesRemoved++
@@ -195,9 +214,14 @@ func (s *Store) pruneCandidates(
 				}
 				continue
 			}
-			candidates = append(candidates, pruneCandidate{
-				key: key, modified: information.ModTime(), size: information.Size(),
-			})
+			candidates = append(
+				candidates,
+				pruneCandidate{
+					key: key,
+					modified: information.ModTime(),
+					size: information.Size(),
+				},
+			)
 		}
 	}
 	return candidates, nil
@@ -207,8 +231,9 @@ func canonicalCacheTemporary(shard, name string) bool {
 	const suffix = ".tmp"
 	keyLength := hex.EncodedLen(len(Key{}))
 	randomLength := hex.EncodedLen(temporaryRandomSize)
-	if len(name) != 1+keyLength+1+randomLength+len(suffix) ||
-		!strings.HasPrefix(name, ".") || !strings.HasSuffix(name, suffix) {
+	if len(name) != 1 + keyLength + 1 + randomLength + len(suffix) ||
+		!strings.HasPrefix(name, ".") ||
+		!strings.HasSuffix(name, suffix) {
 		return false
 	}
 	encoded := strings.TrimSuffix(strings.TrimPrefix(name, "."), suffix)
@@ -216,12 +241,15 @@ func canonicalCacheTemporary(shard, name string) bool {
 		return false
 	}
 	key := encoded[:keyLength]
-	random := encoded[keyLength+1:]
+	random := encoded[keyLength + 1:]
 	keyBytes, keyErr := hex.DecodeString(key)
 	randomBytes, randomErr := hex.DecodeString(random)
-	return keyErr == nil && len(keyBytes) == len(Key{}) &&
-		hex.EncodeToString(keyBytes) == key && strings.HasPrefix(key, shard) &&
-		randomErr == nil && len(randomBytes) == temporaryRandomSize &&
+	return keyErr == nil &&
+		len(keyBytes) == len(Key{}) &&
+		hex.EncodeToString(keyBytes) == key &&
+		strings.HasPrefix(key, shard) &&
+		randomErr == nil &&
+		len(randomBytes) == temporaryRandomSize &&
 		hex.EncodeToString(randomBytes) == random
 }
 
@@ -246,7 +274,8 @@ func canonicalCacheShard(entry os.DirEntry) bool {
 
 func canonicalCacheEntryKey(shard, name string) (Key, bool) {
 	const suffix = ".cache"
-	if len(name) != hex.EncodedLen(len(Key{}))+len(suffix) || !strings.HasSuffix(name, suffix) {
+	if len(name) != hex.EncodedLen(len(Key{})) + len(suffix) ||
+		!strings.HasSuffix(name, suffix) {
 		return Key{}, false
 	}
 	encoded := strings.TrimSuffix(name, suffix)
@@ -268,7 +297,7 @@ func pruneLimitExceeded(options PruneOptions, entries int, bytes int64) bool {
 }
 
 func addPruneBytes(total, size int64) (int64, error) {
-	if size < 0 || total > math.MaxInt64-size {
+	if size < 0 || total > math.MaxInt64 - size {
 		return 0, fmt.Errorf("cache prune byte total exceeds int64")
 	}
 	return total + size, nil

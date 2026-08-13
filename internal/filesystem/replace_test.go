@@ -27,7 +27,11 @@ func TestReadRejectsOversizedSourceBeforeSnapshotAllocation(t *testing.T) {
 
 	snapshot, err := filesystem.Read(path)
 	if snapshot != nil || !errors.Is(err, source.ErrTooLarge) {
-		t.Fatalf("Read() returned snapshot=%t, error=%v, want ErrTooLarge", snapshot != nil, err)
+		t.Fatalf(
+			"Read() returned snapshot=%t, error=%v, want ErrTooLarge",
+			snapshot != nil,
+			err,
+		)
 	}
 }
 
@@ -99,7 +103,11 @@ func TestSnapshotReplaceUnchangedBytesDoesNotTouchFile(t *testing.T) {
 		t.Fatal("Replace() replaced an unchanged file")
 	}
 	if !after.ModTime().Equal(before.ModTime()) {
-		t.Fatalf("Replace() modification time = %v, want %v", after.ModTime(), before.ModTime())
+		t.Fatalf(
+			"Replace() modification time = %v, want %v",
+			after.ModTime(),
+			before.ModTime(),
+		)
 	}
 }
 
@@ -162,7 +170,7 @@ func TestSnapshotReplaceTreatsOversizedSourceGrowthAsStale(t *testing.T) {
 	if statErr != nil {
 		t.Fatal(statErr)
 	}
-	if info.Size() != source.MaxFileSize+1 {
+	if info.Size() != source.MaxFileSize + 1 {
 		t.Fatalf("Replace() changed grown source size to %d", info.Size())
 	}
 }
@@ -200,7 +208,10 @@ func TestSnapshotReplaceRejectsChangedSourcePermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if info.Mode().Perm() != 0o640 {
-		t.Fatalf("Replace() permissions = %o, want changed permissions preserved", info.Mode().Perm())
+		t.Fatalf(
+			"Replace() permissions = %o, want changed permissions preserved",
+			info.Mode().Perm(),
+		)
 	}
 }
 
@@ -300,7 +311,12 @@ func TestReadWithinRejectsSymlinkEscape(t *testing.T) {
 
 	root := t.TempDir()
 	external := t.TempDir()
-	if err := os.WriteFile(filepath.Join(external, "source.go"), []byte("package sample\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(external, "source.go"),
+		[]byte("package sample\n"),
+		0o600,
+	);
+		err != nil {
 		t.Fatal(err)
 	}
 	link := filepath.Join(root, "linked")

@@ -22,7 +22,9 @@ func (e *sizeError) Error() string {
 	return fmt.Sprintf("Go source exceeds %d-byte limit", e.limit)
 }
 
-func (e *sizeError) Unwrap() error { return ErrTooLarge }
+func (e *sizeError) Unwrap() error {
+	return ErrTooLarge
+}
 
 func checkSize(size, limit int64) error {
 	if size > limit {
@@ -49,7 +51,7 @@ func readAllLimit(reader io.Reader, limit int64) ([]byte, error) {
 	if limit < 0 {
 		return nil, fmt.Errorf("Go source limit must not be negative")
 	}
-	input, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	input, err := io.ReadAll(io.LimitReader(reader, limit + 1))
 	if err != nil {
 		return nil, err
 	}

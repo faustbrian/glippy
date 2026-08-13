@@ -25,18 +25,18 @@ const packageAnalyzerCacheEntryVersion = 1
 // workspace, environment, export, overlay, and imported-fact inputs are
 // derived from the exact package load.
 type PackageCacheOptions struct {
-	Store           *cache.Store
-	ToolVersion     string
-	BuildGoVersion  string
+	Store *cache.Store
+	ToolVersion string
+	BuildGoVersion string
 	SourceGoVersion string
-	Configuration   cache.Digest
-	CGOEnabled      bool
-	FormatterMode   string
+	Configuration cache.Digest
+	CGOEnabled bool
+	FormatterMode string
 }
 
 type packageCachePlan struct {
 	options PackageCacheOptions
-	rules   []cache.RuleInput
+	rules []cache.RuleInput
 }
 
 func preparePackageCachePlan(
@@ -51,7 +51,7 @@ func preparePackageCachePlan(
 		return nil, fmt.Errorf("package analysis cache requires a store")
 	}
 	values := []struct {
-		name  string
+		name string
 		value string
 	}{
 		{name: "tool version", value: options.ToolVersion},
@@ -73,7 +73,8 @@ func preparePackageCachePlan(
 	inputs := make([]cache.RuleInput, len(selection))
 	for index, selected := range selection {
 		inputs[index] = cache.RuleInput{
-			ID: selected.ID, Severity: string(selected.Severity),
+			ID: selected.ID,
+			Severity: string(selected.Severity),
 			Options: cache.DigestOf(selected.Options.CanonicalBytes()),
 		}
 	}
@@ -82,45 +83,45 @@ func preparePackageCachePlan(
 
 type persistedRange struct {
 	Start int `json:"start"`
-	End   int `json:"end"`
+	End int `json:"end"`
 }
 
 type persistedRelated struct {
-	Range   persistedRange `json:"range"`
-	Message string         `json:"message"`
+	Range persistedRange `json:"range"`
+	Message string `json:"message"`
 }
 
 type persistedEdit struct {
-	Range   persistedRange `json:"range"`
-	NewText string         `json:"newText"`
+	Range persistedRange `json:"range"`
+	NewText string `json:"newText"`
 }
 
 type persistedFix struct {
-	Name   string          `json:"name"`
+	Name string `json:"name"`
 	Safety rules.FixSafety `json:"safety"`
-	Edits  []persistedEdit `json:"edits"`
+	Edits []persistedEdit `json:"edits"`
 }
 
 type persistedDiagnostic struct {
-	RuleID     string             `json:"rule"`
-	Severity   rules.Severity     `json:"severity"`
-	MessageKey string             `json:"messageKey"`
-	Message    string             `json:"message"`
-	Path       string             `json:"path"`
-	Digest     string             `json:"digest"`
-	Range      persistedRange     `json:"range"`
-	Related    []persistedRelated `json:"related"`
-	Notes      []string           `json:"notes"`
-	Help       string             `json:"help"`
-	Fixes      []persistedFix     `json:"fixes"`
+	RuleID string `json:"rule"`
+	Severity rules.Severity `json:"severity"`
+	MessageKey string `json:"messageKey"`
+	Message string `json:"message"`
+	Path string `json:"path"`
+	Digest string `json:"digest"`
+	Range persistedRange `json:"range"`
+	Related []persistedRelated `json:"related"`
+	Notes []string `json:"notes"`
+	Help string `json:"help"`
+	Fixes []persistedFix `json:"fixes"`
 }
 
 type packageAnalyzerCacheEntry struct {
-	Version       int                   `json:"version"`
-	RuleID        string                `json:"rule"`
-	PackageID     string                `json:"packageId"`
-	PackagePath   string                `json:"packagePath"`
-	Diagnostics   []persistedDiagnostic `json:"diagnostics"`
+	Version int `json:"version"`
+	RuleID string `json:"rule"`
+	PackageID string `json:"packageId"`
+	PackagePath string `json:"packagePath"`
+	Diagnostics []persistedDiagnostic `json:"diagnostics"`
 	FactSnapshots []packageFactSnapshot `json:"factSnapshots"`
 }
 
@@ -130,10 +131,17 @@ func (r *packageAnalyzerRule) encodePackageCacheEntry(
 	facts *analyzerFactSet,
 ) ([]byte, error) {
 	if r == nil || strings.TrimSpace(r.metadata.ID) == "" || len(r.steps) == 0 {
-		return nil, fmt.Errorf("encode package analyzer cache entry requires a rule and execution plan")
+		return nil, fmt.Errorf(
+			"encode package analyzer cache entry requires a rule and execution plan",
+		)
 	}
-	if pkg == nil || strings.TrimSpace(pkg.ID) == "" || pkg.Types == nil || pkg.Types.Path() == "" {
-		return nil, fmt.Errorf("encode package analyzer cache entry requires an identified typed package")
+	if pkg == nil ||
+		strings.TrimSpace(pkg.ID) == "" ||
+		pkg.Types == nil ||
+		pkg.Types.Path() == "" {
+		return nil, fmt.Errorf(
+			"encode package analyzer cache entry requires an identified typed package",
+		)
 	}
 	if facts == nil {
 		return nil, fmt.Errorf("encode package analyzer cache entry requires facts")
@@ -142,11 +150,11 @@ func (r *packageAnalyzerRule) encodePackageCacheEntry(
 		return nil, err
 	}
 	entry := packageAnalyzerCacheEntry{
-		Version:       packageAnalyzerCacheEntryVersion,
-		RuleID:        r.metadata.ID,
-		PackageID:     pkg.ID,
-		PackagePath:   pkg.Types.Path(),
-		Diagnostics:   make([]persistedDiagnostic, len(diagnostics)),
+		Version: packageAnalyzerCacheEntryVersion,
+		RuleID: r.metadata.ID,
+		PackageID: pkg.ID,
+		PackagePath: pkg.Types.Path(),
+		Diagnostics: make([]persistedDiagnostic, len(diagnostics)),
 		FactSnapshots: make([]packageFactSnapshot, len(r.steps)),
 	}
 	for index, diagnostic := range diagnostics {
@@ -155,11 +163,19 @@ func (r *packageAnalyzerRule) encodePackageCacheEntry(
 	for index, step := range r.steps {
 		encoded, err := facts.encodePackageFactSnapshot(step.original, pkg.Types)
 		if err != nil {
-			return nil, fmt.Errorf("encode analyzer %q facts: %w", step.original.Name, err)
+			return nil, fmt.Errorf(
+				"encode analyzer %q facts: %w",
+				step.original.Name,
+				err,
+			)
 		}
 		snapshot, err := decodePackageFactSnapshot(encoded)
 		if err != nil {
-			return nil, fmt.Errorf("decode analyzer %q facts: %w", step.original.Name, err)
+			return nil, fmt.Errorf(
+				"decode analyzer %q facts: %w",
+				step.original.Name,
+				err,
+			)
 		}
 		entry.FactSnapshots[index] = snapshot
 	}
@@ -186,10 +202,17 @@ func (r *packageAnalyzerRule) restorePackageCacheEntry(
 	encoded []byte,
 ) ([]rules.Diagnostic, error) {
 	if r == nil || strings.TrimSpace(r.metadata.ID) == "" || len(r.steps) == 0 {
-		return nil, fmt.Errorf("restore package analyzer cache entry requires a rule and execution plan")
+		return nil, fmt.Errorf(
+			"restore package analyzer cache entry requires a rule and execution plan",
+		)
 	}
-	if pkg == nil || strings.TrimSpace(pkg.ID) == "" || pkg.Types == nil || pkg.Types.Path() == "" {
-		return nil, fmt.Errorf("restore package analyzer cache entry requires an identified typed package")
+	if pkg == nil ||
+		strings.TrimSpace(pkg.ID) == "" ||
+		pkg.Types == nil ||
+		pkg.Types.Path() == "" {
+		return nil, fmt.Errorf(
+			"restore package analyzer cache entry requires an identified typed package",
+		)
 	}
 	if facts == nil {
 		return nil, fmt.Errorf("restore package analyzer cache entry requires facts")
@@ -199,13 +222,24 @@ func (r *packageAnalyzerRule) restorePackageCacheEntry(
 		return nil, err
 	}
 	if entry.RuleID != r.metadata.ID {
-		return nil, fmt.Errorf("package analyzer cache rule %q does not match %q", entry.RuleID, r.metadata.ID)
+		return nil, fmt.Errorf(
+			"package analyzer cache rule %q does not match %q",
+			entry.RuleID,
+			r.metadata.ID,
+		)
 	}
 	if entry.PackageID != pkg.ID || entry.PackagePath != pkg.Types.Path() {
-		return nil, fmt.Errorf("package analyzer cache package identity does not match %q", pkg.ID)
+		return nil, fmt.Errorf(
+			"package analyzer cache package identity does not match %q",
+			pkg.ID,
+		)
 	}
 	if len(entry.FactSnapshots) != len(r.steps) {
-		return nil, fmt.Errorf("package analyzer cache fact plan has %d steps; want %d", len(entry.FactSnapshots), len(r.steps))
+		return nil, fmt.Errorf(
+			"package analyzer cache fact plan has %d steps; want %d",
+			len(entry.FactSnapshots),
+			len(r.steps),
+		)
 	}
 	diagnostics := make([]rules.Diagnostic, len(entry.Diagnostics))
 	for index, persisted := range entry.Diagnostics {
@@ -215,16 +249,20 @@ func (r *packageAnalyzerRule) restorePackageCacheEntry(
 		}
 		file, found := sources.Lookup(diagnostic.Path)
 		if !found || owners[diagnostic.Path] != pkg.ID {
-			return nil, fmt.Errorf("cached diagnostic %d source is not owned by package %q", index, pkg.ID)
+			return nil, fmt.Errorf(
+				"cached diagnostic %d source is not owned by package %q",
+				index,
+				pkg.ID,
+			)
 		}
 		finding := rules.Finding{
 			MessageKey: diagnostic.MessageKey,
-			Message:    diagnostic.Message,
-			Range:      diagnostic.Range,
-			Related:    diagnostic.Related,
-			Notes:      diagnostic.Notes,
-			Help:       diagnostic.Help,
-			Fixes:      diagnostic.Fixes,
+			Message: diagnostic.Message,
+			Range: diagnostic.Range,
+			Related: diagnostic.Related,
+			Notes: diagnostic.Notes,
+			Help: diagnostic.Help,
+			Fixes: diagnostic.Fixes,
 		}
 		validated, err := diagnosticForFinding(file, r.metadata, severity, finding)
 		if err != nil {
@@ -243,13 +281,17 @@ func (r *packageAnalyzerRule) restorePackageCacheEntry(
 	for index, snapshot := range entry.FactSnapshots {
 		step := r.steps[index].original
 		if snapshot.Analyzer != step.Name || snapshot.PackagePath != pkg.Types.Path() {
-			return nil, fmt.Errorf("package analyzer cache fact snapshot %d identity is stale", index)
+			return nil, fmt.Errorf(
+				"package analyzer cache fact snapshot %d identity is stale",
+				index,
+			)
 		}
 		snapshotBytes, err := json.Marshal(snapshot)
 		if err != nil {
 			return nil, fmt.Errorf("encode cached fact snapshot %d: %w", index, err)
 		}
-		if err := candidate.restorePackageFactSnapshot(step, pkg, snapshotBytes); err != nil {
+		if err := candidate.restorePackageFactSnapshot(step, pkg, snapshotBytes);
+			err != nil {
 			return nil, fmt.Errorf("restore cached fact snapshot %d: %w", index, err)
 		}
 	}
@@ -271,25 +313,43 @@ func decodePackageAnalyzerCacheEntry(encoded []byte) (packageAnalyzerCacheEntry,
 	decoder.DisallowUnknownFields()
 	var entry packageAnalyzerCacheEntry
 	if err := decoder.Decode(&entry); err != nil {
-		return packageAnalyzerCacheEntry{}, fmt.Errorf("decode package analyzer cache entry: %w", err)
+		return packageAnalyzerCacheEntry{}, fmt.Errorf(
+			"decode package analyzer cache entry: %w",
+			err,
+		)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return packageAnalyzerCacheEntry{}, fmt.Errorf("decode package analyzer cache entry trailing data")
+		return packageAnalyzerCacheEntry{}, fmt.Errorf(
+			"decode package analyzer cache entry trailing data",
+		)
 	}
 	canonical, err := json.Marshal(entry)
 	if err != nil {
-		return packageAnalyzerCacheEntry{}, fmt.Errorf("re-encode package analyzer cache entry: %w", err)
+		return packageAnalyzerCacheEntry{}, fmt.Errorf(
+			"re-encode package analyzer cache entry: %w",
+			err,
+		)
 	}
 	if !bytes.Equal(canonical, encoded) {
-		return packageAnalyzerCacheEntry{}, fmt.Errorf("package analyzer cache entry is not canonically encoded")
+		return packageAnalyzerCacheEntry{}, fmt.Errorf(
+			"package analyzer cache entry is not canonically encoded",
+		)
 	}
 	if entry.Version != packageAnalyzerCacheEntryVersion {
-		return packageAnalyzerCacheEntry{}, fmt.Errorf("package analyzer cache entry version %d is unsupported", entry.Version)
+		return packageAnalyzerCacheEntry{}, fmt.Errorf(
+			"package analyzer cache entry version %d is unsupported",
+			entry.Version,
+		)
 	}
-	if strings.TrimSpace(entry.RuleID) == "" || strings.TrimSpace(entry.PackageID) == "" ||
-		strings.TrimSpace(entry.PackagePath) == "" || entry.Diagnostics == nil || entry.FactSnapshots == nil {
-		return packageAnalyzerCacheEntry{}, fmt.Errorf("package analyzer cache entry identity is incomplete")
+	if strings.TrimSpace(entry.RuleID) == "" ||
+		strings.TrimSpace(entry.PackageID) == "" ||
+		strings.TrimSpace(entry.PackagePath) == "" ||
+		entry.Diagnostics == nil ||
+		entry.FactSnapshots == nil {
+		return packageAnalyzerCacheEntry{}, fmt.Errorf(
+			"package analyzer cache entry identity is incomplete",
+		)
 	}
 	return entry, nil
 }
@@ -300,7 +360,10 @@ func persistDiagnostic(diagnostic rules.Diagnostic) persistedDiagnostic {
 		related = make([]persistedRelated, len(diagnostic.Related))
 	}
 	for index, item := range diagnostic.Related {
-		related[index] = persistedRelated{Range: persistRange(item.Range), Message: item.Message}
+		related[index] = persistedRelated{
+			Range: persistRange(item.Range),
+			Message: item.Message,
+		}
 	}
 	var fixes []persistedFix
 	if diagnostic.Fixes != nil {
@@ -312,22 +375,32 @@ func persistDiagnostic(diagnostic rules.Diagnostic) persistedDiagnostic {
 			edits = make([]persistedEdit, len(fix.Edits))
 		}
 		for editIndex, edit := range fix.Edits {
-			edits[editIndex] = persistedEdit{Range: persistRange(edit.Range), NewText: edit.NewText}
+			edits[editIndex] = persistedEdit{
+				Range: persistRange(edit.Range),
+				NewText: edit.NewText,
+			}
 		}
 		fixes[index] = persistedFix{Name: fix.Name, Safety: fix.Safety, Edits: edits}
 	}
 	return persistedDiagnostic{
-		RuleID: diagnostic.RuleID, Severity: diagnostic.Severity,
-		MessageKey: diagnostic.MessageKey, Message: diagnostic.Message,
-		Path: diagnostic.Path, Digest: hex.EncodeToString(diagnostic.Digest[:]),
-		Range: persistRange(diagnostic.Range), Related: related,
-		Notes: slices.Clone(diagnostic.Notes), Help: diagnostic.Help, Fixes: fixes,
+		RuleID: diagnostic.RuleID,
+		Severity: diagnostic.Severity,
+		MessageKey: diagnostic.MessageKey,
+		Message: diagnostic.Message,
+		Path: diagnostic.Path,
+		Digest: hex.EncodeToString(diagnostic.Digest[:]),
+		Range: persistRange(diagnostic.Range),
+		Related: related,
+		Notes: slices.Clone(diagnostic.Notes),
+		Help: diagnostic.Help,
+		Fixes: fixes,
 	}
 }
 
 func restorePersistedDiagnostic(persisted persistedDiagnostic) (rules.Diagnostic, error) {
 	digestBytes, err := hex.DecodeString(persisted.Digest)
-	if err != nil || len(digestBytes) != len(source.Digest{}) ||
+	if err != nil ||
+		len(digestBytes) != len(source.Digest{}) ||
 		persisted.Digest != hex.EncodeToString(digestBytes) {
 		return rules.Diagnostic{}, fmt.Errorf("diagnostic source digest is invalid")
 	}
@@ -338,7 +411,10 @@ func restorePersistedDiagnostic(persisted persistedDiagnostic) (rules.Diagnostic
 		related = make([]rules.Related, len(persisted.Related))
 	}
 	for index, item := range persisted.Related {
-		related[index] = rules.Related{Range: restoreRange(item.Range), Message: item.Message}
+		related[index] = rules.Related{
+			Range: restoreRange(item.Range),
+			Message: item.Message,
+		}
 	}
 	var fixes []rules.Fix
 	if persisted.Fixes != nil {
@@ -350,15 +426,25 @@ func restorePersistedDiagnostic(persisted persistedDiagnostic) (rules.Diagnostic
 			edits = make([]rules.Edit, len(fix.Edits))
 		}
 		for editIndex, edit := range fix.Edits {
-			edits[editIndex] = rules.Edit{Range: restoreRange(edit.Range), NewText: edit.NewText}
+			edits[editIndex] = rules.Edit{
+				Range: restoreRange(edit.Range),
+				NewText: edit.NewText,
+			}
 		}
 		fixes[index] = rules.Fix{Name: fix.Name, Safety: fix.Safety, Edits: edits}
 	}
 	return rules.Diagnostic{
-		RuleID: persisted.RuleID, Severity: persisted.Severity,
-		MessageKey: persisted.MessageKey, Message: persisted.Message,
-		Path: persisted.Path, Digest: digest, Range: restoreRange(persisted.Range),
-		Related: related, Notes: slices.Clone(persisted.Notes), Help: persisted.Help, Fixes: fixes,
+		RuleID: persisted.RuleID,
+		Severity: persisted.Severity,
+		MessageKey: persisted.MessageKey,
+		Message: persisted.Message,
+		Path: persisted.Path,
+		Digest: digest,
+		Range: restoreRange(persisted.Range),
+		Related: related,
+		Notes: slices.Clone(persisted.Notes),
+		Help: persisted.Help,
+		Fixes: fixes,
 	}, nil
 }
 
@@ -371,7 +457,7 @@ func validateCanonicalDiagnostics(diagnostics []rules.Diagnostic) error {
 		return fmt.Errorf("package analyzer cache diagnostics are unordered")
 	}
 	for index := 1; index < len(diagnostics); index++ {
-		if reflect.DeepEqual(diagnostics[index-1], diagnostics[index]) {
+		if reflect.DeepEqual(diagnostics[index - 1], diagnostics[index]) {
 			return fmt.Errorf("package analyzer cache diagnostics are duplicated")
 		}
 	}
@@ -384,7 +470,9 @@ func cloneAnalyzerFactSet(facts *analyzerFactSet) *analyzerFactSet {
 		clone.packageValues[key] = bytes.Clone(value)
 	}
 	for key, view := range facts.objectViews {
-		clonedView := &objectFactView{values: make(map[objectFactKey][]byte, len(view.values))}
+		clonedView := &objectFactView{
+			values: make(map[objectFactKey][]byte, len(view.values)),
+		}
 		for fact, value := range view.values {
 			clonedView.values[fact] = bytes.Clone(value)
 		}

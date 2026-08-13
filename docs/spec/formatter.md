@@ -94,6 +94,11 @@ not introduce a generic assignment-operator break; an otherwise atomic
 assignment MAY remain over width. Grammar contexts with a separately specified
 layout MAY force the right-hand side onto the following line. A line comment
 after the operator MUST force the right-hand side onto the following line.
+An ordinary selector-chain target MUST decide whether it fits using the target
+through the assignment operator, without width pressure from the right-hand
+side. A target that does not fit that boundary retains the selector-chain broken
+form. Communication-clause assignments retain their grammar-specific coupled
+layout.
 
 Multi-selector chains share one layout group. When that group breaks, every
 selector dot remains on the preceding line and every following selector uses

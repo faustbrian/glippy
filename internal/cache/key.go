@@ -16,57 +16,61 @@ import (
 type Digest [sha256.Size]byte
 
 // DigestOf returns the SHA-256 digest of exact bytes.
-func DigestOf(value []byte) Digest { return sha256.Sum256(value) }
+func DigestOf(value []byte) Digest {
+	return sha256.Sum256(value)
+}
 
 // Key is one complete cache identity.
 type Key [sha256.Size]byte
 
 // String returns the lowercase hexadecimal key.
-func (k Key) String() string { return hex.EncodeToString(k[:]) }
+func (k Key) String() string {
+	return hex.EncodeToString(k[:])
+}
 
 // ComponentKind identifies one result-changing input class.
 type ComponentKind string
 
 const (
-	ComponentSource           ComponentKind = "source"
-	ComponentModule           ComponentKind = "module"
-	ComponentWorkspace        ComponentKind = "workspace"
-	ComponentOverlay          ComponentKind = "overlay"
-	ComponentBuildSelection   ComponentKind = "build-selection"
-	ComponentEnvironment      ComponentKind = "environment"
+	ComponentSource ComponentKind = "source"
+	ComponentModule ComponentKind = "module"
+	ComponentWorkspace ComponentKind = "workspace"
+	ComponentOverlay ComponentKind = "overlay"
+	ComponentBuildSelection ComponentKind = "build-selection"
+	ComponentEnvironment ComponentKind = "environment"
 	ComponentDependencyExport ComponentKind = "dependency-export"
-	ComponentFact             ComponentKind = "fact"
+	ComponentFact ComponentKind = "fact"
 )
 
 // Component binds one named input to its exact digest.
 type Component struct {
-	Kind     ComponentKind
+	Kind ComponentKind
 	Identity string
-	Digest   Digest
+	Digest Digest
 }
 
 // RuleInput binds one enabled rule and severity to its canonical options.
 type RuleInput struct {
-	ID       string
+	ID string
 	Severity string
-	Options  Digest
+	Options Digest
 }
 
 // KeyInput contains every explicit result-changing input selected by a cache
 // consumer for one result namespace. It performs no ambient environment lookup.
 type KeyInput struct {
-	Namespace       string
-	ToolVersion     string
-	BuildGoVersion  string
+	Namespace string
+	ToolVersion string
+	BuildGoVersion string
 	SourceGoVersion string
-	Configuration   Digest
-	Rules           []RuleInput
-	BuildTags       []string
-	GOOS            string
-	GOARCH          string
-	CGOEnabled      bool
-	FormatterMode   string
-	Components      []Component
+	Configuration Digest
+	Rules []RuleInput
+	BuildTags []string
+	GOOS string
+	GOARCH string
+	CGOEnabled bool
+	FormatterMode string
+	Components []Component
 }
 
 // BuildKey validates and canonically hashes one complete input set.
@@ -78,16 +82,22 @@ func BuildKey(input KeyInput) (Key, error) {
 	sort.Strings(tags)
 	tags = slices.Compact(tags)
 	rules := slices.Clone(input.Rules)
-	sort.Slice(rules, func(left, right int) bool {
-		return rules[left].ID < rules[right].ID
-	})
+	sort.Slice(
+		rules,
+		func(left, right int) bool {
+			return rules[left].ID < rules[right].ID
+		},
+	)
 	components := slices.Clone(input.Components)
-	sort.Slice(components, func(left, right int) bool {
-		if components[left].Kind != components[right].Kind {
-			return components[left].Kind < components[right].Kind
-		}
-		return components[left].Identity < components[right].Identity
-	})
+	sort.Slice(
+		components,
+		func(left, right int) bool {
+			if components[left].Kind != components[right].Kind {
+				return components[left].Kind < components[right].Kind
+			}
+			return components[left].Identity < components[right].Identity
+		},
+	)
 
 	digest := sha256.New()
 	writeString(digest, "gox-cache-key-v1")
@@ -124,7 +134,7 @@ func BuildKey(input KeyInput) (Key, error) {
 
 func validateKeyInput(input KeyInput) error {
 	values := []struct {
-		name  string
+		name string
 		value string
 	}{
 		{name: "namespace", value: input.Namespace},
@@ -168,7 +178,7 @@ func validateKeyInput(input KeyInput) error {
 		ruleIDs[rule.ID] = struct{}{}
 	}
 	type componentIdentity struct {
-		kind     ComponentKind
+		kind ComponentKind
 		identity string
 	}
 	components := make(map[componentIdentity]struct{}, len(input.Components))
@@ -177,7 +187,10 @@ func validateKeyInput(input KeyInput) error {
 			return fmt.Errorf("cache key component kind %q is invalid", component.Kind)
 		}
 		if strings.TrimSpace(component.Identity) == "" {
-			return fmt.Errorf("cache key %s component identity is required", component.Kind)
+			return fmt.Errorf(
+				"cache key %s component identity is required",
+				component.Kind,
+			)
 		}
 		if component.Digest == (Digest{}) {
 			return fmt.Errorf(
@@ -201,8 +214,13 @@ func validateKeyInput(input KeyInput) error {
 
 func validComponentKind(kind ComponentKind) bool {
 	switch kind {
-	case ComponentSource, ComponentModule, ComponentWorkspace, ComponentOverlay,
-		ComponentBuildSelection, ComponentEnvironment, ComponentDependencyExport,
+	case ComponentSource,
+		ComponentModule,
+		ComponentWorkspace,
+		ComponentOverlay,
+		ComponentBuildSelection,
+		ComponentEnvironment,
+		ComponentDependencyExport,
 		ComponentFact:
 		return true
 	default:
@@ -222,7 +240,9 @@ func writeString(digest hash.Hash, value string) {
 	_, _ = digest.Write([]byte(value))
 }
 
-func writeDigest(output hash.Hash, digest Digest) { _, _ = output.Write(digest[:]) }
+func writeDigest(output hash.Hash, digest Digest) {
+	_, _ = output.Write(digest[:])
+}
 
 func writeUint64(digest hash.Hash, value uint64) {
 	var encoded [8]byte

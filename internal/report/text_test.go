@@ -22,35 +22,50 @@ func TestRenderLintTextUsesPhysicalLocationsAndNoSourceExcerpt(t *testing.T) {
 	targetStart := strings.Index(input, "target()")
 	directiveStart := strings.Index(input, "//gox:")
 	result := analysis.Result{
-		Path:   file.Path(),
+		Path: file.Path(),
 		Digest: file.Digest(),
-		Diagnostics: []rules.Diagnostic{{
-			RuleID:     "call-rule",
-			Severity:   rules.SeverityError,
-			MessageKey: "call",
-			Message:    "call requires review",
-			Path:       file.Path(),
-			Digest:     file.Digest(),
-			Range:      source.Range{Start: targetStart, End: targetStart + len("target()")},
-			Related: []rules.Related{{
-				Range:   source.Range{Start: strings.Index(input, "func"), End: strings.Index(input, "func") + len("func")},
-				Message: "owning function",
-			}},
-			Notes: []string{"review the result"},
-			Help:  "replace the target",
-			Fixes: []rules.Fix{{Name: "rewrite", Safety: rules.FixSafe}},
-		}},
-		SuppressionProblems: []suppressions.Problem{{
-			Kind:    suppressions.ProblemMalformed,
-			Range:   source.Range{Start: 0, End: len("package")},
-			Message: "malformed suppression",
-		}},
-		UnusedSuppressions: []suppressions.Directive{{
-			Scope:  suppressions.ScopeNextLine,
-			RuleID: "call-rule",
-			Range:  source.Range{Start: directiveStart, End: len(input) - 1},
-			Reason: "legacy call",
-		}},
+		Diagnostics: []rules.Diagnostic{
+			{
+				RuleID: "call-rule",
+				Severity: rules.SeverityError,
+				MessageKey: "call",
+				Message: "call requires review",
+				Path: file.Path(),
+				Digest: file.Digest(),
+				Range: source.Range{
+					Start: targetStart,
+					End: targetStart + len("target()"),
+				},
+				Related: []rules.Related{
+					{
+						Range: source.Range{
+							Start: strings.Index(input, "func"),
+							End: strings.Index(input, "func") +
+								len("func"),
+						},
+						Message: "owning function",
+					},
+				},
+				Notes: []string{"review the result"},
+				Help: "replace the target",
+				Fixes: []rules.Fix{{Name: "rewrite", Safety: rules.FixSafe}},
+			},
+		},
+		SuppressionProblems: []suppressions.Problem{
+			{
+				Kind: suppressions.ProblemMalformed,
+				Range: source.Range{Start: 0, End: len("package")},
+				Message: "malformed suppression",
+			},
+		},
+		UnusedSuppressions: []suppressions.Directive{
+			{
+				Scope: suppressions.ScopeNextLine,
+				RuleID: "call-rule",
+				Range: source.Range{Start: directiveStart, End: len(input) - 1},
+				Reason: "legacy call",
+			},
+		},
 	}
 
 	got, err := RenderLintText([]LintTextInput{{File: file, Result: result}})
@@ -81,52 +96,69 @@ func TestRenderLintTextRejectsMismatchedSourceIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := analysis.Result{Path: file.Path(), Digest: source.Digest{1}}
-	if _, err := RenderLintText([]LintTextInput{{File: file, Result: result}}); err == nil ||
-		!strings.Contains(err.Error(), "source identity") {
+	if _, err := RenderLintText([]LintTextInput{{File: file, Result: result}});
+		err == nil || !strings.Contains(err.Error(), "source identity") {
 		t.Fatalf("RenderLintText() error = %v", err)
 	}
 	invalidRange := analysis.Result{
-		Path:   file.Path(),
+		Path: file.Path(),
 		Digest: file.Digest(),
-		Diagnostics: []rules.Diagnostic{{
-			RuleID:   "invalid-range",
-			Severity: rules.SeverityError,
-			Message:  "invalid range",
-			Path:     file.Path(),
-			Digest:   file.Digest(),
-			Range:    source.Range{Start: 0, End: len(file.Bytes()) + 1},
-		}},
+		Diagnostics: []rules.Diagnostic{
+			{
+				RuleID: "invalid-range",
+				Severity: rules.SeverityError,
+				Message: "invalid range",
+				Path: file.Path(),
+				Digest: file.Digest(),
+				Range: source.Range{Start: 0, End: len(file.Bytes()) + 1},
+			},
+		},
 	}
-	if _, err := RenderLintText([]LintTextInput{{File: file, Result: invalidRange}}); err == nil ||
-		!strings.Contains(err.Error(), "invalid physical range") {
+	if _, err := RenderLintText([]LintTextInput{{File: file, Result: invalidRange}});
+		err == nil || !strings.Contains(err.Error(), "invalid physical range") {
 		t.Fatalf("RenderLintText() range error = %v", err)
 	}
 	midRune := strings.Index(input, "β") + 1
-	for _, test := range []struct {
-		name         string
-		invalidRange source.Range
-	}{
-		{name: "start", invalidRange: source.Range{Start: midRune, End: midRune + 1}},
-		{name: "end", invalidRange: source.Range{Start: midRune - 1, End: midRune}},
-	} {
-		t.Run("mid-UTF-8 "+test.name, func(t *testing.T) {
-			invalidBoundary := analysis.Result{
-				Path:   file.Path(),
-				Digest: file.Digest(),
-				Diagnostics: []rules.Diagnostic{{
-					RuleID:   "invalid-boundary",
-					Severity: rules.SeverityError,
-					Message:  "invalid boundary",
-					Path:     file.Path(),
-					Digest:   file.Digest(),
-					Range:    test.invalidRange,
-				}},
-			}
-			if _, err := RenderLintText([]LintTextInput{{File: file, Result: invalidBoundary}}); err == nil ||
-				!strings.Contains(err.Error(), "invalid physical range") {
-				t.Fatalf("RenderLintText() UTF-8 boundary error = %v", err)
-			}
-		})
+	for _, test := range
+		[]struct {
+			name string
+			invalidRange source.Range
+		}{
+			{
+				name: "start",
+				invalidRange: source.Range{Start: midRune, End: midRune + 1},
+			},
+			{name: "end", invalidRange: source.Range{Start: midRune - 1, End: midRune}},
+		} {
+		t.Run(
+			"mid-UTF-8 " + test.name,
+			func(t *testing.T) {
+				invalidBoundary := analysis.Result{
+					Path: file.Path(),
+					Digest: file.Digest(),
+					Diagnostics: []rules.Diagnostic{
+						{
+							RuleID: "invalid-boundary",
+							Severity: rules.SeverityError,
+							Message: "invalid boundary",
+							Path: file.Path(),
+							Digest: file.Digest(),
+							Range: test.invalidRange,
+						},
+					},
+				}
+				if _, err := RenderLintText(
+					[]LintTextInput{{File: file, Result: invalidBoundary}},
+				);
+					err == nil ||
+						!strings.Contains(
+							err.Error(),
+							"invalid physical range",
+						) {
+					t.Fatalf("RenderLintText() UTF-8 boundary error = %v", err)
+				}
+			},
+		)
 	}
 }
 
@@ -138,42 +170,70 @@ func TestRenderLintTextRejectsInvalidNestedRanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := analysis.Result{Path: file.Path(), Digest: file.Digest()}
-	t.Run("fix edit", func(t *testing.T) {
-		result := base
-		result.Diagnostics = []rules.Diagnostic{{
-			RuleID:   "invalid-fix",
-			Severity: rules.SeverityError,
-			Message:  "invalid fix",
-			Path:     file.Path(),
-			Digest:   file.Digest(),
-			Range:    source.Range{Start: 0, End: len("package")},
-			Fixes: []rules.Fix{{
-				Name:   "rewrite",
-				Safety: rules.FixSafe,
-				Edits: []rules.Edit{{
-					Range:   source.Range{Start: 0, End: len(file.Bytes()) + 1},
-					NewText: "replacement",
-				}},
-			}},
-		}}
-		if _, err := RenderLintText([]LintTextInput{{File: file, Result: result}}); err == nil ||
-			!strings.Contains(err.Error(), "fix edit has invalid physical range") {
-			t.Fatalf("RenderLintText() fix range error = %v", err)
-		}
-	})
-	t.Run("suppression target", func(t *testing.T) {
-		result := base
-		result.UnusedSuppressions = []suppressions.Directive{{
-			Scope:  suppressions.ScopeNextLine,
-			RuleID: "call-rule",
-			Range:  source.Range{Start: 0, End: len("package")},
-			Target: source.Range{Start: 0, End: len(file.Bytes()) + 1},
-		}}
-		if _, err := RenderLintText([]LintTextInput{{File: file, Result: result}}); err == nil ||
-			!strings.Contains(err.Error(), "suppression target has invalid physical range") {
-			t.Fatalf("RenderLintText() suppression target error = %v", err)
-		}
-	})
+	t.Run(
+		"fix edit",
+		func(t *testing.T) {
+			result := base
+			result.Diagnostics = []rules.Diagnostic{
+				{
+					RuleID: "invalid-fix",
+					Severity: rules.SeverityError,
+					Message: "invalid fix",
+					Path: file.Path(),
+					Digest: file.Digest(),
+					Range: source.Range{Start: 0, End: len("package")},
+					Fixes: []rules.Fix{
+						{
+							Name: "rewrite",
+							Safety: rules.FixSafe,
+							Edits: []rules.Edit{
+								{
+									Range: source.Range{
+										Start: 0,
+										End: len(
+											file.Bytes(),
+										) +
+											1,
+									},
+									NewText: "replacement",
+								},
+							},
+						},
+					},
+				},
+			}
+			if _, err := RenderLintText([]LintTextInput{{File: file, Result: result}});
+				err == nil ||
+					!strings.Contains(
+						err.Error(),
+						"fix edit has invalid physical range",
+					) {
+				t.Fatalf("RenderLintText() fix range error = %v", err)
+			}
+		},
+	)
+	t.Run(
+		"suppression target",
+		func(t *testing.T) {
+			result := base
+			result.UnusedSuppressions = []suppressions.Directive{
+				{
+					Scope: suppressions.ScopeNextLine,
+					RuleID: "call-rule",
+					Range: source.Range{Start: 0, End: len("package")},
+					Target: source.Range{Start: 0, End: len(file.Bytes()) + 1},
+				},
+			}
+			if _, err := RenderLintText([]LintTextInput{{File: file, Result: result}});
+				err == nil ||
+					!strings.Contains(
+						err.Error(),
+						"suppression target has invalid physical range",
+					) {
+				t.Fatalf("RenderLintText() suppression target error = %v", err)
+			}
+		},
+	)
 }
 
 func TestRenderLintFixTextReportsRejectedFixReasons(t *testing.T) {
@@ -184,23 +244,32 @@ func TestRenderLintFixTextReportsRejectedFixReasons(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := source.Range{Start: strings.Index(input, "target"), End: strings.Index(input, "target") + len("target")}
-	output, err := RenderLintFixText([]LintFixTextInput{{
-		File:   file,
-		Result: analysis.Result{Path: file.Path(), Digest: file.Digest()},
-		Outcome: LintFixOutcome{
-			Path:         file.Path(),
-			SourceDigest: file.Digest(),
-			Status:       LintFileConflict,
-			Rejected: []fixengine.Rejection{{
-				RuleID:  "call-rule",
-				FixName: "rewrite",
-				Range:   target,
-				Reason:  fixengine.RejectionConflict,
-				Message: "selected fix conflicts with another edit",
-			}},
+	target := source.Range{
+		Start: strings.Index(input, "target"),
+		End: strings.Index(input, "target") + len("target"),
+	}
+	output, err := RenderLintFixText(
+		[]LintFixTextInput{
+			{
+				File: file,
+				Result: analysis.Result{Path: file.Path(), Digest: file.Digest()},
+				Outcome: LintFixOutcome{
+					Path: file.Path(),
+					SourceDigest: file.Digest(),
+					Status: LintFileConflict,
+					Rejected: []fixengine.Rejection{
+						{
+							RuleID: "call-rule",
+							FixName: "rewrite",
+							Range: target,
+							Reason: fixengine.RejectionConflict,
+							Message: "selected fix conflicts with another edit",
+						},
+					},
+				},
+			},
 		},
-	}})
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,32 +287,39 @@ func TestRenderLintFixTextSortsRejectedFixesByCompleteIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := source.Range{Start: strings.Index(input, "target"), End: strings.Index(input, "target") + len("target")}
-	output, err := RenderLintFixText([]LintFixTextInput{{
-		File:   file,
-		Result: analysis.Result{Path: file.Path(), Digest: file.Digest()},
-		Outcome: LintFixOutcome{
-			Path:         file.Path(),
-			SourceDigest: file.Digest(),
-			Status:       LintFileConflict,
-			Rejected: []fixengine.Rejection{
-				{
-					RuleID:  "call-rule",
-					FixName: "rewrite",
-					Range:   target,
-					Reason:  fixengine.RejectionValidation,
-					Message: "validation failed",
-				},
-				{
-					RuleID:  "call-rule",
-					FixName: "rewrite",
-					Range:   target,
-					Reason:  fixengine.RejectionConflict,
-					Message: "conflict found",
+	target := source.Range{
+		Start: strings.Index(input, "target"),
+		End: strings.Index(input, "target") + len("target"),
+	}
+	output, err := RenderLintFixText(
+		[]LintFixTextInput{
+			{
+				File: file,
+				Result: analysis.Result{Path: file.Path(), Digest: file.Digest()},
+				Outcome: LintFixOutcome{
+					Path: file.Path(),
+					SourceDigest: file.Digest(),
+					Status: LintFileConflict,
+					Rejected: []fixengine.Rejection{
+						{
+							RuleID: "call-rule",
+							FixName: "rewrite",
+							Range: target,
+							Reason: fixengine.RejectionValidation,
+							Message: "validation failed",
+						},
+						{
+							RuleID: "call-rule",
+							FixName: "rewrite",
+							Range: target,
+							Reason: fixengine.RejectionConflict,
+							Message: "conflict found",
+						},
+					},
 				},
 			},
 		},
-	}})
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -27,7 +27,10 @@ func TestDifferChargesLCSCellsToGlobalWorkBudget(t *testing.T) {
 	if d.work > maximumWork {
 		t.Fatalf("diff work = %d, want at most %d", d.work, maximumWork)
 	}
-	if d.work < maximumWork-maximumLCSCells {
-		t.Fatalf("diff work = %d, want LCS matrix cells charged to the global budget", d.work)
+	if d.work < maximumWork - maximumLCSCells {
+		t.Fatalf(
+			"diff work = %d, want LCS matrix cells charged to the global budget",
+			d.work,
+		)
 	}
 }

@@ -11,7 +11,7 @@ func TestMotivatingLayoutsAreGofmtFixedPoints(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
+		name string
 		source string
 	}{
 		{
@@ -110,15 +110,22 @@ type Scalar interface {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			formatted, err := format.Source([]byte(test.source))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(formatted, []byte(test.source)) {
-				t.Fatalf("layout is not a gofmt fixed point under %s:\n%s", runtime.Version(), formatted)
-			}
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				formatted, err := format.Source([]byte(test.source))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(formatted, []byte(test.source)) {
+					t.Fatalf(
+						"layout is not a gofmt fixed point under %s:\n%s",
+						runtime.Version(),
+						formatted,
+					)
+				}
+			},
+		)
 	}
 }

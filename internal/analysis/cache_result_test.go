@@ -17,17 +17,25 @@ import (
 	"github.com/faustbrian/gox/internal/source"
 )
 
-type nativeCacheTestRule struct{ metadata rules.Metadata }
+type nativeCacheTestRule struct {
+	metadata rules.Metadata
+}
 
-type nativeCachePackageRule struct{ metadata rules.Metadata }
+type nativeCachePackageRule struct {
+	metadata rules.Metadata
+}
 
-func (r nativeCacheTestRule) Metadata() rules.Metadata { return r.metadata }
+func (r nativeCacheTestRule) Metadata() rules.Metadata {
+	return r.metadata
+}
 
 func (nativeCacheTestRule) RunTypes(*rules.TypesContext, ast.Node) ([]rules.Finding, error) {
 	return nil, nil
 }
 
-func (r nativeCachePackageRule) Metadata() rules.Metadata { return r.metadata }
+func (r nativeCachePackageRule) Metadata() rules.Metadata {
+	return r.metadata
+}
 
 func (nativeCachePackageRule) RunPackage(*rules.PackageContext) ([]rules.PackageFinding, error) {
 	return nil, nil
@@ -37,23 +45,33 @@ func TestNativeRuleSnapshotsBindDependencySyntaxRequirement(t *testing.T) {
 	t.Parallel()
 
 	metadata := rules.Metadata{
-		ID: "dependency-cache", Summary: "inspects dependency syntax",
-		Documentation:            "Full dependency-aware package rule documentation.",
-		DefaultSeverity:          rules.SeverityWarn,
-		Presets:                  []rules.Preset{rules.PresetCorrectness},
-		MinimumGoVersion:         "1.22",
-		Requirement:              rules.RequireTypes,
+		ID: "dependency-cache",
+		Summary: "inspects dependency syntax",
+		Documentation: "Full dependency-aware package rule documentation.",
+		DefaultSeverity: rules.SeverityWarn,
+		Presets: []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion: "1.22",
+		Requirement: rules.RequireTypes,
 		RequiresDependencySyntax: true,
-		Categories:               []rules.Category{rules.CategoryCorrectness},
-		Examples:                 []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+		Categories: []rules.Category{rules.CategoryCorrectness},
+		Examples: []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
 	}
 	registry, err := rules.NewRegistry(nativeCachePackageRule{metadata: metadata})
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshots, err := nativeRuleSnapshots(registry, []rules.Selection{{
-		ID: metadata.ID, Severity: rules.SeverityWarn, Requirement: rules.RequireTypes,
-	}}, nil, nil)
+	snapshots, err := nativeRuleSnapshots(
+		registry,
+		[]rules.Selection{
+			{
+				ID: metadata.ID,
+				Severity: rules.SeverityWarn,
+				Requirement: rules.RequireTypes,
+			},
+		},
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,12 +92,20 @@ func TestPackageAnalyzerCacheEntryRestoresDiagnosticsAndFacts(t *testing.T) {
 	firstPackage := &packages.Package{ID: "example.com/fixture", Types: firstTypes}
 	secondPackage := &packages.Package{ID: "example.com/fixture", Types: secondTypes}
 	facts := populatedFactSnapshotSet(t, analyzer, firstTypes, "cached")
-	diagnostics := []rules.Diagnostic{{
-		RuleID: rule.metadata.ID, Severity: rules.SeverityWarn,
-		MessageKey: "cached", Message: "cached diagnostic", Path: path,
-		Digest: firstSource.Digest(), Range: source.Range{Start: 0, End: 7},
-		Related: []rules.Related{}, Notes: []string{"note"}, Fixes: []rules.Fix{},
-	}}
+	diagnostics := []rules.Diagnostic{
+		{
+			RuleID: rule.metadata.ID,
+			Severity: rules.SeverityWarn,
+			MessageKey: "cached",
+			Message: "cached diagnostic",
+			Path: path,
+			Digest: firstSource.Digest(),
+			Range: source.Range{Start: 0, End: 7},
+			Related: []rules.Related{},
+			Notes: []string{"note"},
+			Fixes: []rules.Fix{},
+		},
+	}
 
 	encoded, err := rule.encodePackageCacheEntry(firstPackage, diagnostics, facts)
 	if err != nil {
@@ -116,7 +142,7 @@ func TestPackageAnalyzerCacheEntryRestoresDiagnosticsAndFacts(t *testing.T) {
 	for name, object := range persistentFixtureObjects(t, secondTypes) {
 		fact := new(snapshotFact)
 		if !restoredFacts.importObjectFact(analyzer, secondTypes, object, fact) ||
-			fact.Value != "cached:"+name {
+			fact.Value != "cached:" + name {
 			t.Fatalf("restored object fact %q = %#v", name, fact)
 		}
 	}
@@ -132,64 +158,120 @@ func TestPackageAnalyzerCacheEntryRejectsStaleIdentityWithoutPartialRestore(t *t
 	file := loadPackageAnalyzerCacheSource(t, path)
 	pkg := &packages.Package{ID: "example.com/fixture", Types: firstTypes}
 	facts := populatedFactSnapshotSet(t, analyzer, firstTypes, "cached")
-	diagnostics := []rules.Diagnostic{{
-		RuleID: rule.metadata.ID, Severity: rules.SeverityWarn,
-		MessageKey: "cached", Message: "cached diagnostic", Path: path,
-		Digest: file.Digest(), Range: source.Range{Start: 0, End: 7},
-		Related: []rules.Related{}, Notes: []string{}, Fixes: []rules.Fix{},
-	}}
+	diagnostics := []rules.Diagnostic{
+		{
+			RuleID: rule.metadata.ID,
+			Severity: rules.SeverityWarn,
+			MessageKey: "cached",
+			Message: "cached diagnostic",
+			Path: path,
+			Digest: file.Digest(),
+			Range: source.Range{Start: 0, End: 7},
+			Related: []rules.Related{},
+			Notes: []string{},
+			Fixes: []rules.Fix{},
+		},
+	}
 	encoded, err := rule.encodePackageCacheEntry(pkg, diagnostics, facts)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	tests := []struct {
-		name   string
+		name string
 		mutate func(*packageAnalyzerCacheEntry)
 	}{
-		{name: "schema", mutate: func(entry *packageAnalyzerCacheEntry) { entry.Version++ }},
-		{name: "rule", mutate: func(entry *packageAnalyzerCacheEntry) { entry.RuleID = "other-rule" }},
-		{name: "package ID", mutate: func(entry *packageAnalyzerCacheEntry) { entry.PackageID = "other-id" }},
-		{name: "package path", mutate: func(entry *packageAnalyzerCacheEntry) { entry.PackagePath = "example.com/other" }},
-		{name: "source digest", mutate: func(entry *packageAnalyzerCacheEntry) {
-			entry.Diagnostics[0].Digest = "00"
-		}},
-		{name: "noncanonical source digest", mutate: func(entry *packageAnalyzerCacheEntry) {
-			entry.Diagnostics[0].Digest = strings.ToUpper(entry.Diagnostics[0].Digest)
-		}},
-		{name: "diagnostic order", mutate: func(entry *packageAnalyzerCacheEntry) {
-			entry.Diagnostics = append(entry.Diagnostics, entry.Diagnostics[0])
-		}},
-		{name: "fact analyzer", mutate: func(entry *packageAnalyzerCacheEntry) {
-			entry.FactSnapshots[0].Analyzer = "other-analyzer"
-		}},
+		{
+			name: "schema",
+			mutate: func(entry *packageAnalyzerCacheEntry) {
+				entry.Version++
+			},
+		},
+		{
+			name: "rule",
+			mutate: func(entry *packageAnalyzerCacheEntry) {
+				entry.RuleID = "other-rule"
+			},
+		},
+		{
+			name: "package ID",
+			mutate: func(entry *packageAnalyzerCacheEntry) {
+				entry.PackageID = "other-id"
+			},
+		},
+		{
+			name: "package path",
+			mutate: func(entry *packageAnalyzerCacheEntry) {
+				entry.PackagePath = "example.com/other"
+			},
+		},
+		{
+			name: "source digest",
+			mutate: func(entry *packageAnalyzerCacheEntry) {
+				entry.Diagnostics[0].Digest = "00"
+			},
+		},
+		{
+			name: "noncanonical source digest",
+			mutate: func(entry *packageAnalyzerCacheEntry) {
+				entry.Diagnostics[0].Digest = strings.ToUpper(
+					entry.Diagnostics[0].Digest,
+				)
+			},
+		},
+		{
+			name: "diagnostic order",
+			mutate: func(entry *packageAnalyzerCacheEntry) {
+				entry.Diagnostics = append(entry.Diagnostics, entry.Diagnostics[0])
+			},
+		},
+		{
+			name: "fact analyzer",
+			mutate: func(entry *packageAnalyzerCacheEntry) {
+				entry.FactSnapshots[0].Analyzer = "other-analyzer"
+			},
+		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var entry packageAnalyzerCacheEntry
-			if err := json.Unmarshal(encoded, &entry); err != nil {
-				t.Fatal(err)
-			}
-			test.mutate(&entry)
-			corrupt, err := json.Marshal(entry)
-			if err != nil {
-				t.Fatal(err)
-			}
-			restored := newAnalyzerFactSet()
-			if _, err := rule.restorePackageCacheEntry(
-				&packages.Package{ID: pkg.ID, Types: secondTypes},
-				packageAnalyzerCacheSources(path, file),
-				map[string]string{path: pkg.ID},
-				rules.SeverityWarn,
-				restored,
-				corrupt,
-			); err == nil {
-				t.Fatalf("restorePackageCacheEntry() accepted stale %s", test.name)
-			}
-			if restored.importPackageFact(analyzer, secondTypes, new(snapshotFact)) {
-				t.Fatalf("stale %s partially restored package facts", test.name)
-			}
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				var entry packageAnalyzerCacheEntry
+				if err := json.Unmarshal(encoded, &entry); err != nil {
+					t.Fatal(err)
+				}
+				test.mutate(&entry)
+				corrupt, err := json.Marshal(entry)
+				if err != nil {
+					t.Fatal(err)
+				}
+				restored := newAnalyzerFactSet()
+				if _, err := rule.restorePackageCacheEntry(
+					&packages.Package{ID: pkg.ID, Types: secondTypes},
+					packageAnalyzerCacheSources(path, file),
+					map[string]string{path: pkg.ID},
+					rules.SeverityWarn,
+					restored,
+					corrupt,
+				);
+					err == nil {
+					t.Fatalf(
+						"restorePackageCacheEntry() accepted stale %s",
+						test.name,
+					)
+				}
+				if restored.importPackageFact(
+					analyzer,
+					secondTypes,
+					new(snapshotFact),
+				) {
+					t.Fatalf(
+						"stale %s partially restored package facts",
+						test.name,
+					)
+				}
+			},
+		)
 	}
 
 	if _, err := rule.restorePackageCacheEntry(
@@ -199,17 +281,22 @@ func TestPackageAnalyzerCacheEntryRejectsStaleIdentityWithoutPartialRestore(t *t
 		rules.SeverityError,
 		newAnalyzerFactSet(),
 		encoded,
-	); err == nil {
+	);
+		err == nil {
 		t.Fatal("restorePackageCacheEntry() accepted a stale severity")
 	}
 	if _, err := rule.restorePackageCacheEntry(
 		&packages.Package{ID: pkg.ID, Types: secondTypes},
-		packageAnalyzerCacheSources(path, loadPackageAnalyzerCacheBytes(t, path, []byte("package changed\n"))),
+		packageAnalyzerCacheSources(
+			path,
+			loadPackageAnalyzerCacheBytes(t, path, []byte("package changed\n")),
+		),
 		map[string]string{path: pkg.ID},
 		rules.SeverityWarn,
 		newAnalyzerFactSet(),
 		encoded,
-	); err == nil {
+	);
+		err == nil {
 		t.Fatal("restorePackageCacheEntry() accepted stale source bytes")
 	}
 	if _, err := rule.restorePackageCacheEntry(
@@ -219,7 +306,8 @@ func TestPackageAnalyzerCacheEntryRejectsStaleIdentityWithoutPartialRestore(t *t
 		rules.SeverityWarn,
 		newAnalyzerFactSet(),
 		encoded,
-	); err == nil {
+	);
+		err == nil {
 		t.Fatal("restorePackageCacheEntry() accepted stale source ownership")
 	}
 	if _, err := rule.restorePackageCacheEntry(
@@ -229,7 +317,8 @@ func TestPackageAnalyzerCacheEntryRejectsStaleIdentityWithoutPartialRestore(t *t
 		rules.SeverityWarn,
 		newAnalyzerFactSet(),
 		append(bytes.Clone(encoded), '\n'),
-	); err == nil {
+	);
+		err == nil {
 		t.Fatal("restorePackageCacheEntry() accepted noncanonical bytes")
 	}
 }
@@ -241,36 +330,54 @@ func TestPreparePackageCachePlanRejectsAmbientGoEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
 	options := &PackageCacheOptions{
-		Store: store, ToolVersion: "v0.1.0", BuildGoVersion: "go1.26.5",
-		SourceGoVersion: "1.26", Configuration: cache.DigestOf([]byte("configuration")),
+		Store: store,
+		ToolVersion: "v0.1.0",
+		BuildGoVersion: "go1.26.5",
+		SourceGoVersion: "1.26",
+		Configuration: cache.DigestOf([]byte("configuration")),
 		FormatterMode: "gox-v1",
 	}
-	selection := []rules.Selection{{
-		ID: "cache-rule", Severity: rules.SeverityWarn, Requirement: rules.RequireTypes,
-	}}
+	selection := []rules.Selection{
+		{ID: "cache-rule", Severity: rules.SeverityWarn, Requirement: rules.RequireTypes},
+	}
 	tests := []struct {
 		name string
-		env  []string
+		env []string
 		want string
 	}{
 		{name: "GOENV", env: []string{"CGO_ENABLED=0"}, want: "GOENV=off"},
 		{name: "CGO", env: []string{"GOENV=off", "CGO_ENABLED=1"}, want: "CGO_ENABLED=0"},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			_, err := preparePackageCachePlan(options, selection, PackageLoadOptions{
-				Env: test.env, GOOS: "linux", GOARCH: "amd64",
-			})
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("preparePackageCachePlan() error = %v, want %q", err, test.want)
-			}
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				_, err := preparePackageCachePlan(
+					options,
+					selection,
+					PackageLoadOptions{
+						Env: test.env,
+						GOOS: "linux",
+						GOARCH: "amd64",
+					},
+				)
+				if err == nil || !strings.Contains(err.Error(), test.want) {
+					t.Fatalf(
+						"preparePackageCachePlan() error = %v, want %q",
+						err,
+						test.want,
+					)
+				}
+			},
+		)
 	}
 }
 
@@ -281,26 +388,39 @@ func TestPreparePackageCachePlanDerivesResolvedRuleOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
 	options := &PackageCacheOptions{
-		Store: store, ToolVersion: "v0.1.0", BuildGoVersion: "go1.26.5",
-		SourceGoVersion: "1.26", Configuration: cache.DigestOf([]byte("configuration")),
+		Store: store,
+		ToolVersion: "v0.1.0",
+		BuildGoVersion: "go1.26.5",
+		SourceGoVersion: "1.26",
+		Configuration: cache.DigestOf([]byte("configuration")),
 		FormatterMode: "gox-v1",
 	}
 	loadOptions := PackageLoadOptions{
-		Env: []string{"GOENV=off", "CGO_ENABLED=0"}, GOOS: "linux", GOARCH: "amd64",
+		Env: []string{"GOENV=off", "CGO_ENABLED=0"},
+		GOOS: "linux",
+		GOARCH: "amd64",
 	}
 	selection := func(enabled bool) []rules.Selection {
-		return []rules.Selection{{
-			ID: "cache-rule", Severity: rules.SeverityWarn, Requirement: rules.RequireTypes,
-			Options: rules.NewOptionSet(map[string]rules.OptionValue{
-				"enabled": rules.BooleanOption(enabled),
-			}),
-		}}
+		return []rules.Selection{
+			{
+				ID: "cache-rule",
+				Severity: rules.SeverityWarn,
+				Requirement: rules.RequireTypes,
+				Options: rules.NewOptionSet(
+					map[string]rules.OptionValue{
+						"enabled": rules.BooleanOption(enabled),
+					},
+				),
+			},
+		}
 	}
 	first, err := preparePackageCachePlan(options, selection(false), loadOptions)
 	if err != nil {
@@ -320,29 +440,36 @@ func TestRestoreNativePackageCacheEntryRejectsChangedPackageOwnership(t *testing
 	writePackageCacheFile(t, root, "go.mod", "module example.com/nativeowner\n\ngo 1.26.0\n")
 	firstPath := writePackageCacheFile(t, root, "first/first.go", "package first\n")
 	secondPath := writePackageCacheFile(t, root, "second/second.go", "package second\n")
-	loaded, err := LoadPackages(context.Background(), PackageLoadOptions{
-		Dir: root, Patterns: []string{"./..."}, Requirement: rules.RequireTypes,
-	})
+	loaded, err := LoadPackages(
+		context.Background(),
+		PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"./..."},
+			Requirement: rules.RequireTypes,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	metadata := rules.Metadata{
-		ID: "native-owner", Summary: "reports typed syntax",
-		Documentation:    "Full typed rule documentation.",
-		DefaultSeverity:  rules.SeverityWarn,
-		Presets:          []rules.Preset{rules.PresetCorrectness},
-		MinimumGoVersion: "1.22", Requirement: rules.RequireTypes,
+		ID: "native-owner",
+		Summary: "reports typed syntax",
+		Documentation: "Full typed rule documentation.",
+		DefaultSeverity: rules.SeverityWarn,
+		Presets: []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion: "1.22",
+		Requirement: rules.RequireTypes,
 		NodeInterests: []rules.NodeKind{rules.NodeFile},
-		Categories:    []rules.Category{rules.CategoryCorrectness},
-		Examples:      []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+		Categories: []rules.Category{rules.CategoryCorrectness},
+		Examples: []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
 	}
 	registry, err := rules.NewRegistry(nativeCacheTestRule{metadata: metadata})
 	if err != nil {
 		t.Fatal(err)
 	}
-	selection := []rules.Selection{{
-		ID: metadata.ID, Severity: rules.SeverityWarn, Requirement: rules.RequireTypes,
-	}}
+	selection := []rules.Selection{
+		{ID: metadata.ID, Severity: rules.SeverityWarn, Requirement: rules.RequireTypes},
+	}
 	snapshots, err := nativeRuleSnapshots(registry, selection, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -358,13 +485,21 @@ func TestRestoreNativePackageCacheEntryRejectsChangedPackageOwnership(t *testing
 	if !found {
 		t.Fatal("package name token is missing")
 	}
-	diagnostic, err := diagnosticForFinding(file, metadata, rules.SeverityWarn, rules.Finding{
-		MessageKey: "owner", Message: "owner", Range: range_,
-	})
+	diagnostic, err := diagnosticForFinding(
+		file,
+		metadata,
+		rules.SeverityWarn,
+		rules.Finding{MessageKey: "owner", Message: "owner", Range: range_},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := encodeNativePackageCacheEntry(selection, snapshots, loaded, []rules.Diagnostic{diagnostic})
+	encoded, err := encodeNativePackageCacheEntry(
+		selection,
+		snapshots,
+		loaded,
+		[]rules.Diagnostic{diagnostic},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,8 +514,13 @@ func TestRestoreNativePackageCacheEntryRejectsChangedPackageOwnership(t *testing
 		t.Fatal(err)
 	}
 	if _, err := restoreNativePackageCacheEntry(
-		registry, selection, snapshots, loaded, missingRuleBytes,
-	); err == nil || !strings.Contains(err.Error(), "rule metadata is stale") {
+		registry,
+		selection,
+		snapshots,
+		loaded,
+		missingRuleBytes,
+	);
+		err == nil || !strings.Contains(err.Error(), "rule metadata is stale") {
 		t.Fatalf("restoreNativePackageCacheEntry() rule-set error = %v", err)
 	}
 	owners, err := nativeSourceOwners(loaded)
@@ -397,19 +537,25 @@ func TestRestoreNativePackageCacheEntryRejectsChangedPackageOwnership(t *testing
 		t.Fatal(err)
 	}
 	if _, err := restoreNativePackageCacheEntry(
-		registry, selection, snapshots, loaded, corrupt,
-	); err == nil || !strings.Contains(err.Error(), "source is not owned") {
+		registry,
+		selection,
+		snapshots,
+		loaded,
+		corrupt,
+	);
+		err == nil || !strings.Contains(err.Error(), "source is not owned") {
 		t.Fatalf("restoreNativePackageCacheEntry() ownership error = %v", err)
 	}
 }
 
 func packageAnalyzerCacheTestRule() (*packageAnalyzerRule, *goanalysis.Analyzer) {
 	analyzer := &goanalysis.Analyzer{
-		Name: "cachefacts", FactTypes: []goanalysis.Fact{new(snapshotFact)},
+		Name: "cachefacts",
+		FactTypes: []goanalysis.Fact{new(snapshotFact)},
 	}
 	rule := &packageAnalyzerRule{
 		metadata: rules.Metadata{ID: "cache-rule"},
-		steps:    []packageAnalyzerStep{{original: analyzer, analyzer: *analyzer}},
+		steps: []packageAnalyzerStep{{original: analyzer, analyzer: *analyzer}},
 	}
 	return rule, analyzer
 }
@@ -438,37 +584,45 @@ func packageAnalyzerCacheSources(path string, file *source.File) PackageSourceSe
 }
 
 func FuzzDecodePackageAnalyzerCacheEntry(f *testing.F) {
-	f.Add([]byte(`{"version":1,"rule":"r","packageId":"p","packagePath":"p","diagnostics":[],"factSnapshots":[]}`))
+	f.Add(
+		[]byte(
+			`{"version":1,"rule":"r","packageId":"p","packagePath":"p","diagnostics":[],"factSnapshots":[]}`,
+		),
+	)
 	f.Add([]byte("corrupt"))
-	f.Fuzz(func(t *testing.T, encoded []byte) {
-		entry, err := decodePackageAnalyzerCacheEntry(encoded)
-		if err != nil {
-			return
-		}
-		reencoded, err := json.Marshal(entry)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(reencoded, encoded) {
-			t.Fatal("accepted package analyzer cache entry was not canonical")
-		}
-	})
+	f.Fuzz(
+		func(t *testing.T, encoded []byte) {
+			entry, err := decodePackageAnalyzerCacheEntry(encoded)
+			if err != nil {
+				return
+			}
+			reencoded, err := json.Marshal(entry)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(reencoded, encoded) {
+				t.Fatal("accepted package analyzer cache entry was not canonical")
+			}
+		},
+	)
 }
 
 func FuzzDecodeNativePackageCacheEntry(f *testing.F) {
 	f.Add([]byte(`{"version":1,"requirement":2,"rules":[],"diagnostics":[]}`))
 	f.Add([]byte("corrupt"))
-	f.Fuzz(func(t *testing.T, encoded []byte) {
-		entry, err := decodeNativePackageCacheEntry(encoded)
-		if err != nil {
-			return
-		}
-		reencoded, err := json.Marshal(entry)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(reencoded, encoded) {
-			t.Fatal("accepted native analysis cache entry was not canonical")
-		}
-	})
+	f.Fuzz(
+		func(t *testing.T, encoded []byte) {
+			entry, err := decodeNativePackageCacheEntry(encoded)
+			if err != nil {
+				return
+			}
+			reencoded, err := json.Marshal(entry)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(reencoded, encoded) {
+				t.Fatal("accepted native analysis cache entry was not canonical")
+			}
+		},
+	)
 }

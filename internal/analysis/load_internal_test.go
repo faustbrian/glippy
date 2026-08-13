@@ -21,11 +21,17 @@ func TestPackageSourceCollectorOrdersMultipleFatalSourceFailures(t *testing.T) {
 
 	result, err := collector.result()
 	if len(result.Paths()) != 0 || !errors.Is(err, source.ErrTooLarge) {
-		t.Fatalf("result() returned paths=%q, error=%v, want ErrTooLarge", result.Paths(), err)
+		t.Fatalf(
+			"result() returned paths=%q, error=%v, want ErrTooLarge",
+			result.Paths(),
+			err,
+		)
 	}
-	want := "package parser did not capture source " + fmt.Sprintf("%q: a overflow", aPath) +
+	want := "package parser did not capture source " +
+		fmt.Sprintf("%q: a overflow", aPath) +
 		": Go source is too large\npackage parser did not capture source " +
-		fmt.Sprintf("%q: z overflow", zPath) + ": Go source is too large"
+		fmt.Sprintf("%q: z overflow", zPath) +
+		": Go source is too large"
 	if err.Error() != want {
 		t.Fatalf("result() error = %q, want %q", err, want)
 	}
@@ -34,14 +40,18 @@ func TestPackageSourceCollectorOrdersMultipleFatalSourceFailures(t *testing.T) {
 func TestPackageLoadEnvironmentDisablesEveryOrdinaryModuleNetworkRoute(t *testing.T) {
 	t.Parallel()
 
-	environment := packageLoadEnvironment(PackageLoadOptions{Env: []string{
-		"GOPROXY=https://proxy.invalid",
-		"GONOPROXY=*",
-		"GOPRIVATE=*",
-		"GOSUMDB=sum.golang.org",
-		"GOTOOLCHAIN=auto",
-		"GOVCS=*:all",
-	}})
+	environment := packageLoadEnvironment(
+		PackageLoadOptions{
+			Env: []string{
+				"GOPROXY=https://proxy.invalid",
+				"GONOPROXY=*",
+				"GOPRIVATE=*",
+				"GOSUMDB=sum.golang.org",
+				"GOTOOLCHAIN=auto",
+				"GOVCS=*:all",
+			},
+		},
+	)
 	values := make(map[string]string, len(environment))
 	for _, entry := range environment {
 		name, value, found := strings.Cut(entry, "=")
@@ -51,15 +61,20 @@ func TestPackageLoadEnvironmentDisablesEveryOrdinaryModuleNetworkRoute(t *testin
 	}
 	want := map[string]string{
 		"GOPACKAGESDRIVER": "off",
-		"GOPROXY":          "off",
-		"GONOPROXY":        "none",
-		"GOSUMDB":          "off",
-		"GOTOOLCHAIN":      "local",
-		"GOVCS":            "off",
+		"GOPROXY": "off",
+		"GONOPROXY": "none",
+		"GOSUMDB": "off",
+		"GOTOOLCHAIN": "local",
+		"GOVCS": "off",
 	}
 	for name, value := range want {
 		if values[name] != value {
-			t.Errorf("packageLoadEnvironment() %s = %q, want %q", name, values[name], value)
+			t.Errorf(
+				"packageLoadEnvironment() %s = %q, want %q",
+				name,
+				values[name],
+				value,
+			)
 		}
 	}
 }
@@ -83,11 +98,12 @@ func TestPackageBuildFlagsAreReadOnlyAndCanonical(t *testing.T) {
 		t.Fatalf("packageBuildFlags(vendor) = %q", flags)
 	}
 
-	for _, options := range []PackageLoadOptions{
-		{ModuleMode: ModuleMode("mod")},
-		{BuildTags: []string{"two tags"}},
-		{BuildTags: []string{""}},
-	} {
+	for _, options := range
+		[]PackageLoadOptions{
+			{ModuleMode: ModuleMode("mod")},
+			{BuildTags: []string{"two tags"}},
+			{BuildTags: []string{""}},
+		} {
 		if _, err := packageBuildFlags(options); err == nil {
 			t.Fatalf("packageBuildFlags() accepted %#v", options)
 		}
