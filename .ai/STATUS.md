@@ -1,10 +1,11 @@
 # Gox Development Status
 
-- Progress: 55%
-- Current phase: Phase 3, linter foundation and safe fixes
+- Progress: 75%
+- Current phase: Phase 4, typed, control-flow, and SSA analysis
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
+- Phase 3 completed: 2026-08-13
 
 Phase 0 established the reviewed product contracts, shared-frontend and edit
 boundaries, initial hostile-valid corpus, bounded document renderer, controlled
@@ -1062,3 +1063,16 @@ phase is complete and overall progress advances to 55%. The isolated
 `feature/gox-prompts-adoption` branch remains unpushed and unintegrated; that is
 a delivery action requiring separate authority, not an unresolved layout or
 Phase 2 capability decision. Phase 3 is now the active exit gate.
+
+The Phase 3 exit audit now proves the complete syntax-linter and safe-fix
+foundation. Fresh full tests and vet pass; focused race checks pass for rules,
+analysis, fixes, reporters, and CLI; 10-second coordinator and suppression
+fuzz runs complete 567,415 and 444,646 executions without failure; and the
+current one-pass scheduler benchmark retains its bounded direct-dispatch
+advantage at representative rule counts. The default correctness preset passes
+without findings or tool failures on both Gox and the maintainer-approved
+`pkg/prompts` migration, consistent with the recorded 7,732-file
+multi-repository noise audit. Phase 3 is complete and overall progress advances
+to 75%. Phase 4 is now active; isolated typed, CFG, SSA, and cache work does not
+advance progress until that phase's complete module, workspace, correctness,
+cost, and invalidation gate is audited.
