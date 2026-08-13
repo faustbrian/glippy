@@ -491,6 +491,94 @@ func TestLoadPackagesRejectsOversizedDiskSourceWithoutReparsing(t *testing.T) {
 	}
 }
 
+func TestLoadPackagesRejectsTypedSourceSetBeyondConfiguredLimits(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeLoadFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeLoadFixture(t, filepath.Join(root, "a.go"), "package project\nconst A = 1\n")
+	writeLoadFixture(t, filepath.Join(root, "b.go"), "package project\nconst B = 2\n")
+
+	for _, test := range []struct {
+		name    string
+		options analysis.PackageLoadOptions
+		want    string
+	}{
+		{
+			name: "files",
+			options: analysis.PackageLoadOptions{
+				MaxSourceFiles: 1,
+			},
+			want: "typed source set exceeds 1-file limit",
+		},
+		{
+			name: "bytes",
+			options: analysis.PackageLoadOptions{
+				MaxSourceBytes: int64(len("package project\nconst A = 1\n")),
+			},
+			want: "typed source set exceeds 28-byte limit",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			options := test.options
+			options.Dir = root
+			options.Patterns = []string{"."}
+			options.Requirement = rules.RequireTypes
+			result, err := analysis.LoadPackages(context.Background(), options)
+			if len(result.Packages) != 0 || err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("LoadPackages() = %d packages, %v, want %q", len(result.Packages), err, test.want)
+			}
+		})
+	}
+}
+
+func TestLoadPackagesRejectsPackageGraphBeyondConfiguredLimit(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeLoadFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeLoadFixture(t, filepath.Join(root, "dep", "dep.go"), "package dep\nconst Value = 1\n")
+	writeLoadFixture(t, filepath.Join(root, "root", "root.go"), "package root\nimport \"example.com/project/dep\"\nconst Value = dep.Value\n")
+
+	result, err := analysis.LoadPackages(context.Background(), analysis.PackageLoadOptions{
+		Dir: root, Patterns: []string{"./root"}, Requirement: rules.RequireTypes,
+		MaxPackages: 1,
+	})
+	if len(result.Packages) != 0 || err == nil ||
+		!strings.Contains(err.Error(), "package graph exceeds 1-package limit") {
+		t.Fatalf("LoadPackages() = %d packages, %v, want package graph limit", len(result.Packages), err)
+	}
+}
+
+func TestLoadPackagesRejectsInvalidResourceLimitsBeforeLoading(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeLoadFixture(t, filepath.Join(root, "go.mod"), "module example.com/project\n\ngo 1.26.0\n")
+	writeLoadFixture(t, filepath.Join(root, "project.go"), "package project\n")
+
+	for _, test := range []struct {
+		options analysis.PackageLoadOptions
+		want    string
+	}{
+		{options: analysis.PackageLoadOptions{MaxPackages: -1}, want: "must not be negative"},
+		{options: analysis.PackageLoadOptions{MaxSourceFiles: -1}, want: "must not be negative"},
+		{options: analysis.PackageLoadOptions{MaxSourceBytes: -1}, want: "must not be negative"},
+		{options: analysis.PackageLoadOptions{MaxPackages: analysis.DefaultMaxPackages + 1}, want: "must not exceed"},
+		{options: analysis.PackageLoadOptions{MaxSourceFiles: analysis.DefaultMaxSourceFiles + 1}, want: "must not exceed"},
+		{options: analysis.PackageLoadOptions{MaxSourceBytes: analysis.DefaultMaxSourceBytes + 1}, want: "must not exceed"},
+	} {
+		options := test.options
+		options.Dir = root
+		options.Patterns = []string{"."}
+		options.Requirement = rules.RequireTypes
+		if _, err := analysis.LoadPackages(context.Background(), options); err == nil ||
+			!strings.Contains(err.Error(), test.want) {
+			t.Fatalf("LoadPackages(%#v) error = %v, want invalid resource limit", options, err)
+		}
+	}
+}
+
 func comparePackageDiagnostics(left, right analysis.PackageDiagnostic) int {
 	if left.PackageID != right.PackageID {
 		return strings.Compare(left.PackageID, right.PackageID)

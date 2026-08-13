@@ -117,6 +117,23 @@ from every populated package in the requested graph and ordered by package ID,
 position, message, and upstream error kind. Package-local errors MUST NOT
 discard otherwise available typed roots.
 
+One typed load MUST admit at most 10,000 packages in its complete reachable
+graph, 20,000 unique parsed Go source files, and 268,435,456 aggregate unique
+source bytes. Duplicate test variants of the same exact physical source count
+once; incompatible bytes for one path remain an error. The source limits MUST
+be enforced before constructing Gox's immutable source model, and the package
+graph limit MUST be enforced before CFG, SSA, fact, cache, or rule execution.
+Internal callers MAY lower a limit for a bounded host or proving fixture but
+MUST NOT raise the product defaults without new corpus and peak-memory
+evidence. These aggregate limits complement the 64 MiB per-source limit.
+
+Active package parsing and type checking use the bounded I/O and
+`GOMAXPROCS`-derived CPU scheduling provided by the pinned `go/packages`
+implementation. Gox MUST NOT start independent package loads or duplicate
+deep representations per rule. Native types, CFG, SSA, fact, and cache work
+within one load remains deterministically serialized unless a later bounded
+scheduler has measured memory and ordering evidence.
+
 Package loading MUST delegate module and workspace interpretation to
 `go/packages` with explicit test, build-tag, module-mode, overlay, GOOS, and
 GOARCH inputs. Build tags MUST be validated, deduplicated, and ordered before

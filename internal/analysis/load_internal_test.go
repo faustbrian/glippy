@@ -15,7 +15,7 @@ func TestPackageSourceCollectorOrdersMultipleFatalSourceFailures(t *testing.T) {
 	root := t.TempDir()
 	aPath := filepath.Join(root, "a.go")
 	zPath := filepath.Join(root, "z.go")
-	collector := newPackageSourceCollector()
+	collector := newPackageSourceCollector(defaultPackageResourceLimits())
 	collector.add(zPath, nil, fmt.Errorf("z overflow: %w", source.ErrTooLarge))
 	collector.add(aPath, nil, fmt.Errorf("a overflow: %w", source.ErrTooLarge))
 

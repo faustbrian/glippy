@@ -40,6 +40,17 @@ type diagnostics from every populated package in the requested graph.
 Package-local errors therefore preserve partial typed results instead of
 becoming an opaque load failure.
 
+One typed load admits at most 10,000 reachable packages, 20,000 unique parsed
+Go source files, and 256 MiB of aggregate unique source bytes. These fixed
+product defaults are intentionally lowerable by internal bounded callers but
+are not another public configuration dialect. The parser reserves unique path,
+digest, and size identity before constructing Gox source units; the graph is
+counted iteratively before any CFG, SSA, fact, cache, or rule execution. The
+pinned x/tools loader bounds active I/O and CPU work, and Gox serializes later
+deep consumers within the one shared graph. Revisit these ceilings only when a
+real repository cannot fit and new corpus plus peak-memory evidence supports a
+different policy.
+
 The package parser callback also constructs the shared physical source model
 from the exact bytes supplied by `go/packages`, after overlays and build
 selection. It retains one immutable source version per normalized absolute

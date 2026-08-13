@@ -3,6 +3,7 @@ package analysis
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -30,6 +31,16 @@ const (
 	ModuleReadonly ModuleMode = "readonly"
 	// ModuleVendor loads dependencies from the selected vendor tree.
 	ModuleVendor ModuleMode = "vendor"
+
+	// DefaultMaxPackages bounds the complete package graph retained by one
+	// typed analysis load.
+	DefaultMaxPackages = 10_000
+	// DefaultMaxSourceFiles bounds unique physical Go sources retained by one
+	// typed analysis load.
+	DefaultMaxSourceFiles = 20_000
+	// DefaultMaxSourceBytes bounds aggregate unique physical Go source bytes
+	// retained by one typed analysis load.
+	DefaultMaxSourceBytes int64 = 256 << 20
 )
 
 // PackageLoadOptions defines one run-owned Go package loading request.
@@ -46,6 +57,9 @@ type PackageLoadOptions struct {
 	AllowNetwork         bool
 	GOOS                 string
 	GOARCH               string
+	MaxPackages          int
+	MaxSourceFiles       int
+	MaxSourceBytes       int64
 }
 
 // PackageDiagnostic is one canonical package-loading or type-checking error.
@@ -136,11 +150,15 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 	if err := validatePackageOverlay(options.Overlay); err != nil {
 		return PackageLoadResult{}, err
 	}
+	limits, err := resolvePackageResourceLimits(options)
+	if err != nil {
+		return PackageLoadResult{}, err
+	}
 	buildFlags, err := packageBuildFlags(options)
 	if err != nil {
 		return PackageLoadResult{}, err
 	}
-	sourceCollector := newPackageSourceCollector()
+	sourceCollector := newPackageSourceCollector(limits)
 
 	loaded, err := packages.Load(&packages.Config{
 		Context:    ctx,
@@ -157,6 +175,9 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 	}
 	if err != nil {
 		return PackageLoadResult{}, fmt.Errorf("load Go packages: %w", err)
+	}
+	if err := validatePackageGraphLimit(loaded, limits.maxPackages); err != nil {
+		return PackageLoadResult{}, err
 	}
 	sources, err := sourceCollector.result()
 	if err != nil {
@@ -191,18 +212,115 @@ func validatePackageOverlay(overlay map[string][]byte) error {
 	return nil
 }
 
+func resolvePackageResourceLimits(options PackageLoadOptions) (packageResourceLimits, error) {
+	if options.MaxPackages < 0 {
+		return packageResourceLimits{}, fmt.Errorf("maximum package count must not be negative")
+	}
+	if options.MaxSourceFiles < 0 {
+		return packageResourceLimits{}, fmt.Errorf("maximum typed source file count must not be negative")
+	}
+	if options.MaxSourceBytes < 0 {
+		return packageResourceLimits{}, fmt.Errorf("maximum typed source byte count must not be negative")
+	}
+	if options.MaxPackages > DefaultMaxPackages {
+		return packageResourceLimits{}, fmt.Errorf(
+			"maximum package count must not exceed %d",
+			DefaultMaxPackages,
+		)
+	}
+	if options.MaxSourceFiles > DefaultMaxSourceFiles {
+		return packageResourceLimits{}, fmt.Errorf(
+			"maximum typed source file count must not exceed %d",
+			DefaultMaxSourceFiles,
+		)
+	}
+	if options.MaxSourceBytes > DefaultMaxSourceBytes {
+		return packageResourceLimits{}, fmt.Errorf(
+			"maximum typed source byte count must not exceed %d",
+			DefaultMaxSourceBytes,
+		)
+	}
+	limits := defaultPackageResourceLimits()
+	if options.MaxPackages != 0 {
+		limits.maxPackages = options.MaxPackages
+	}
+	if options.MaxSourceFiles != 0 {
+		limits.maxSourceFiles = options.MaxSourceFiles
+	}
+	if options.MaxSourceBytes != 0 {
+		limits.maxSourceBytes = options.MaxSourceBytes
+	}
+	return limits, nil
+}
+
+func defaultPackageResourceLimits() packageResourceLimits {
+	return packageResourceLimits{
+		maxPackages:    DefaultMaxPackages,
+		maxSourceFiles: DefaultMaxSourceFiles,
+		maxSourceBytes: DefaultMaxSourceBytes,
+	}
+}
+
+func validatePackageGraphLimit(roots []*packages.Package, limit int) error {
+	visited := make(map[string]struct{})
+	stack := slices.Clone(roots)
+	for len(stack) > 0 {
+		pkg := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if pkg == nil {
+			continue
+		}
+		identity := pkg.ID
+		if identity == "" {
+			identity = fmt.Sprintf("%p", pkg)
+		}
+		if _, found := visited[identity]; found {
+			continue
+		}
+		visited[identity] = struct{}{}
+		if len(visited) > limit {
+			return fmt.Errorf("package graph exceeds %d-package limit", limit)
+		}
+		imports := make([]string, 0, len(pkg.Imports))
+		for path := range pkg.Imports {
+			imports = append(imports, path)
+		}
+		sort.Strings(imports)
+		for index := len(imports) - 1; index >= 0; index-- {
+			stack = append(stack, pkg.Imports[imports[index]])
+		}
+	}
+	return nil
+}
+
 type packageSourceCollector struct {
 	mu       sync.Mutex
 	files    map[string]*source.File
 	problems map[string]PackageSourceProblem
 	errors   map[string]map[string]error
+	seen     map[string]sourceReservation
+	limits   packageResourceLimits
+	bytes    int64
 }
 
-func newPackageSourceCollector() *packageSourceCollector {
+type packageResourceLimits struct {
+	maxPackages    int
+	maxSourceFiles int
+	maxSourceBytes int64
+}
+
+type sourceReservation struct {
+	digest [sha256.Size]byte
+	size   int64
+}
+
+func newPackageSourceCollector(limits packageResourceLimits) *packageSourceCollector {
 	return &packageSourceCollector{
 		files:    make(map[string]*source.File),
 		problems: make(map[string]PackageSourceProblem),
 		errors:   make(map[string]map[string]error),
+		seen:     make(map[string]sourceReservation),
+		limits:   limits,
 	}
 }
 
@@ -211,6 +329,12 @@ func (c *packageSourceCollector) parseFile(
 	filename string,
 	input []byte,
 ) (*ast.File, error) {
+	if err := c.admit(filename, input); err != nil {
+		return nil, scanner.ErrorList{&scanner.Error{
+			Pos: token.Position{Filename: filename, Line: 1, Column: 1},
+			Msg: err.Error(),
+		}}
+	}
 	physical, sourceErr := source.Load(filename, input)
 	c.add(filename, physical, sourceErr)
 	if physical == nil {
@@ -220,6 +344,39 @@ func (c *packageSourceCollector) parseFile(
 		}}
 	}
 	return parser.ParseFile(fileSet, filename, input, parser.AllErrors|parser.ParseComments)
+}
+
+func (c *packageSourceCollector) admit(filename string, input []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	path := filepath.Clean(filename)
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		err := fmt.Errorf("package parser returned non-normalized source path %q", path)
+		c.addError(path, err)
+		return err
+	}
+	reservation := sourceReservation{digest: sha256.Sum256(input), size: int64(len(input))}
+	if previous, found := c.seen[path]; found {
+		if previous != reservation {
+			err := fmt.Errorf("package parser returned incompatible source versions for %q", path)
+			c.addError(path, err)
+			return err
+		}
+		return nil
+	}
+	if len(c.seen)+1 > c.limits.maxSourceFiles {
+		err := fmt.Errorf("typed source set exceeds %d-file limit", c.limits.maxSourceFiles)
+		c.addError("", err)
+		return err
+	}
+	if int64(len(input)) > c.limits.maxSourceBytes-c.bytes {
+		err := fmt.Errorf("typed source set exceeds %d-byte limit", c.limits.maxSourceBytes)
+		c.addError("", err)
+		return err
+	}
+	c.seen[path] = reservation
+	c.bytes += int64(len(input))
+	return nil
 }
 
 func (c *packageSourceCollector) add(filename string, file *source.File, sourceErr error) {
