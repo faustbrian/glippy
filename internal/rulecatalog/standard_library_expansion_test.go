@@ -1,0 +1,576 @@
+package rulecatalog_test
+
+import (
+	"context"
+	"path/filepath"
+	"reflect"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/rulecatalog"
+	"github.com/faustbrian/glippy/internal/rules"
+)
+
+func TestExpandedStandardLibraryRulesReportMisuse(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+func contextUse(ctx context.Context) {}
+
+type sampleError struct{}
+
+func (*sampleError) Error() string { return "sample" }
+
+func bad(err error) {
+	contextUse(nil)
+	time.Sleep(1)
+	time.Parse("2006-02-01", "2026-08-13")
+	var target error
+	errors.As(err, target)
+}
+
+func good(ctx context.Context, err error) {
+	contextUse(ctx)
+	time.Sleep(time.Second)
+	time.Parse("2006-01-02", "2026-08-13")
+	var target *sampleError
+	errors.As(err, &target)
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/stdlibexpansion\n\ngo 1.25.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	overrides := map[string]rules.Severity{
+		"errors-as-target": rules.SeverityWarn,
+		"nil-context": rules.SeverityWarn,
+		"time-duration-unit": rules.SeverityWarn,
+		"time-layout": rules.SeverityWarn,
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: overrides,
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRules := []string{
+		"nil-context",
+		"time-duration-unit",
+		"time-layout",
+		"errors-as-target",
+	}
+	wantText := []string{"nil", "1", "2006-02-01", "errors.As(err, target)"}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(wantRules) {
+		t.Fatalf("expanded standard-library result = %#v", result)
+	}
+	searchFrom := 0
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		relative := strings.Index(input[searchFrom:], wantText[index])
+		if relative < 0 {
+			t.Fatalf("missing diagnostic text %q", wantText[index])
+		}
+		start := searchFrom + relative
+		wantFixes := 0
+		if diagnostic.RuleID == "time-layout" {
+			wantFixes = 1
+		}
+		if diagnostic.RuleID != wantRules[index] ||
+			diagnostic.Range.Start != start ||
+			diagnostic.Range.End != start + len(wantText[index]) ||
+			len(diagnostic.Fixes) != wantFixes {
+			t.Fatalf("diagnostic[%d] = %#v", index, diagnostic)
+		}
+		if diagnostic.RuleID == "time-layout" &&
+			(diagnostic.Fixes[0].Safety != rules.FixSuggestion ||
+				len(diagnostic.Fixes[0].Edits) != 1 ||
+				diagnostic.Fixes[0].Edits[0].NewText != "2006-01-02") {
+			t.Fatalf("time-layout fix = %#v", diagnostic.Fixes)
+		}
+		searchFrom = start + len(wantText[index])
+	}
+}
+
+func TestExpandedStandardLibraryMetadata(t *testing.T) {
+	t.Parallel()
+
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]struct {
+		presets []rules.Preset
+		interests []rules.NodeKind
+	}{
+		"errors-as-target": {
+			[]rules.Preset{rules.PresetCorrectness},
+			[]rules.NodeKind{rules.NodeFile},
+		},
+		"nil-context": {
+			[]rules.Preset{rules.PresetCorrectness},
+			[]rules.NodeKind{rules.NodeCallExpr},
+		},
+		"time-duration-unit": {
+			[]rules.Preset{rules.PresetSuspicious},
+			[]rules.NodeKind{rules.NodeCallExpr},
+		},
+		"time-layout": {
+			[]rules.Preset{rules.PresetCorrectness},
+			[]rules.NodeKind{rules.NodeFile},
+		},
+	}
+	for id, expected := range want {
+		metadata, found := registry.Metadata(id)
+		wantFixes := 0
+		if id == "time-layout" {
+			wantFixes = 1
+		}
+		if !found ||
+			metadata.DefaultSeverity != rules.SeverityWarn ||
+			!reflect.DeepEqual(metadata.Presets, expected.presets) ||
+			metadata.MinimumGoVersion != "1.25" ||
+			metadata.Requirement != rules.RequireTypes ||
+			!reflect.DeepEqual(metadata.NodeInterests, expected.interests) ||
+			metadata.RunOnGenerated ||
+			metadata.RunDespiteTypeErrors ||
+			len(metadata.Fixes) != wantFixes {
+			t.Fatalf("%s metadata = %#v, found = %v", id, metadata, found)
+		}
+		if id == "nil-context" &&
+			(len(metadata.Options) != 1 ||
+				metadata.Options[0].Name != "include-tests" ||
+				metadata.Options[0].Kind != rules.OptionBoolean ||
+				metadata.Options[0].Default == nil ||
+				metadata.Options[0].Default.String() != "false") {
+			t.Fatalf("nil-context options = %#v", metadata.Options)
+		}
+		if id == "time-layout" && metadata.Fixes[0].Safety != rules.FixSuggestion {
+			t.Fatalf("time-layout fix metadata = %#v", metadata.Fixes)
+		}
+	}
+}
+
+func TestNilContextCanIncludeTestFiles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/nilcontexttests\n\ngo 1.25.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "sample.go"),
+		"package sample\nimport \"context\"\nfunc accept(context.Context) {}\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "sample_test.go"),
+		"package sample\nimport \"testing\"\nfunc TestNil(t *testing.T) { accept(nil) }\n",
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(includeTests bool) analysis.PackageResult {
+		t.Helper()
+		result, runErr := analysis.RunPackages(
+			context.Background(),
+			registry,
+			analysis.RunOptions{
+				Presets: []rules.Preset{},
+				Overrides: map[string]rules.Severity{
+					"nil-context": rules.SeverityWarn,
+				},
+				RuleOptions: map[string]rules.OptionSet{
+					"nil-context": rules.NewOptionSet(
+						map[string]rules.OptionValue{
+							"include-tests": rules.BooleanOption(
+								includeTests,
+							),
+						},
+					),
+				},
+				SourceGoVersion: "go1.25",
+			},
+			analysis.PackageLoadOptions{
+				Dir: root,
+				Patterns: []string{"."},
+				Tests: true,
+				ModuleMode: analysis.ModuleReadonly,
+			},
+		)
+		if runErr != nil {
+			t.Fatal(runErr)
+		}
+		return result
+	}
+	withoutTests := run(false)
+	if countPackageDiagnostics(withoutTests) != 0 {
+		t.Fatalf("default nil-context test-file result = %#v", withoutTests)
+	}
+	withTests := run(true)
+	if countPackageDiagnostics(withTests) != 1 {
+		t.Fatalf("included nil-context test-file result = %#v", withTests)
+	}
+}
+
+func TestExpandedStandardLibraryNativeRulesCoverSupportedCalls(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		ruleID string
+		input string
+		wantText []string
+	}{
+		{
+			name: "context positions and variadic arguments",
+			ruleID: "nil-context",
+			input: `package sample
+import "context"
+type localContext interface { Done() <-chan struct{} }
+func accept(first int, ctx context.Context, rest ...context.Context) {}
+func local(localContext) {}
+func run() {
+	accept(0, nil)
+	accept(0, context.Background(), nil)
+	local(nil)
+}
+`,
+			wantText: []string{"nil", "nil"},
+		},
+		{
+			name: "waiting and timer APIs",
+			ruleID: "time-duration-unit",
+			input: `package sample
+import "time"
+func run() {
+	time.Sleep(1)
+	time.After(1)
+	time.NewTimer(1)
+	time.NewTicker(1)
+	time.Tick(1)
+	time.AfterFunc(1, func() {})
+	time.Sleep(0)
+	time.Sleep(delay)
+	time.Sleep(time.Duration(1))
+	time.Sleep(1 * time.Nanosecond)
+}
+const delay = 1
+`,
+			wantText: []string{"1", "1", "1", "1", "1", "1"},
+		},
+		{
+			name: "parse and format layouts",
+			ruleID: "time-layout",
+			input: `package sample
+import "time"
+func run(value string) {
+	time.Parse("2006-02-01", value)
+	time.Now().Format("2006-02-01")
+}
+`,
+			wantText: []string{"2006-02-01", "2006-02-01"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+
+				root := t.TempDir()
+				writeFixture(
+					t,
+					filepath.Join(root, "go.mod"),
+					"module example.com/stdlibsupportedcalls\n\ngo 1.25.0\n",
+				)
+				writeFixture(t, filepath.Join(root, "sample.go"), test.input)
+				registry, err := rulecatalog.NewRegistry()
+				if err != nil {
+					t.Fatal(err)
+				}
+				result, err := analysis.RunPackages(
+					context.Background(),
+					registry,
+					analysis.RunOptions{
+						Presets: []rules.Preset{},
+						Overrides: map[string]rules.Severity{
+							test.ruleID: rules.SeverityWarn,
+						},
+						SourceGoVersion: "go1.25",
+					},
+					analysis.PackageLoadOptions{
+						Dir: root,
+						Patterns: []string{"."},
+						ModuleMode: analysis.ModuleReadonly,
+					},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(result.Files) != 1 ||
+					len(result.Files[0].Diagnostics) != len(test.wantText) {
+					t.Fatalf("%s result = %#v", test.ruleID, result)
+				}
+				searchFrom := 0
+				for index, diagnostic := range result.Files[0].Diagnostics {
+					relative := strings.Index(
+						test.input[searchFrom:],
+						test.wantText[index],
+					)
+					if relative < 0 {
+						t.Fatalf(
+							"missing diagnostic text %q",
+							test.wantText[index],
+						)
+					}
+					start := searchFrom + relative
+					if diagnostic.RuleID != test.ruleID ||
+						diagnostic.Range.Start != start ||
+						diagnostic.Range.End !=
+							start + len(test.wantText[index]) {
+						t.Fatalf(
+							"%s diagnostic[%d] = %#v",
+							test.ruleID,
+							index,
+							diagnostic,
+						)
+					}
+					searchFrom = start + len(test.wantText[index])
+				}
+			},
+		)
+	}
+}
+
+func TestExpandedStandardLibraryRulesHonorSharedPolicies(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/stdlibexpansionpolicy\n\ngo 1.25.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "suppressed.go"),
+		`package sample
+
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+func accept(context.Context) {}
+
+func suppressed(err error) {
+	//glippy:ignore nil-context -- compatibility call
+	accept(nil)
+	//glippy:ignore time-duration-unit -- measured nanosecond delay
+	time.Sleep(1)
+	//glippy:ignore time-layout -- legacy wire layout
+	time.Parse("2006-02-01", "2026-08-13")
+	var target error
+	//glippy:ignore errors-as-target -- compatibility target
+	errors.As(err, target)
+}
+`,
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "generated.go"),
+		`// Code generated by fixture. DO NOT EDIT.
+package sample
+
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+func generatedAccept(context.Context) {}
+
+func generated(err error) {
+	generatedAccept(nil)
+	time.Sleep(1)
+	time.Parse("2006-02-01", "2026-08-13")
+	var target error
+	errors.As(err, target)
+}
+`,
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "invalid", "invalid.go"),
+		`package invalid
+
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+func accept(context.Context) {}
+
+func invalid(err error) {
+	accept(nil)
+	time.Sleep(1)
+	time.Parse("2006-02-01", "2026-08-13")
+	var target error
+	errors.As(err, target)
+	var text string = 1
+	_ = text
+}
+`,
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	overrides := map[string]rules.Severity{
+		"errors-as-target": rules.SeverityWarn,
+		"nil-context": rules.SeverityWarn,
+		"time-duration-unit": rules.SeverityWarn,
+		"time-layout": rules.SeverityWarn,
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: overrides,
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"./..."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 3 || len(result.LoadDiagnostics) == 0 {
+		t.Fatalf("expanded standard-library policy result = %#v", result)
+	}
+	for _, file := range result.Files {
+		switch filepath.Base(file.Path) {
+		case "suppressed.go":
+			if len(file.Diagnostics) != 0 || len(file.Suppressed) != 4 {
+				t.Fatalf("suppressed result = %#v", file)
+			}
+			got := make([]string, len(file.Suppressed))
+			for index, suppressed := range file.Suppressed {
+				got[index] = suppressed.Diagnostic.RuleID
+			}
+			slices.Sort(got)
+			want := []string{
+				"errors-as-target",
+				"nil-context",
+				"time-duration-unit",
+				"time-layout",
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("suppressed rules = %q, want %q", got, want)
+			}
+		case "generated.go", "invalid.go":
+			if len(file.Diagnostics) != 0 || len(file.Suppressed) != 0 {
+				t.Fatalf("excluded result = %#v", file)
+			}
+		default:
+			t.Fatalf("unexpected policy path %q", file.Path)
+		}
+	}
+	selection, err := registry.ResolveOptions(
+		rules.ResolveOptions{
+			Presets: []rules.Preset{},
+			Overrides: overrides,
+			SourceGoVersion: "go1.24",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selection) != 0 {
+		t.Fatalf("pre-minimum selection = %#v", selection)
+	}
+}
+
+func BenchmarkExpandedStandardLibraryPackageAnalysis(b *testing.B) {
+	root := b.TempDir()
+	writeFixture(
+		b,
+		filepath.Join(root, "go.mod"),
+		"module example.com/stdlibexpansionbenchmark\n\ngo 1.25.0\n",
+	)
+	writeFixture(
+		b,
+		filepath.Join(root, "sample.go"),
+		`package sample
+import ("context"; "errors"; "time")
+func accept(context.Context) {}
+func run(err error) { accept(nil); time.Sleep(1); time.Parse("2006-02-01", "2026-08-13"); var target error; errors.As(err, target) }
+`,
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, ruleID := range
+		[]string{"errors-as-target", "nil-context", "time-duration-unit", "time-layout"} {
+		ruleID := ruleID
+		b.Run(
+			ruleID,
+			func(b *testing.B) {
+				benchmarkPackageRuns(
+					b,
+					registry,
+					analysis.RunOptions{
+						Presets: []rules.Preset{},
+						Overrides: map[string]rules.Severity{
+							ruleID: rules.SeverityWarn,
+						},
+						SourceGoVersion: "go1.25",
+					},
+					analysis.PackageLoadOptions{
+						Dir: root,
+						Patterns: []string{"."},
+						ModuleMode: analysis.ModuleReadonly,
+					},
+					1,
+				)
+			},
+		)
+	}
+}

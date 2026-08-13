@@ -1262,7 +1262,7 @@ func TestRunCombinedCheckHonorsLintAndFormatConfiguration(t *testing.T) {
 		err != nil {
 		t.Fatal(err)
 	}
-	configuration := "version = 1\n[format]\nline-width = 30\n[lint.rules]\natomic-update-assignment = \"off\"\nbad-bit-mask = \"off\"\ncontext-cancel-leak = \"off\"\ncontradictory-condition = \"off\"\ncopied-lock = \"off\"\nduplicate-condition = \"off\"\nhttp-response-before-error = \"off\"\nimpossible-comparison = \"off\"\nimpossible-type-assertion = \"off\"\nloop-capture = \"off\"\nself-assignment = \"off\"\n"
+	configuration := "version = 1\n[format]\nline-width = 30\n[lint.rules]\natomic-update-assignment = \"off\"\nbad-bit-mask = \"off\"\ncontext-cancel-leak = \"off\"\ncontradictory-condition = \"off\"\ncopied-lock = \"off\"\nduplicate-condition = \"off\"\nerrors-as-target = \"off\"\nhttp-response-before-error = \"off\"\nimpossible-comparison = \"off\"\nimpossible-type-assertion = \"off\"\nloop-capture = \"off\"\nnil-context = \"off\"\nself-assignment = \"off\"\ntime-duration-unit = \"off\"\ntime-layout = \"off\"\n"
 	if err := os.WriteFile(filepath.Join(root, ".glippy.toml"), []byte(configuration), 0o600);
 		err != nil {
 		t.Fatal(err)

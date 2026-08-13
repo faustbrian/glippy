@@ -10,8 +10,10 @@ import (
 	atomicanalyzer "golang.org/x/tools/go/analysis/passes/atomic"
 	"golang.org/x/tools/go/analysis/passes/bools"
 	"golang.org/x/tools/go/analysis/passes/copylock"
+	"golang.org/x/tools/go/analysis/passes/errorsas"
 	"golang.org/x/tools/go/analysis/passes/httpresponse"
 	"golang.org/x/tools/go/analysis/passes/ifaceassert"
+	"golang.org/x/tools/go/analysis/passes/timeformat"
 
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/rules"
@@ -33,9 +35,11 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewImpossibleComparisonRule(),
 		rules.NewLockHeldAcrossBlockingCallRule(),
 		rules.NewLoopCaptureRule(),
+		rules.NewNilContextRule(),
 		rules.NewResourceNotClosedRule(),
 		rules.NewSubsumedConditionRule(),
 		rules.NewSuspiciousRangeRule(),
+		rules.NewTimeDurationUnitRule(),
 	)
 	all = append(all, rules.NewAlmostSwappedRule())
 	registry, err := rules.NewRegistry(all...)
@@ -56,6 +60,8 @@ func standardAnalyzerRules() ([]rules.Rule, error) {
 		httpResponseBeforeErrorRule,
 		atomicUpdateAssignmentRule,
 		contradictoryConditionRule,
+		errorsAsTargetRule,
+		timeLayoutRule,
 	}
 	result := make([]rules.Rule, 0, len(constructors))
 	for _, construct := range constructors {
@@ -66,6 +72,72 @@ func standardAnalyzerRules() ([]rules.Rule, error) {
 		result = append(result, rule)
 	}
 	return result, nil
+}
+
+func errorsAsTargetRule() (rules.Rule, error) {
+	return adaptStandardAnalyzer(
+		errorsas.Analyzer,
+		rules.Metadata{
+			ID: "errors-as-target",
+			Summary: "detects invalid targets passed to errors.As",
+			Documentation: "The second argument to errors.As must be a non-nil pointer to a type implementing error or to an interface. Invalid target shapes panic at runtime, while *error is ineffective because it matches any non-nil error. Glippy exposes the standard Go errorsas analyzer through its deterministic typed scheduler.",
+			DefaultSeverity: rules.SeverityWarn,
+			Presets: []rules.Preset{rules.PresetCorrectness},
+			MinimumGoVersion: "1.25",
+			Requirement: rules.RequireTypes,
+			NodeInterests: []rules.NodeKind{rules.NodeFile},
+			Categories: []rules.Category{
+				rules.CategoryCorrectness,
+				rules.CategorySafety,
+			},
+			KnownLimitations: []string{
+				"The rule follows the standard errorsas analyzer and reports statically invalid direct targets.",
+			},
+			Examples: []rules.Example{
+				{
+					Title: "Pass a pointer target",
+					Incorrect: "var target *os.PathError\nerrors.As(err, target)",
+					Correct: "var target *os.PathError\nerrors.As(err, &target)",
+				},
+			},
+		},
+		nil,
+	)
+}
+
+func timeLayoutRule() (rules.Rule, error) {
+	return adaptStandardAnalyzer(
+		timeformat.Analyzer,
+		rules.Metadata{
+			ID: "time-layout",
+			Summary: "detects time layouts that use 2006-02-01 instead of 2006-01-02",
+			Documentation: "Go time layouts use the reference date January 2, 2006. Writing 2006-02-01 swaps the month and day tokens and parses or formats a different layout than intended. Glippy exposes the standard Go timeformat analyzer through its deterministic typed scheduler.",
+			DefaultSeverity: rules.SeverityWarn,
+			Presets: []rules.Preset{rules.PresetCorrectness},
+			MinimumGoVersion: "1.25",
+			Requirement: rules.RequireTypes,
+			NodeInterests: []rules.NodeKind{rules.NodeFile},
+			Categories: []rules.Category{rules.CategoryCorrectness},
+			KnownLimitations: []string{
+				"The standard analyzer targets the common 2006-02-01 reference-date transposition in time.Parse and Time.Format calls.",
+			},
+			Examples: []rules.Example{
+				{
+					Title: "Use Go's January 2 reference date",
+					Incorrect: "time.Parse(\"2006-02-01\", value)",
+					Correct: "time.Parse(\"2006-01-02\", value)",
+				},
+			},
+		},
+		[]analysis.AnalyzerFixMapping{
+			{
+				Message: "Replace 2006-02-01 with 2006-01-02",
+				Name: "correct-reference-layout",
+				Description: "replace the transposed reference date with 2006-01-02",
+				Safety: rules.FixSuggestion,
+			},
+		},
+	)
 }
 
 func contradictoryConditionRule() (rules.Rule, error) {

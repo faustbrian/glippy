@@ -20,6 +20,7 @@ not stable release promises.
 - [defer-in-loop](#defer-in-loop)
 - [discarded-error](#discarded-error)
 - [duplicate-condition](#duplicate-condition)
+- [errors-as-target](#errors-as-target)
 - [errors-is-arguments](#errors-is-arguments)
 - [http-response-before-error](#http-response-before-error)
 - [identical-branches](#identical-branches)
@@ -28,12 +29,15 @@ not stable release promises.
 - [ineffective-break](#ineffective-break)
 - [lock-held-across-blocking-call](#lock-held-across-blocking-call)
 - [loop-capture](#loop-capture)
+- [nil-context](#nil-context)
 - [nilness](#nilness)
 - [redundant-bool-comparison](#redundant-bool-comparison)
 - [resource-not-closed](#resource-not-closed)
 - [self-assignment](#self-assignment)
 - [subsumed-condition](#subsumed-condition)
 - [suspicious-range](#suspicious-range)
+- [time-duration-unit](#time-duration-unit)
+- [time-layout](#time-layout)
 
 ## almost-swapped
 
@@ -566,6 +570,53 @@ if ready { use() } else if ready { retry() }
 if ready { use() } else if retryable { retry() }
 ```
 
+## errors-as-target
+
+detects invalid targets passed to errors.As
+
+The second argument to errors.As must be a non-nil pointer to a type implementing error or to an
+interface. Invalid target shapes panic at runtime, while *error is ineffective because it matches
+any non-nil error. Glippy exposes the standard Go errorsas analyzer through its deterministic typed
+scheduler.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule follows the standard errorsas analyzer and reports statically invalid direct targets.
+
+### Example: Pass a pointer target
+
+**Incorrect**
+
+```go
+var target *os.PathError
+errors.As(err, target)
+```
+
+**Correct**
+
+```go
+var target *os.PathError
+errors.As(err, &target)
+```
+
 ## errors-is-arguments
 
 detects reversed errors.Is arguments
@@ -970,6 +1021,56 @@ for _, value = range values { go func() { use(value) }() }
 for _, value := range values { go func() { use(value) }() }
 ```
 
+## nil-context
+
+detects nil passed where a context.Context is required
+
+The context package contract requires callers to pass context.TODO when no context is available
+instead of passing nil. A nil context can panic in standard-library APIs and violates the
+propagation contract expected by Go code.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+- `include-tests` (`boolean`; optional, default `false`): report nil contexts in files whose base
+  name ends in _test.go
+
+### Known limitations
+
+- The initial rule reports the predeclared nil identifier passed directly to a context.Context
+  parameter.
+- Nil contexts hidden behind interface values, variables, or helper returns require value-flow
+  analysis and are not inferred.
+- Test files are excluded by default because invalid-input contract tests deliberately pass nil;
+  include-tests enables them.
+
+### Example: Use context.TODO when no context is available
+
+**Incorrect**
+
+```go
+client.Do(nil, request)
+```
+
+**Correct**
+
+```go
+client.Do(context.TODO(), request)
+```
+
 ## nilness
 
 detects operations on values proven to be nil
@@ -1290,4 +1391,95 @@ for _, value := range values { value.ready = true }
 
 ```go
 for index := range values { values[index].ready = true }
+```
+
+## time-duration-unit
+
+detects nonzero bare integer durations passed to waiting APIs
+
+Duration arguments are nanoseconds. A nonzero bare integer passed to time.Sleep, time.After, timer,
+ticker, or AfterFunc APIs is usually a missing multiplication by time.Millisecond, time.Second, or
+another explicit unit.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct nonzero integer literals, optionally parenthesized or signed, are reported.
+- Named constants and explicit time.Duration conversions are treated as deliberate even when their
+  numeric value is small.
+
+### Example: Spell the duration unit
+
+**Incorrect**
+
+```go
+time.Sleep(5)
+```
+
+**Correct**
+
+```go
+time.Sleep(5 * time.Second)
+```
+
+## time-layout
+
+detects time layouts that use 2006-02-01 instead of 2006-01-02
+
+Go time layouts use the reference date January 2, 2006. Writing 2006-02-01 swaps the month and day
+tokens and parses or formats a different layout than intended. Glippy exposes the standard Go
+timeformat analyzer through its deterministic typed scheduler.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+- `correct-reference-layout` (`suggestion`): replace the transposed reference date with 2006-01-02
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The standard analyzer targets the common 2006-02-01 reference-date transposition in time.Parse and
+  Time.Format calls.
+
+### Example: Use Go's January 2 reference date
+
+**Incorrect**
+
+```go
+time.Parse("2006-02-01", value)
+```
+
+**Correct**
+
+```go
+time.Parse("2006-01-02", value)
 ```

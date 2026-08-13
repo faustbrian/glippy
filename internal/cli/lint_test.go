@@ -5764,6 +5764,281 @@ func run(mu *sync.Mutex) error {
 	}
 }
 
+func TestRunExposesAndBaselinesExpandedStandardLibraryCatalog(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "sample.go")
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/stdlibexpansioncli\n\ngo 1.25.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	input := `package sample
+
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+func accept(context.Context) {}
+
+func run(err error) {
+	accept(nil)
+	time.Sleep(1)
+	time.Parse("2006-02-01", "2026-08-13")
+	var target error
+	errors.As(err, target)
+}
+`
+	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".glippy.toml"),
+		[]byte(
+			"version = 1\n[lint.rules]\n" +
+				"errors-as-target = \"warn\"\n" +
+				"nil-context = \"warn\"\n" +
+				"time-duration-unit = \"warn\"\n" +
+				"time-layout = \"warn\"\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"lint", "--reporter=json", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(lint expanded standard-library catalog) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	var result glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"nil-context", "time-duration-unit", "time-layout", "errors-as-target"}
+	got := make([]string, len(result.Diagnostics))
+	for index, diagnostic := range result.Diagnostics {
+		got[index] = diagnostic.RuleID
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expanded standard-library diagnostics = %q, want %q", got, want)
+	}
+
+	stdout.Reset()
+	baselinePath := filepath.Join(root, ".glippy-baseline.json")
+	exitCode = Run(
+		[]string{"lint", "--generate-baseline=.glippy-baseline.json", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitSuccess ||
+		stdout.String() !=
+			"glippy lint: wrote baseline " + baselinePath + " (4 diagnostics)\n" ||
+		stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(baseline expanded standard-library catalog) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	baseline, err := os.ReadFile(baselinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ruleID := range want {
+		if !bytes.Contains(baseline, []byte(`"rule_id": "` + ruleID + `"`)) {
+			t.Fatalf(
+				"expanded standard-library baseline omits %s: %q",
+				ruleID,
+				baseline,
+			)
+		}
+	}
+}
+
+func TestRunAppliesTimeLayoutSuggestionOnlyWhenRequested(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/timelayoutfix\n\ngo 1.25.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sample.go")
+	input := []byte(
+		"package sample\n\nimport \"time\"\n\nfunc parse(value string) (time.Time, error) {\n\treturn time.Parse(\"2006-02-01\", value)\n}\n",
+	)
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".glippy.toml"),
+		[]byte("version = 1\n[lint.rules]\ntime-layout = \"warn\"\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"lint", "--fix", path}, strings.NewReader(""), &stdout, &stderr)
+	unchanged, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitFindings ||
+		!bytes.Contains(
+			stdout.Bytes(),
+			[]byte("fix[suggestion]: correct-reference-layout"),
+		) ||
+		stderr.Len() != 0 ||
+		!bytes.Equal(unchanged, input) {
+		t.Fatalf(
+			"Run(lint --fix time-layout) = exit %d, stdout %q, stderr %q, source %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			unchanged,
+		)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run(
+		[]string{"lint", "--fix-suggestions", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(lint --fix-suggestions time-layout) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	want := bytes.Replace(input, []byte("2006-02-01"), []byte("2006-01-02"), 1)
+	fixed, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(fixed, want) {
+		t.Fatalf("fixed time-layout source = %q, error = %v", fixed, err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run(
+		[]string{"lint", "--fix-suggestions", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitSuccess ||
+		stdout.Len() != 0 ||
+		stderr.Len() != 0 ||
+		!bytes.Equal(second, fixed) {
+		t.Fatalf(
+			"second time-layout fix = exit %d, stdout %q, stderr %q, source %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			second,
+		)
+	}
+}
+
+func TestRunConfiguresNilContextTestFilePolicy(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/nilcontextcli\n\ngo 1.25.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sample_test.go")
+	input := []byte(
+		"package sample\n\nimport (\"context\"; \"testing\")\n\nfunc accept(context.Context) {}\nfunc TestNil(t *testing.T) { accept(nil) }\n",
+	)
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte(
+			"version = 1\n" +
+				"[lint.rules]\n" +
+				"nil-context = \"warn\"\n" +
+				"[lint.rule-options.nil-context]\n" +
+				"include-tests = true\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"lint", "--reporter=json", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(lint configured nil-context tests) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	var result glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].RuleID != "nil-context" {
+		t.Fatalf("configured nil-context diagnostics = %#v", result.Diagnostics)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(got, input) {
+		t.Fatalf("configured nil-context lint changed source %q, error = %v", got, err)
+	}
+}
+
 func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 	t.Helper()
 	if err := os.WriteFile(
@@ -5783,11 +6058,15 @@ func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 				"context-cancel-leak = \"off\"\n" +
 				"contradictory-condition = \"off\"\n" +
 				"copied-lock = \"off\"\n" +
+				"errors-as-target = \"off\"\n" +
 				"http-response-before-error = \"off\"\n" +
 				"impossible-comparison = \"off\"\n" +
 				"impossible-type-assertion = \"off\"\n" +
 				"loop-capture = \"off\"\n" +
-				"self-assignment = \"off\"\n",
+				"nil-context = \"off\"\n" +
+				"self-assignment = \"off\"\n" +
+				"time-duration-unit = \"off\"\n" +
+				"time-layout = \"off\"\n",
 		),
 		0o600,
 	);
