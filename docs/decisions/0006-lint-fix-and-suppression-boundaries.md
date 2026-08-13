@@ -7,19 +7,19 @@
 
 Oxlint validates node-interest dispatch, correctness-focused defaults, and
 explicit fix classes, but its ordinary semantic cost, diagnostic ordering, and
-silent overlap skipping do not meet Gox's contract. `go/analysis` provides
-useful interoperability but lacks native Gox tiers and safety metadata.
+silent overlap skipping do not meet Glippy's contract. `go/analysis` provides
+useful interoperability but lacks native Glippy tiers and safety metadata.
 
 The suppression design was refreshed against Oxc commit `f2125a8` on
 2026-08-11. Oxlint still accepts ESLint and Oxlint line, next-line, range, and
 unscoped disable-all comments. It tracks intervals and unused directives, but
-plugin-name compatibility can broaden rule matching. Gox needs exact native
+plugin-name compatibility can broaden rule matching. Glippy needs exact native
 rule identity, one auditable scope per directive, and formatter-stable physical
 ownership rather than ESLint-compatible breadth.
 
 A focused 2026-08-12 reproduction showed that preserving directive bytes and
 adjacent-line placement alone was insufficient: expanding one compressed
-`if`/`else if` line left `//gox:ignore duplicate-condition` unchanged while
+`if`/`else if` line left `//glippy:ignore duplicate-condition` unchanged while
 moving the duplicate condition outside its next-line target. The formatter now
 compares the normalized token ordinals owned by every structurally valid direct,
 paired-range, and file suppression before accepting output. The comparison is
@@ -31,7 +31,7 @@ and formatter normalization inside single-file fix transactions.
 
 Fix-mode behavior was refreshed against Oxc commit `00e1b76` on 2026-08-11.
 Oxlint's current `FixOptions` exposes `--fix`, `--fix-suggestions`, and
-`--fix-dangerously`; its dangerous mode also selects suggestions. Gox needs
+`--fix-dangerously`; its dangerous mode also selects suggestions. Glippy needs
 independent authorization for all three classes because an unsafe
 transformation does not imply consent to every suggestion.
 
@@ -138,11 +138,11 @@ The initial suppression grammar is line-comment-only and accepts exactly one
 rule ID per directive:
 
 ```text
-//gox:ignore rule-id [-- reason]
-//gox:ignore-line rule-id [-- reason]
-//gox:ignore-start rule-id [-- reason]
-//gox:ignore-end rule-id
-//gox:ignore-file rule-id [-- reason]
+//glippy:ignore rule-id [-- reason]
+//glippy:ignore-line rule-id [-- reason]
+//glippy:ignore-start rule-id [-- reason]
+//glippy:ignore-end rule-id
+//glippy:ignore-file rule-id [-- reason]
 ```
 
 `ignore` owns the immediately following physical line. `ignore-line` owns the
@@ -168,7 +168,7 @@ An optional leading `expires=YYYY-MM-DD` reason field records a structured
 calendar deadline. Invalid dates invalidate the directive. The optional typed
 `lint.suppressions.expiry-cutoff` supplies the deterministic evaluation date;
 an expiry on or before it is an `expired` problem and cannot suppress a
-diagnostic. Gox never reads the wall clock, so the same source and configuration
+diagnostic. Glippy never reads the wall clock, so the same source and configuration
 remain reproducible. The human reason remains mandatory after expiry metadata
 when a separator is present.
 

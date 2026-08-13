@@ -9,7 +9,7 @@ shown here.
 [RFC2119]: https://www.rfc-editor.org/rfc/rfc2119
 [RFC8174]: https://www.rfc-editor.org/rfc/rfc8174
 
-This policy applies beginning with Gox's first public release. Before that
+This policy applies beginning with Glippy's first public release. Before that
 release, branch heads, commits, locally built binaries, rehearsal artifacts,
 and documented development behavior are not compatibility promises. The first
 public release MUST identify the contracts it establishes and MUST NOT claim
@@ -46,7 +46,7 @@ that changes output for valid supported source MUST:
 3. state whether the change fixes a documented defect or changes policy;
 4. update formatter rules, golden fixtures, and corpus fingerprints together;
 5. pass parse, equivalence, comment/directive, idempotency, and width gates; and
-6. provide a non-mutating `gox fmt --check` or `gox fmt --diff` migration path.
+6. provide a non-mutating `glippy fmt --check` or `glippy fmt --diff` migration path.
 
 A formatter defect correction MAY ship in a patch release when it restores the
 documented canonical layout or a safety invariant. A deliberate change to the
@@ -55,7 +55,7 @@ MAY ship in a minor release with the evidence above. At or after version 1.0 it
 requires a major release unless it is confined to an explicitly named preview
 surface.
 
-One release SHOULD NOT combine unrelated formatter policy changes. Gox MUST
+One release SHOULD NOT combine unrelated formatter policy changes. Glippy MUST
 always preserve its own byte-idempotency even when an intentional release
 changes canonical output.
 
@@ -99,7 +99,7 @@ explicitly justifies a default change.
 Fix safety is independent of diagnostic severity. A fix classified as `safe`
 MUST continue to satisfy its documented semantics-preserving contract.
 
-If new evidence weakens that proof, Gox MUST remove the automatic fix or
+If new evidence weakens that proof, Glippy MUST remove the automatic fix or
 downgrade it to `suggestion` or `unsafe` immediately; protecting source takes
 priority over preserving fix availability. A safety downgrade MAY ship in a
 patch release and MUST be called out in release notes. Promoting a fix to
@@ -124,7 +124,7 @@ migration and MUST NOT ship in a patch release.
 
 At or after version 1.0, a breaking configuration change requires a major
 release or a new configuration schema version with an explicit migration path.
-Gox MUST reject unsupported schema versions with a clear diagnostic; it MUST
+Glippy MUST reject unsupported schema versions with a clear diagnostic; it MUST
 NOT guess how to reinterpret them.
 
 Formatter options SHOULD remain limited to adoption-significant choices.
@@ -143,7 +143,7 @@ Removing or renaming a field, changing its type or meaning, changing a required
 field to be conditionally absent, or reinterpreting a range requires a new
 schema version.
 
-Gox MAY emit more than one schema version during a documented migration window.
+Glippy MAY emit more than one schema version during a documented migration window.
 It MUST NOT emit a new incompatible shape while labeling it with an older
 schema version. Removal of a supported machine schema or reassignment of a
 stable exit category is breaking and, at or after version 1.0, requires a major
@@ -166,7 +166,7 @@ Before version 1.0, a breaking CLI change MAY ship in a minor release with an
 explicit migration. At or after version 1.0, it requires a major release unless
 the affected surface was explicitly documented as preview-only.
 
-Gox MUST NOT broaden write or fix platform guarantees from successful parsing,
+Glippy MUST NOT broaden write or fix platform guarantees from successful parsing,
 cross-compilation, or an unrecorded filesystem. Adding a supported target
 requires runtime evidence proportional to its read, write, fix, cache, and
 release claims. Removing a supported operating system, architecture, source
@@ -189,7 +189,7 @@ removal; the release notes MUST state the risk and the safest available
 migration.
 
 Migration tooling MUST be explicit and non-mutating by default when inspection
-is possible. Gox MUST NOT silently rewrite configuration, suppressions, or
+is possible. Glippy MUST NOT silently rewrite configuration, suppressions, or
 semantic source merely to make an upgrade succeed.
 
 ## Internal Formats

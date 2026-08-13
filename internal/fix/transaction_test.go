@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/filesystem"
-	fixengine "github.com/faustbrian/gox/internal/fix"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/filesystem"
+	fixengine "github.com/faustbrian/glippy/internal/fix"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestCoordinateAndReplaceWritesOneValidatedAtomicResult(t *testing.T) {

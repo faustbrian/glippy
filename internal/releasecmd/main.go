@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/faustbrian/gox/internal/release"
+	"github.com/faustbrian/glippy/internal/release"
 )
 
 func main() {

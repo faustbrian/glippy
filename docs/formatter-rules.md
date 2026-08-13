@@ -1,6 +1,6 @@
 # Formatter Rules
 
-This document describes the current formatter dialect. Gox is the selected
+This document describes the current formatter dialect. Glippy is the selected
 development identity, but its final public name and formatter output are not
 yet covered by stable release compatibility promises.
 
@@ -28,7 +28,7 @@ same construct uses its canonical broken form one column below that boundary.
 
 - Package clauses are followed by the canonical declaration separation.
 - Import groups, spec order, aliases, comments, and literal spelling are
-  preserved. Gox does not organize imports.
+  preserved. Glippy does not organize imports.
 - Constant, variable, type, function, method, field, and signature structure is
   retained while spacing and eligible lists are canonicalized.
 - Blocks always place ordinary statements on hard line boundaries.
@@ -87,7 +87,7 @@ communication clauses, labels, branches, `go`, `defer`, and `return` have
 structural layouts. An uncommented control keyword stays with its first operand
 or clause even when that atomic header exceeds width.
 
-When a header has a grammar-owned break, Gox uses it. An initialized `if` or
+When a header has a grammar-owned break, Glippy uses it. An initialized `if` or
 switch may break after its semicolon, classic `for` clauses may break after
 their semicolons, and range loops may break after `range`. Case expression lists
 break one expression per continuation line.
@@ -106,7 +106,7 @@ if current := initialValue;
 Calls, composite literals, receiver and parameter lists, result lists, type
 parameters, type arguments, fields, and corresponding Go type lists remain flat
 when they fit. Their canonical broken form places one logical element per line.
-When Go requires a trailing comma before a newline and closing delimiter, Gox
+When Go requires a trailing comma before a newline and closing delimiter, Glippy
 emits it.
 
 At width 30, a long call becomes:
@@ -181,7 +181,7 @@ their own continuation level.
 
 ## Comments And Directives
 
-Comment text is preserved byte-for-byte. Gox may normalize placement and
+Comment text is preserved byte-for-byte. Glippy may normalize placement and
 indentation only within its proven ownership model. Trailing line comments act
 as line suffixes, punctuation remains before them, and ambiguous comments force
 a stable broken layout rather than migration across an operand, element,
@@ -189,7 +189,7 @@ declaration, statement, case, or field boundary.
 
 A trailing `//nolint` comment is also a physical-line ownership contract used
 by external analyzers. When a width-driven break would move the diagnostic
-token away from that line, Gox preserves the affected statement line verbatim.
+token away from that line, Glippy preserves the affected statement line verbatim.
 For a `//nolint` comment immediately after an `if` opening brace, the header
 through the brace remains verbatim while the block body is formatted normally.
 If another construct cannot retain the same physical-line token owner,
@@ -204,19 +204,19 @@ adjacency:
 - cgo preambles;
 - `//go:embed`, `//go:generate`, `//go:linkname`, and compiler directives;
 - `//line` directives; and
-- Gox suppression directives.
+- Glippy suppression directives.
 
 Formatting is rejected if comment or directive accounting cannot prove one
-valid owner for every input comment. A structurally valid Gox suppression must
+valid owner for every input comment. A structurally valid Glippy suppression must
 also own the same normalized source tokens after formatting. If expanding a
-compressed line would narrow an `ignore` or `ignore-line` target, Gox refuses
+compressed line would narrow an `ignore` or `ignore-line` target, Glippy refuses
 stdout, check, diff, and write output instead of silently changing which
 diagnostic is suppressed. Formatter normalization after lint fixes uses the
 same refusal boundary and rolls back the selected single-file transaction.
 
 ## Preserved Source Choices
 
-Gox deliberately preserves several choices that gofmt may normalize:
+Glippy deliberately preserves several choices that gofmt may normalize:
 
 - import spec order;
 - numeric literal spelling;
@@ -224,7 +224,7 @@ Gox deliberately preserves several choices that gofmt may normalize:
 - explicit versus implicit empty-statement spelling; and
 - structural indentation without gofmt-style tabular alignment.
 
-These choices, plus width-aware layouts that gofmt flattens, mean Gox is not a
+These choices, plus width-aware layouts that gofmt flattens, mean Glippy is not a
 product-wide gofmt fixed point. Repositories must follow the
 [formatter migration guide](migration-from-go-formatters.md) and use one
 formatter authority.
@@ -235,7 +235,7 @@ Formatter-owned line endings use LF, and a complete output ends in exactly one
 LF. A supported byte-order mark remains at byte zero. Line endings inside raw
 literals and preserved multiline comments remain part of those tokens.
 
-Gox refuses successful formatting of syntactically invalid complete files or
+Glippy refuses successful formatting of syntactically invalid complete files or
 fragments. Check, diff, and stdout modes do not write. Write mode additionally
 refuses generated files and unsafe symlink selections and validates the entire
 selected result before replacement.

@@ -1,6 +1,6 @@
 # Contributor Architecture And Rule Authoring
 
-Gox is one binary with separate formatter and linter engines over a shared
+Glippy is one binary with separate formatter and linter engines over a shared
 source model. The repository intentionally keeps implementation packages under
 `internal`; they are not an extension API or a compatibility promise. Add a
 public package only after a concrete external consumer and versioning contract
@@ -26,7 +26,7 @@ integration rather than introduce a parallel Go parser or type system.
 | `internal/cache` | Disposable persistent analysis results and bounded retention |
 | `internal/report` | Deterministic text and schema-versioned machine output |
 | `internal/cli` | Command parsing, orchestration, exit categories, and write disclosure |
-| `cmd/gox` | Process entry point only |
+| `cmd/glippy` | Process entry point only |
 
 Dependencies should follow this ownership direction. A rule does not load its
 own package, construct a private CFG or SSA graph, read a second source version,
@@ -97,7 +97,7 @@ their supplied context. Package-wide findings additionally use the exact
 `PackageFile` owned by that callback.
 
 Metadata is both the scheduling contract and the canonical source for
-`gox explain`. It includes the stable ID, summary, full documentation, default
+`glippy explain`. It includes the stable ID, summary, full documentation, default
 severity, presets, minimum Go version, requirement, node interests, generated
 and type-error policy, categories, typed options, fixes and their safety,
 deprecation data, known limitations, and paired incorrect/correct examples.
@@ -132,7 +132,7 @@ Then:
 4. add a focused benchmark for a rule expected to run frequently;
 5. register the rule in `NewDefaultRegistry` only after its metadata and
    behavior meet the admission gate; and
-6. verify `gox explain <rule-id>` renders the intended canonical documentation.
+6. verify `glippy explain <rule-id>` renders the intended canonical documentation.
 
 Regenerate the published catalog after any built-in metadata change:
 
@@ -188,12 +188,12 @@ transaction design and are not a shortcut through the single-file coordinator.
 
 Suitable `analysis.Analyzer` values enter through the adapters in
 `internal/analysis`. The adapter translates analyzer requirements, facts,
-diagnostics, and suggested fixes into Gox metadata and source-versioned
-outcomes while preserving Gox scheduling and safety policy. An analyzer does
+diagnostics, and suggested fixes into Glippy metadata and source-versioned
+outcomes while preserving Glippy scheduling and safety policy. An analyzer does
 not receive authority to bypass configuration, package selection, deterministic
 ordering, generated-file policy, or fix classification.
 
-Use a native rule when the contract depends on Gox source trivia, formatter
+Use a native rule when the contract depends on Glippy source trivia, formatter
 ownership, tier-specific shared contexts, or a fix policy the analyzer API
 cannot express. Do not add dynamic Go plugins while the internal rule boundary
 and public extension policy remain intentionally closed.

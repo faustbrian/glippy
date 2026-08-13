@@ -15,14 +15,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 // SchemaVersion is the only accepted baseline document version.
 const SchemaVersion = 1
 
-const fingerprintDomain = "gox-baseline-source-v1\x00"
+const fingerprintDomain = "glippy-baseline-source-v1\x00"
 
 // Document is one portable, deterministic lint baseline.
 type Document struct {

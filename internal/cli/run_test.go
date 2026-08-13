@@ -13,12 +13,12 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/discovery"
-	"github.com/faustbrian/gox/internal/filesystem"
-	goxreport "github.com/faustbrian/gox/internal/report"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
-	goxversion "github.com/faustbrian/gox/internal/version"
+	"github.com/faustbrian/glippy/internal/discovery"
+	"github.com/faustbrian/glippy/internal/filesystem"
+	glippyreport "github.com/faustbrian/glippy/internal/report"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
+	glippyversion "github.com/faustbrian/glippy/internal/version"
 )
 
 var errStream = errors.New("stream failure")
@@ -107,7 +107,7 @@ func TestRunReportsResolvedVersion(t *testing.T) {
 	if exitCode != ExitSuccess {
 		t.Fatalf("Run() exit = %d, want %d", exitCode, ExitSuccess)
 	}
-	want := "gox " + goxversion.Current() + "\n"
+	want := "glippy " + glippyversion.Current() + "\n"
 	if stdout.String() != want {
 		t.Fatalf("Run() stdout = %q, want %q", stdout.String(), want)
 	}
@@ -261,7 +261,7 @@ func TestRunTypedCombinedCheckClassifiesOversizedSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n"),
 		0o600,
 	);
@@ -287,7 +287,7 @@ func TestRunTypedCombinedCheckClassifiesOversizedSource(t *testing.T) {
 			stderr.String(),
 		)
 	}
-	var result goxreport.CheckResult
+	var result glippyreport.CheckResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode typed oversized check JSON: %v; output = %q", err, stdout.String())
 	}
@@ -361,7 +361,7 @@ func TestRunLintReportsBuiltInDuplicateCondition(t *testing.T) {
 			stdout.String(),
 		)
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode lint JSON: %v; output = %q", err, stdout.String())
 	}
@@ -433,7 +433,7 @@ func TestRunLintReportsBuiltInIneffectiveBreak(t *testing.T) {
 			stdout.String(),
 		)
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode lint JSON: %v; output = %q", err, stdout.String())
 	}
@@ -456,7 +456,7 @@ func TestRunLintReportsBuiltInIneffectiveBreak(t *testing.T) {
 		len(diagnostic.Related) != 0 ||
 		len(diagnostic.Fixes) != 1 ||
 		diagnostic.Fixes[0] !=
-			(goxreport.LintFix{Name: "remove-break", Safety: rules.FixSuggestion}) {
+			(glippyreport.LintFix{Name: "remove-break", Safety: rules.FixSuggestion}) {
 		t.Fatalf("Run(lint) diagnostic = %#v", diagnostic)
 	}
 	got, err := os.ReadFile(path)
@@ -485,7 +485,7 @@ func TestRunLintFixAppliesBuiltInRedundantBoolComparisonSafeFix(t *testing.T) {
 	if err := os.WriteFile(path, input, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte("version = 1\n[lint]\npreset = \"style\"\n"),
@@ -511,7 +511,7 @@ func TestRunLintFixAppliesBuiltInRedundantBoolComparisonSafeFix(t *testing.T) {
 			stderr.String(),
 		)
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode lint JSON: %v; output = %q", err, stdout.String())
 	}
@@ -533,7 +533,7 @@ func TestRunLintFixAppliesBuiltInRedundantBoolComparisonSafeFix(t *testing.T) {
 		len(diagnostic.Related) != 0 ||
 		len(diagnostic.Fixes) != 1 ||
 		diagnostic.Fixes[0] !=
-			(goxreport.LintFix{Name: "simplify-comparison", Safety: rules.FixSafe}) {
+			(glippyreport.LintFix{Name: "simplify-comparison", Safety: rules.FixSafe}) {
 		t.Fatalf("Run(lint) diagnostic = %#v", diagnostic)
 	}
 	gotBeforeFix, err := os.ReadFile(path)
@@ -613,7 +613,7 @@ func TestRunLintFixLeavesBuiltInDuplicateConditionUnchanged(t *testing.T) {
 			stdout.String(),
 		)
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode lint fix JSON: %v; output = %q", err, stdout.String())
 	}
@@ -622,7 +622,7 @@ func TestRunLintFixLeavesBuiltInDuplicateConditionUnchanged(t *testing.T) {
 		len(result.AppliedFixes) != 0 ||
 		len(result.RejectedFixes) != 0 ||
 		len(result.Files) != 1 ||
-		result.Files[0].Status != goxreport.LintFileUnchanged {
+		result.Files[0].Status != glippyreport.LintFileUnchanged {
 		t.Fatalf("Run(lint --fix) result = %#v", result)
 	}
 	got, err := os.ReadFile(path)
@@ -710,7 +710,7 @@ func TestRunCombinedCheckReportsSSAFindingAndFormatDifferenceWithoutMutation(t *
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n"),
 		0o600,
 	);
@@ -742,7 +742,7 @@ func TestRunCombinedCheckReportsSSAFindingAndFormatDifferenceWithoutMutation(t *
 		": format differs\n" +
 		path +
 		":2:48: warn[nilness]: nil dereference in load\n" +
-		"  help: run `gox explain nilness` for the rule contract and limitations\n"
+		"  help: run `glippy explain nilness` for the rule contract and limitations\n"
 	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
 		t.Fatalf(
 			"Run(check SSA) = exit %d, stdout %q, stderr %q",
@@ -781,7 +781,7 @@ func TestRunCombinedCheckReportsSSAFindingAndFormatDifferenceWithoutMutation(t *
 			stderr.String(),
 		)
 	}
-	var result goxreport.CheckResult
+	var result glippyreport.CheckResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode SSA check JSON: %v; output = %q", err, stdout.String())
 	}
@@ -810,7 +810,7 @@ func TestRunCombinedCheckReportsPackagePrerequisitesInJSONWithFormatting(t *test
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n"),
 		0o600,
 	);
@@ -840,7 +840,7 @@ func TestRunCombinedCheckReportsPackagePrerequisitesInJSONWithFormatting(t *test
 			stdout.String(),
 		)
 	}
-	var result goxreport.CheckResult
+	var result glippyreport.CheckResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode typed check JSON: %v; output = %q", err, stdout.String())
 	}
@@ -857,7 +857,7 @@ func TestRunCombinedCheckReportsPackagePrerequisitesInJSONWithFormatting(t *test
 	}
 	if len(result.Files) != 1 ||
 		result.Files[0].Path != path ||
-		result.Files[0].FormatStatus != goxreport.CheckFormatDifferent ||
+		result.Files[0].FormatStatus != glippyreport.CheckFormatDifferent ||
 		result.Files[0].SourceDigest == "" {
 		t.Fatalf("Run(check typed JSON) files = %#v", result.Files)
 	}
@@ -899,7 +899,7 @@ func TestRunCombinedCheckReportsTypedSourceProblemsInJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n"),
 		0o600,
 	);
@@ -929,7 +929,7 @@ func TestRunCombinedCheckReportsTypedSourceProblemsInJSON(t *testing.T) {
 			stdout.String(),
 		)
 	}
-	var result goxreport.CheckResult
+	var result glippyreport.CheckResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode typed source-problem JSON: %v; output = %q", err, stdout.String())
 	}
@@ -1007,8 +1007,8 @@ func TestRunCombinedCheckReportsVersionedJSONFromOneSourceSnapshot(t *testing.T)
 			SourceDigest string `json:"source_digest"`
 			FormatStatus string `json:"format_status"`
 		} `json:"files"`
-		Diagnostics []goxreport.LintDiagnostic `json:"diagnostics"`
-		Errors []goxreport.Error `json:"errors"`
+		Diagnostics []glippyreport.LintDiagnostic `json:"diagnostics"`
+		Errors []glippyreport.Error `json:"errors"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode combined check JSON: %v; output = %q", err, stdout.String())
@@ -1198,7 +1198,7 @@ func TestRunCombinedCheckSourceFailureReportsIncompleteJSON(t *testing.T) {
 	if exitCode != ExitSourceError || stderr.Len() != 0 {
 		t.Fatalf("Run(check broken JSON) = exit %d, stderr %q", exitCode, stderr.String())
 	}
-	var result goxreport.CheckResult
+	var result glippyreport.CheckResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode check failure JSON: %v; output = %q", err, stdout.String())
 	}
@@ -1230,7 +1230,7 @@ func TestRunCombinedCheckInvalidJSONInvocationReturnsJSON(t *testing.T) {
 	if exitCode != ExitInvalidInvocation || stderr.Len() != 0 {
 		t.Fatalf("Run(check invalid JSON) = exit %d, stderr %q", exitCode, stderr.String())
 	}
-	var result goxreport.CheckResult
+	var result glippyreport.CheckResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode invalid check JSON: %v; output = %q", err, stdout.String())
 	}
@@ -1257,7 +1257,7 @@ func TestRunCombinedCheckHonorsLintAndFormatConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	configuration := "version = 1\n[format]\nline-width = 30\n[lint.rules]\nduplicate-condition = \"off\"\n"
-	if err := os.WriteFile(filepath.Join(root, ".gox.toml"), []byte(configuration), 0o600);
+	if err := os.WriteFile(filepath.Join(root, ".glippy.toml"), []byte(configuration), 0o600);
 		err != nil {
 		t.Fatal(err)
 	}
@@ -1298,7 +1298,7 @@ func TestRunFormatAcceptsBuiltInLintConfiguration(t *testing.T) {
 	if err := os.WriteFile(path, []byte("package sample\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte("version = 1\n[lint.rules]\nduplicate-condition = \"off\"\n"),
@@ -1413,7 +1413,7 @@ func TestRunCombinedCheckReportsPreCanceledJSONInvocation(t *testing.T) {
 	if exitCode != ExitCanceled || stderr.Len() != 0 {
 		t.Fatalf("RunContext(check JSON) = exit %d, stderr %q", exitCode, stderr.String())
 	}
-	var result goxreport.CheckResult
+	var result glippyreport.CheckResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode canceled check JSON: %v; output = %q", err, stdout.String())
 	}
@@ -1434,7 +1434,7 @@ func TestParseCheckInvocationDefaultsToCurrentDirectory(t *testing.T) {
 	if !valid ||
 		len(invocation.paths) != 1 ||
 		invocation.paths[0] != "." ||
-		invocation.reporter != goxreport.Text {
+		invocation.reporter != glippyreport.Text {
 		t.Fatalf("parseCheckInvocation(check) = %#v, %t", invocation, valid)
 	}
 }
@@ -1625,7 +1625,7 @@ func TestRunExplainRejectsInvalidOrUnknownRules(t *testing.T) {
 	exitCode := Run([]string{"explain", "missing-rule"}, failingReader{}, &stdout, &stderr)
 	if exitCode != ExitInvalidInvocation ||
 		stdout.Len() != 0 ||
-		stderr.String() != "gox explain: unknown rule \"missing-rule\"\n" {
+		stderr.String() != "glippy explain: unknown rule \"missing-rule\"\n" {
 		t.Fatalf(
 			"Run(explain missing) = exit %d, stdout %q, stderr %q",
 			exitCode,
@@ -2010,7 +2010,7 @@ func TestRunFormatsOneExplicitFileToStdoutWithoutMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte("version = 1\n[format]\nline-width = 30\n"),
 		0o600,
 	);
@@ -2150,7 +2150,7 @@ func TestRunFormattingModesRejectSuppressionOwnershipDriftWithoutMutation(t *tes
 
 	input := []byte(
 		"package sample\nfunc run(ready bool) {\n" +
-			"//gox:ignore duplicate-condition -- legacy branch\n" +
+			"//glippy:ignore duplicate-condition -- legacy branch\n" +
 			"if ready { use() } else if ready { retry() }\n}\nfunc use(){}\nfunc retry(){}\n",
 	)
 	tests := []struct {
@@ -2497,7 +2497,11 @@ func TestRunWriteValidatesEveryConfigurationBeforeAnyReplacement(t *testing.T) {
 		err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(nested, ".gox.toml"), []byte("version = 2\n"), 0o600);
+	if err := os.WriteFile(
+		filepath.Join(nested, ".glippy.toml"),
+		[]byte("version = 2\n"),
+		0o600,
+	);
 		err != nil {
 		t.Fatal(err)
 	}
@@ -3509,7 +3513,7 @@ func TestRunCheckResolvesConfigurationPerDiscoveredFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte("version = 1\n[format]\nline-width = 30\n"),
 		0o600,
 	);
@@ -3536,7 +3540,7 @@ func TestRunCheckResolvesConfigurationPerDiscoveredFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(nested, ".gox.toml"),
+		filepath.Join(nested, ".glippy.toml"),
 		[]byte("version = 1\n[format]\nline-width = 100\n"),
 		0o600,
 	);
@@ -3593,7 +3597,11 @@ func TestRunCheckValidatesAllConfigurationBeforeReporting(t *testing.T) {
 		err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(nested, ".gox.toml"), []byte("version = 2\n"), 0o600);
+	if err := os.WriteFile(
+		filepath.Join(nested, ".glippy.toml"),
+		[]byte("version = 2\n"),
+		0o600,
+	);
 		err != nil {
 		t.Fatal(err)
 	}
@@ -3627,7 +3635,7 @@ func TestRunCheckValidatesConfigurationForEmptySelection(t *testing.T) {
 		err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".gox.toml"), []byte("version = 2\n"), 0o600);
+	if err := os.WriteFile(filepath.Join(root, ".glippy.toml"), []byte("version = 2\n"), 0o600);
 		err != nil {
 		t.Fatal(err)
 	}
@@ -3658,7 +3666,7 @@ func TestRunUsesDiscoveredConfigurationForStandardInputPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte("version = 1\n[format]\nline-width = 30\n"),
 		0o600,
 	);
@@ -4039,7 +4047,7 @@ func TestRunRejectsInvalidFragmentWithoutPartialOutputOrSyntheticLocations(t *te
 	if !strings.Contains(stderr.String(), "stdin.go:1:") {
 		t.Fatalf("Run() stderr = %q, want physical fragment location", stderr.String())
 	}
-	if strings.Contains(stderr.String(), "goxfragment") {
+	if strings.Contains(stderr.String(), "glippyfragment") {
 		t.Fatalf("Run() stderr exposed synthetic wrapper: %q", stderr.String())
 	}
 }

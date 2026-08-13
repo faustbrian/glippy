@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 // SelectionOptions identifies the independently authorized fix classes.

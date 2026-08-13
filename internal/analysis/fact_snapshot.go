@@ -13,7 +13,7 @@ import (
 	goanalysis "golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 
-	"github.com/faustbrian/gox/internal/cache"
+	"github.com/faustbrian/glippy/internal/cache"
 )
 
 const factSnapshotVersion = 1

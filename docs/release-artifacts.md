@@ -1,14 +1,14 @@
 # Prototype Release Artifacts
 
 The maintainer-only release builder produces deterministic artifacts for the
-admitted prototype targets. It is not a public Gox command and does not widen
+admitted prototype targets. It is not a public Glippy command and does not widen
 the product CLI.
 
 Run it from a clean source revision with a task-owned disposable `GOCACHE`:
 
 ```text
 go run ./internal/releasecmd \
-  --version v0.1.0 \
+  --version v0.2.0 \
   --revision <complete Git object ID> \
   --output <new output directory>
 ```
@@ -46,18 +46,18 @@ unsupported. Darwin amd64 has Rosetta execution evidence and
 Linux amd64 has Docker architecture-emulation evidence; neither substitutes
 for a native amd64 host claim.
 
-For version `v0.1.0`, the builder emits:
+For version `v0.2.0`, the builder emits:
 
 ```text
-gox_v0.1.0_darwin_amd64.tar.gz
-gox_v0.1.0_darwin_arm64.tar.gz
-gox_v0.1.0_linux_amd64.tar.gz
-gox_v0.1.0_linux_arm64.tar.gz
-gox_v0.1.0_manifest.json
-gox_v0.1.0_checksums.txt
+glippy_v0.2.0_darwin_amd64.tar.gz
+glippy_v0.2.0_darwin_arm64.tar.gz
+glippy_v0.2.0_linux_amd64.tar.gz
+glippy_v0.2.0_linux_arm64.tar.gz
+glippy_v0.2.0_manifest.json
+glippy_v0.2.0_checksums.txt
 ```
 
-Each archive contains the executable `gox`, the exact tracked 0BSD `LICENSE`,
+Each archive contains the executable `glippy`, the exact tracked 0BSD `LICENSE`,
 and `THIRD_PARTY_LICENSES.txt`. The builder rejects a source revision without
 either license artifact. Archive ownership, modes, timestamps, ordering, and
 compression metadata are normalized, and the reproducibility tests verify
@@ -66,14 +66,14 @@ name, release version, verified complete source revision, exact Go toolchain
 version, target, size, and SHA-256 digest of every archive. The sorted checksum
 file covers every archive and the manifest.
 
-The maintainer selected the BSD Zero Clause License (`0BSD`) for Gox. The
+The maintainer selected the BSD Zero Clause License (`0BSD`) for Glippy. The
 third-party notice reproduces the MIT terms for go-toml and the BSD terms and
 patent grant for Go and the linked `golang.org/x` modules.
 
 Two builds are reproducible only when their source tree, explicit revision,
 version, Go toolchain, module inputs, and target set are identical. The tests
 build the complete target set twice, compare every emitted byte, verify the
-checksums, extract the current-host binary, and execute `gox version` to prove
+checksums, extract the current-host binary, and execute `glippy version` to prove
 the linked version. The independent
 [release platform rehearsal](research/release-platform-evidence-2026-08-12.md)
 also produced the complete target set on network-isolated Linux arm64, executed
@@ -99,7 +99,7 @@ different archive, manifest, or checksum, or non-native version execution fails
 the workflow.
 
 Candidate run
-[`31697171821`](https://github.com/faustbrian/gox/actions/runs/31697171821)
+[`31697171821`](https://github.com/faustbrian/glippy/actions/runs/31697171821)
 passed this complete matrix and comparison for revision `06cce4a`. The raw
 budgets and artifact digests are recorded in the
 [release-candidate evidence](research/release-candidate-evidence-2026-08-13.md).
@@ -120,23 +120,25 @@ and workflow, and stores it in GitHub's attestation service. No long-lived
 private signing key exists. Consumers can verify a downloaded file with:
 
 ```text
-gh attestation verify <artifact> --repo faustbrian/gox
+gh attestation verify <artifact> --repo faustbrian/glippy
 ```
 
 The builder's checksum file remains the portable offline integrity surface;
 the signed attestation proves repository and workflow provenance when GitHub is
 available. GitHub Release archives and version-pinned `go install` are the
-admitted v0.1.0 installation channels; package-manager metadata remains
-deferred. A signed Git tag is not part of this artifact-provenance claim.
+intended v0.2 installation channels; package-manager metadata remains deferred.
+A signed Git tag is not part of this artifact-provenance claim.
 
-The first public release, `v0.1.0`, was built from reviewed commit `c0435d6` by
+The historical Gox `v0.1.0` release was built from reviewed commit `c0435d6` by
 successful workflow run
 [`31699926922`](https://github.com/faustbrian/gox/actions/runs/31699926922).
 The workflow published all six checksummed assets and GitHub attestations after
 the maintainer accepted the final naming risk, reviewed the candidate, and
 authorized the tag. Exact identities and post-publication verification are in
 the [v0.1.0 release evidence](research/release-v0.1.0-evidence-2026-08-13.md).
-Ordinary pushes and manual workflow dispatches still cannot invoke publication.
+Those assets remain named `gox_*` and contain the `gox` binary; this source
+migration does not rewrite them. Ordinary pushes and manual workflow
+dispatches still cannot invoke publication.
 
 Published releases use the support and vulnerability boundaries in the
 [product support policy](support-policy.md) and the repository

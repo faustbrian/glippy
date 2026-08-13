@@ -15,10 +15,15 @@ here.
 
 ## Format And Version
 
-The configuration file is `.gox.toml`, renamed with the product only if ADR
-0001 changes. It MUST contain `version = 1`. Unknown keys, duplicate semantic
+The canonical configuration file is `.glippy.toml` under ADR 0016. It MUST
+contain `version = 1`. Unknown keys, duplicate semantic
 keys, unknown rule IDs, and invalid values MUST fail with a source-located
 diagnostic where the TOML decoder permits it.
+
+During the v0.2 compatibility window, automatic discovery accepts `.gox.toml`
+only when no `.glippy.toml` exists in the searched project scope. Finding both
+names fails rather than choosing one. An explicit `--config=<path>` remains an
+exact selection and bypasses automatic-name ambiguity.
 
 ```toml
 version = 1
@@ -41,7 +46,7 @@ warnings-as-errors = false
 require-reason = false
 
 [lint.baseline]
-path = ".gox-baseline.json"
+path = ".glippy-baseline.json"
 report-stale = true
 expiry-cutoff = "2026-08-13"
 
@@ -57,7 +62,7 @@ max-entries = 4096
 max-bytes = 536870912
 ```
 
-`lint.presets` MUST be an order-independent list of unique preset groups. Gox
+`lint.presets` MUST be an order-independent list of unique preset groups. Glippy
 MUST canonicalize configured groups in this order: `correctness`, `suspicious`,
 `performance`, `complexity`, `style`, then `pedantic`. Omission defaults to
 `["correctness"]`; an explicitly empty list selects no group and permits only
@@ -71,7 +76,7 @@ group MUST NOT be selected wholesale. The `migration` group remains unavailable
 until configuration supplies an explicit migration target. Unknown groups,
 duplicates, wholesale `restriction`, and untargeted `migration` MUST fail.
 
-`lint.warnings-as-errors` MUST default to `false`. When `true`, Gox MUST
+`lint.warnings-as-errors` MUST default to `false`. When `true`, Glippy MUST
 escalate every enabled rule whose final severity after group selection and
 per-rule overrides is `warn` to `error`. It MUST NOT enable an `off` rule or
 alter an existing `error`. The resolved escalation policy and normalized group
@@ -99,7 +104,7 @@ planning. Range ends remain reasonless because the matching start owns the
 waiver.
 
 `lint.suppressions.expiry-cutoff` MAY be omitted. When present, it MUST be a
-quoted, valid `YYYY-MM-DD` calendar date. Gox MUST NOT read the wall clock to
+quoted, valid `YYYY-MM-DD` calendar date. Glippy MUST NOT read the wall clock to
 evaluate suppressions. Instead, a directive whose structured `expires` date is
 on or before the configured cutoff MUST be reported as expired and MUST NOT
 suppress diagnostics. This explicit input keeps local and CI results
@@ -130,7 +135,7 @@ formatting behavior and MUST NOT contribute to cached-result identity.
 Syntax-only linting, formatting, and fix planning MUST NOT open or prune the
 typed analysis cache.
 
-`analysis.build-tags` MUST be a list of Go build-tag identifiers. Gox sorts
+`analysis.build-tags` MUST be a list of Go build-tag identifiers. Glippy sorts
 and deduplicates the list before package loading and cache identity. The
 `analysis.goos` and `analysis.goarch` values MUST use lowercase Go target
 identifier syntax, and `analysis.cgo-enabled` MUST be a boolean. When omitted,
@@ -145,7 +150,7 @@ All four resolved fields MUST contribute to result configuration identity.
 
 ## Discovery And Precedence
 
-Without `--config`, Gox discovers one project configuration by walking upward
+Without `--config`, Glippy discovers one project configuration by walking upward
 from each input to the nearest module, workspace, or repository root and then
 selecting the nearest configuration at or above that boundary. Inputs that
 resolve to different project configurations form separate deterministic runs.
@@ -159,10 +164,10 @@ variables MUST NOT silently override formatter or lint policy. Build tags,
 GOOS, GOARCH, and cgo selection come from `[analysis]`; toolchain and
 module/workspace state remain explicit analysis inputs and cache keys.
 
-`GOX_CACHE_DIR` MAY select the normalized absolute cache root when persistent
+`GLIPPY_CACHE_DIR` MAY select the normalized absolute cache root when persistent
 analysis caching is enabled. It does not enable caching and MUST NOT override
 the configured retention limits. Without the variable, the CLI MUST use the
-platform user-cache directory beneath `gox/analysis`. The store resolves and
+platform user-cache directory beneath `glippy/analysis`. The store resolves and
 validates the prospective target outside the selected project before creation,
 then opens each resolved path component through pinned rooted handles so a
 later symlink change cannot redirect cache operations into the project.

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/faustbrian/gox/internal/filesystem"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/filesystem"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 // WriteStatus distinguishes coordinated bytes from confirmed disk state.

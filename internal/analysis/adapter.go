@@ -15,8 +15,8 @@ import (
 
 	goanalysis "golang.org/x/tools/go/analysis"
 
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 // AnalyzerFixMapping binds one exact go/analysis suggestion to native metadata.

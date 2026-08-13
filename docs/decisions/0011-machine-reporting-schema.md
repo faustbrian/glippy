@@ -13,7 +13,7 @@ run timing and thread counts and does not identify a schema version. Those
 runtime fields are useful for performance output but are not deterministic
 result identity.
 
-Gox needs one machine envelope that reports the same outcome and exit category
+Glippy needs one machine envelope that reports the same outcome and exit category
 as text mode, preserves normalized task order, distinguishes complete from
 partial work, and can later carry lint and fix diagnostics without exposing
 source snippets by default. Formatter stdout content cannot share one stream
@@ -124,7 +124,7 @@ repurposed.
 
 - Copy Oxfmt's human-only formatter reporter: insufficient for CI consumers.
 - Copy Oxlint's current JSON object verbatim: language-specific diagnostics,
-  timing, and thread fields do not define Gox formatter outcomes.
+  timing, and thread fields do not define Glippy formatter outcomes.
 - Expose source excerpts or replacement text in ordinary lint JSON: violates
   the local-source disclosure boundary and is unnecessary for diagnostics.
 - Encode formatted source inside JSON: increases memory and source-disclosure

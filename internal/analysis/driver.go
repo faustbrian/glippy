@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/faustbrian/gox/internal/baseline"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
-	"github.com/faustbrian/gox/internal/suppressions"
+	"github.com/faustbrian/glippy/internal/baseline"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
+	"github.com/faustbrian/glippy/internal/suppressions"
 )
 
 // RunOptions selects native rules and suppression policy for one source file.

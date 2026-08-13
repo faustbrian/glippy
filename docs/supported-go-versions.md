@@ -1,14 +1,14 @@
 # Supported Go Versions
 
-Gox supports Go 1.25 and Go 1.26 source. The source language
+Glippy supports Go 1.25 and Go 1.26 source. The source language
 is normalized to its language family, so directives such as `go 1.26.5` select
 Go 1.26. Source versions older than Go 1.25 or newer than Go 1.26 fail before
 formatting, analysis, or writes begin.
 
-For a source path, Gox selects the nearest containing `go.mod` up to the
+For a source path, Glippy selects the nearest containing `go.mod` up to the
 discovered project root. If no module owns the path, it uses the project-root
 `go.work`. If the selected file has no `go` directive, or neither file exists,
-Gox defaults to Go 1.26. A malformed selected module or workspace file is an
+Glippy defaults to Go 1.26. A malformed selected module or workspace file is an
 error. `--stdin-filepath` uses the same resolution without reading or writing
 the named source file.
 
@@ -30,12 +30,12 @@ Installing from source requires the toolchain selected by the module's
 according to the user's toolchain policy. Windows and other operating systems
 are unsupported.
 
-Newer Go source is rejected until Gox is rebuilt with a frontend that
+Newer Go source is rejected until Glippy is rebuilt with a frontend that
 understands it and the formatter, lint, corpus, and compatibility gates for
 that language family pass. Adding a newer maximum does not automatically drop
 the current minimum; supported-version changes are release compatibility
 changes.
 
-This source-language range is distinct from the lifetime of a published Gox
-binary. Which Gox release receives fixes is defined by the
+This source-language range is distinct from the lifetime of a published Glippy
+binary. Which Glippy release receives fixes is defined by the
 [product support policy](support-policy.md).

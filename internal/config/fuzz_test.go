@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/config"
-	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/glippy/internal/config"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 func FuzzParseDeterministic(f *testing.F) {
@@ -37,8 +37,8 @@ func FuzzParseDeterministic(f *testing.F) {
 	}
 	f.Fuzz(
 		func(t *testing.T, input []byte) {
-			first, firstErr := config.Parse("fuzz/.gox.toml", input, options)
-			second, secondErr := config.Parse("fuzz/.gox.toml", input, options)
+			first, firstErr := config.Parse("fuzz/.glippy.toml", input, options)
+			second, secondErr := config.Parse("fuzz/.glippy.toml", input, options)
 			if (firstErr == nil) != (secondErr == nil) {
 				t.Fatalf(
 					"Parse() success changed between identical runs: %v, %v",

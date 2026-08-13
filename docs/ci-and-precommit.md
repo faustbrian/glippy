@@ -1,24 +1,24 @@
 # Continuous Integration And Pre-Commit
 
-Use `gox check` as the non-mutating repository gate. It reports both formatting
+Use `glippy check` as the non-mutating repository gate. It reports both formatting
 differences and enabled lint diagnostics, sorts output deterministically, and
 does not rewrite source. Exit code 1 means actionable findings; exit codes 2
 through 6 and 130 are tool, source, configuration, filesystem, conflict, or
 cancellation outcomes rather than ordinary findings.
 
-Gox is still a development identity. Until the final naming audit and public
-release, provision one exact reviewed source revision and do not treat the
-repository or command path below as a stable installation contract.
+Glippy v0.2 is an unreleased development identity. Provision one exact reviewed
+source revision and do not treat the intended repository path below as a stable
+installation contract until the remote rename and a reviewed release occur.
 
 ## GitHub Actions
 
-The following job checks out the project and a full, reviewed Gox commit into
-separate directories. Replace `<full-gox-commit-sha>` with a 40-character
+The following job checks out the project and a full, reviewed Glippy commit into
+separate directories. Replace `<full-glippy-commit-sha>` with a 40-character
 commit ID. Keeping the tool source outside the project checkout prevents
-`./...` from selecting Gox itself.
+`./...` from selecting Glippy itself.
 
 ```yaml
-name: Gox
+name: Glippy
 
 on:
   pull_request:
@@ -38,26 +38,26 @@ jobs:
         with:
           path: project
           persist-credentials: false
-      - name: Check out pinned Gox source
+      - name: Check out pinned Glippy source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          repository: faustbrian/gox
-          ref: <full-gox-commit-sha>
-          path: gox-tool
+          repository: faustbrian/glippy
+          ref: <full-glippy-commit-sha>
+          path: glippy-tool
           persist-credentials: false
       - name: Install the recorded Go toolchain
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: 1.26.5
           cache: false
-      - name: Build pinned Gox
+      - name: Build pinned Glippy
         shell: bash
-        working-directory: gox-tool
+        working-directory: glippy-tool
         env:
           GOTOOLCHAIN: local
         run: |
           set -euo pipefail
-          task_root=$(mktemp -d "$RUNNER_TEMP/gox-build.XXXXXX")
+          task_root=$(mktemp -d "$RUNNER_TEMP/glippy-build.XXXXXX")
           cleanup() {
             trap - EXIT HUP INT TERM
             if [ -d "$task_root/modcache" ] &&
@@ -69,18 +69,18 @@ jobs:
           }
           trap cleanup EXIT HUP INT TERM
           GOCACHE="$task_root/cache" GOMODCACHE="$task_root/modcache" \
-            GOENV=off GOWORK=off go build -o "$RUNNER_TEMP/gox" ./cmd/gox
+            GOENV=off GOWORK=off go build -o "$RUNNER_TEMP/glippy" ./cmd/glippy
       - name: Check formatting and lint
         working-directory: project
-        run: "$RUNNER_TEMP/gox check ./..."
+        run: "$RUNNER_TEMP/glippy check ./..."
 ```
 
-The workflow intentionally pins action commits, the Go toolchain, and Gox
+The workflow intentionally pins action commits, the Go toolchain, and Glippy
 source. It grants no write permission and invokes no fix mode. If a repository
 needs machine diagnostics, replace the final command with:
 
 ```sh
-"$RUNNER_TEMP/gox" check --reporter=json ./... > gox-report.json
+"$RUNNER_TEMP/glippy" check --reporter=json ./... > glippy-report.json
 ```
 
 Preserve the command's exit status when uploading the report. A JSON document
@@ -96,8 +96,8 @@ each developer's `.git/hooks` directory. For example, commit this executable as
 #!/bin/sh
 set -eu
 
-: "${GOX_BIN:=gox}"
-exec "$GOX_BIN" check ./...
+: "${GLIPPY_BIN:=glippy}"
+exec "$GLIPPY_BIN" check ./...
 ```
 
 Each developer enables the repository-owned hook once:
@@ -106,20 +106,20 @@ Each developer enables the repository-owned hook once:
 git config core.hooksPath .githooks
 ```
 
-Install or provision the repository's pinned Gox release before enabling the
-hook; leaving `GOX_BIN` unset resolves `gox` from `PATH`. The hook uses the same
+Install or provision the repository's pinned Glippy release before enabling the
+hook; leaving `GLIPPY_BIN` unset resolves `glippy` from `PATH`. The hook uses the same
 non-mutating command as CI and must not use `fmt --write`, `lint --fix`,
 suggestion fixes, or unsafe fixes. Developers can run those commands
 deliberately before committing and review the resulting source changes.
 
-Gox checks filesystem content, not staged Git blobs. With partially staged
+Glippy checks filesystem content, not staged Git blobs. With partially staged
 files, the hook therefore evaluates the complete working-tree file. Reconcile
 partial staging before treating the hook result as proof of the exact commit,
 or have CI check the resulting commit after it is created.
 
 ## Scope And Configuration
 
-Run from the project root so `.gox.toml`, `go.mod`, `go.work`, and recursive
+Run from the project root so `.glippy.toml`, `go.mod`, `go.work`, and recursive
 patterns resolve consistently. Typed selections must share one project root
 and configuration. Separate heterogeneous roots into distinct invocations.
 

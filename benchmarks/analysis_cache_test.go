@@ -11,9 +11,9 @@ import (
 
 	goanalysis "golang.org/x/tools/go/analysis"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/cache"
-	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 type benchmarkPackageFact struct {
@@ -125,7 +125,7 @@ func BenchmarkPackageAnalyzerFactCache(b *testing.B) {
 
 			for b.Loop() {
 				b.StopTimer()
-				root, err := os.MkdirTemp("", "gox-package-fact-cache-cold-")
+				root, err := os.MkdirTemp("", "glippy-package-fact-cache-cold-")
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -250,7 +250,7 @@ func BenchmarkNativeAnalysisResultCache(b *testing.B) {
 							b.StopTimer()
 							root, err := os.MkdirTemp(
 								"",
-								"gox-native-cache-cold-",
+								"glippy-native-cache-cold-",
 							)
 							if err != nil {
 								b.Fatal(err)
@@ -597,7 +597,7 @@ func benchmarkPackageCacheRunOptions(store *cache.Store) analysis.RunOptions {
 			BuildGoVersion: runtime.Version(),
 			SourceGoVersion: "1.26",
 			Configuration: cache.DigestOf([]byte("benchmark-configuration")),
-			FormatterMode: "gox-v1",
+			FormatterMode: "glippy-v1",
 		},
 	}
 }

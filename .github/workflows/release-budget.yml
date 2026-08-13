@@ -28,10 +28,10 @@ jobs:
             goos: linux
             goarch: arm64
     steps:
-      - name: Check out Gox
+      - name: Check out Glippy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          path: gox
+          path: glippy
       - name: Check out immutable formatter corpus
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -47,15 +47,15 @@ jobs:
         shell: bash
         env:
           GOTOOLCHAIN: local
-          GOX_EDITOR_LATENCY_BUDGET_MS: "250"
-          GOX_PEAK_RSS_FORMAT_BUDGET_BYTES: "2147483648"
-          GOX_PEAK_RSS_FORMAT_BUDGET_SECONDS: "90"
-          GOX_PEAK_RSS_FORMAT_REVISION: f28f85133ac6d13169745807fc39e2d5ef6bf780
-          GOX_PEAK_RSS_FORMAT_ROOT: ${{ github.workspace }}/corpus
-          GOX_PEAK_RSS_RUNS: "5"
-          GOX_RELEASE_EXPECTED_GOARCH: ${{ matrix.goarch }}
-          GOX_RELEASE_EXPECTED_GOOS: ${{ matrix.goos }}
-          GOX_RELEASE_GOX_REVISION: ${{ github.sha }}
+          GLIPPY_EDITOR_LATENCY_BUDGET_MS: "250"
+          GLIPPY_PEAK_RSS_FORMAT_BUDGET_BYTES: "2147483648"
+          GLIPPY_PEAK_RSS_FORMAT_BUDGET_SECONDS: "90"
+          GLIPPY_PEAK_RSS_FORMAT_REVISION: f28f85133ac6d13169745807fc39e2d5ef6bf780
+          GLIPPY_PEAK_RSS_FORMAT_ROOT: ${{ github.workspace }}/corpus
+          GLIPPY_PEAK_RSS_RUNS: "5"
+          GLIPPY_RELEASE_EXPECTED_GOARCH: ${{ matrix.goarch }}
+          GLIPPY_RELEASE_EXPECTED_GOOS: ${{ matrix.goos }}
+          GLIPPY_RELEASE_GLIPPY_REVISION: ${{ github.sha }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/release-budget-${{ matrix.goos }}-${{ matrix.goarch }}.log"
@@ -69,15 +69,15 @@ jobs:
             ./benchmarks/editor-latency.sh
             ./benchmarks/peak-rss.sh
           } | tee "$evidence"
-        working-directory: ${{ github.workspace }}/gox
+        working-directory: ${{ github.workspace }}/glippy
       - name: Build and execute the release candidate
         shell: bash
         env:
           GOTOOLCHAIN: local
-          GOX_RELEASE_VERSION: v0.0.0-release-candidate
+          GLIPPY_RELEASE_VERSION: v0.0.0-release-candidate
         run: |
           set -euo pipefail
-          task_root=$(mktemp -d "$RUNNER_TEMP/gox-release-candidate.XXXXXX")
+          task_root=$(mktemp -d "$RUNNER_TEMP/glippy-release-candidate.XXXXXX")
           cleanup() {
             trap - EXIT HUP INT TERM
             if [ -d "$task_root/modcache" ] &&
@@ -91,16 +91,16 @@ jobs:
 
           GOCACHE="$task_root/gocache" GOMODCACHE="$task_root/modcache" \
             GOENV=off GOWORK=off go run ./internal/releasecmd \
-              --version "$GOX_RELEASE_VERSION" \
+              --version "$GLIPPY_RELEASE_VERSION" \
               --revision "$GITHUB_SHA" \
-              --output "$RUNNER_TEMP/gox-release"
+              --output "$RUNNER_TEMP/glippy-release"
 
-          archive="$RUNNER_TEMP/gox-release/gox_${GOX_RELEASE_VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
+          archive="$RUNNER_TEMP/glippy-release/glippy_${GLIPPY_RELEASE_VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
           mkdir "$task_root/extracted"
           tar -xzf "$archive" -C "$task_root/extracted"
-          version_output=$("$task_root/extracted/gox" version)
-          test "$version_output" = "gox $GOX_RELEASE_VERSION"
-        working-directory: ${{ github.workspace }}/gox
+          version_output=$("$task_root/extracted/glippy" version)
+          test "$version_output" = "glippy $GLIPPY_RELEASE_VERSION"
+        working-directory: ${{ github.workspace }}/glippy
       - name: Retain raw evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -108,7 +108,7 @@ jobs:
           name: release-budget-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
             ${{ runner.temp }}/release-budget-${{ matrix.goos }}-${{ matrix.goarch }}.log
-            ${{ runner.temp }}/gox-release
+            ${{ runner.temp }}/glippy-release
           if-no-files-found: error
           retention-days: 14
 
@@ -126,22 +126,22 @@ jobs:
       - name: Compare every candidate byte-for-byte
         shell: bash
         env:
-          GOX_RELEASE_VERSION: v0.0.0-release-candidate
+          GLIPPY_RELEASE_VERSION: v0.0.0-release-candidate
         run: |
           set -euo pipefail
           candidates="$RUNNER_TEMP/release-candidates"
           mapfile -t releases < <(
             find "$candidates" -mindepth 2 -maxdepth 2 \
-              -type d -name gox-release -print | sort
+              -type d -name glippy-release -print | sort
           )
           test "${#releases[@]}" -eq 4
           reference=${releases[0]}
           for release in "${releases[@]}"; do
-            manifest="$release/gox_${GOX_RELEASE_VERSION}_manifest.json"
-            checksums="$release/gox_${GOX_RELEASE_VERSION}_checksums.txt"
+            manifest="$release/glippy_${GLIPPY_RELEASE_VERSION}_manifest.json"
+            checksums="$release/glippy_${GLIPPY_RELEASE_VERSION}_checksums.txt"
             jq -e \
               --arg revision "$GITHUB_SHA" \
-              --arg version "$GOX_RELEASE_VERSION" \
+              --arg version "$GLIPPY_RELEASE_VERSION" \
               '.source_revision == $revision and .version == $version and (.artifacts | length) == 4' \
               "$manifest"
             (

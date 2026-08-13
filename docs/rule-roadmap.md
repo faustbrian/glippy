@@ -1,6 +1,6 @@
 # Rule Roadmap
 
-Gox expands lint coverage only after the shared syntax, types, CFG, SSA, fact,
+Glippy expands lint coverage only after the shared syntax, types, CFG, SSA, fact,
 cache, and fix foundations have passed their evidence gates. The
 [Phase 4 exit audit](research/phase4-exit-gate-2026-08-13.md) closes that
 foundation boundary. This roadmap therefore starts rule-growth planning; it
@@ -42,7 +42,7 @@ another existing default tool already owns the problem well enough.
 | Order | Defect class | Cheapest plausible tier | Admission question |
 | ---: | --- | --- | --- |
 | 1 | Standard-library argument roles and state contracts | types | Can typed object identity prove a misuse without guessing caller intent, as it does for the admitted `errors-is-arguments` and `context-key` rules? |
-| 2 | Ineffective or misleading control transfer beyond the current terminal-break cases | syntax, then CFG only if needed | Is the transfer observably ineffective, and can Gox distinguish the intended enclosing construct without path-sensitive speculation? |
+| 2 | Ineffective or misleading control transfer beyond the current terminal-break cases | syntax, then CFG only if needed | Is the transfer observably ineffective, and can Glippy distinguish the intended enclosing construct without path-sensitive speculation? |
 | 3 | Resource cleanup inside repeated execution | CFG | Can reachability prove that cleanup is deferred indefinitely or skipped, while excluding deliberate process and goroutine termination? |
 | 4 | Impossible nil and state transitions across calls | SSA plus admitted facts | Do interprocedural facts materially improve precision over the current intraprocedural `nilness` boundary? |
 | 5 | Response, stream, and closer lifecycle misuse | types plus CFG or SSA | Can ownership and escape boundaries identify a real leak or use-after-close defect without treating every transfer as local ownership? |
@@ -67,7 +67,7 @@ Before implementation, each candidate receives its own record under
 - behavior for generated files, type errors, suppressions, and source versions;
 - fix availability and independent safe, suggestion, or unsafe classification;
 - a proportional cost probe; and
-- non-mutating dogfood across Gox plus representative external code.
+- non-mutating dogfood across Glippy plus representative external code.
 
 Candidates without this evidence remain investigations. They are not added as
 disabled built-ins merely to advertise future coverage.

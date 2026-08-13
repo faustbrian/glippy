@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/suppressions"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/suppressions"
 )
 
 // PackageResult is one suppression-aware package analysis run over a shared

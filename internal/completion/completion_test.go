@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/completion"
+	"github.com/faustbrian/glippy/internal/completion"
 )
 
 func TestRenderProducesDeterministicShellCompletions(t *testing.T) {
@@ -19,7 +19,7 @@ func TestRenderProducesDeterministicShellCompletions(t *testing.T) {
 		{
 			shell: completion.Bash,
 			markers: []string{
-				"complete -F _gox_completion gox",
+				"complete -F _glippy_completion glippy",
 				"--fix-suggestions",
 				"--generate-baseline=",
 				"--fragment=declaration --fragment=statement --fragment=expression",
@@ -30,7 +30,7 @@ func TestRenderProducesDeterministicShellCompletions(t *testing.T) {
 		{
 			shell: completion.Zsh,
 			markers: []string{
-				"#compdef gox",
+				"#compdef glippy",
 				"--stdin-filepath",
 				"--generate-baseline",
 				"duplicate-condition ineffective-break",
@@ -39,7 +39,7 @@ func TestRenderProducesDeterministicShellCompletions(t *testing.T) {
 		{
 			shell: completion.Fish,
 			markers: []string{
-				"complete -c gox -f",
+				"complete -c glippy -f",
 				"__fish_seen_subcommand_from fmt lint check' -F",
 				" -l fix-unsafe ",
 				" -l generate-baseline ",

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/filesystem"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/filesystem"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestReadRejectsOversizedSourceBeforeSnapshotAllocation(t *testing.T) {
@@ -115,7 +115,7 @@ func TestCreateWithinCreatesRegularFile(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	path := filepath.Join(root, ".gox-baseline.json")
+	path := filepath.Join(root, ".glippy-baseline.json")
 	if err := filesystem.CreateWithin(root, path, []byte("first\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestCreateWithinRejectsSymlinkTarget(t *testing.T) {
 	if err := os.WriteFile(external, []byte("preserve\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(root, ".gox-baseline.json")
+	path := filepath.Join(root, ".glippy-baseline.json")
 	if err := os.Symlink(external, path); err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestCreateWithinDoesNotReplaceExistingFile(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	path := filepath.Join(root, ".gox-baseline.json")
+	path := filepath.Join(root, ".glippy-baseline.json")
 	if err := os.WriteFile(path, []byte("existing\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -21,10 +21,10 @@ import (
 	pkgfactanalyzer "golang.org/x/tools/go/analysis/passes/pkgfact"
 	testsanalyzer "golang.org/x/tools/go/analysis/passes/tests"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/cache"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 type adapterFact struct{}
@@ -85,7 +85,7 @@ func TestAdaptAnalyzerRunsOnAnIsolatedSyntaxViewAndMapsDiagnostics(t *testing.T)
 
 	input := `package sample
 
-//gox:ignore external-call -- accepted here
+//glippy:ignore external-call -- accepted here
 func suppressed() { target() }
 
 func visible() { target() }
@@ -1635,7 +1635,7 @@ func packageAnalyzerCacheOptions(store *cache.Store) *analysis.PackageCacheOptio
 		BuildGoVersion: runtime.Version(),
 		SourceGoVersion: "1.26",
 		Configuration: cache.DigestOf([]byte("configuration")),
-		FormatterMode: "gox-v1",
+		FormatterMode: "glippy-v1",
 	}
 }
 

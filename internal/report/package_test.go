@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/source"
 	"golang.org/x/tools/go/packages"
 )
 

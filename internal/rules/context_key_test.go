@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 type benchmarkContextKeyTypesRule struct{}
@@ -254,7 +254,7 @@ func TestContextKeyHonorsSuppressionGeneratedTypeErrorAndSeverityPolicies(t *tes
 		`package sample
 import "context"
 func run(ctx context.Context) {
-	//gox:ignore context-key -- compatibility boundary
+	//glippy:ignore context-key -- compatibility boundary
 	context.WithValue(ctx, "key", 1)
 }
 `,

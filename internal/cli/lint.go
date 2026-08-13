@@ -11,21 +11,21 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/baseline"
-	"github.com/faustbrian/gox/internal/cache"
-	"github.com/faustbrian/gox/internal/config"
-	"github.com/faustbrian/gox/internal/discovery"
-	"github.com/faustbrian/gox/internal/filesystem"
-	fixengine "github.com/faustbrian/gox/internal/fix"
-	goxformat "github.com/faustbrian/gox/internal/format"
-	"github.com/faustbrian/gox/internal/goversion"
-	goxreport "github.com/faustbrian/gox/internal/report"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/baseline"
+	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/config"
+	"github.com/faustbrian/glippy/internal/discovery"
+	"github.com/faustbrian/glippy/internal/filesystem"
+	fixengine "github.com/faustbrian/glippy/internal/fix"
+	glippyformat "github.com/faustbrian/glippy/internal/format"
+	"github.com/faustbrian/glippy/internal/goversion"
+	glippyreport "github.com/faustbrian/glippy/internal/report"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
-const lintUsage = "gox: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--generate-baseline=<path>] [--reporter=text|json] [--config=<path>] [path...]'\n"
+const lintUsage = "glippy: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--generate-baseline=<path>] [--reporter=text|json] [--config=<path>] [path...]'\n"
 
 type lintInvocation struct {
 	configPath string
@@ -34,13 +34,13 @@ type lintInvocation struct {
 	fixUnsafe bool
 	generateBaseline string
 	paths []string
-	reporter goxreport.Format
+	reporter glippyreport.Format
 }
 
 type lintTaskOptions struct {
 	analysis analysis.RunOptions
 	buildSelection config.Analysis
-	format goxformat.Options
+	format glippyformat.Options
 	cache config.Cache
 	configurationDigest cache.Digest
 	sourceGoVersion string
@@ -96,7 +96,7 @@ type lintFixExecution struct {
 	file *source.File
 	resultFile *source.File
 	result analysis.Result
-	outcome goxreport.LintFixOutcome
+	outcome glippyreport.LintFixOutcome
 	selections []fixengine.Selection
 	task lintTask
 	packageTask *lintPackageTask
@@ -107,7 +107,7 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 	if len(arguments) == 0 || arguments[0] != "lint" {
 		return lintInvocation{}, false
 	}
-	result := lintInvocation{reporter: goxreport.Text}
+	result := lintInvocation{reporter: glippyreport.Text}
 	reporterSet := false
 	fixSet := false
 	for index := 1; index < len(arguments); index++ {
@@ -182,7 +182,7 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 		result.paths = []string{"."}
 	}
 	if result.generateBaseline != "" &&
-		(result.fixEnabled() || result.reporter != goxreport.Text) {
+		(result.fixEnabled() || result.reporter != glippyreport.Text) {
 		return lintInvocation{}, false
 	}
 	return result, true
@@ -265,7 +265,7 @@ func runLintCheck(
 		return reportLintFailure(invocation, stdout, stderr, exitCode, nil, err)
 	}
 
-	inputs := make([]goxreport.LintTextInput, 0, len(tasks))
+	inputs := make([]glippyreport.LintTextInput, 0, len(tasks))
 	results := make([]analysis.Result, 0, len(tasks))
 	for _, task := range tasks {
 		if err := ctx.Err(); err != nil {
@@ -312,7 +312,7 @@ func runLintCheck(
 			)
 		}
 		results = append(results, analyzed)
-		inputs = append(inputs, goxreport.LintTextInput{File: file, Result: analyzed})
+		inputs = append(inputs, glippyreport.LintTextInput{File: file, Result: analyzed})
 	}
 	if err := applyConfiguredBaselines(tasks, inputs, results, registry); err != nil {
 		return reportLintFailure(
@@ -331,19 +331,24 @@ func runLintCheck(
 		return reportLintFailure(invocation, stdout, stderr, ExitCanceled, results, err)
 	}
 	exitCode = lintResultExitCode(results)
-	if invocation.reporter == goxreport.JSON {
+	if invocation.reporter == glippyreport.JSON {
 		return reportLintJSON(stdout, stderr, "check", exitCode, true, results, nil)
 	}
-	output, err := goxreport.RenderLintText(inputs)
+	output, err := glippyreport.RenderLintText(inputs)
 	if err != nil {
-		return report(stderr, ExitInternalError, "gox lint: render text report: %v\n", err)
+		return report(
+			stderr,
+			ExitInternalError,
+			"glippy lint: render text report: %v\n",
+			err,
+		)
 	}
 	if len(output) > 0 {
 		if err := write(stdout, output); err != nil {
 			return report(
 				stderr,
 				ExitFilesystemError,
-				"gox lint: write standard output: %v\n",
+				"glippy lint: write standard output: %v\n",
 				err,
 			)
 		}
@@ -361,28 +366,28 @@ func runLintGenerateBaseline(
 		return report(
 			stderr,
 			ExitInternalError,
-			"gox lint: generate baseline: context and rule registry are required\n",
+			"glippy lint: generate baseline: context and rule registry are required\n",
 		)
 	}
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox lint: generate baseline: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy lint: generate baseline: %v\n", err)
 	}
 	if !baseline.ValidPath(invocation.generateBaseline) {
 		return report(
 			stderr,
 			ExitInvalidInvocation,
-			"gox lint: generate baseline: path must be portable and relative\n",
+			"glippy lint: generate baseline: path must be portable and relative\n",
 		)
 	}
 	plans, exitCode, err := prepareLintInputPlans(ctx, invocation, registry)
 	if err != nil {
-		return report(stderr, exitCode, "gox lint: generate baseline: %v\n", err)
+		return report(stderr, exitCode, "glippy lint: generate baseline: %v\n", err)
 	}
 	if len(plans) == 0 || plans[0].selection.Root == "" {
 		return report(
 			stderr,
 			ExitInvalidInvocation,
-			"gox lint: generate baseline: a project root is required\n",
+			"glippy lint: generate baseline: a project root is required\n",
 		)
 	}
 	root := plans[0].selection.Root
@@ -392,7 +397,7 @@ func runLintGenerateBaseline(
 			return report(
 				stderr,
 				ExitInvalidInvocation,
-				"gox lint: generate baseline: inputs must resolve to one project root and configuration\n",
+				"glippy lint: generate baseline: inputs must resolve to one project root and configuration\n",
 			)
 		}
 	}
@@ -404,7 +409,7 @@ func runLintGenerateBaseline(
 			return report(
 				stderr,
 				exitCodeForError(ExitFilesystemError, err),
-				"gox lint: generate baseline: %v\n",
+				"glippy lint: generate baseline: %v\n",
 				err,
 			)
 		}
@@ -412,14 +417,14 @@ func runLintGenerateBaseline(
 		return report(
 			stderr,
 			exitCodeForError(ExitFilesystemError, err),
-			"gox lint: generate baseline: inspect %q: %v\n",
+			"glippy lint: generate baseline: inspect %q: %v\n",
 			baselinePath,
 			err,
 		)
 	}
 	packageTask, packageMode, exitCode, err := prepareLintPackageTask(plans)
 	if err != nil {
-		return report(stderr, exitCode, "gox lint: generate baseline: %v\n", err)
+		return report(stderr, exitCode, "glippy lint: generate baseline: %v\n", err)
 	}
 	inputs := make([]baseline.InputFile, 0)
 	if packageMode {
@@ -428,7 +433,7 @@ func runLintGenerateBaseline(
 			return report(
 				stderr,
 				packageAnalysisErrorExitCode(err),
-				"gox lint: generate baseline: %v\n",
+				"glippy lint: generate baseline: %v\n",
 				err,
 			)
 		}
@@ -438,7 +443,7 @@ func runLintGenerateBaseline(
 				return report(
 					stderr,
 					ExitInternalError,
-					"gox lint: generate baseline: source %q is missing\n",
+					"glippy lint: generate baseline: source %q is missing\n",
 					analyzed.Path,
 				)
 			}
@@ -455,7 +460,7 @@ func runLintGenerateBaseline(
 			registry,
 		)
 		if err != nil {
-			return report(stderr, exitCode, "gox lint: generate baseline: %v\n", err)
+			return report(stderr, exitCode, "glippy lint: generate baseline: %v\n", err)
 		}
 		for _, task := range tasks {
 			input, err := source.ReadFile(task.file.Path)
@@ -463,7 +468,7 @@ func runLintGenerateBaseline(
 				return report(
 					stderr,
 					exitCodeForError(ExitFilesystemError, err),
-					"gox lint: generate baseline: read %q: %v\n",
+					"glippy lint: generate baseline: read %q: %v\n",
 					task.file.Path,
 					err,
 				)
@@ -473,7 +478,7 @@ func runLintGenerateBaseline(
 				return report(
 					stderr,
 					ExitSourceError,
-					"gox lint: generate baseline: %v\n",
+					"glippy lint: generate baseline: %v\n",
 					err,
 				)
 			}
@@ -482,7 +487,7 @@ func runLintGenerateBaseline(
 				return report(
 					stderr,
 					exitCodeForError(ExitInternalError, err),
-					"gox lint: generate baseline: %v\n",
+					"glippy lint: generate baseline: %v\n",
 					err,
 				)
 			}
@@ -494,11 +499,21 @@ func runLintGenerateBaseline(
 	}
 	document, err := baseline.Generate(root, inputs)
 	if err != nil {
-		return report(stderr, ExitInternalError, "gox lint: generate baseline: %v\n", err)
+		return report(
+			stderr,
+			ExitInternalError,
+			"glippy lint: generate baseline: %v\n",
+			err,
+		)
 	}
 	encoded, err := baseline.Encode(document)
 	if err != nil {
-		return report(stderr, ExitInternalError, "gox lint: generate baseline: %v\n", err)
+		return report(
+			stderr,
+			ExitInternalError,
+			"glippy lint: generate baseline: %v\n",
+			err,
+		)
 	}
 	if baselineSnapshot != nil {
 		err = baselineSnapshot.Replace(encoded)
@@ -509,7 +524,7 @@ func runLintGenerateBaseline(
 		return report(
 			stderr,
 			exitCodeForError(ExitFilesystemError, err),
-			"gox lint: generate baseline: %v\n",
+			"glippy lint: generate baseline: %v\n",
 			err,
 		)
 	}
@@ -521,7 +536,7 @@ func runLintGenerateBaseline(
 		stdout,
 		[]byte(
 			fmt.Sprintf(
-				"gox lint: wrote baseline %s (%d diagnostics)\n",
+				"glippy lint: wrote baseline %s (%d diagnostics)\n",
 				baselinePath,
 				count,
 			),
@@ -531,7 +546,7 @@ func runLintGenerateBaseline(
 		return report(
 			stderr,
 			ExitFilesystemError,
-			"gox lint: write standard output: %v\n",
+			"glippy lint: write standard output: %v\n",
 			err,
 		)
 	}
@@ -577,7 +592,7 @@ func runLintPackageCheck(
 		)
 	}
 	exitCode := lintPackageResultExitCode(result)
-	if invocation.reporter == goxreport.JSON {
+	if invocation.reporter == glippyreport.JSON {
 		return reportLintPackageJSON(stdout, stderr, "check", exitCode, true, result, nil)
 	}
 	inputs, err := packageLintTextInputs(result)
@@ -585,11 +600,11 @@ func runLintPackageCheck(
 		return report(
 			stderr,
 			ExitInternalError,
-			"gox lint: prepare typed text report: %v\n",
+			"glippy lint: prepare typed text report: %v\n",
 			err,
 		)
 	}
-	output, err := goxreport.RenderPackageLintText(
+	output, err := glippyreport.RenderPackageLintText(
 		inputs,
 		result.LoadDiagnostics,
 		result.SourceProblems,
@@ -598,7 +613,7 @@ func runLintPackageCheck(
 		return report(
 			stderr,
 			ExitInternalError,
-			"gox lint: render typed text report: %v\n",
+			"glippy lint: render typed text report: %v\n",
 			err,
 		)
 	}
@@ -607,7 +622,7 @@ func runLintPackageCheck(
 			return report(
 				stderr,
 				ExitFilesystemError,
-				"gox lint: write standard output: %v\n",
+				"glippy lint: write standard output: %v\n",
 				err,
 			)
 		}
@@ -617,7 +632,7 @@ func runLintPackageCheck(
 
 func applyConfiguredBaselines(
 	tasks []lintTask,
-	inputs []goxreport.LintTextInput,
+	inputs []glippyreport.LintTextInput,
 	results []analysis.Result,
 	registry *rules.Registry,
 ) error {
@@ -724,14 +739,14 @@ func applyConfiguredPackageBaseline(
 	if task.options.baseline.Path == "" {
 		return nil
 	}
-	inputs := make([]goxreport.LintTextInput, 0, len(result.Files))
+	inputs := make([]glippyreport.LintTextInput, 0, len(result.Files))
 	tasks := make([]lintTask, 0, len(result.Files))
 	for _, analyzed := range result.Files {
 		file, found := result.Sources.Lookup(analyzed.Path)
 		if !found {
 			return fmt.Errorf("typed lint result source %q is missing", analyzed.Path)
 		}
-		inputs = append(inputs, goxreport.LintTextInput{File: file, Result: analyzed})
+		inputs = append(inputs, glippyreport.LintTextInput{File: file, Result: analyzed})
 		tasks = append(tasks, lintTask{root: task.root, options: task.options})
 	}
 	return applyConfiguredBaselines(tasks, inputs, result.Files, registry)
@@ -910,8 +925,8 @@ func lintPackageQuery(input, anchor string, recursive bool, root string) (string
 	return "./" + filepath.ToSlash(relative), ExitSuccess, nil
 }
 
-func packageLintTextInputs(result analysis.PackageResult) ([]goxreport.LintTextInput, error) {
-	inputs := make([]goxreport.LintTextInput, 0, len(result.Files))
+func packageLintTextInputs(result analysis.PackageResult) ([]glippyreport.LintTextInput, error) {
+	inputs := make([]glippyreport.LintTextInput, 0, len(result.Files))
 	for _, fileResult := range result.Files {
 		file, found := result.Sources.Lookup(fileResult.Path)
 		if !found {
@@ -920,7 +935,7 @@ func packageLintTextInputs(result analysis.PackageResult) ([]goxreport.LintTextI
 				fileResult.Path,
 			)
 		}
-		inputs = append(inputs, goxreport.LintTextInput{File: file, Result: fileResult})
+		inputs = append(inputs, glippyreport.LintTextInput{File: file, Result: fileResult})
 	}
 	return inputs, nil
 }
@@ -1033,7 +1048,7 @@ func lintOptionsForSelection(
 			SuppressionExpiryCutoff: loaded.Lint.Suppressions.ExpiryCutoff,
 		},
 		buildSelection: loaded.Analysis,
-		format: goxformat.Options{
+		format: glippyformat.Options{
 			Width: loaded.Format.LineWidth,
 			TabWidth: loaded.Format.TabWidth,
 			FitBudget: defaultFormatOptions.FitBudget,
@@ -1162,7 +1177,7 @@ func runLintFix(
 				)
 				analyzedFile = formatted
 				if err == nil {
-					inputs := []goxreport.LintTextInput{
+					inputs := []glippyreport.LintTextInput{
 						{File: formatted, Result: analyzed},
 					}
 					results := []analysis.Result{analyzed}
@@ -1258,19 +1273,19 @@ func runLintFix(
 		)
 	}
 	exitCode = lintFixExitCode(executions)
-	if invocation.reporter == goxreport.JSON {
+	if invocation.reporter == glippyreport.JSON {
 		return reportLintFixJSON(stdout, stderr, exitCode, true, executions, nil)
 	}
-	inputs := make([]goxreport.LintFixTextInput, len(executions))
+	inputs := make([]glippyreport.LintFixTextInput, len(executions))
 	for index, execution := range executions {
-		inputs[index] = goxreport.LintFixTextInput{
+		inputs[index] = glippyreport.LintFixTextInput{
 			File: execution.file,
 			ResultFile: execution.resultFile,
 			Result: execution.result,
 			Outcome: execution.outcome,
 		}
 	}
-	output, err := goxreport.RenderLintFixText(inputs)
+	output, err := glippyreport.RenderLintFixText(inputs)
 	if err != nil {
 		return reportLintFixFailure(
 			invocation,
@@ -1345,10 +1360,10 @@ func prepareLintPackageFixExecutions(
 				file: file,
 				resultFile: file,
 				result: result,
-				outcome: goxreport.LintFixOutcome{
+				outcome: glippyreport.LintFixOutcome{
 					Path: file.Path(),
 					SourceDigest: file.Digest(),
-					Status: goxreport.LintFilePending,
+					Status: glippyreport.LintFilePending,
 				},
 				selections: selections,
 				task: lintTask{
@@ -1415,10 +1430,10 @@ func refreshLintPackageFixExecution(
 		execution.result = result
 		execution.selections = selections
 		execution.snapshot = snapshot
-		execution.outcome = goxreport.LintFixOutcome{
+		execution.outcome = glippyreport.LintFixOutcome{
 			Path: file.Path(),
 			SourceDigest: file.Digest(),
-			Status: goxreport.LintFilePending,
+			Status: glippyreport.LintFilePending,
 		}
 		return ExitSuccess, nil
 	}
@@ -1660,10 +1675,10 @@ func prepareLintFixExecutions(
 				file: file,
 				resultFile: file,
 				result: analyzed,
-				outcome: goxreport.LintFixOutcome{
+				outcome: glippyreport.LintFixOutcome{
 					Path: file.Path(),
 					SourceDigest: file.Digest(),
-					Status: goxreport.LintFilePending,
+					Status: glippyreport.LintFilePending,
 				},
 				selections: nil,
 				task: task,
@@ -1671,10 +1686,10 @@ func prepareLintFixExecutions(
 			},
 		)
 	}
-	inputs := make([]goxreport.LintTextInput, len(executions))
+	inputs := make([]glippyreport.LintTextInput, len(executions))
 	results := make([]analysis.Result, len(executions))
 	for index, execution := range executions {
-		inputs[index] = goxreport.LintTextInput{
+		inputs[index] = glippyreport.LintTextInput{
 			File: execution.file,
 			Result: execution.result,
 		}
@@ -1719,7 +1734,7 @@ func recordLintFixTransaction(
 				},
 			)
 		}
-		execution.outcome.Status = goxreport.LintFileConflict
+		execution.outcome.Status = glippyreport.LintFileConflict
 		return
 	}
 	execution.result = postResult
@@ -1727,19 +1742,19 @@ func recordLintFixTransaction(
 	execution.outcome.Status = lintFixFileStatus(transaction)
 }
 
-func lintFixFileStatus(transaction fixengine.Transaction) goxreport.LintFileStatus {
+func lintFixFileStatus(transaction fixengine.Transaction) glippyreport.LintFileStatus {
 	if transaction.Status == fixengine.WritePossiblyCompleted {
-		return goxreport.LintFilePossiblyFixed
+		return glippyreport.LintFilePossiblyFixed
 	}
 	if transaction.Status == fixengine.WriteCompleted {
-		return goxreport.LintFileFixed
+		return glippyreport.LintFileFixed
 	}
 	for _, rejected := range transaction.Result.Rejected {
 		if rejected.Reason == fixengine.RejectionConflict {
-			return goxreport.LintFileConflict
+			return glippyreport.LintFileConflict
 		}
 	}
-	return goxreport.LintFileUnchanged
+	return glippyreport.LintFileUnchanged
 }
 
 func lintFixExitCode(executions []lintFixExecution) int {
@@ -1747,7 +1762,7 @@ func lintFixExitCode(executions []lintFixExecution) int {
 	results := make([]analysis.Result, len(executions))
 	for index, execution := range executions {
 		results[index] = execution.result
-		if execution.outcome.Status == goxreport.LintFileConflict {
+		if execution.outcome.Status == glippyreport.LintFileConflict {
 			exitCode = moreSevereExitCode(exitCode, ExitConflict)
 		}
 		for _, rejected := range execution.outcome.Rejected {
@@ -1796,10 +1811,10 @@ func reportLintFailure(
 	results []analysis.Result,
 	err error,
 ) int {
-	if invocation.reporter == goxreport.JSON {
+	if invocation.reporter == glippyreport.JSON {
 		return reportLintJSON(stdout, stderr, "check", exitCode, false, results, err)
 	}
-	return report(stderr, exitCode, "gox lint: %v\n", err)
+	return report(stderr, exitCode, "glippy lint: %v\n", err)
 }
 
 func reportLintPackageFailure(
@@ -1809,10 +1824,10 @@ func reportLintPackageFailure(
 	result analysis.PackageResult,
 	err error,
 ) int {
-	if invocation.reporter == goxreport.JSON {
+	if invocation.reporter == glippyreport.JSON {
 		return reportLintPackageJSON(stdout, stderr, "check", exitCode, false, result, err)
 	}
-	return report(stderr, exitCode, "gox lint: %v\n", err)
+	return report(stderr, exitCode, "glippy lint: %v\n", err)
 }
 
 func reportLintFixFailure(
@@ -1822,12 +1837,12 @@ func reportLintFixFailure(
 	executions []lintFixExecution,
 	err error,
 ) int {
-	if invocation.reporter == goxreport.JSON {
+	if invocation.reporter == glippyreport.JSON {
 		return reportLintFixJSON(stdout, stderr, exitCode, false, executions, err)
 	}
 	paths, possibly := completedLintFixPaths(executions)
 	if len(paths) == 0 {
-		return report(stderr, exitCode, "gox lint: %v\n", err)
+		return report(stderr, exitCode, "glippy lint: %v\n", err)
 	}
 	heading := "files fixed before failure"
 	if possibly {
@@ -1836,7 +1851,7 @@ func reportLintFixFailure(
 	return report(
 		stderr,
 		exitCode,
-		"gox lint: %v\ngox lint: %s:\n%s\n",
+		"glippy lint: %v\nglippy lint: %s:\n%s\n",
 		err,
 		heading,
 		strings.Join(paths, "\n"),
@@ -1851,11 +1866,11 @@ func reportLintJSON(
 	results []analysis.Result,
 	err error,
 ) int {
-	errors_ := []goxreport.Error{}
+	errors_ := []glippyreport.Error{}
 	if err != nil {
-		errors_ = append(errors_, goxreport.Error{Message: err.Error()})
+		errors_ = append(errors_, glippyreport.Error{Message: err.Error()})
 	}
-	result, buildErr := goxreport.NewLintResult(
+	result, buildErr := glippyreport.NewLintResult(
 		mode,
 		exitCategory(exitCode),
 		exitCode,
@@ -1867,16 +1882,16 @@ func reportLintJSON(
 		return report(
 			stderr,
 			moreSevereExitCode(exitCode, ExitInternalError),
-			"gox lint: build JSON report: %v\n",
+			"glippy lint: build JSON report: %v\n",
 			buildErr,
 		)
 	}
-	encoded, encodeErr := goxreport.MarshalLintJSON(result)
+	encoded, encodeErr := glippyreport.MarshalLintJSON(result)
 	if encodeErr != nil {
 		return report(
 			stderr,
 			moreSevereExitCode(exitCode, ExitInternalError),
-			"gox lint: encode JSON report: %v\n",
+			"glippy lint: encode JSON report: %v\n",
 			encodeErr,
 		)
 	}
@@ -1884,7 +1899,7 @@ func reportLintJSON(
 		return report(
 			stderr,
 			moreSevereExitCode(exitCode, ExitFilesystemError),
-			"gox lint: write JSON report: %v\n",
+			"glippy lint: write JSON report: %v\n",
 			writeErr,
 		)
 	}
@@ -1899,11 +1914,11 @@ func reportLintPackageJSON(
 	packageResult analysis.PackageResult,
 	err error,
 ) int {
-	errors_ := []goxreport.Error{}
+	errors_ := []glippyreport.Error{}
 	if err != nil {
-		errors_ = append(errors_, goxreport.Error{Message: err.Error()})
+		errors_ = append(errors_, glippyreport.Error{Message: err.Error()})
 	}
-	result, buildErr := goxreport.NewPackageLintResult(
+	result, buildErr := glippyreport.NewPackageLintResult(
 		mode,
 		exitCategory(exitCode),
 		exitCode,
@@ -1915,16 +1930,16 @@ func reportLintPackageJSON(
 		return report(
 			stderr,
 			moreSevereExitCode(exitCode, ExitInternalError),
-			"gox lint: build typed JSON report: %v\n",
+			"glippy lint: build typed JSON report: %v\n",
 			buildErr,
 		)
 	}
-	encoded, encodeErr := goxreport.MarshalLintJSON(result)
+	encoded, encodeErr := glippyreport.MarshalLintJSON(result)
 	if encodeErr != nil {
 		return report(
 			stderr,
 			moreSevereExitCode(exitCode, ExitInternalError),
-			"gox lint: encode typed JSON report: %v\n",
+			"glippy lint: encode typed JSON report: %v\n",
 			encodeErr,
 		)
 	}
@@ -1932,7 +1947,7 @@ func reportLintPackageJSON(
 		return report(
 			stderr,
 			moreSevereExitCode(exitCode, ExitFilesystemError),
-			"gox lint: write typed JSON report: %v\n",
+			"glippy lint: write typed JSON report: %v\n",
 			writeErr,
 		)
 	}
@@ -1947,16 +1962,16 @@ func reportLintFixJSON(
 	err error,
 ) int {
 	results := make([]analysis.Result, len(executions))
-	outcomes := make([]goxreport.LintFixOutcome, len(executions))
+	outcomes := make([]glippyreport.LintFixOutcome, len(executions))
 	for index, execution := range executions {
 		results[index] = execution.result
 		outcomes[index] = execution.outcome
 	}
-	errors_ := []goxreport.Error{}
+	errors_ := []glippyreport.Error{}
 	if err != nil {
-		errors_ = append(errors_, goxreport.Error{Message: err.Error()})
+		errors_ = append(errors_, glippyreport.Error{Message: err.Error()})
 	}
-	result, buildErr := goxreport.NewLintFixResult(
+	result, buildErr := glippyreport.NewLintFixResult(
 		exitCategory(exitCode),
 		exitCode,
 		complete,
@@ -1973,7 +1988,7 @@ func reportLintFixJSON(
 			executions,
 		)
 	}
-	encoded, encodeErr := goxreport.MarshalLintJSON(result)
+	encoded, encodeErr := glippyreport.MarshalLintJSON(result)
 	if encodeErr != nil {
 		return reportLintFixReportingFailure(
 			stderr,
@@ -2004,7 +2019,7 @@ func reportLintFixReportingFailure(
 ) int {
 	paths, possibly := completedLintFixPaths(executions)
 	if len(paths) == 0 {
-		return report(stderr, exitCode, "gox lint: %s: %v\n", action, err)
+		return report(stderr, exitCode, "glippy lint: %s: %v\n", action, err)
 	}
 	heading := "files fixed before reporting failure"
 	if possibly {
@@ -2013,7 +2028,7 @@ func reportLintFixReportingFailure(
 	return report(
 		stderr,
 		exitCode,
-		"gox lint: %s: %v\ngox lint: %s:\n%s\n",
+		"glippy lint: %s: %v\nglippy lint: %s:\n%s\n",
 		action,
 		err,
 		heading,
@@ -2026,9 +2041,9 @@ func completedLintFixPaths(executions []lintFixExecution) ([]string, bool) {
 	possibly := false
 	for _, execution := range executions {
 		switch execution.outcome.Status {
-		case goxreport.LintFileFixed:
+		case glippyreport.LintFileFixed:
 			paths = append(paths, execution.outcome.Path)
-		case goxreport.LintFilePossiblyFixed:
+		case glippyreport.LintFilePossiblyFixed:
 			paths = append(paths, execution.outcome.Path)
 			possibly = true
 		}

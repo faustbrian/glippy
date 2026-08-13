@@ -1,4 +1,4 @@
-Gox Third-Party Licenses and Notices
+Glippy Third-Party Licenses and Notices
 ====================================
 
 This distribution includes software from the following projects:

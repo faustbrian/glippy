@@ -13,9 +13,9 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/faustbrian/gox/internal/cache"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 const packageAnalyzerCacheEntryVersion = 1

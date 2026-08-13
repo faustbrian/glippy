@@ -100,7 +100,7 @@ func BuildKey(input KeyInput) (Key, error) {
 	)
 
 	digest := sha256.New()
-	writeString(digest, "gox-cache-key-v1")
+	writeString(digest, "glippy-cache-key-v1")
 	writeString(digest, input.Namespace)
 	writeString(digest, input.ToolVersion)
 	writeString(digest, input.BuildGoVersion)

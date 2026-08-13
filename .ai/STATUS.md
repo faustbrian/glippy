@@ -1,4 +1,4 @@
-# Gox Development Status
+# Glippy Development Status
 
 - Progress: 95%
 - Current phase: Phase 5, ecosystem integration and stable release
@@ -1196,3 +1196,15 @@ probe, and 135-file non-mutating Gox dogfood support admission. Self-assignment
 remains rejected as redundant with the default Go vet `assign` analyzer. The
 remaining prioritized bug-catching and pedantic/style catalog, external target
 dogfood, and final v0.2 release gates remain open.
+
+The v0.2 identity migration now uses Glippy as the product, binary, command,
+module, configuration, suppression, cache, completion, diagnostic, workflow,
+and release-artifact identity. Gox v0.1.0 remains immutable historical release
+evidence. Automatic configuration discovery accepts `.gox.toml` for one window
+only when `.glippy.toml` is absent and rejects mixed discovery; legacy `//gox:`
+suppressions still apply but produce a deterministic migration finding. ADR
+0016 and the refreshed collision audit record the maintainer's product-risk
+acceptance and the active `F1bonacc1/glippy` collision. The GitHub repository
+has not been renamed and no v0.2 tag, release, publication, or push is part of
+this batch. The remaining bug-catching and pedantic catalog is still open, so
+v0.2 is not complete.

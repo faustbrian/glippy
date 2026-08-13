@@ -47,7 +47,7 @@ func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
 		t.Fatalf("manifests differ: %#v != %#v", manifests[0], manifests[1])
 	}
 	if manifests[0].SchemaVersion != 1 ||
-		manifests[0].Product != "gox" ||
+		manifests[0].Product != "glippy" ||
 		manifests[0].Version != "v0.0.0-test" ||
 		manifests[0].SourceRevision != revision ||
 		manifests[0].GoVersion == "" {
@@ -77,7 +77,7 @@ func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	names := []string{"gox_v0.0.0-test_manifest.json", "gox_v0.0.0-test_checksums.txt"}
+	names := []string{"glippy_v0.0.0-test_manifest.json", "glippy_v0.0.0-test_checksums.txt"}
 	for _, artifact := range manifests[0].Artifacts {
 		names = append(names, artifact.File)
 		verifyArchiveMaterials(
@@ -109,7 +109,7 @@ func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
 	}
 	verifyChecksums(t, outputs[0])
 	manifestBytes, err := os.ReadFile(
-		filepath.Join(outputs[0], "gox_v0.0.0-test_manifest.json"),
+		filepath.Join(outputs[0], "glippy_v0.0.0-test_manifest.json"),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -135,7 +135,7 @@ func TestBuildProducesReproducibleVersionedArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run released binary: %v: %s", err, got)
 	}
-	if string(got) != "gox v0.0.0-test\n" {
+	if string(got) != "glippy v0.0.0-test\n" {
 		t.Fatalf("released version = %q", got)
 	}
 }
@@ -167,7 +167,7 @@ func TestBuildRejectsExistingOutputWithoutMutation(t *testing.T) {
 
 func TestBuildRemovesOwnedOutputAfterBuildFailure(t *testing.T) {
 	root, _ := committedFixture(t, filepath.Clean(filepath.Join("..", "..")))
-	if err := os.Remove(filepath.Join(root, "cmd", "gox", "main.go")); err != nil {
+	if err := os.Remove(filepath.Join(root, "cmd", "glippy", "main.go")); err != nil {
 		t.Fatal(err)
 	}
 	runFixtureGit(t, root, "add", ".")
@@ -175,9 +175,9 @@ func TestBuildRemovesOwnedOutputAfterBuildFailure(t *testing.T) {
 		t,
 		root,
 		"-c",
-		"user.name=Gox Release Test",
+		"user.name=Glippy Release Test",
 		"-c",
-		"user.email=gox-release-test@example.invalid",
+		"user.email=glippy-release-test@example.invalid",
 		"commit",
 		"--quiet",
 		"-m",
@@ -216,9 +216,9 @@ func TestBuildRejectsSourceWithoutThirdPartyNotices(t *testing.T) {
 			t,
 			root,
 			"-c",
-			"user.name=Gox Release Test",
+			"user.name=Glippy Release Test",
 			"-c",
-			"user.email=gox-release-test@example.invalid",
+			"user.email=glippy-release-test@example.invalid",
 			"commit",
 			"--quiet",
 			"-m",
@@ -262,9 +262,9 @@ func TestBuildRejectsSourceWithoutProjectLicense(t *testing.T) {
 			t,
 			root,
 			"-c",
-			"user.name=Gox Release Test",
+			"user.name=Glippy Release Test",
 			"-c",
-			"user.email=gox-release-test@example.invalid",
+			"user.email=glippy-release-test@example.invalid",
 			"commit",
 			"--quiet",
 			"-m",
@@ -314,9 +314,9 @@ func TestBuildRejectsDirtyOrMismatchedSourceBeforeCreatingOutput(t *testing.T) {
 		t,
 		root,
 		"-c",
-		"user.name=Gox Release Test",
+		"user.name=Glippy Release Test",
 		"-c",
-		"user.email=gox-release-test@example.invalid",
+		"user.email=glippy-release-test@example.invalid",
 		"commit",
 		"--quiet",
 		"-m",
@@ -562,7 +562,7 @@ func TestBuildEnvironmentPinsBuildAffectingSettings(t *testing.T) {
 	t.Setenv("GOCACHEPROG", "ambient-cache --unsafe")
 	t.Setenv("GOMODCACHE", "/tmp/release-module-cache")
 	t.Setenv("GOFIPS140", "v1.0.0")
-	t.Setenv("GOX_RELEASE_UNRELATED", "ambient")
+	t.Setenv("GLIPPY_RELEASE_UNRELATED", "ambient")
 
 	values := make(map[string]string)
 	for _, entry := range buildEnvironment("linux", "arm64", "/tmp/release-cache") {
@@ -584,7 +584,7 @@ func TestBuildEnvironmentPinsBuildAffectingSettings(t *testing.T) {
 	if values["GOAMD64"] != "v1" || values["GOARM64"] != "v8.0" {
 		t.Fatalf("architecture environment = %#v", values)
 	}
-	if _, found := values["GOX_RELEASE_UNRELATED"]; found {
+	if _, found := values["GLIPPY_RELEASE_UNRELATED"]; found {
 		t.Fatalf("unrelated ambient setting leaked into build: %#v", values)
 	}
 }
@@ -642,9 +642,9 @@ func committedFixture(t *testing.T, root string) (string, string) {
 		t,
 		fixture,
 		"-c",
-		"user.name=Gox Release Test",
+		"user.name=Glippy Release Test",
 		"-c",
-		"user.email=gox-release-test@example.invalid",
+		"user.email=glippy-release-test@example.invalid",
 		"commit",
 		"--quiet",
 		"-m",
@@ -671,7 +671,7 @@ func runFixtureGit(t *testing.T, root string, arguments ...string) {
 func verifyChecksums(t *testing.T, output string) {
 	t.Helper()
 
-	contents, err := os.ReadFile(filepath.Join(output, "gox_v0.0.0-test_checksums.txt"))
+	contents, err := os.ReadFile(filepath.Join(output, "glippy_v0.0.0-test_checksums.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -717,7 +717,7 @@ func verifyArchiveMaterials(t *testing.T, archivePath string, license, notices [
 		mode int64
 		content []byte
 	}{
-		{name: "gox", mode: 0o755},
+		{name: "glippy", mode: 0o755},
 		{name: projectLicenseName, mode: 0o644, content: license},
 		{name: thirdPartyNoticesName, mode: 0o644, content: notices},
 	}
@@ -741,7 +741,7 @@ func verifyArchiveMaterials(t *testing.T, archivePath string, license, notices [
 		if err != nil {
 			t.Fatal(err)
 		}
-		if expected.name == "gox" {
+		if expected.name == "glippy" {
 			verifyBinaryNoticeCoverage(t, content, notices)
 		}
 		if expected.content != nil && !bytes.Equal(content, expected.content) {
@@ -795,10 +795,10 @@ func extractBinary(t *testing.T, archive string, license, notices []byte) string
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header.Name != "gox" || header.Mode != 0o755 {
+	if header.Name != "glippy" || header.Mode != 0o755 {
 		t.Fatalf("archive header = %#v", header)
 	}
-	binary := filepath.Join(t.TempDir(), "gox")
+	binary := filepath.Join(t.TempDir(), "glippy")
 	contents, err := io.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)

@@ -51,8 +51,8 @@ func Render(shell Shell, ruleIDs []string) ([]byte, error) {
 }
 
 func renderBash(ruleIDs []string) string {
-	return `# bash completion for gox
-_gox_completion() {
+	return `# bash completion for glippy
+_glippy_completion() {
 	local current previous command
 	COMPREPLY=()
 	current="${COMP_WORDS[COMP_CWORD]}"
@@ -101,14 +101,14 @@ _gox_completion() {
 			;;
 	esac
 }
-complete -F _gox_completion gox
+complete -F _glippy_completion glippy
 `
 }
 
 func renderZsh(ruleIDs []string) string {
-	return `#compdef gox
+	return `#compdef glippy
 
-_gox() {
+_glippy() {
 	local context state state_descr line
 	typeset -A opt_args
 	_arguments -C \
@@ -154,46 +154,46 @@ _gox() {
 	esac
 }
 
-_gox "$@"
+_glippy "$@"
 `
 }
 
 func renderFish(ruleIDs []string) string {
 	var output strings.Builder
 	output.WriteString(
-		`complete -c gox -f
-complete -c gox -n '__fish_use_subcommand' -a fmt -d 'Format Go source'
-complete -c gox -n '__fish_use_subcommand' -a lint -d 'Lint Go source'
-complete -c gox -n '__fish_use_subcommand' -a check -d 'Check formatting and lint diagnostics'
-complete -c gox -n '__fish_use_subcommand' -a explain -d 'Explain a lint rule'
-complete -c gox -n '__fish_use_subcommand' -a version -d 'Print the Gox version'
-complete -c gox -n '__fish_use_subcommand' -a completion -d 'Generate shell completions'
-complete -c gox -n '__fish_seen_subcommand_from fmt lint check' -F
+		`complete -c glippy -f
+complete -c glippy -n '__fish_use_subcommand' -a fmt -d 'Format Go source'
+complete -c glippy -n '__fish_use_subcommand' -a lint -d 'Lint Go source'
+complete -c glippy -n '__fish_use_subcommand' -a check -d 'Check formatting and lint diagnostics'
+complete -c glippy -n '__fish_use_subcommand' -a explain -d 'Explain a lint rule'
+complete -c glippy -n '__fish_use_subcommand' -a version -d 'Print the Glippy version'
+complete -c glippy -n '__fish_use_subcommand' -a completion -d 'Generate shell completions'
+complete -c glippy -n '__fish_seen_subcommand_from fmt lint check' -F
 
-complete -c gox -n '__fish_seen_subcommand_from fmt' -l write -d 'Write formatted files in place'
-complete -c gox -n '__fish_seen_subcommand_from fmt' -l check -d 'Report files whose formatting differs'
-complete -c gox -n '__fish_seen_subcommand_from fmt' -l diff -d 'Print unified formatting differences'
-complete -c gox -n '__fish_seen_subcommand_from fmt lint check' -l reporter -r -a 'text json' -d 'Select reporter'
-complete -c gox -n '__fish_seen_subcommand_from fmt lint check' -l config -r -F -d 'Use an explicit configuration'
-complete -c gox -n '__fish_seen_subcommand_from fmt' -l stdin-filepath -r -F -d 'Supply stdin path context'
-complete -c gox -n '__fish_seen_subcommand_from fmt' -a '--fragment=declaration --fragment=statement --fragment=expression' -d 'Format a source fragment'
+complete -c glippy -n '__fish_seen_subcommand_from fmt' -l write -d 'Write formatted files in place'
+complete -c glippy -n '__fish_seen_subcommand_from fmt' -l check -d 'Report files whose formatting differs'
+complete -c glippy -n '__fish_seen_subcommand_from fmt' -l diff -d 'Print unified formatting differences'
+complete -c glippy -n '__fish_seen_subcommand_from fmt lint check' -l reporter -r -a 'text json' -d 'Select reporter'
+complete -c glippy -n '__fish_seen_subcommand_from fmt lint check' -l config -r -F -d 'Use an explicit configuration'
+complete -c glippy -n '__fish_seen_subcommand_from fmt' -l stdin-filepath -r -F -d 'Supply stdin path context'
+complete -c glippy -n '__fish_seen_subcommand_from fmt' -a '--fragment=declaration --fragment=statement --fragment=expression' -d 'Format a source fragment'
 
-complete -c gox -n '__fish_seen_subcommand_from lint' -l fix -d 'Apply safe fixes'
-complete -c gox -n '__fish_seen_subcommand_from lint' -l fix-suggestions -d 'Apply suggestion fixes'
-complete -c gox -n '__fish_seen_subcommand_from lint' -l fix-unsafe -d 'Apply unsafe fixes'
-complete -c gox -n '__fish_seen_subcommand_from lint' -l generate-baseline -r -F -d 'Write lint baseline'
+complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix -d 'Apply safe fixes'
+complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix-suggestions -d 'Apply suggestion fixes'
+complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix-unsafe -d 'Apply unsafe fixes'
+complete -c glippy -n '__fish_seen_subcommand_from lint' -l generate-baseline -r -F -d 'Write lint baseline'
 
 `,
 	)
 	for _, ruleID := range ruleIDs {
 		fmt.Fprintf(
 			&output,
-			"complete -c gox -n '__fish_seen_subcommand_from explain' -a %s\n",
+			"complete -c glippy -n '__fish_seen_subcommand_from explain' -a %s\n",
 			ruleID,
 		)
 	}
 	output.WriteString(
-		`complete -c gox -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
+		`complete -c glippy -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
 `,
 	)
 	return output.String()

@@ -13,9 +13,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -178,7 +178,9 @@ func TestLoadPackagesDoesNotExecuteAmbientExternalDriver(t *testing.T) {
 	driver := filepath.Join(root, "driver.sh")
 	if err := os.WriteFile(
 		driver,
-		[]byte("#!/bin/sh\n: > \"$GOX_DRIVER_MARKER\"\nprintf '{\"NotHandled\":true}'\n"),
+		[]byte(
+			"#!/bin/sh\n: > \"$GLIPPY_DRIVER_MARKER\"\nprintf '{\"NotHandled\":true}'\n",
+		),
 		0o700,
 	);
 		err != nil {
@@ -194,7 +196,7 @@ func TestLoadPackagesDoesNotExecuteAmbientExternalDriver(t *testing.T) {
 			Env: append(
 				os.Environ(),
 				"GOPACKAGESDRIVER=" + driver,
-				"GOX_DRIVER_MARKER=" + marker,
+				"GLIPPY_DRIVER_MARKER=" + marker,
 			),
 		},
 	)
@@ -624,7 +626,7 @@ func TestLoadPackagesUsesExplicitVendorMode(t *testing.T) {
 
 func TestLoadPackagesRetainsCgoSourceAndReportsDeepAnalysisBoundary(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("Windows is not a supported Gox runtime")
+		t.Skip("Windows is not a supported Glippy runtime")
 	}
 
 	root := t.TempDir()

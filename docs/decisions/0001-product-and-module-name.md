@@ -1,6 +1,6 @@
 # ADR 0001: Product And Module Name
 
-- Status: accepted for public release
+- Status: superseded by ADR 0016 for v0.2
 - Date: 2026-08-09
 - Refreshed: 2026-08-13
 
@@ -14,12 +14,11 @@ The complete evidence and candidate screen are recorded in
 
 ## Decision
 
-The maintainer selected **Gox**, binary `gox`, repository
+For v0.1, the maintainer selected **Gox**, binary `gox`, repository
 `github.com/faustbrian/gox`, and module path `github.com/faustbrian/gox`, and
-explicitly accepted the final-candidate collision and trademark-risk evidence
-for the first public release. The earlier **Gofettle** recommendation is
-rejected; no repository or namespace rename is authorized. This product-risk
-acceptance is not jurisdiction- or class-specific legal clearance.
+explicitly accepted the final-candidate collision and trademark-risk evidence.
+The earlier **Gofettle** recommendation was rejected. This product-risk
+acceptance was not jurisdiction- or class-specific legal clearance.
 
 ## Alternatives Rejected
 
@@ -34,9 +33,8 @@ acceptance is not jurisdiction- or class-specific legal clearance.
 
 ## Consequences
 
-Internal implementation packages remain unexported. Documentation may use Gox
-as the public product identity but must not claim trademark clearance. No rename
-work is pending during ordinary development.
+The v0.1 tags, module path, binaries, release assets, and evidence remain
+immutable historical Gox identities. ADR 0016 owns the v0.2 Glippy migration.
 
 ## Revisit Trigger
 

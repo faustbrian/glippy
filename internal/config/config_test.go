@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/config"
-	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/glippy/internal/config"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 func TestParseReportsStrictDecodeErrorsAtSourceLocation(t *testing.T) {
@@ -45,7 +45,7 @@ func TestParseReportsStrictDecodeErrorsAtSourceLocation(t *testing.T) {
 			test.name,
 			func(t *testing.T) {
 				_, err := config.Parse(
-					"project/.gox.toml",
+					"project/.glippy.toml",
 					[]byte(test.input),
 					config.ParseOptions{},
 				)
@@ -57,16 +57,18 @@ func TestParseReportsStrictDecodeErrorsAtSourceLocation(t *testing.T) {
 						err,
 					)
 				}
-				if diagnostic.Path != "project/.gox.toml" ||
+				if diagnostic.Path != "project/.glippy.toml" ||
 					diagnostic.Line != test.wantLine ||
 					diagnostic.Column <= 0 {
 					t.Fatalf(
-						"Parse() diagnostic = %#v, want path project/.gox.toml at line %d",
+						"Parse() diagnostic = %#v, want path project/.glippy.toml at line %d",
 						diagnostic,
 						test.wantLine,
 					)
 				}
-				location := "project/.gox.toml:" + strconv.Itoa(test.wantLine) + ":"
+				location := "project/.glippy.toml:" +
+					strconv.Itoa(test.wantLine) +
+					":"
 				if !strings.HasPrefix(err.Error(), location) {
 					t.Fatalf("Parse() error = %q, want source location", err)
 				}
@@ -100,7 +102,7 @@ func TestParseRequiresVersionAndUsesOptionalDefaults(t *testing.T) {
 			test.name,
 			func(t *testing.T) {
 				got, err := config.Parse(
-					"project/.gox.toml",
+					"project/.glippy.toml",
 					[]byte(test.input),
 					config.ParseOptions{},
 				)
@@ -158,7 +160,7 @@ func TestParseSupportsComposablePresetsAndWarningEscalation(t *testing.T) {
 	t.Parallel()
 
 	configured, err := config.Parse(
-		"project/.gox.toml",
+		"project/.glippy.toml",
 		[]byte(
 			`version = 1
 
@@ -186,7 +188,7 @@ warnings-as-errors = true
 	}
 
 	legacy, err := config.Parse(
-		"legacy/.gox.toml",
+		"legacy/.glippy.toml",
 		[]byte("version = 1\n[lint]\npreset = \"style\"\n"),
 		config.ParseOptions{},
 	)
@@ -202,7 +204,7 @@ func TestParseExplicitEmptyPresetSetDisablesAllGroups(t *testing.T) {
 	t.Parallel()
 
 	configured, err := config.Parse(
-		"project/.gox.toml",
+		"project/.glippy.toml",
 		[]byte("version = 1\n[lint]\npresets = []\n"),
 		config.ParseOptions{},
 	)
@@ -254,7 +256,7 @@ func TestParseRejectsAmbiguousOrInvalidPresetGroups(t *testing.T) {
 			func(t *testing.T) {
 				t.Parallel()
 				_, err := config.Parse(
-					"project/.gox.toml",
+					"project/.glippy.toml",
 					[]byte(test.input),
 					config.ParseOptions{},
 				)
@@ -351,7 +353,7 @@ func TestParseRejectsInvalidSemanticValues(t *testing.T) {
 			test.name,
 			func(t *testing.T) {
 				_, err := config.Parse(
-					"project/.gox.toml",
+					"project/.glippy.toml",
 					[]byte(test.input),
 					config.ParseOptions{KnownRules: test.knownRules},
 				)
@@ -364,7 +366,7 @@ func TestParseRejectsInvalidSemanticValues(t *testing.T) {
 				}
 				var diagnostic *config.Error
 				if !errors.As(err, &diagnostic) ||
-					diagnostic.Path != "project/.gox.toml" {
+					diagnostic.Path != "project/.glippy.toml" {
 					t.Fatalf(
 						"Parse() error = %T %v, want path-aware *config.Error",
 						err,
@@ -503,7 +505,7 @@ func TestParseReportsRuleErrorsDeterministically(t *testing.T) {
 
 	input := []byte("version = 1\n[lint.rules]\nz-rule = \"warn\"\na-rule = \"warn\"\n")
 	for range 20 {
-		_, err := config.Parse("project/.gox.toml", input, config.ParseOptions{})
+		_, err := config.Parse("project/.glippy.toml", input, config.ParseOptions{})
 		if err == nil || !strings.Contains(err.Error(), "unknown lint rule \"a-rule\"") {
 			t.Fatalf("Parse() error = %v, want deterministic first rule a-rule", err)
 		}
@@ -531,7 +533,7 @@ presets = ["suspicious", "pedantic"]
 warnings-as-errors = true
 
 [lint.baseline]
-path = ".gox-baseline.json"
+path = ".glippy-baseline.json"
 report-stale = true
 expiry-cutoff = "2026-08-13"
 
@@ -541,7 +543,7 @@ disabled-rule = "off"
 `,
 	)
 	got, err := config.Parse(
-		"project/.gox.toml",
+		"project/.glippy.toml",
 		input,
 		config.ParseOptions{KnownRules: []string{"disabled-rule", "known-rule"}},
 	)
@@ -558,7 +560,7 @@ disabled-rule = "off"
 		!got.Lint.WarningsAsErrors {
 		t.Fatalf("Parse() lint = %#v", got.Lint)
 	}
-	if got.Lint.Baseline.Path != ".gox-baseline.json" ||
+	if got.Lint.Baseline.Path != ".glippy-baseline.json" ||
 		!got.Lint.Baseline.ReportStale ||
 		got.Lint.Baseline.ExpiryCutoff != "2026-08-13" {
 		t.Fatalf("Parse() baseline = %#v", got.Lint.Baseline)
@@ -599,7 +601,7 @@ names = ["first", "second"]
 `,
 	)
 	configured, err := config.Parse(
-		"project/.gox.toml",
+		"project/.glippy.toml",
 		input,
 		config.ParseOptions{
 			KnownRules: []string{"configured-rule"},
@@ -691,7 +693,7 @@ func TestParseRejectsInvalidRuleOptionsDeterministically(t *testing.T) {
 			test.name,
 			func(t *testing.T) {
 				_, err := config.Parse(
-					"project/.gox.toml",
+					"project/.glippy.toml",
 					[]byte(test.input),
 					config.ParseOptions{
 						KnownRules: []string{"configured-rule"},
@@ -720,7 +722,7 @@ func TestParseAppliesSuppressionReasonPolicy(t *testing.T) {
 		)
 	}
 	configured, err := config.Parse(
-		"project/.gox.toml",
+		"project/.glippy.toml",
 		[]byte(
 			`version = 1
 
@@ -745,7 +747,7 @@ expiry-cutoff = "2026-08-11"
 	}
 
 	_, err = config.Parse(
-		"project/.gox.toml",
+		"project/.glippy.toml",
 		[]byte(
 			`version = 1
 

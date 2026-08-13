@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	goxformat "github.com/faustbrian/gox/internal/format"
-	"github.com/faustbrian/gox/internal/source"
+	glippyformat "github.com/faustbrian/glippy/internal/format"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestFormatExpandsMotivatingHostileGo(t *testing.T) {
@@ -56,9 +56,9 @@ func TestFormatExpandsMotivatingHostileGo(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				got, err := goxformat.File(
+				got, err := glippyformat.File(
 					file,
-					goxformat.Options{
+					glippyformat.Options{
 						Width: test.width,
 						TabWidth: 8,
 						FitBudget: 1_000,
@@ -74,9 +74,9 @@ func TestFormatExpandsMotivatingHostileGo(t *testing.T) {
 				if err != nil {
 					t.Fatalf("formatted output does not parse: %v", err)
 				}
-				again, err := goxformat.File(
+				again, err := glippyformat.File(
 					reparsed,
-					goxformat.Options{
+					glippyformat.Options{
 						Width: test.width,
 						TabWidth: 8,
 						FitBudget: 1_000,
@@ -162,12 +162,12 @@ func TestFormatFragmentsAtTheirSelectedUserBoundary(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				options := goxformat.Options{
+				options := glippyformat.Options{
 					Width: test.width,
 					TabWidth: 8,
 					FitBudget: 1_000,
 				}
-				got, err := goxformat.Fragment(fragment, options)
+				got, err := glippyformat.Fragment(fragment, options)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -182,7 +182,7 @@ func TestFormatFragmentsAtTheirSelectedUserBoundary(t *testing.T) {
 				if err != nil {
 					t.Fatalf("formatted fragment did not reparse: %v", err)
 				}
-				again, err := goxformat.Fragment(reparsed, options)
+				again, err := glippyformat.Fragment(reparsed, options)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -216,8 +216,8 @@ func TestFormatFragmentsPreserveCommentsOwnedInsideTheSelectedBoundary(t *testin
 		{
 			name: "statement comments",
 			kind: source.FragmentStatement,
-			input: "//gox:ignore example because this is a fixture\nvalue:=call(/* keep argument */ first,second) // keep trailing\n",
-			want: "//gox:ignore example because this is a fixture\nvalue := call(\n\t/* keep argument */\n\tfirst,\n\tsecond,\n) // keep trailing\n",
+			input: "//glippy:ignore example because this is a fixture\nvalue:=call(/* keep argument */ first,second) // keep trailing\n",
+			want: "//glippy:ignore example because this is a fixture\nvalue := call(\n\t/* keep argument */\n\tfirst,\n\tsecond,\n) // keep trailing\n",
 		},
 		{
 			name: "expression comments",
@@ -244,9 +244,9 @@ func TestFormatFragmentsPreserveCommentsOwnedInsideTheSelectedBoundary(t *testin
 				if err != nil {
 					t.Fatal(err)
 				}
-				got, err := goxformat.Fragment(
+				got, err := glippyformat.Fragment(
 					fragment,
-					goxformat.Options{
+					glippyformat.Options{
 						Width: 100,
 						TabWidth: 8,
 						FitBudget: 1_000,
@@ -277,9 +277,9 @@ func TestFormatPreservesFieldTypeBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -300,9 +300,9 @@ func TestFormatPreservesFieldListBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -323,9 +323,9 @@ func TestFormatPreservesFieldListLineCommentsAfterCommas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -346,9 +346,9 @@ func TestFormatPreservesExpressionListBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -374,9 +374,9 @@ func TestFormatPreservesNonListDelimiterComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -401,9 +401,9 @@ func TestFormatPreservesIfHeaderComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -428,9 +428,9 @@ func TestFormatPreservesForHeaderComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -455,9 +455,9 @@ func TestFormatPreservesRangeBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -482,9 +482,9 @@ func TestFormatPreservesSwitchHeaderComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -509,9 +509,9 @@ func TestFormatPreservesCaseHeaderComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -536,9 +536,9 @@ func TestFormatPreservesCommunicationHeaderComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -563,9 +563,9 @@ func TestFormatPreservesCommunicationOperatorComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -590,9 +590,9 @@ func TestFormatPreservesValueSpecBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -617,9 +617,9 @@ func TestFormatPreservesIncrementAndDecrementOperatorComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -644,9 +644,9 @@ func TestFormatPreservesStatementKeywordBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -671,9 +671,9 @@ func TestFormatPreservesGeneralDeclarationBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -698,9 +698,9 @@ func TestFormatPreservesDotBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -725,9 +725,9 @@ func TestFormatPreservesKeyValueColonComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -752,9 +752,9 @@ func TestFormatPreservesSliceColonComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -779,9 +779,9 @@ func TestFormatPreservesTypeSpecBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -806,9 +806,9 @@ func TestFormatPreservesFieldBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -837,9 +837,9 @@ func TestFormatPreservesFunctionDeclarationBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -864,9 +864,9 @@ func TestFormatPreservesFunctionTypeAndLiteralBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -895,9 +895,9 @@ func TestFormatPreservesTypeConstructorBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -909,9 +909,9 @@ func TestFormatPreservesTypeConstructorBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("formatted output does not parse: %v", err)
 	}
-	again, err := goxformat.File(
+	again, err := glippyformat.File(
 		reparsed,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -936,9 +936,9 @@ func TestFormatPreservesPostfixBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -950,9 +950,9 @@ func TestFormatPreservesPostfixBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("formatted output does not parse: %v", err)
 	}
-	again, err := goxformat.File(
+	again, err := glippyformat.File(
 		reparsed,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -972,9 +972,9 @@ func TestFormatPreservesFilePrefixCommentsAndDirectives(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1019,9 +1019,9 @@ func TestFormatCanonicalizesStructuralLineEndings(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				got, err := goxformat.File(
+				got, err := glippyformat.File(
 					file,
-					goxformat.Options{
+					glippyformat.Options{
 						Width: 100,
 						TabWidth: 8,
 						FitBudget: 1_000,
@@ -1051,9 +1051,9 @@ func TestFormatPreservesDeclarationDocumentationAndTrailingComments(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1074,9 +1074,9 @@ func TestFormatPreservesNolintLineOwnershipWhenLayoutWouldBreak(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 60, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 60, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1119,9 +1119,9 @@ func TestFormatPreservesNolintOwnershipAcrossBreakableBoundaries(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				got, err := goxformat.File(
+				got, err := glippyformat.File(
 					file,
-					goxformat.Options{
+					glippyformat.Options{
 						Width: 100,
 						TabWidth: 8,
 						FitBudget: 1_000,
@@ -1152,9 +1152,9 @@ func TestFormatPreservesStandaloneTopLevelDirectives(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1175,9 +1175,9 @@ func TestFormatPreservesFieldDocumentationAndTrailingComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1198,9 +1198,9 @@ func TestFormatPreservesCommentsBeforeAggregateClosers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1221,9 +1221,9 @@ func TestFormatPreservesStatementBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1244,9 +1244,9 @@ func TestFormatPreservesBlankLinesBetweenStatementGroups(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1267,9 +1267,9 @@ func TestFormatPreservesBlankLinesAfterBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1290,9 +1290,9 @@ func TestFormatPreservesOperandAndListElementComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1313,9 +1313,9 @@ func TestFormatPreservesLineCommentsAfterBinaryOperators(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1338,9 +1338,9 @@ func TestFormatPreservesCallArgumentComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1393,12 +1393,12 @@ func TestFormatInitialCorpus(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				options := goxformat.Options{
+				options := glippyformat.Options{
 					Width: 60,
 					TabWidth: 8,
 					FitBudget: 1_000,
 				}
-				got, err := goxformat.File(file, options)
+				got, err := glippyformat.File(file, options)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1409,7 +1409,7 @@ func TestFormatInitialCorpus(t *testing.T) {
 				if err != nil {
 					t.Fatalf("formatted output does not parse: %v", err)
 				}
-				again, err := goxformat.File(reparsed, options)
+				again, err := glippyformat.File(reparsed, options)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1443,7 +1443,7 @@ func TestFormatInitialCorpus(t *testing.T) {
 				}
 				if gofmtDivergence == "" && !gofmtFixedPoint {
 					t.Fatalf(
-						"output is not a gofmt fixed point under %s:\ngofmt:\n%s\ngox:\n%s",
+						"output is not a gofmt fixed point under %s:\ngofmt:\n%s\nglippy:\n%s",
 						runtime.Version(),
 						gofmtOutput,
 						got,
@@ -1503,12 +1503,12 @@ func TestFormatCorpusAcrossRepresentativeWidths(t *testing.T) {
 				}
 				outputs := make(map[string]struct{}, 4)
 				for _, width := range []int{20, 60, 100, 120} {
-					options := goxformat.Options{
+					options := glippyformat.Options{
 						Width: width,
 						TabWidth: 8,
 						FitBudget: 1_000,
 					}
-					formatted, err := goxformat.File(file, options)
+					formatted, err := glippyformat.File(file, options)
 					if err != nil {
 						t.Fatalf("width %d: %v", width, err)
 					}
@@ -1523,7 +1523,7 @@ func TestFormatCorpusAcrossRepresentativeWidths(t *testing.T) {
 							err,
 						)
 					}
-					again, err := goxformat.File(reparsed, options)
+					again, err := glippyformat.File(reparsed, options)
 					if err != nil {
 						t.Fatalf(
 							"width %d repeat formatting failed: %v",
@@ -1560,9 +1560,9 @@ func TestFormatLowersControlFlowAndStatementSurface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1583,9 +1583,9 @@ func TestFormatPreservesExplicitClassicForClauses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1604,9 +1604,9 @@ func TestFormatPreservesExplicitAndImplicitEmptyStatements(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1630,9 +1630,9 @@ func TestFormatDoesNotMistakeNestedSemicolonsForClassicForClause(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1653,9 +1653,9 @@ func TestFormatLowersSwitchTypeSwitchAndSelectClauses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1676,9 +1676,9 @@ func TestFormatBreaksControlFlowHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 44, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 44, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1714,9 +1714,9 @@ func TestFormatUsesDeterministicCaseListWidthBoundary(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				got, err := goxformat.File(
+				got, err := glippyformat.File(
 					file,
-					goxformat.Options{
+					glippyformat.Options{
 						Width: test.width,
 						TabWidth: 8,
 						FitBudget: 1_000,
@@ -1758,9 +1758,9 @@ func TestFormatUsesDeterministicIfInitializerWidthBoundary(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				got, err := goxformat.File(
+				got, err := glippyformat.File(
 					file,
-					goxformat.Options{
+					glippyformat.Options{
 						Width: test.width,
 						TabWidth: 8,
 						FitBudget: 1_000,
@@ -1921,9 +1921,9 @@ func TestFormatUsesDeterministicControlFlowHeaderWidthBoundaries(t *testing.T) {
 							if err != nil {
 								t.Fatal(err)
 							}
-							got, err := goxformat.File(
+							got, err := glippyformat.File(
 								file,
-								goxformat.Options{
+								glippyformat.Options{
 									Width: mode.width,
 									TabWidth: 8,
 									FitBudget: 1_000,
@@ -1957,9 +1957,9 @@ func TestFormatBreaksInsideControlFlowOperandBeforeKeywordBoundary(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 36, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 36, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2044,9 +2044,9 @@ func TestFormatUsesDeterministicCommunicationWidthBoundaries(t *testing.T) {
 							if err != nil {
 								t.Fatal(err)
 							}
-							got, err := goxformat.File(
+							got, err := glippyformat.File(
 								file,
-								goxformat.Options{
+								glippyformat.Options{
 									Width: mode.width,
 									TabWidth: 8,
 									FitBudget: 1_000,
@@ -2102,9 +2102,9 @@ func TestFormatUsesDeterministicSelectorChainWidthBoundary(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				got, err := goxformat.File(
+				got, err := glippyformat.File(
 					file,
-					goxformat.Options{
+					glippyformat.Options{
 						Width: test.width,
 						TabWidth: 8,
 						FitBudget: 1_000,
@@ -2152,9 +2152,9 @@ func TestFormatKeepsSelectorCalleeFlatWhenArgumentsBreak(t *testing.T) {
 			test.name,
 			func(t *testing.T) {
 				t.Parallel()
-				got, err := goxformat.File(
+				got, err := glippyformat.File(
 					file,
-					goxformat.Options{
+					glippyformat.Options{
 						Width: test.width,
 						TabWidth: 8,
 						FitBudget: 1_000,
@@ -2259,9 +2259,9 @@ func TestFormatUsesDeterministicDelimitedListWidthBoundaries(t *testing.T) {
 							if err != nil {
 								t.Fatal(err)
 							}
-							got, err := goxformat.File(
+							got, err := glippyformat.File(
 								file,
-								goxformat.Options{
+								glippyformat.Options{
 									Width: mode.width,
 									TabWidth: 8,
 									FitBudget: 1_000,
@@ -2345,9 +2345,9 @@ func TestFormatUsesDeterministicBinaryChainWidthBoundaries(t *testing.T) {
 							if err != nil {
 								t.Fatal(err)
 							}
-							got, err := goxformat.File(
+							got, err := glippyformat.File(
 								file,
-								goxformat.Options{
+								glippyformat.Options{
 									Width: mode.width,
 									TabWidth: 8,
 									FitBudget: 1_000,
@@ -2381,9 +2381,9 @@ func TestFormatKeepsDocumentedAtomicConstructsIntactWhenOverWidth(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 30, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 30, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2404,9 +2404,9 @@ func TestFormatKeepsOrdinaryAssignmentOperatorWithRightHandSide(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 48, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 48, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2427,9 +2427,9 @@ func TestFormatKeepsSelectorAssignmentTargetFlatWhenValueBreaks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2450,9 +2450,9 @@ func TestFormatBreaksSelectorAssignmentTargetThatDoesNotFit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 60, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 60, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2496,9 +2496,9 @@ func TestFormatUsesDeterministicGenericSelectorChainWidthBoundary(t *testing.T) 
 				if err != nil {
 					t.Fatal(err)
 				}
-				got, err := goxformat.File(
+				got, err := glippyformat.File(
 					file,
-					goxformat.Options{
+					glippyformat.Options{
 						Width: test.width,
 						TabWidth: 8,
 						FitBudget: 1_000,
@@ -2525,9 +2525,9 @@ func TestFormatPreservesClauseBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2545,9 +2545,9 @@ func TestFormatPreservesAcceptedByteOrderMark(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2568,9 +2568,9 @@ func TestFormatPreservesVariadicCallEllipsis(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2584,17 +2584,17 @@ func TestFormatPreservesVariadicCallEllipsis(t *testing.T) {
 func TestFormatRejectsDirectiveAnchorMovementWithoutPartialOutput(t *testing.T) {
 	t.Parallel()
 
-	options := goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000}
+	options := glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000}
 	file, err := source.Load(
 		"directive.go",
 		[]byte(
-			"package directive\nfunc run(){ //gox:ignore example because ownership matters\nwork()}\n",
+			"package directive\nfunc run(){ //glippy:ignore example because ownership matters\nwork()}\n",
 		),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	formatted, err := goxformat.File(file, options)
+	formatted, err := glippyformat.File(file, options)
 	if err == nil || !strings.Contains(err.Error(), "directive source anchor changed") {
 		t.Fatalf("File() error = %v, want directive anchor rejection", err)
 	}
@@ -2605,12 +2605,12 @@ func TestFormatRejectsDirectiveAnchorMovementWithoutPartialOutput(t *testing.T) 
 	fragment, err := source.LoadFragment(
 		"directive.go",
 		source.FragmentStatement,
-		[]byte("if ready { //gox:ignore example because ownership matters\nwork()}"),
+		[]byte("if ready { //glippy:ignore example because ownership matters\nwork()}"),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	formatted, err = goxformat.Fragment(fragment, options)
+	formatted, err = glippyformat.Fragment(fragment, options)
 	if err == nil || !strings.Contains(err.Error(), "directive source anchor changed") {
 		t.Fatalf("Fragment() error = %v, want directive anchor rejection", err)
 	}
@@ -2625,15 +2625,15 @@ func TestFormatRejectsSuppressionTargetDriftWithoutPartialOutput(t *testing.T) {
 	file, err := source.Load(
 		"suppression.go",
 		[]byte(
-			"package sample\nfunc run(ready bool) {\n//gox:ignore duplicate-condition -- legacy branch\nif ready { use() } else if ready { retry() }\n}\nfunc use(){}\nfunc retry(){}\n",
+			"package sample\nfunc run(ready bool) {\n//glippy:ignore duplicate-condition -- legacy branch\nif ready { use() } else if ready { retry() }\n}\nfunc use(){}\nfunc retry(){}\n",
 		),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	formatted, err := goxformat.File(
+	formatted, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err == nil || !strings.Contains(err.Error(), "suppression ownership changed") {
 		t.Fatalf("File() error = %v, want suppression ownership rejection", err)
@@ -2646,15 +2646,15 @@ func TestFormatRejectsSuppressionTargetDriftWithoutPartialOutput(t *testing.T) {
 		"suppression.go",
 		source.FragmentStatement,
 		[]byte(
-			"//gox:ignore duplicate-condition -- legacy branch\nif ready { use() } else if ready { retry() }",
+			"//glippy:ignore duplicate-condition -- legacy branch\nif ready { use() } else if ready { retry() }",
 		),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	formatted, err = goxformat.Fragment(
+	formatted, err = glippyformat.Fragment(
 		fragment,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err == nil || !strings.Contains(err.Error(), "suppression ownership changed") {
 		t.Fatalf("Fragment() error = %v, want suppression ownership rejection", err)
@@ -2671,9 +2671,9 @@ func TestFormatRejectsDiagnosticOnlyFileWithoutPartialOutput(t *testing.T) {
 	if loadErr == nil || file == nil || file.CanFormat() {
 		t.Fatalf("Load() = %#v, %v; want diagnostic-only file", file, loadErr)
 	}
-	formatted, err := goxformat.File(
+	formatted, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err == nil {
 		t.Fatal("File() must reject diagnostic-only source")
@@ -2698,9 +2698,9 @@ func TestFormatRejectsDiagnosticOnlyFragmentWithoutPartialOutput(t *testing.T) {
 			loadErr,
 		)
 	}
-	formatted, err := goxformat.Fragment(
+	formatted, err := glippyformat.Fragment(
 		fragment,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err == nil {
 		t.Fatal("Fragment() must reject diagnostic-only source")
@@ -2720,9 +2720,9 @@ func TestFormatPreservesImportGroupsOrderAliasesAndLiterals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2748,9 +2748,9 @@ func TestFormatPreservesImportBoundaryComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2770,9 +2770,9 @@ func TestFormatPreservesOmittedConstExpressionsAndGroupedDeclarationOrder(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2791,9 +2791,9 @@ func TestFormatPreservesAcceptedEmptyDeclarationGroups(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2814,9 +2814,9 @@ func TestFormatLowersDeclarationsGenericSignaturesAndGoTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2837,9 +2837,9 @@ func TestFormatLowersCompositeAndPostfixExpressions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 60, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 60, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2860,9 +2860,9 @@ func TestFormatWrapsGenericFunctionSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 52, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 52, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2883,9 +2883,9 @@ func TestFormatKeepsSingleTypeParameterFlatWhenParametersBreak(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2906,9 +2906,9 @@ func TestFormatBreaksSingleTypeParameterWhenItMakesUnderlyingTypeFit(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2929,9 +2929,9 @@ func TestFormatKeepsMethodReceiverFlatWhenParametersBreak(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 42, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 42, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2952,9 +2952,9 @@ func TestFormatKeepsNonCanonicalReceiverListsBreakable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 42, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 42, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2975,9 +2975,9 @@ func TestFormatPreservesInferredArrayLength(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2998,9 +2998,9 @@ func TestFormatPreservesExplicitSingleResultList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := goxformat.File(
+	got, err := glippyformat.File(
 		file,
-		goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	)
 	if err != nil {
 		t.Fatal(err)

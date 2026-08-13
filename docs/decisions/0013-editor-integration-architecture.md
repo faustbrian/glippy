@@ -14,7 +14,7 @@ here.
 
 ## Context And Evidence
 
-Gox already exposes a complete-file editor boundary through standard input and
+Glippy already exposes a complete-file editor boundary through standard input and
 standard output. `--stdin-filepath` provides only file identity and
 configuration-discovery context. Configuration, parsing, formatting,
 equivalence validation, and idempotency validation complete before formatted
@@ -39,7 +39,7 @@ configuration, and swaps configuration snapshots without invalidating
 in-flight readers. It also carries Oxfmt-specific multi-language,
 `.editorconfig`, nested-configuration, ignore, and external-service policy.
 Those are evidence for the concerns a persistent service must own, not evidence
-that Gox needs the same service before a measured Go workflow requires it.
+that Glippy needs the same service before a measured Go workflow requires it.
 
 ## Decision
 
@@ -47,13 +47,13 @@ The initial stable formatter integration MUST remain the one-shot process
 contract:
 
 ```text
-gox fmt --stdin-filepath=/absolute/path/to/source.go
+glippy fmt --stdin-filepath=/absolute/path/to/source.go
 ```
 
 The editor MUST send the exact current buffer on standard input. On success,
-Gox MUST return only the complete formatted buffer on standard output. The
+Glippy MUST return only the complete formatted buffer on standard output. The
 editor MUST retain the original buffer on every nonzero exit or output-stream
-failure. Gox MUST NOT read or write the file named by `--stdin-filepath` during
+failure. Glippy MUST NOT read or write the file named by `--stdin-filepath` during
 this mode; the path supplies only source identity and configuration-discovery
 context. An editor SHOULD pass a normalized absolute path for a saved buffer
 and SHOULD omit the flag when an unsaved buffer has no truthful project path.
@@ -62,9 +62,9 @@ Complete-file formatting MUST reject invalid Go instead of producing a partial
 edit. Fragment buffers MUST select their fragment kind explicitly. Invalid or
 unknown configuration MUST remain a visible failure and MUST NOT silently fall
 back to built-in defaults. An integration MUST NOT run another formatter over
-the same buffer after Gox because a second layout owner can reintroduce churn.
+the same buffer after Glippy because a second layout owner can reintroduce churn.
 
-Gox MUST NOT add an LSP or long-running editor service solely to avoid process
+Glippy MUST NOT add an LSP or long-running editor service solely to avoid process
 startup while the supported one-shot workloads meet their recorded latency
 budget. A persistent service MAY be introduced when measured evidence shows a
 material benefit for at least one of these owned boundaries:
@@ -101,7 +101,7 @@ diagnostics, editor code actions, or an LSP server.
 ## Alternatives Rejected
 
 - Add an LSP immediately because Oxfmt has one: rejected because the current
-  Gox formatter path meets its provisional local budget and no validated Gox
+  Glippy formatter path meets its provisional local budget and no validated Glippy
   consumer yet requires persistent protocol state.
 - Maintain editor-specific libraries or plugins: rejected because they would
   duplicate configuration, validation, and release boundaries in each editor.

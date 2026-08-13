@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 // Scope identifies the physical ownership policy of one suppression.
@@ -40,6 +40,7 @@ const (
 	ProblemNestedRange ProblemKind = "nested-range"
 	ProblemUnclosedRange ProblemKind = "unclosed-range"
 	ProblemInvalidConfiguration ProblemKind = "invalid-configuration"
+	ProblemLegacyDirective ProblemKind = "legacy-directive"
 )
 
 // Problem is one source-ordered suppression diagnostic.
@@ -135,7 +136,7 @@ func ValidateStable(before, after physicalSource) error {
 	return nil
 }
 
-// Parse validates Gox suppression directives and assigns physical targets.
+// Parse validates Glippy suppression directives and assigns physical targets.
 func Parse(file *source.File, options ParseOptions) (Index, []Problem) {
 	known, configurationProblem := knownRuleSet(options.KnownRules)
 	if configurationProblem != nil {
@@ -171,8 +172,19 @@ func Parse(file *source.File, options ParseOptions) (Index, []Problem) {
 	problems := make([]Problem, 0)
 	openRanges := make(map[string]parsedDirective)
 	for _, candidate := range file.Directives() {
-		if candidate.Kind != source.DirectiveGoxSuppression {
+		if candidate.Kind != source.DirectiveGlippySuppression &&
+			candidate.Kind != source.DirectiveLegacyGoxSuppression {
 			continue
+		}
+		if candidate.Kind == source.DirectiveLegacyGoxSuppression {
+			problems = append(
+				problems,
+				Problem{
+					Kind: ProblemLegacyDirective,
+					Range: candidate.Range,
+					Message: "legacy //gox: suppression; migrate to //glippy:",
+				},
+			)
 		}
 		parsed, problem := parseDirective(
 			candidate,
@@ -438,7 +450,13 @@ func parseDirectiveSyntax(candidate source.Directive) (parsedDirective, *Problem
 }
 
 func parseDirectiveShape(candidate source.Directive) (parsedDirective, string, bool, *Problem) {
-	text := strings.TrimSpace(strings.TrimPrefix(candidate.Raw, "//gox:"))
+	text := candidate.Raw
+	if candidate.Kind == source.DirectiveLegacyGoxSuppression {
+		text = strings.TrimPrefix(text, "//gox:")
+	} else {
+		text = strings.TrimPrefix(text, "//glippy:")
+	}
+	text = strings.TrimSpace(text)
 	separator := strings.IndexFunc(text, unicode.IsSpace)
 	if separator < 0 {
 		return parsedDirective{}, "", false, malformed(
@@ -537,7 +555,8 @@ func suppressionOwnership(unit physicalSource) []ownershipFingerprint {
 	)
 	directiveIndex := 0
 	for _, candidate := range unit.Directives() {
-		if candidate.Kind != source.DirectiveGoxSuppression {
+		if candidate.Kind != source.DirectiveGlippySuppression &&
+			candidate.Kind != source.DirectiveLegacyGoxSuppression {
 			continue
 		}
 		current := directiveIndex

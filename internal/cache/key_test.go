@@ -43,7 +43,7 @@ func TestBuildKeySchemaV1Fingerprint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = "ef41e9efe3e2ddb6c15dc8132341456c1c5d5fa363ead7160ce49712a9aa17b1"
+	const want = "3ce4ac484dc089b9b4323b4fb404b3f2687e56ecaa5ea1bb7e71cf18ebab4fcc"
 	if key.String() != want {
 		t.Fatalf("BuildKey() = %q, want %q", key, want)
 	}
@@ -322,7 +322,7 @@ func testKeyInput() KeyInput {
 		GOOS: "linux",
 		GOARCH: "amd64",
 		CGOEnabled: true,
-		FormatterMode: "gox-v1",
+		FormatterMode: "glippy-v1",
 		Rules: []RuleInput{
 			{ID: "nilness", Severity: "warn", Options: DigestOf(nil)},
 			{ID: "printf", Severity: "error", Options: DigestOf([]byte("strict"))},

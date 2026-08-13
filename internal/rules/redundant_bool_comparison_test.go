@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestRedundantBoolComparisonReportsTypedBooleanConstantsWithSafeFixes(t *testing.T) {
@@ -176,7 +176,7 @@ func TestRedundantBoolComparisonHonorsSuppressionsGeneratedFilesTypeErrorsAndSev
 		t,
 		`package sample
 func run(ready bool) {
-	//gox:ignore redundant-bool-comparison -- explicit comparison
+	//glippy:ignore redundant-bool-comparison -- explicit comparison
 	_ = ready == true
 }
 `,

@@ -23,7 +23,7 @@ func (i corpusImporter) Import(path string) (*types.Package, error) {
 			types.NewConst(
 				token.NoPos,
 				pkg,
-				"GOX_DIRECTIVE_CORPUS",
+				"GLIPPY_DIRECTIVE_CORPUS",
 				types.Typ[types.UntypedInt],
 				constant.MakeInt64(1),
 			),
@@ -97,7 +97,7 @@ func TestInitialCorpusTypeChecks(t *testing.T) {
 	// The corpus uses one inert marker symbol, so a package shell keeps the Go
 	// declarations type-checked without invoking cgo or executing repository code.
 	config := &types.Config{Importer: corpusImporter{base: importer.Default()}}
-	if _, err := config.Check("example.com/gox-corpus/hostile", files, parsed, nil);
+	if _, err := config.Check("example.com/glippy-corpus/hostile", files, parsed, nil);
 		err != nil {
 		t.Fatal(err)
 	}

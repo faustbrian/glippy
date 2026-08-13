@@ -12,15 +12,15 @@ here.
 Complete files remain the default stdin mode. Fragments require an explicit
 `--fragment=declaration`, `--fragment=statement`, or `--fragment=expression`.
 The flag is valid only for `fmt` reading stdin and writing stdout. It is invalid
-with filesystem inputs, `--write`, `--check`, linting, or fixing. Gox MUST NOT
+with filesystem inputs, `--write`, `--check`, linting, or fixing. Glippy MUST NOT
 guess among fragment kinds after a parse error.
 
 ## Parsing
 
 Fragments are parsed through synthetic valid files using fixed wrappers:
 
-- declaration: after `package goxfragment`;
-- statement: inside `func goxfragment() { ... }`; and
+- declaration: after `package glippyfragment`;
+- statement: inside `func glippyfragment() { ... }`; and
 - expression: as the parenthesized initializer of a package variable.
 
 The declaration and statement wrappers place user bytes after a synthetic
@@ -41,7 +41,7 @@ list, function body statement list, or initializer expression. Content that
 escapes that boundary or relies on wrapper declarations MUST be rejected.
 Statement fragments that use the wrapper identifier as a keyed composite
 literal element are ambiguous without type information: the key may be a
-user-owned struct field or a map key that references the wrapper function. Gox
+user-owned struct field or a map key that references the wrapper function. Glippy
 MUST reject that keyed use unless the key resolves to a user-owned local
 declaration or syntax proves the composite is a user-owned struct type. A local
 declaration that shadows the wrapper identifier remains valid.
@@ -49,7 +49,7 @@ declaration that shadows the wrapper identifier remains valid.
 ## Formatting
 
 Lowering operates on the selected user boundary and emits only that boundary;
-Gox MUST NOT format a complete synthetic file and slice output by guessed line
+Glippy MUST NOT format a complete synthetic file and slice output by guessed line
 counts. Leading and trailing fragment whitespace follow the fragment-kind
 policy: surrounding whitespace is not preserved, while whitespace inside the
 selected syntax and comment boundary is canonicalized by the ordinary

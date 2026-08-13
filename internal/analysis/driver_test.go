@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
-	"github.com/faustbrian/gox/internal/suppressions"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
+	"github.com/faustbrian/glippy/internal/suppressions"
 )
 
 func TestRunResolvesSyntaxRulesAndAppliesSuppressions(t *testing.T) {
@@ -18,13 +18,13 @@ func TestRunResolvesSyntaxRulesAndAppliesSuppressions(t *testing.T) {
 
 	input := `package sample
 
-//gox:ignore call-rule -- accepted here
+//glippy:ignore call-rule -- accepted here
 func suppressed() { target() }
 
 func visible() { target() }
 
-//gox:ignore unused-rule -- no matching finding
-//gox:ignore unknown-rule -- misspelled rule
+//glippy:ignore unused-rule -- no matching finding
+//glippy:ignore unknown-rule -- misspelled rule
 `
 	file, err := source.Load("sample.go", []byte(input))
 	if err != nil {

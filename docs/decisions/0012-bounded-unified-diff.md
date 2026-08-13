@@ -9,7 +9,7 @@ Phase 2 requires a reviewable formatter-difference surface that does not write
 source. Go developers already recognize the unified output of `gofmt -d`.
 Current Oxfmt source at Oxc commit `fed2b900` instead exposes check and
 list-different modes; it does not provide source diffs. Repeating only changed
-paths would duplicate Gox check mode and would not let developers review the
+paths would duplicate Glippy check mode and would not let developers review the
 proposed layout.
 
 An unrestricted longest-common-subsequence search can consume quadratic memory
@@ -19,7 +19,7 @@ review.
 
 ## Decision
 
-`gox fmt --diff [paths...]` is a path-based, non-writing, text-only mode. It
+`glippy fmt --diff [paths...]` is a path-based, non-writing, text-only mode. It
 emits standard unified differences with three context lines, the normalized
 source path as the new label, and the same path plus `.orig` as the old label.
 Labels containing tabs or line breaks are quoted. Changed files are emitted in

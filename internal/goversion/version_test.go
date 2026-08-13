@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/goversion"
+	"github.com/faustbrian/glippy/internal/goversion"
 )
 
 func TestResolveUsesNearestModuleBeforeWorkspace(t *testing.T) {

@@ -13,7 +13,7 @@ in [`../research/go-frontend-audit.md`](../research/go-frontend-audit.md).
 
 ## Decision
 
-Gox uses separate scanner and parser passes over one immutable source version.
+Glippy uses separate scanner and parser passes over one immutable source version.
 It stores physical byte offsets, token gaps, semicolon origin, raw comment and
 directive bytes, and a source digest. Expensive analysis is selected through
 lexical, syntax, types, CFG, and SSA tiers. One scheduler owns loading and
@@ -44,9 +44,9 @@ One typed load admits at most 10,000 reachable packages, 20,000 unique parsed
 Go source files, and 256 MiB of aggregate unique source bytes. These fixed
 product defaults are intentionally lowerable by internal bounded callers but
 are not another public configuration dialect. The parser reserves unique path,
-digest, and size identity before constructing Gox source units; the graph is
+digest, and size identity before constructing Glippy source units; the graph is
 counted iteratively before any CFG, SSA, fact, cache, or rule execution. The
-pinned x/tools loader bounds active I/O and CPU work, and Gox serializes later
+pinned x/tools loader bounds active I/O and CPU work, and Glippy serializes later
 deep consumers within the one shared graph. Revisit these ceilings only when a
 real repository cannot fit and new corpus plus peak-memory evidence supports a
 different policy.
@@ -118,7 +118,7 @@ and range-over-function helpers are not separate callbacks. Rules share the
 program, package, function, typed values, and exact source without mutation.
 
 When tests are enabled, `go/packages` may expose one production file through
-both its ordinary package and an augmented test variant. Gox analyzes that
+both its ordinary package and an augmented test variant. Glippy analyzes that
 physical source once and prefers the ordinary package as its type owner; a
 test-only source uses its test variant. This prevents duplicate diagnostics
 while preserving the ordinary package's production type context. The loader
@@ -130,12 +130,12 @@ dependency syntax into lint targets.
 
 Cgo is a distinct ownership boundary because the toolchain replaces a file
 that imports `C` with synthesized Go-cache `CompiledGoFiles` for type checking.
-Gox retains the original `GoFiles` bytes as the only syntax, formatting,
+Glippy retains the original `GoFiles` bytes as the only syntax, formatting,
 reporting, suppression, and edit identity and excludes every synthesized path
 from rule ownership. The generated AST cannot be mapped losslessly back to
 exact original bytes, so the original cgo file receives syntax analysis plus a
 deterministic prerequisite diagnostic while deep callbacks and typed fixes are
-refused. Revisit only if the standard frontend exposes or Gox proves an exact
+refused. Revisit only if the standard frontend exposes or Glippy proves an exact
 generated-to-original range map.
 
 Suitable types-tier `go/analysis` analyzers may run package-wide over the same

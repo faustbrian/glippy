@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 type benchmarkSSARule struct{}
@@ -176,7 +176,7 @@ func TestNilnessSuppressionsAndSeverityUseCanonicalRuleIdentity(t *testing.T) {
 		`package sample
 func inspect(pointer *int) {
 	if pointer == nil {
-		//gox:ignore nilness -- guarded for a proving fixture
+		//glippy:ignore nilness -- guarded for a proving fixture
 		_ = *pointer
 	}
 }

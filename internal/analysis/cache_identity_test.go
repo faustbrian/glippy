@@ -11,9 +11,9 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/faustbrian/gox/internal/cache"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestBuildPackageCacheKeyCapturesLoadedGraphDeterministically(t *testing.T) {
@@ -328,7 +328,7 @@ func TestBuildPackageCacheKeyAcceptsCompletePackageLoad(t *testing.T) {
 			Rules: []cache.RuleInput{
 				{ID: "test", Severity: "warn", Options: cache.DigestOf(nil)},
 			},
-			FormatterMode: "gox-v1",
+			FormatterMode: "glippy-v1",
 			LoadOptions: loadOptions,
 			Loaded: loaded,
 			Facts: map[string]cache.Digest{},
@@ -437,7 +437,7 @@ func newPackageCacheIdentityFixture(t *testing.T) packageCacheIdentityFixture {
 			{ID: "example-rule", Severity: "warn", Options: cache.DigestOf(nil)},
 		},
 		CGOEnabled: false,
-		FormatterMode: "gox-v1",
+		FormatterMode: "glippy-v1",
 		LoadOptions: PackageLoadOptions{
 			Dir: root,
 			Patterns: []string{".", "./..."},

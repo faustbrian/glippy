@@ -1,4 +1,4 @@
-// Package doc provides the language-neutral document model used by the Gox
+// Package doc provides the language-neutral document model used by the Glippy
 // formatter. The Phase 0 surface is intentionally small while the renderer's
 // bounded behavior is proven.
 package doc

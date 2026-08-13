@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 type metadataRule struct {

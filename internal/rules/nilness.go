@@ -3,7 +3,7 @@ package rules
 import (
 	"fmt"
 
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/source"
 	goanalysis "golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
 	"golang.org/x/tools/go/analysis/passes/nilness"
@@ -16,7 +16,7 @@ func (nilnessRule) Metadata() Metadata {
 	return Metadata{
 		ID: "nilness",
 		Summary: "detects operations on values proven to be nil",
-		Documentation: "Reports nil dereferences, degenerate nil comparisons, nil channel and map operations, nil panics, and invalid nil-slice conversions when SSA dominance proves the value's nilness. The implementation reuses the current x/tools nilness analyzer over Gox's shared SSA function instead of constructing a second SSA program.",
+		Documentation: "Reports nil dereferences, degenerate nil comparisons, nil channel and map operations, nil panics, and invalid nil-slice conversions when SSA dominance proves the value's nilness. The implementation reuses the current x/tools nilness analyzer over Glippy's shared SSA function instead of constructing a second SSA program.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
@@ -106,7 +106,7 @@ func (nilnessRule) RunSSA(ctx *SSAContext) ([]Finding, error) {
 				MessageKey: diagnostic.Category,
 				Message: diagnostic.Message,
 				Range: range_,
-				Help: "run `gox explain nilness` for the rule contract and limitations",
+				Help: "run `glippy explain nilness` for the rule contract and limitations",
 			},
 		)
 	}

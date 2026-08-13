@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	fixengine "github.com/faustbrian/gox/internal/fix"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	fixengine "github.com/faustbrian/glippy/internal/fix"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestSelectSafeFixesChoosesOneUnambiguousSafeFixPerDiagnostic(t *testing.T) {

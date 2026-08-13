@@ -40,7 +40,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")" = "$GITHUB_SHA"
 
-          task_root=$(mktemp -d "$RUNNER_TEMP/gox-release-build.XXXXXX")
+          task_root=$(mktemp -d "$RUNNER_TEMP/glippy-release-build.XXXXXX")
           cleanup() {
             trap - EXIT HUP INT TERM
             if [ -d "$task_root/modcache" ] &&
@@ -56,12 +56,12 @@ jobs:
             GOENV=off GOWORK=off go run ./internal/releasecmd \
               --version "$GITHUB_REF_NAME" \
               --revision "$GITHUB_SHA" \
-              --output "$RUNNER_TEMP/gox-release"
+              --output "$RUNNER_TEMP/glippy-release"
       - name: Attest release artifact provenance
         id: provenance
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
         with:
-          subject-path: ${{ runner.temp }}/gox-release/*
+          subject-path: ${{ runner.temp }}/glippy-release/*
       - name: Publish the GitHub Release
         shell: bash
         env:
@@ -73,17 +73,17 @@ jobs:
             release_flags+=(--prerelease)
           fi
           gh release create "$GITHUB_REF_NAME" \
-            "$RUNNER_TEMP/gox-release/"* \
+            "$RUNNER_TEMP/glippy-release/"* \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
-            --title "Gox $GITHUB_REF_NAME" \
+            --title "Glippy $GITHUB_REF_NAME" \
             --generate-notes \
             "${release_flags[@]}"
       - name: Retain the release candidate
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: gox-release-${{ github.ref_name }}
-          path: ${{ runner.temp }}/gox-release
+          name: glippy-release-${{ github.ref_name }}
+          path: ${{ runner.temp }}/glippy-release
           if-no-files-found: warn
           retention-days: 14

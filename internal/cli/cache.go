@@ -15,15 +15,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/cache"
-	"github.com/faustbrian/gox/internal/rules"
-	goxversion "github.com/faustbrian/gox/internal/version"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/rules"
+	glippyversion "github.com/faustbrian/glippy/internal/version"
 )
 
 const (
-	cacheDirectoryEnvironment = "GOX_CACHE_DIR"
-	formatterCacheMode = "gox-v1"
+	cacheDirectoryEnvironment = "GLIPPY_CACHE_DIR"
+	formatterCacheMode = "glippy-v1"
 	staleCacheTemporaryAge = 24 * time.Hour
 )
 
@@ -147,7 +147,7 @@ func runPackageAnalysis(
 }
 
 func currentCacheToolIdentity() (string, error) {
-	version := goxversion.Current()
+	version := glippyversion.Current()
 	if version != "devel" {
 		return version, nil
 	}
@@ -211,7 +211,7 @@ func packageCacheRoot() (string, error) {
 			err,
 		)
 	}
-	root, err = filepath.Abs(filepath.Join(root, "gox", "analysis"))
+	root, err = filepath.Abs(filepath.Join(root, "glippy", "analysis"))
 	if err != nil {
 		return "", newPackageAnalysisError(
 			ExitFilesystemError,

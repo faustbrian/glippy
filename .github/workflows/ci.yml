@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - name: Check out Gox
+      - name: Check out Glippy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
@@ -28,7 +28,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          task_root=$(mktemp -d "$RUNNER_TEMP/gox-ci.XXXXXX")
+          task_root=$(mktemp -d "$RUNNER_TEMP/glippy-ci.XXXXXX")
           cleanup() {
             trap - EXIT HUP INT TERM
             if [ -d "$task_root/modcache" ] &&
@@ -49,5 +49,5 @@ jobs:
           go test -race ./... -count=1
           go vet ./...
           go mod tidy -diff
-          go build -o "$task_root/gox" ./cmd/gox
-          "$task_root/gox" check ./...
+          go build -o "$task_root/glippy" ./cmd/glippy
+          "$task_root/glippy" check ./...

@@ -9,7 +9,7 @@ here.
 [RFC2119]: https://www.rfc-editor.org/rfc/rfc2119
 [RFC8174]: https://www.rfc-editor.org/rfc/rfc8174
 
-No single comparison proves complete semantic equivalence. Gox accepts
+No single comparison proves complete semantic equivalence. Glippy accepts
 formatted output only when the following independent checks agree.
 
 ## Parse And Language Version
@@ -26,7 +26,7 @@ commas, the ordered token kinds and source values MUST match. Identifiers,
 keywords, operators, delimiters, and literal decoded values MUST remain
 identical.
 
-Initial Gox formatting preserves literal spelling exactly. Any later literal
+Initial Glippy formatting preserves literal spelling exactly. Any later literal
 normalization requires an explicit safe-normalization decision and separate
 token-accounting allowance.
 
@@ -57,7 +57,7 @@ on both sides because their ownership can be line-relative. Class-specific
 rules MAY allow canonical adjacent-versus-blank spacing before other directives
 while retaining their semantic target.
 
-For every structurally valid Gox suppression, validation MUST also preserve
+For every structurally valid Glippy suppression, validation MUST also preserve
 the exact normalized token ordinals owned by its line, next-line, paired-range,
 or file target. Comments, commas, and semicolons are excluded from this target
 fingerprint because their independent accounting permits comment placement,

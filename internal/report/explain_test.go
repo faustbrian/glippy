@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/report"
-	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/glippy/internal/report"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 type documentedRule struct {
@@ -309,7 +309,7 @@ func TestRenderRuleCatalogMarkdownUsesCanonicalMetadataAndIDOrder(t *testing.T) 
 
 This catalog is rendered from the same immutable rule metadata used by the
 registry, scheduler, configuration decoder, and ` +
-		"`gox explain`" +
+		"`glippy explain`" +
 		`.
 Preset membership and defaults describe the current development binary and are
 not stable release promises.

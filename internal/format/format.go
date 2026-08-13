@@ -1,4 +1,4 @@
-// Package format lowers Go syntax into the Gox document model.
+// Package format lowers Go syntax into the Glippy document model.
 package format
 
 import (
@@ -10,9 +10,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/faustbrian/gox/internal/format/doc"
-	"github.com/faustbrian/gox/internal/source"
-	"github.com/faustbrian/gox/internal/suppressions"
+	"github.com/faustbrian/glippy/internal/format/doc"
+	"github.com/faustbrian/glippy/internal/source"
+	"github.com/faustbrian/glippy/internal/suppressions"
 )
 
 // Options controls deterministic formatting.

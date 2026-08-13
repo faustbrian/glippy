@@ -1,4 +1,4 @@
-// Package config owns typed Gox configuration defaults and decoding.
+// Package config owns typed Glippy configuration defaults and decoding.
 package config
 
 import (
@@ -16,12 +16,16 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"github.com/faustbrian/gox/internal/baseline"
-	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/glippy/internal/baseline"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
-// Filename is the project configuration filename.
-const Filename = ".gox.toml"
+const (
+	// Filename is the canonical project configuration filename.
+	Filename = ".glippy.toml"
+	// LegacyFilename is accepted as a deprecated fallback for the v0.2 compatibility window.
+	LegacyFilename = ".gox.toml"
+)
 
 // Version is the only accepted configuration schema version.
 const Version = 1

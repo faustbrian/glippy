@@ -8,7 +8,7 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 type redundantBoolComparisonRule struct{}

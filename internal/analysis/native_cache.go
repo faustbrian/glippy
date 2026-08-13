@@ -12,8 +12,8 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/faustbrian/gox/internal/cache"
-	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 const nativePackageCacheEntryVersion = 1

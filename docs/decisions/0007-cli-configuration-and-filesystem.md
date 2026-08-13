@@ -8,7 +8,7 @@
 
 Oxfmt demonstrates cohesive check, stdin, editor, and bounded-thread workflows,
 but current writes are not atomic and nested configuration may fail after
-earlier mutation. Gox requires non-mutating check behavior and prevalidated
+earlier mutation. Glippy requires non-mutating check behavior and prevalidated
 writes.
 
 ## Decision
@@ -38,7 +38,7 @@ filesystem replacement; exit code 130 distinguishes cancellation from an
 internal tool defect.
 
 Write-mode support claims are scoped to platform and filesystem pairs with
-runtime integration evidence. Gox supports macOS and Linux only. The current
+runtime integration evidence. Glippy supports macOS and Linux only. The current
 Phase 2 replacement evidence covers Darwin arm64 on APFS and Linux arm64 on
 overlayfs; admitted release artifacts additionally target amd64. Windows and
 all other operating systems are intentionally unsupported, so Windows runtime
@@ -49,7 +49,7 @@ in
 Write and fix guarantees apply only to local filesystems whose documented
 semantics satisfy the recorded same-directory replacement contract. Network,
 distributed, and userspace filesystems are outside the supported write/fix
-boundary unless separately admitted. Gox does not claim survival of a forced
+boundary unless separately admitted. Glippy does not claim survival of a forced
 power loss; a successful return proves the implemented file and directory sync
 sequence completed, not storage-hardware durability beyond the operating system
 contract.

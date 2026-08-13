@@ -12,10 +12,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/cache"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestRunPackagesRejectsOversizedOverlayBeforeCloningOrCachePlanning(t *testing.T) {
@@ -77,11 +77,11 @@ func TestRunPackagesCombinesSyntaxAndTypesBeforeSuppressing(t *testing.T) {
 	writeTypesFixture(
 		t,
 		path,
-		`//gox:ignore-file cfg-function -- reviewed file
-//gox:ignore-file ssa-function -- reviewed file
+		`//glippy:ignore-file cfg-function -- reviewed file
+//glippy:ignore-file ssa-function -- reviewed file
 package project
 
-//gox:ignore typed-call -- reviewed here
+//glippy:ignore typed-call -- reviewed here
 func suppressed() { target() }
 func visible() { target() }
 func target() {}
@@ -796,7 +796,7 @@ func TestRunPackagesRetainsLoadErrorsAndValidPartialResults(t *testing.T) {
 
 func TestRunPackagesKeepsCgoSourceSyntaxOnlyAndNeverTargetsGeneratedCacheFiles(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("Windows is not a supported Gox runtime")
+		t.Skip("Windows is not a supported Glippy runtime")
 	}
 
 	root := t.TempDir()
@@ -898,7 +898,7 @@ func TestRunPackagesRunsControlFlowRulesBeforeSuppressing(t *testing.T) {
 	writeTypesFixture(
 		t,
 		path,
-		"//gox:ignore-file cfg-rule -- reviewed file\npackage project\nfunc run() {}\n",
+		"//glippy:ignore-file cfg-rule -- reviewed file\npackage project\nfunc run() {}\n",
 	)
 	rule := controlFlowRule{
 		metadata: controlFlowMetadata("cfg-rule"),
@@ -949,7 +949,7 @@ func TestRunPackagesRunsPackageWideRulesBeforeSuppressing(t *testing.T) {
 	writeTypesFixture(
 		t,
 		path,
-		"//gox:ignore-file package-rule -- reviewed package\npackage project\nfunc run() {}\n",
+		"//glippy:ignore-file package-rule -- reviewed package\npackage project\nfunc run() {}\n",
 	)
 	rule := packageRule{
 		metadata: packageMetadata("package-rule"),
@@ -1152,7 +1152,7 @@ func TestRunPackagesRejectsExpiredSuppressions(t *testing.T) {
 	writeTypesFixture(
 		t,
 		path,
-		"//gox:ignore-file cfg-rule -- expires=2026-08-11 temporary waiver\npackage project\nfunc run() {}\n",
+		"//glippy:ignore-file cfg-rule -- expires=2026-08-11 temporary waiver\npackage project\nfunc run() {}\n",
 	)
 	rule := controlFlowRule{
 		metadata: controlFlowMetadata("cfg-rule"),

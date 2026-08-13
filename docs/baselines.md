@@ -5,7 +5,7 @@ new or changed code. Generate one deterministic document for a single project
 root and configuration:
 
 ```sh
-gox lint --generate-baseline=.gox-baseline.json ./...
+glippy lint --generate-baseline=.glippy-baseline.json ./...
 ```
 
 Generation analyzes normally visible, unsuppressed diagnostics, writes the
@@ -18,7 +18,7 @@ Enable the document explicitly:
 
 ```toml
 [lint.baseline]
-path = ".gox-baseline.json"
+path = ".glippy-baseline.json"
 report-stale = true
 expiry-cutoff = "2026-08-13"
 ```
@@ -28,7 +28,7 @@ project-relative path, a lowercase SHA-256 fingerprint of the diagnostic's
 exact source span, and an occurrence count. The document never stores source
 snippets. Entries may carry a reason and a `YYYY-MM-DD` expiry date.
 
-Gox applies ordinary source suppressions before the baseline. Matching
+Glippy applies ordinary source suppressions before the baseline. Matching
 diagnostics are counted as baselined, are omitted from visible diagnostics,
 and are never selected by `--fix`. A changed source span no longer matches.
 When `report-stale` is true, unmatched counts in files analyzed by the current

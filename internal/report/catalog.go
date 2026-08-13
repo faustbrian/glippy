@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 // RenderRuleCatalogMarkdown renders every registered rule from canonical
@@ -23,7 +23,7 @@ func RenderRuleCatalogMarkdown(registry *rules.Registry) ([]byte, error) {
 	output.WriteString(
 		"This catalog is rendered from the same immutable rule metadata used by the\n",
 	)
-	output.WriteString("registry, scheduler, configuration decoder, and `gox explain`.\n")
+	output.WriteString("registry, scheduler, configuration decoder, and `glippy explain`.\n")
 	output.WriteString(
 		"Preset membership and defaults describe the current development binary and are\n",
 	)

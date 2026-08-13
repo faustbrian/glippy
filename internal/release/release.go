@@ -25,11 +25,11 @@ import (
 )
 
 const (
-	productName = "gox"
+	productName = "glippy"
 	projectLicenseName = "LICENSE"
 	thirdPartyNoticesName = "THIRD_PARTY_LICENSES.txt"
 	manifestSchema = 1
-	linkedVersion = "github.com/faustbrian/gox/internal/version.linked"
+	linkedVersion = "github.com/faustbrian/glippy/internal/version.linked"
 )
 
 var defaultTargets = []Target{
@@ -129,7 +129,7 @@ func Build(ctx context.Context, options Options) (manifest Manifest, resultErr e
 	if err != nil {
 		return manifest, err
 	}
-	cacheRoot, err := os.MkdirTemp("", "gox-release-cache-")
+	cacheRoot, err := os.MkdirTemp("", "glippy-release-cache-")
 	if err != nil {
 		return manifest, fmt.Errorf("create release build cache: %w", err)
 	}
@@ -271,7 +271,7 @@ func loadReleaseMaterial(root, name string) ([]byte, error) {
 }
 
 func exportSource(ctx context.Context, options Options) (result string, resultErr error) {
-	root, err := os.MkdirTemp("", "gox-release-source-")
+	root, err := os.MkdirTemp("", "glippy-release-source-")
 	if err != nil {
 		return "", fmt.Errorf("create release source snapshot: %w", err)
 	}
@@ -406,7 +406,7 @@ type ownedOutput struct {
 }
 
 func createOwnedOutput(path string) (*ownedOutput, error) {
-	temporary, err := os.MkdirTemp(filepath.Dir(path), ".gox-release-output-")
+	temporary, err := os.MkdirTemp(filepath.Dir(path), ".glippy-release-output-")
 	if err != nil {
 		return nil, fmt.Errorf("create private release output: %w", err)
 	}
@@ -705,7 +705,7 @@ func buildTarget(
 	cacheRoot string,
 	materials releaseMaterials,
 ) (artifact Artifact, resultErr error) {
-	temporary, err := os.MkdirTemp("", "gox-release-build-")
+	temporary, err := os.MkdirTemp("", "glippy-release-build-")
 	if err != nil {
 		return Artifact{}, fmt.Errorf("create release build directory: %w", err)
 	}
@@ -724,7 +724,7 @@ func buildTarget(
 		"-ldflags=" + linkerFlags,
 		"-o",
 		binary,
-		"./cmd/gox",
+		"./cmd/glippy",
 	)
 	command.Dir = options.Root
 	command.Env = buildEnvironment(target.GOOS, target.GOARCH, cacheRoot)

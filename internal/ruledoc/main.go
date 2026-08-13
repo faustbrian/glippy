@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/faustbrian/gox/internal/report"
-	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/glippy/internal/report"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 func main() {

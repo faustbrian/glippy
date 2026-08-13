@@ -14,7 +14,7 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/faustbrian/gox/internal/cache"
+	"github.com/faustbrian/glippy/internal/cache"
 )
 
 type packageCacheKeyInput struct {
@@ -719,7 +719,7 @@ func addOptionalPackageCacheFile(
 ) error {
 	digest, err := digestPackageCacheFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		digest = cache.DigestOf([]byte("gox-cache-file-missing-v1"))
+		digest = cache.DigestOf([]byte("glippy-cache-file-missing-v1"))
 		err = nil
 	}
 	if err != nil {

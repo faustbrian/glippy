@@ -2,31 +2,31 @@
 
 set -eu
 
-runs=${GOX_PEAK_RSS_RUNS:-5}
+runs=${GLIPPY_PEAK_RSS_RUNS:-5}
 case "$runs" in
 	''|*[!0-9]*|0)
-		printf '%s\n' 'GOX_PEAK_RSS_RUNS must be a positive integer' >&2
+		printf '%s\n' 'GLIPPY_PEAK_RSS_RUNS must be a positive integer' >&2
 		exit 1
 		;;
 esac
 
-format_budget_bytes=${GOX_PEAK_RSS_FORMAT_BUDGET_BYTES:-2147483648}
+format_budget_bytes=${GLIPPY_PEAK_RSS_FORMAT_BUDGET_BYTES:-2147483648}
 case "$format_budget_bytes" in
 	''|*[!0-9]*|0)
-		printf '%s\n' 'GOX_PEAK_RSS_FORMAT_BUDGET_BYTES must be a positive integer' >&2
+		printf '%s\n' 'GLIPPY_PEAK_RSS_FORMAT_BUDGET_BYTES must be a positive integer' >&2
 		exit 1
 		;;
 esac
 
-format_budget_seconds=${GOX_PEAK_RSS_FORMAT_BUDGET_SECONDS:-90}
+format_budget_seconds=${GLIPPY_PEAK_RSS_FORMAT_BUDGET_SECONDS:-90}
 case "$format_budget_seconds" in
 	''|*[!0-9]*|0)
-		printf '%s\n' 'GOX_PEAK_RSS_FORMAT_BUDGET_SECONDS must be a positive integer' >&2
+		printf '%s\n' 'GLIPPY_PEAK_RSS_FORMAT_BUDGET_SECONDS must be a positive integer' >&2
 		exit 1
 		;;
 esac
 
-time_command=${GOX_TIME_COMMAND:-/usr/bin/time}
+time_command=${GLIPPY_TIME_COMMAND:-/usr/bin/time}
 if [ ! -x "$time_command" ]; then
 	printf 'time command is not executable: %s\n' "$time_command" >&2
 	exit 1
@@ -34,33 +34,33 @@ fi
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH='' cd -- "$script_dir/.." && pwd)
-format_root_input=${GOX_PEAK_RSS_FORMAT_ROOT:-$repo_root}
+format_root_input=${GLIPPY_PEAK_RSS_FORMAT_ROOT:-$repo_root}
 if [ ! -d "$format_root_input" ]; then
-	printf 'GOX_PEAK_RSS_FORMAT_ROOT is not a directory: %s\n' \
+	printf 'GLIPPY_PEAK_RSS_FORMAT_ROOT is not a directory: %s\n' \
 		"$format_root_input" >&2
 	exit 1
 fi
 format_root=$(CDPATH='' cd -- "$format_root_input" && pwd -P)
 
-gox_revision=${GOX_RELEASE_GOX_REVISION:-}
-if [ -n "$gox_revision" ]; then
-	actual_gox_revision=$(git -C "$repo_root" rev-parse HEAD)
-	if [ "$actual_gox_revision" != "$gox_revision" ]; then
-		printf 'Gox revision is %s; want %s\n' \
-			"$actual_gox_revision" "$gox_revision" >&2
+glippy_revision=${GLIPPY_RELEASE_GLIPPY_REVISION:-}
+if [ -n "$glippy_revision" ]; then
+	actual_glippy_revision=$(git -C "$repo_root" rev-parse HEAD)
+	if [ "$actual_glippy_revision" != "$glippy_revision" ]; then
+		printf 'Glippy revision is %s; want %s\n' \
+			"$actual_glippy_revision" "$glippy_revision" >&2
 		exit 1
 	fi
 	if [ -n "$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)" ]; then
-		printf '%s\n' 'Gox repository must be clean for a release budget run' >&2
+		printf '%s\n' 'Glippy repository must be clean for a release budget run' >&2
 		exit 1
 	fi
 fi
 
-expected_goos=${GOX_RELEASE_EXPECTED_GOOS:-}
-expected_goarch=${GOX_RELEASE_EXPECTED_GOARCH:-}
+expected_goos=${GLIPPY_RELEASE_EXPECTED_GOOS:-}
+expected_goarch=${GLIPPY_RELEASE_EXPECTED_GOARCH:-}
 if [ -n "$expected_goos" ] || [ -n "$expected_goarch" ]; then
 	if [ -z "$expected_goos" ] || [ -z "$expected_goarch" ]; then
-		printf '%s\n' 'GOX_RELEASE_EXPECTED_GOOS and GOX_RELEASE_EXPECTED_GOARCH must be set together' >&2
+		printf '%s\n' 'GLIPPY_RELEASE_EXPECTED_GOOS and GLIPPY_RELEASE_EXPECTED_GOARCH must be set together' >&2
 		exit 1
 	fi
 	set -- $(go env GOHOSTOS GOHOSTARCH)
@@ -90,7 +90,7 @@ if [ -n "$expected_goos" ] || [ -n "$expected_goarch" ]; then
 	fi
 fi
 
-format_revision=${GOX_PEAK_RSS_FORMAT_REVISION:-}
+format_revision=${GLIPPY_PEAK_RSS_FORMAT_REVISION:-}
 if [ -n "$format_revision" ]; then
 	actual_format_revision=$(git -C "$format_root" rev-parse HEAD)
 	if [ "$actual_format_revision" != "$format_revision" ]; then
@@ -104,7 +104,7 @@ if [ -n "$format_revision" ]; then
 	fi
 fi
 
-task_root=$(mktemp -d "${TMPDIR:-/tmp}/gox-peak-rss.XXXXXX")
+task_root=$(mktemp -d "${TMPDIR:-/tmp}/glippy-peak-rss.XXXXXX")
 
 cleanup() {
 	trap - EXIT HUP INT TERM
@@ -134,10 +134,10 @@ GOCACHE="$task_root/cache"
 GOMODCACHE="$task_root/modcache"
 export GOCACHE GOMODCACHE
 env -u GOWORK go -C "$repo_root" mod download
-env -u GOWORK go -C "$repo_root" build -o "$task_root/gox" ./cmd/gox
+env -u GOWORK go -C "$repo_root" build -o "$task_root/glippy" ./cmd/glippy
 
 printf '%s\n' 'version = 1' '[lint]' 'preset = "suspicious"' \
-	>"$task_root/gox.toml"
+	>"$task_root/glippy.toml"
 
 measure() {
 	label=$1
@@ -202,15 +202,15 @@ measure() {
 if [ -n "$expected_goos" ]; then
 	printf 'metadata,goos,%s\nmetadata,goarch,%s\n' "$expected_goos" "$expected_goarch"
 fi
-if [ -n "$gox_revision" ]; then
-	printf 'metadata,gox_revision,%s\n' "$gox_revision"
+if [ -n "$glippy_revision" ]; then
+	printf 'metadata,glippy_revision,%s\n' "$glippy_revision"
 fi
 if [ -n "$format_revision" ]; then
 	printf 'metadata,format_revision,%s\n' "$format_revision"
 fi
 printf '%s\n' 'workload,sample,elapsed_seconds,peak_rss_bytes'
 measure formatter-check "$format_budget_bytes" "$format_budget_seconds" \
-	"$task_root/gox" fmt --check "$format_root"
+	"$task_root/glippy" fmt --check "$format_root"
 measure typed-combined-check 9223372036854775807 9223372036854775807 \
-	"$task_root/gox" check \
-	--config="$task_root/gox.toml" "$repo_root/..."
+	"$task_root/glippy" check \
+	--config="$task_root/glippy.toml" "$repo_root/..."

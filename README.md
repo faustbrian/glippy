@@ -1,20 +1,21 @@
-# Gox
+# Glippy
 
-Gox is a Go-native formatter, linter, and safe fixer built as one cohesive
+Glippy is a Go-native formatter, linter, and safe fixer built as one cohesive
 developer tool. Its formatter expands compressed but valid Go and makes
 deterministic width-aware layout decisions. Its linter keeps correctness-focused
 defaults, pays only for the analysis tiers enabled rules require, and routes
 all source changes through an explicit conflict-safe transaction.
 
-Gox v0.1.0 is the first supported release. The maintainer accepted the
-documented ecosystem-collision and trademark-risk boundary for the Gox name,
-binary, repository, and module path. That decision is not legal clearance for
-any jurisdiction or trademark class. Untagged commits and locally built
-binaries remain unsupported development artifacts.
+Glippy v0.2 is under development and is not tagged or published. The existing
+v0.1.0 release remains Gox under `github.com/faustbrian/gox`; its module tags,
+binary, archives, and attestations are immutable historical identities. The
+maintainer accepted the documented Glippy ecosystem-collision risk for v0.2;
+that product decision is not legal clearance. Untagged commits and locally
+built binaries remain unsupported development artifacts.
 
-## Why Gox
+## Why Glippy
 
-Gofmt intentionally leaves many layout choices alone. Gox gives hostile valid
+Gofmt intentionally leaves many layout choices alone. Glippy gives hostile valid
 source one canonical readable form. For example:
 
 ```go
@@ -41,7 +42,7 @@ inside formatting, and layout policy is not duplicated as lint noise.
 
 ## Product Direction
 
-- **Go-native frontend:** Gox builds on the standard parser, AST, token, type
+- **Go-native frontend:** Glippy builds on the standard parser, AST, token, type
   checker, package loader, CFG, SSA, and `go/analysis` ecosystem.
 - **Deterministic layout:** a document IR selects one flat or canonical broken
   form with bounded fit work.
@@ -58,26 +59,26 @@ inside formatting, and layout policy is not duplicated as lint noise.
 Oxfmt and Oxlint are the product-experience references for a fast, focused,
 predictable formatter and linter. Oxc is the reference for shared compiler-style
 infrastructure. Go's specification and supported toolchains remain the syntax
-and semantic authority. Gox does not copy ESLint's plugin architecture,
+and semantic authority. Glippy does not copy ESLint's plugin architecture,
 configuration breadth, or default product model.
 
 ## Commands
 
 ```text
-gox fmt [paths...]
-gox fmt --write [paths...]
-gox fmt --check [paths...]
-gox fmt --diff [paths...]
-gox lint [paths...]
-gox lint --fix [paths...]
-gox lint --generate-baseline=<path> [paths...]
-gox check [paths...]
-gox explain <rule>
-gox version
-gox completion <bash|zsh|fish>
+glippy fmt [paths...]
+glippy fmt --write [paths...]
+glippy fmt --check [paths...]
+glippy fmt --diff [paths...]
+glippy lint [paths...]
+glippy lint --fix [paths...]
+glippy lint --generate-baseline=<path> [paths...]
+glippy check [paths...]
+glippy explain <rule>
+glippy version
+glippy completion <bash|zsh|fish>
 ```
 
-`gox check ./...` is the non-mutating combined CI entry point. Safe fixes are
+`glippy check ./...` is the non-mutating combined CI entry point. Safe fixes are
 selected with `lint --fix`; suggestion and unsafe classes require their own
 explicit flags. Existing findings can be captured without weakening new-code
 policy through a [deterministic lint baseline](docs/baselines.md). See the
@@ -86,17 +87,17 @@ inputs, reporters, exit categories, and write behavior.
 
 ## Installation
 
-Download the archive for a supported target from the
-[v0.1.0 GitHub Release](https://github.com/faustbrian/gox/releases/tag/v0.1.0),
-verify its checksum, and extract `gox` into a directory on `PATH`. The release
-provides macOS and Linux archives for amd64 and arm64, a checksum file, and a
-versioned manifest. GitHub-hosted provenance can be verified with:
+No Glippy release is published yet. The historical Gox v0.1.0 release remains
+available from its
+[GitHub Release](https://github.com/faustbrian/gox/releases/tag/v0.1.0), but it
+does not provide the `glippy` command or v0.2 catalog. Its provenance can be
+verified with:
 
 ```sh
 gh attestation verify <downloaded-artifact> --repo faustbrian/gox
 ```
 
-For source installation, pin the released module version:
+The corresponding historical source installation is:
 
 ```sh
 go install github.com/faustbrian/gox/cmd/gox@v0.1.0
@@ -107,15 +108,15 @@ To evaluate an untagged checkout with Go 1.26, build a disposable development
 binary:
 
 ```sh
-task_root=$(mktemp -d "${TMPDIR:-/tmp}/gox-eval.XXXXXX")
+task_root=$(mktemp -d "${TMPDIR:-/tmp}/glippy-eval.XXXXXX")
 trap 'find "$task_root" -mindepth 1 -delete; rmdir "$task_root"' EXIT HUP INT TERM
-go build -o "$task_root/gox" ./cmd/gox
-"$task_root/gox" version
-"$task_root/gox" fmt --diff /absolute/path/to/project
+go build -o "$task_root/glippy" ./cmd/glippy
+"$task_root/glippy" version
+"$task_root/glippy" fmt --diff /absolute/path/to/project
 ```
 
 Pin the source revision used by every developer and CI job. Do not run another
-formatter after Gox: documented width, import-order, literal, parentheses,
+formatter after Glippy: documented width, import-order, literal, parentheses,
 alignment, and empty-statement choices are not universally gofmt fixed points.
 Use the [migration guide](docs/migration-from-go-formatters.md) before changing
 a repository's formatter authority.
@@ -157,7 +158,7 @@ precise scope.
 - [Architecture decisions](docs/decisions/README.md)
 - [Performance methodology and results](benchmarks/README.md)
 
-Security reports follow [SECURITY.md](SECURITY.md). Gox is licensed under the
+Security reports follow [SECURITY.md](SECURITY.md). Glippy is licensed under the
 [BSD Zero Clause License](LICENSE), and release archives reproduce that license
 and all applicable third-party notices. Ordinary development pushes cannot
 create a tag or release.

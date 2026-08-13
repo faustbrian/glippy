@@ -121,7 +121,7 @@ One typed load MUST admit at most 10,000 packages in its complete reachable
 graph, 20,000 unique parsed Go source files, and 268,435,456 aggregate unique
 source bytes. Duplicate test variants of the same exact physical source count
 once; incompatible bytes for one path remain an error. The source limits MUST
-be enforced before constructing Gox's immutable source model, and the package
+be enforced before constructing Glippy's immutable source model, and the package
 graph limit MUST be enforced before CFG, SSA, fact, cache, or rule execution.
 Internal callers MAY lower a limit for a bounded host or proving fixture but
 MUST NOT raise the product defaults without new corpus and peak-memory
@@ -129,7 +129,7 @@ evidence. These aggregate limits complement the 64 MiB per-source limit.
 
 Active package parsing and type checking use the bounded I/O and
 `GOMAXPROCS`-derived CPU scheduling provided by the pinned `go/packages`
-implementation. Gox MUST NOT start independent package loads or duplicate
+implementation. Glippy MUST NOT start independent package loads or duplicate
 deep representations per rule. Native types, CFG, SSA, fact, and cache work
 within one load remains deterministically serialized unless a later bounded
 scheduler has measured memory and ordering evidence.
@@ -153,7 +153,7 @@ NOT become an analyzed file or a reporter target. Invalid selected inputs MUST
 remain available as diagnostic-only source units rather than being discarded.
 
 For cgo packages, the toolchain type-checks synthesized `CompiledGoFiles`
-rather than the editable file that imports `C`. Gox MUST capture that original
+rather than the editable file that imports `C`. Glippy MUST capture that original
 `GoFiles` source as the syntax, formatting, reporting, and suppression target,
 and MUST NOT expose a synthesized Go-cache path as a diagnostic, formatting, or
 fix target. Because the generated AST has no lossless exact-byte mapping back
@@ -355,11 +355,11 @@ suppression to a different target MUST be rejected.
 The initial grammar accepts one exact rule per line comment:
 
 ```text
-//gox:ignore rule-id [-- reason]
-//gox:ignore-line rule-id [-- reason]
-//gox:ignore-start rule-id [-- reason]
-//gox:ignore-end rule-id
-//gox:ignore-file rule-id [-- reason]
+//glippy:ignore rule-id [-- reason]
+//glippy:ignore-line rule-id [-- reason]
+//glippy:ignore-start rule-id [-- reason]
+//glippy:ignore-end rule-id
+//glippy:ignore-file rule-id [-- reason]
 ```
 
 `ignore` MUST target only the immediately following physical line;
@@ -386,7 +386,7 @@ calendar date, and text after that field remains the human reason. An invalid
 date MUST invalidate the directive. An expiry field without a human reason
 MUST be treated as a missing reason. When the optional, explicit
 `lint.suppressions.expiry-cutoff` is configured, an expiry on or before that
-cutoff MUST produce an `expired` problem and invalidate the directive. Gox MUST
+cutoff MUST produce an `expired` problem and invalidate the directive. Glippy MUST
 NOT consult the wall clock; omitting the cutoff validates and retains structured
 expiry metadata without deciding that a waiver has expired.
 

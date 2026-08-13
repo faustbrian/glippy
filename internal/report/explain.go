@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 // RenderRuleText renders one rule's canonical metadata for human readers.

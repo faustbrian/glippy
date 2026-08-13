@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/rules"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 func TestContextDoesNotExposeMutableState(t *testing.T) {

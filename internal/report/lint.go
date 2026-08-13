@@ -8,12 +8,12 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/baseline"
-	fixengine "github.com/faustbrian/gox/internal/fix"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
-	"github.com/faustbrian/gox/internal/suppressions"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/baseline"
+	fixengine "github.com/faustbrian/glippy/internal/fix"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
+	"github.com/faustbrian/glippy/internal/suppressions"
 )
 
 type LintSummary struct {

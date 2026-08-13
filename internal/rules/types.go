@@ -8,7 +8,7 @@ import (
 	"go/types"
 	"slices"
 
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/source"
 	"golang.org/x/tools/go/cfg"
 	"golang.org/x/tools/go/ssa"
 )

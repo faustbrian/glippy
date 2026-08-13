@@ -10,9 +10,9 @@ import (
 	"sort"
 	"unicode/utf8"
 
-	goxformat "github.com/faustbrian/gox/internal/format"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	glippyformat "github.com/faustbrian/glippy/internal/format"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 // RejectionReason is one stable reason a selected fix was not applied.
@@ -40,7 +40,7 @@ type Selection struct {
 type Options struct {
 	AllowSuggestion bool
 	AllowUnsafe bool
-	Format goxformat.Options
+	Format glippyformat.Options
 	Validate func(*source.File) error
 }
 
@@ -142,7 +142,7 @@ func Coordinate(file *source.File, selections []Selection, options Options) (Res
 			fmt.Sprintf("fixed source did not parse: %v", err),
 		), nil
 	}
-	formatted, err := goxformat.File(editedFile, options.Format)
+	formatted, err := glippyformat.File(editedFile, options.Format)
 	if err != nil {
 		return rejectedTransaction(
 			input,

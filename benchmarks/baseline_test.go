@@ -19,10 +19,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/cli"
-	goxformat "github.com/faustbrian/gox/internal/format"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/cli"
+	glippyformat "github.com/faustbrian/glippy/internal/format"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 	"golang.org/x/tools/go/ast/inspector"
 	"golang.org/x/tools/go/packages"
 )
@@ -75,7 +75,7 @@ func BenchmarkGoFormat(b *testing.B) {
 	}
 }
 
-func BenchmarkGoxFormatManyClassicLoops(b *testing.B) {
+func BenchmarkGlippyFormatManyClassicLoops(b *testing.B) {
 	for _, loops := range []int{100, 1_000} {
 		b.Run(
 			strconv.Itoa(loops),
@@ -89,7 +89,7 @@ func BenchmarkGoxFormatManyClassicLoops(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				options := goxformat.Options{
+				options := glippyformat.Options{
 					Width: 100,
 					TabWidth: 8,
 					FitBudget: 10_000,
@@ -99,7 +99,7 @@ func BenchmarkGoxFormatManyClassicLoops(b *testing.B) {
 				b.ResetTimer()
 
 				for b.Loop() {
-					if _, err := goxformat.File(file, options); err != nil {
+					if _, err := glippyformat.File(file, options); err != nil {
 						b.Fatal(err)
 					}
 				}
@@ -108,7 +108,7 @@ func BenchmarkGoxFormatManyClassicLoops(b *testing.B) {
 	}
 }
 
-func BenchmarkGoxEditorStdin(b *testing.B) {
+func BenchmarkGlippyEditorStdin(b *testing.B) {
 	path, err := filepath.Abs("testdata/workload/hostile.go")
 	if err != nil {
 		b.Fatal(err)
@@ -387,7 +387,7 @@ func BenchmarkPackagesLoadSyntaxColdBuildCache(b *testing.B) {
 
 	for b.Loop() {
 		b.StopTimer()
-		cache, err := os.MkdirTemp("", "gox-package-load-cold-")
+		cache, err := os.MkdirTemp("", "glippy-package-load-cold-")
 		if err != nil {
 			b.Fatal(err)
 		}

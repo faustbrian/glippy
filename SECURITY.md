@@ -13,7 +13,7 @@ here.
 
 Security reporters MUST use a private channel. The preferred channel is
 GitHub's
-[private vulnerability report](https://github.com/faustbrian/gox/security/advisories/new).
+[private vulnerability report](https://github.com/faustbrian/glippy/security/advisories/new).
 Reporters MUST NOT disclose a suspected vulnerability in a public issue,
 discussion, pull request, commit, or other public channel before coordinated
 disclosure.
@@ -25,7 +25,7 @@ establishing a private channel; the report itself MUST remain private.
 
 A useful report SHOULD include:
 
-- the affected Gox version or complete commit ID;
+- the affected Glippy version or complete commit ID;
 - operating system, architecture, Go source version, and relevant filesystem;
 - the smallest reproduction that does not disclose unrelated private source;
 - expected and observed behavior;
@@ -75,7 +75,7 @@ The reporter and maintainer SHOULD keep technical details private until a fix
 or documented mitigation is available to users of supported releases. A
 confirmed vulnerability MAY receive a GitHub Security Advisory, CVE, release
 note, credit, and coordinated publication date. Credit MUST follow the
-reporter's stated preference. Gox MUST NOT publish reporter identity or private
+reporter's stated preference. Glippy MUST NOT publish reporter identity or private
 report contents without permission, except when legally required.
 
 Security fixes MUST pass the narrowest applicable regression and release gates

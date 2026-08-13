@@ -109,7 +109,7 @@ func (s OptionSet) Strings(name string) ([]string, bool) {
 
 // CanonicalBytes returns one deterministic cache identity for this option set.
 func (s OptionSet) CanonicalBytes() []byte {
-	encoded := []byte("gox-rule-options-v1")
+	encoded := []byte("glippy-rule-options-v1")
 	names := make([]string, 0, len(s.values))
 	for name := range s.values {
 		names = append(names, name)

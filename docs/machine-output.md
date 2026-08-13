@@ -1,15 +1,15 @@
 # Machine Output Reference
 
-Gox exposes schema-version-1 JSON for path-based formatter checks and writes,
+Glippy exposes schema-version-1 JSON for path-based formatter checks and writes,
 lint checks and fixes, and the combined non-mutating check. Select it with
 `--reporter=json`:
 
 ```sh
-gox fmt --check --reporter=json ./...
-gox fmt --write --reporter=json ./...
-gox lint --reporter=json ./...
-gox lint --fix --reporter=json ./...
-gox check --reporter=json ./...
+glippy fmt --check --reporter=json ./...
+glippy fmt --write --reporter=json ./...
+glippy lint --reporter=json ./...
+glippy lint --fix --reporter=json ./...
+glippy check --reporter=json ./...
 ```
 
 JSON is unavailable when standard output belongs to formatted source or a
@@ -45,7 +45,7 @@ operation: formatter reports use `check` or `write`; lint reports use `check`
 or `fix`; combined reports use `check`. An invalid invocation that requested
 JSON uses `invalid` where the command can identify that mode safely.
 
-`summary.complete` says whether Gox completed the selected work and constructed
+`summary.complete` says whether Glippy completed the selected work and constructed
 the report from every result available to that invocation. It is not a success
 flag. A complete report may contain findings or package prerequisite errors.
 An incomplete report may retain files processed before cancellation or
@@ -338,11 +338,11 @@ typed prerequisite channels. Its summary replaces lint fix counts with
 
 `format_status` is `unchanged` or `different`. Formatting and analysis are
 bound to the same source path and digest; a mismatch is an internal error, not
-a report Gox silently combines.
+a report Glippy silently combines.
 
 ## Determinism And Compatibility
 
-Gox orders files by normalized path. Diagnostics, suppression records, package
+Glippy orders files by normalized path. Diagnostics, suppression records, package
 prerequisites, source problems, and fix dispositions use stable source- and
 identity-based ordering within their channels. Object field order is stable in
 the current encoder, but consumers should bind fields by name rather than use

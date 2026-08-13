@@ -3,9 +3,10 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/config"
+	"github.com/faustbrian/glippy/internal/config"
 )
 
 func TestDiscoverSelectsConfigurationAtNearestProjectBoundary(t *testing.T) {
@@ -25,6 +26,82 @@ func TestDiscoverSelectsConfigurationAtNearestProjectBoundary(t *testing.T) {
 	if selection.Root != root || selection.Path != configurationPath || selection.Explicit {
 		t.Fatalf("Discover() = %#v, want root and configuration at %q", selection, root)
 	}
+}
+
+func TestDiscoverSupportsOneWindowOfLegacyConfigurationCompatibility(t *testing.T) {
+	t.Parallel()
+
+	t.Run(
+		"legacy fallback",
+		func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			writeTestFile(t, filepath.Join(root, "go.mod"))
+			legacyPath := filepath.Join(root, config.LegacyFilename)
+			writeTestFile(t, legacyPath)
+			inputPath := filepath.Join(root, "source.go")
+			writeTestFile(t, inputPath)
+
+			selection, err := config.Discover(inputPath, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if selection.Path != legacyPath {
+				t.Fatalf(
+					"Discover() path = %q, want legacy fallback %q",
+					selection.Path,
+					legacyPath,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"canonical and legacy conflict",
+		func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			writeTestFile(t, filepath.Join(root, "go.mod"))
+			writeTestFile(t, filepath.Join(root, config.Filename))
+			writeTestFile(t, filepath.Join(root, config.LegacyFilename))
+			inputPath := filepath.Join(root, "source.go")
+			writeTestFile(t, inputPath)
+
+			_, err := config.Discover(inputPath, "")
+			if err == nil ||
+				!strings.Contains(err.Error(), "both .glippy.toml and .gox.toml") {
+				t.Fatalf(
+					"Discover() error = %v, want deterministic identity conflict",
+					err,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"explicit selection bypasses automatic conflict",
+		func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			writeTestFile(t, filepath.Join(root, "go.mod"))
+			canonicalPath := filepath.Join(root, config.Filename)
+			writeTestFile(t, canonicalPath)
+			writeTestFile(t, filepath.Join(root, config.LegacyFilename))
+			inputPath := filepath.Join(root, "source.go")
+			writeTestFile(t, inputPath)
+
+			selection, err := config.Discover(inputPath, canonicalPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if selection.Path != canonicalPath || !selection.Explicit {
+				t.Fatalf(
+					"Discover() = %#v, want exact explicit canonical path",
+					selection,
+				)
+			}
+		},
+	)
 }
 
 func TestDiscoverSearchesForConfigurationOnlyAtOrAboveBoundary(t *testing.T) {

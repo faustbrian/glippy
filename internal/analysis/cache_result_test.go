@@ -12,9 +12,9 @@ import (
 	goanalysis "golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 
-	"github.com/faustbrian/gox/internal/cache"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 type nativeCacheTestRule struct {
@@ -343,7 +343,7 @@ func TestPreparePackageCachePlanRejectsAmbientGoEnvironment(t *testing.T) {
 		BuildGoVersion: "go1.26.5",
 		SourceGoVersion: "1.26",
 		Configuration: cache.DigestOf([]byte("configuration")),
-		FormatterMode: "gox-v1",
+		FormatterMode: "glippy-v1",
 	}
 	selection := []rules.Selection{
 		{ID: "cache-rule", Severity: rules.SeverityWarn, Requirement: rules.RequireTypes},
@@ -401,7 +401,7 @@ func TestPreparePackageCachePlanDerivesResolvedRuleOptions(t *testing.T) {
 		BuildGoVersion: "go1.26.5",
 		SourceGoVersion: "1.26",
 		Configuration: cache.DigestOf([]byte("configuration")),
-		FormatterMode: "gox-v1",
+		FormatterMode: "glippy-v1",
 	}
 	loadOptions := PackageLoadOptions{
 		Env: []string{"GOENV=off", "CGO_ENABLED=0"},

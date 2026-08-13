@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestIneffectiveBreakReportsFinalUnlabeledBreaksInsideLoopSwitchesAndSelects(t *testing.T) {
@@ -123,7 +123,7 @@ func run() {
 	for {
 		switch {
 		default:
-			//gox:ignore ineffective-break -- intentional switch-only exit
+			//glippy:ignore ineffective-break -- intentional switch-only exit
 			break
 		}
 	}

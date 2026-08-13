@@ -9,7 +9,7 @@ import (
 // configuration. It excludes source spelling, comments, and cache lifecycle
 // policy while retaining every value that can affect formatting or analysis.
 func (c Config) CanonicalBytes() []byte {
-	encoded := []byte("gox-configuration-v1")
+	encoded := []byte("glippy-configuration-v1")
 	encoded = binary.AppendVarint(encoded, int64(c.Version))
 	encoded = binary.AppendVarint(encoded, int64(c.Format.LineWidth))
 	encoded = binary.AppendVarint(encoded, int64(c.Format.TabWidth))

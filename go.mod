@@ -1,4 +1,4 @@
-module github.com/faustbrian/gox
+module github.com/faustbrian/glippy
 
 go 1.26.0
 

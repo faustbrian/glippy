@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestSourceSyntaxViewsCannotMutateStoredState(t *testing.T) {
@@ -378,7 +378,7 @@ func TestLoadFragmentKeepsSyntheticWrappersOutsideThePhysicalLedger(t *testing.T
 							item.Range,
 						)
 					}
-					if item.Raw == "package" || item.Raw == "goxfragment" {
+					if item.Raw == "package" || item.Raw == "glippyfragment" {
 						t.Fatalf(
 							"physical token ledger contains synthetic token %q",
 							item.Raw,
@@ -468,19 +468,19 @@ func TestLoadFragmentRejectsBoundaryEscapeAndWrapperReliance(t *testing.T) {
 		{
 			name: "statement wrapper declaration",
 			kind: source.FragmentStatement,
-			input: "goxfragment()",
+			input: "glippyfragment()",
 			wantOffset: 0,
 		},
 		{
 			name: "statement wrapper used as map key",
 			kind: source.FragmentStatement,
-			input: "_ = map[func()]int{goxfragment: 1}",
+			input: "_ = map[func()]int{glippyfragment: 1}",
 			wantOffset: len("_ = map[func()]int{"),
 		},
 		{
 			name: "ambiguous statement wrapper key",
 			kind: source.FragmentStatement,
-			input: "_ = T{goxfragment: 1}",
+			input: "_ = T{glippyfragment: 1}",
 			wantOffset: len("_ = T{"),
 		},
 	}
@@ -513,7 +513,7 @@ func TestLoadFragmentRejectsBoundaryEscapeAndWrapperReliance(t *testing.T) {
 						test.wantOffset,
 					)
 				}
-				if strings.Contains(err.Error(), "goxfragment") {
+				if strings.Contains(err.Error(), "glippyfragment") {
 					t.Fatalf(
 						"LoadFragment() error exposed synthetic identifier: %q",
 						err,
@@ -531,8 +531,8 @@ func TestLoadFragmentRejectsBoundaryEscapeAndWrapperReliance(t *testing.T) {
 
 	for _, input := range
 		[]string{
-			"goxfragment := func(){}; goxfragment()",
-			"_ = struct{ goxfragment int }{goxfragment: 1}",
+			"glippyfragment := func(){}; glippyfragment()",
+			"_ = struct{ glippyfragment int }{glippyfragment: 1}",
 		} {
 		fragment, err := source.LoadFragment(
 			"stdin.go",
@@ -569,7 +569,7 @@ func TestLoadFragmentMapsParseErrorsToPhysicalInput(t *testing.T) {
 	if !strings.Contains(err.Error(), "stdin.go:2:1") {
 		t.Fatalf("LoadFragment() error = %q, want physical line and column", err)
 	}
-	if strings.Contains(err.Error(), "goxfragment") {
+	if strings.Contains(err.Error(), "glippyfragment") {
 		t.Fatalf("LoadFragment() error exposed synthetic identifier: %q", err)
 	}
 }
@@ -754,7 +754,7 @@ func TestDirectiveCorpusCoversEveryPrototypeDirectiveClass(t *testing.T) {
 		source.DirectiveGoGenerate,
 		source.DirectiveCompiler,
 		source.DirectiveLine,
-		source.DirectiveGoxSuppression,
+		source.DirectiveGlippySuppression,
 	}
 	got := make([]source.DirectiveKind, 0, len(file.Directives()))
 	for _, directive := range file.Directives() {
@@ -851,7 +851,7 @@ func TestEquivalenceRejectsDirectiveLineAnchorMovement(t *testing.T) {
 	beforeFile, err := source.Load(
 		"directive.go",
 		[]byte(
-			"package directive\nfunc run(){ //gox:ignore example because ownership matters\nwork()}\n",
+			"package directive\nfunc run(){ //glippy:ignore example because ownership matters\nwork()}\n",
 		),
 	)
 	if err != nil {
@@ -860,7 +860,7 @@ func TestEquivalenceRejectsDirectiveLineAnchorMovement(t *testing.T) {
 	afterFile, err := source.Load(
 		"directive.go",
 		[]byte(
-			"package directive\nfunc run(){\n//gox:ignore example because ownership matters\nwork()}\n",
+			"package directive\nfunc run(){\n//glippy:ignore example because ownership matters\nwork()}\n",
 		),
 	)
 	if err != nil {
@@ -873,7 +873,7 @@ func TestEquivalenceRejectsDirectiveLineAnchorMovement(t *testing.T) {
 	beforeFragment, err := source.LoadFragment(
 		"directive.go",
 		source.FragmentStatement,
-		[]byte("if ready { //gox:ignore example because ownership matters\nwork()}"),
+		[]byte("if ready { //glippy:ignore example because ownership matters\nwork()}"),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -881,7 +881,7 @@ func TestEquivalenceRejectsDirectiveLineAnchorMovement(t *testing.T) {
 	afterFragment, err := source.LoadFragment(
 		"directive.go",
 		source.FragmentStatement,
-		[]byte("if ready {\n//gox:ignore example because ownership matters\nwork()}"),
+		[]byte("if ready {\n//glippy:ignore example because ownership matters\nwork()}"),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -893,7 +893,7 @@ func TestEquivalenceRejectsDirectiveLineAnchorMovement(t *testing.T) {
 	adjacentFile, err := source.Load(
 		"directive.go",
 		[]byte(
-			"package directive\nfunc run(){\n//gox:ignore example because ownership matters\nwork()}\n",
+			"package directive\nfunc run(){\n//glippy:ignore example because ownership matters\nwork()}\n",
 		),
 	)
 	if err != nil {
@@ -902,7 +902,7 @@ func TestEquivalenceRejectsDirectiveLineAnchorMovement(t *testing.T) {
 	blankLineFile, err := source.Load(
 		"directive.go",
 		[]byte(
-			"package directive\nfunc run(){\n//gox:ignore example because ownership matters\n\nwork()}\n",
+			"package directive\nfunc run(){\n//glippy:ignore example because ownership matters\n\nwork()}\n",
 		),
 	)
 	if err != nil {
@@ -915,7 +915,7 @@ func TestEquivalenceRejectsDirectiveLineAnchorMovement(t *testing.T) {
 	indentedFile, err := source.Load(
 		"directive.go",
 		[]byte(
-			"package directive\nfunc run(){\n\t//gox:ignore example because ownership matters\nwork()}\n",
+			"package directive\nfunc run(){\n\t//glippy:ignore example because ownership matters\nwork()}\n",
 		),
 	)
 	if err != nil {

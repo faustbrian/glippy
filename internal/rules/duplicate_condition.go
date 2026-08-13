@@ -7,7 +7,7 @@ import (
 	"go/format"
 	"go/token"
 
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 type duplicateConditionRule struct{}

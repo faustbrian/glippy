@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 // ErrStale reports that a source path no longer identifies the bytes read.
@@ -315,7 +315,7 @@ func createTemporary(boundary *os.Root, directory, base string) (string, *os.Fil
 		}
 		name := filepath.Join(
 			directory,
-			"." + base + ".gox-" + hex.EncodeToString(random[:]),
+			"." + base + ".glippy-" + hex.EncodeToString(random[:]),
 		)
 		file, err := boundary.OpenFile(name, os.O_WRONLY | os.O_CREATE | os.O_EXCL, 0o600)
 		if err == nil {

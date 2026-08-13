@@ -5,7 +5,7 @@
 
 ## Context
 
-Gox v0.1 selected exactly one lint preset. That prevented a project from using
+Glippy v0.1 selected exactly one lint preset. That prevented a project from using
 the correctness default together with suspicious, performance, complexity, or
 style policy without repeating every additional rule as an override. It also
 left no concise continuous-integration equivalent to Clippy's warning denial.
@@ -15,13 +15,13 @@ for effectively no false positives, suspicious identifies likely mistakes,
 performance and complexity identify credible costs or needless structure,
 style owns idiomatic code, pedantic is intentionally opinionated, and
 restriction is chosen rule by rule rather than enabled wholesale. PHPStan's
-strict identifiers and configuration failures reinforce Gox's existing exact
+strict identifiers and configuration failures reinforce Glippy's existing exact
 rule IDs and typed schema; opaque numeric levels do not communicate policy well
-enough for Gox.
+enough for Glippy.
 
 ## Decision
 
-Schema version 1 accepts an order-independent `lint.presets` list. Gox unions
+Schema version 1 accepts an order-independent `lint.presets` list. Glippy unions
 rules belonging to any selected group, applies explicit `lint.rules`
 overrides, and then optionally promotes every remaining warning to an error
 with `lint.warnings-as-errors`. Both decisions enter deterministic
@@ -37,7 +37,7 @@ or API contract exists.
 
 Formatting remains outside lint policy. No preset may add line length,
 spacing, brace placement, wrapping, or another layout diagnostic owned by
-`gox fmt`.
+`glippy fmt`.
 
 ## Alternatives
 

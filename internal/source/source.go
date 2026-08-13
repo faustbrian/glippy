@@ -96,7 +96,8 @@ const (
 	DirectiveCompiler
 	DirectiveLine
 	DirectiveGenerated
-	DirectiveGoxSuppression
+	DirectiveGlippySuppression
+	DirectiveLegacyGoxSuppression
 	DirectiveExternalSuppression
 	DirectiveCgoPreamble
 )
@@ -507,7 +508,9 @@ func directiveLineAnchors(
 		if err != nil {
 			return nil, err
 		}
-		if directive.Kind != DirectiveGoxSuppression && beforeBreaks == 2 {
+		if directive.Kind != DirectiveGlippySuppression &&
+			directive.Kind != DirectiveLegacyGoxSuppression &&
+			beforeBreaks == 2 {
 			beforeBreaks = 1
 		}
 		afterBreaks, err := boundedLineBreaks(physical, directive.Range.End, nextStart)
@@ -986,8 +989,10 @@ func directiveKind(raw string) (DirectiveKind, bool) {
 		return DirectiveGoEmbed, true
 	case strings.HasPrefix(raw, "//line "), strings.HasPrefix(raw, "/*line "):
 		return DirectiveLine, true
+	case strings.HasPrefix(raw, "//glippy:"):
+		return DirectiveGlippySuppression, true
 	case strings.HasPrefix(raw, "//gox:"):
-		return DirectiveGoxSuppression, true
+		return DirectiveLegacyGoxSuppression, true
 	case isNolintDirective(raw):
 		return DirectiveExternalSuppression, true
 	case strings.HasPrefix(raw, "//go:"):

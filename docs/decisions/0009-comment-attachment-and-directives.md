@@ -13,7 +13,7 @@ directive semantics.
 
 The project-owned Phase 1 corpus now binds exact width-60 output for build
 constraints, generated markers, cgo preambles, `//go:embed`, `//go:generate`,
-compiler directives including `//go:linkname`, `//line`, and `//gox:`
+compiler directives including `//go:linkname`, `//line`, and `//glippy:`
 suppressions. The corpus reparses, is byte-idempotent, preserves normalized
 syntax and directive identity, and is a gofmt fixed point under the recorded
 prototype toolchain. Focused equivalence tests additionally reject a suppression

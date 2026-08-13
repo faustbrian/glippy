@@ -1,6 +1,6 @@
 # Suppressions
 
-Gox suppressions waive one exact lint rule over one explicit physical source
+Glippy suppressions waive one exact lint rule over one explicit physical source
 scope. They do not disable formatting, parser or type errors, configuration
 errors, other rules, or every rule at once.
 
@@ -11,18 +11,23 @@ diagnostic.
 ## Syntax
 
 Suppression directives are exact line comments with no space between `//` and
-`gox:`. Each directive names exactly one registered rule ID.
+`glippy:`. Each directive names exactly one registered rule ID.
 
 | Directive | Scope |
 | --- | --- |
-| `//gox:ignore rule-id [-- reason]` | Immediately following physical line |
-| `//gox:ignore-line rule-id [-- reason]` | Directive's physical line |
-| `//gox:ignore-start rule-id [-- reason]` | Until the matching range end |
-| `//gox:ignore-end rule-id` | Ends the open range for the same rule |
-| `//gox:ignore-file rule-id [-- reason]` | Complete file; must appear before `package` |
+| `//glippy:ignore rule-id [-- reason]` | Immediately following physical line |
+| `//glippy:ignore-line rule-id [-- reason]` | Directive's physical line |
+| `//glippy:ignore-start rule-id [-- reason]` | Until the matching range end |
+| `//glippy:ignore-end rule-id` | Ends the open range for the same rule |
+| `//glippy:ignore-file rule-id [-- reason]` | Complete file; must appear before `package` |
 
 There is no list syntax and no disable-all directive. Use a separate comment
 for each waived rule.
+
+During the v0.2 compatibility window, legacy `//gox:` forms retain the same
+scope and suppression behavior but always produce a deterministic
+`legacy-directive` finding. Replace the prefix with `//glippy:`; there is no
+flag that silently hides this migration finding.
 
 ## Examples
 
@@ -33,7 +38,7 @@ func run(ready bool) {
 	for {
 		switch {
 		case ready:
-			//gox:ignore ineffective-break -- retained for protocol compatibility
+			//glippy:ignore ineffective-break -- retained for protocol compatibility
 			break
 		}
 	}
@@ -47,7 +52,7 @@ func run(ready bool) {
 	for {
 		switch {
 		case ready:
-			break //gox:ignore-line ineffective-break -- generated decision table
+			break //glippy:ignore-line ineffective-break -- generated decision table
 		}
 	}
 }
@@ -57,7 +62,7 @@ Suppress one rule within an explicit range:
 
 ```go
 func run(first, second bool) {
-	//gox:ignore-start ineffective-break -- legacy state machine
+	//glippy:ignore-start ineffective-break -- legacy state machine
 	for {
 		switch {
 		case first:
@@ -68,7 +73,7 @@ func run(first, second bool) {
 			break
 		}
 	}
-	//gox:ignore-end ineffective-break
+	//glippy:ignore-end ineffective-break
 }
 ```
 
@@ -78,7 +83,7 @@ the matching start owns the waiver metadata.
 A file-wide suppression must precede the package clause:
 
 ```go
-//gox:ignore-file ineffective-break -- generated compatibility adapter
+//glippy:ignore-file ineffective-break -- generated compatibility adapter
 package adapter
 ```
 
@@ -94,7 +99,7 @@ When more than one same-rule directive could own a diagnostic, the first valid
 directive in source order owns it. Other matching directives remain unused
 unless they suppress a different diagnostic.
 
-Gox reports every valid suppression that owns no diagnostic as unused. This
+Glippy reports every valid suppression that owns no diagnostic as unused. This
 makes obsolete and redundant waivers visible in `lint` and `check` output.
 
 ## Reasons
@@ -102,7 +107,7 @@ makes obsolete and redundant waivers visible in `lint` and `check` output.
 `--` separates the rule ID from a human reason:
 
 ```go
-//gox:ignore ineffective-break -- required by protocol version 1
+//glippy:ignore ineffective-break -- required by protocol version 1
 ```
 
 Reasons are optional by default. A present separator must be followed by a
@@ -123,11 +128,11 @@ and do not suppress diagnostics. Range ends remain reasonless.
 The first reason field can record a calendar expiry:
 
 ```go
-//gox:ignore ineffective-break -- expires=2026-09-01 remove after migration
+//glippy:ignore ineffective-break -- expires=2026-09-01 remove after migration
 ```
 
 The date must be a real `YYYY-MM-DD` date and must be followed by a human
-reason. Gox never reads the wall clock. A project chooses the deterministic
+reason. Glippy never reads the wall clock. A project chooses the deterministic
 evaluation date in configuration:
 
 ```toml
@@ -143,7 +148,7 @@ structured expiry metadata without deciding that it has expired.
 
 ## Problems And Findings
 
-Gox reports these suppression problems in source order:
+Glippy reports these suppression problems in source order:
 
 - malformed syntax or a missing rule ID;
 - an unknown rule ID;
@@ -167,7 +172,7 @@ does not expose suppressed diagnostic bodies by default.
 
 The formatter preserves suppression comment text and verifies ownership using
 physical token relationships. If formatting would move a structurally valid
-directive to a different target, Gox rejects the complete output instead of
+directive to a different target, Glippy rejects the complete output instead of
 returning or writing altered ownership.
 
 Lint fixes use the same source-versioned suppression index. Suppressed

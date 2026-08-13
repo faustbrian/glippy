@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	fixengine "github.com/faustbrian/gox/internal/fix"
-	goxformat "github.com/faustbrian/gox/internal/format"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	fixengine "github.com/faustbrian/glippy/internal/fix"
+	glippyformat "github.com/faustbrian/glippy/internal/format"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestCoordinateAppliesSafeNonOverlappingFixesAndFormatsResult(t *testing.T) {
@@ -230,7 +230,7 @@ func TestCoordinateRollsBackFixWhenFormatterWouldChangeSuppressionOwnership(t *t
 	t.Parallel()
 
 	input := "package sample\nfunc run(ready bool) {\n" +
-		"//gox:ignore duplicate-condition -- legacy branch\n" +
+		"//glippy:ignore duplicate-condition -- legacy branch\n" +
 		"if ready { use() } else if ready { retry() }\n}\nfunc use(){}\nfunc retry(){}\n"
 	file := loadSource(t, input)
 	result, err := fixengine.Coordinate(
@@ -589,6 +589,6 @@ func edit(input, old, replacement string) rules.Edit {
 
 func fixOptions() fixengine.Options {
 	return fixengine.Options{
-		Format: goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+		Format: glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
 	}
 }

@@ -4,24 +4,24 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/baseline"
-	fixengine "github.com/faustbrian/gox/internal/fix"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
-	"github.com/faustbrian/gox/internal/suppressions"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/baseline"
+	fixengine "github.com/faustbrian/glippy/internal/fix"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
+	"github.com/faustbrian/glippy/internal/suppressions"
 )
 
 func TestRenderLintTextUsesPhysicalLocationsAndNoSourceExcerpt(t *testing.T) {
 	t.Parallel()
 
-	input := "package sample\nfunc run() {\n\ttarget()\n}\n//gox:ignore call-rule -- legacy call\n"
+	input := "package sample\nfunc run() {\n\ttarget()\n}\n//glippy:ignore call-rule -- legacy call\n"
 	file, err := source.Load("/project/source.go", []byte(input))
 	if err != nil {
 		t.Fatal(err)
 	}
 	targetStart := strings.Index(input, "target()")
-	directiveStart := strings.Index(input, "//gox:")
+	directiveStart := strings.Index(input, "//glippy:")
 	result := analysis.Result{
 		Path: file.Path(),
 		Digest: file.Digest(),

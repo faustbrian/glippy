@@ -14,9 +14,9 @@ func TestRunCompletionRendersSupportedShellsWithoutProjectInput(t *testing.T) {
 		shell string
 		marker string
 	}{
-		{shell: "bash", marker: "complete -F _gox_completion gox"},
-		{shell: "zsh", marker: "#compdef gox"},
-		{shell: "fish", marker: "complete -c gox -f"},
+		{shell: "bash", marker: "complete -F _glippy_completion glippy"},
+		{shell: "zsh", marker: "#compdef glippy"},
+		{shell: "fish", marker: "complete -c glippy -f"},
 	}
 	for _, test := range tests {
 		test := test
@@ -68,7 +68,7 @@ func TestRunCompletionRejectsInvalidInvocation(t *testing.T) {
 		exitCode := Run(arguments, failingReader{}, &stdout, &stderr)
 		if exitCode != ExitInvalidInvocation ||
 			stdout.Len() != 0 ||
-			stderr.String() != "gox: expected 'completion <bash|zsh|fish>'\n" {
+			stderr.String() != "glippy: expected 'completion <bash|zsh|fish>'\n" {
 			t.Fatalf(
 				"Run(%q) = exit %d, stdout %q, stderr %q",
 				arguments,

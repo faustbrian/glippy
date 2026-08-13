@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/faustbrian/gox/internal/cli"
+	"github.com/faustbrian/glippy/internal/cli"
 )
 
 func main() {

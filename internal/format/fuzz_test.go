@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	goxformat "github.com/faustbrian/gox/internal/format"
-	"github.com/faustbrian/gox/internal/source"
+	glippyformat "github.com/faustbrian/glippy/internal/format"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func FuzzFormatValidSource(f *testing.F) {
@@ -29,12 +29,12 @@ func FuzzFormatValidSource(f *testing.F) {
 			if err != nil {
 				return
 			}
-			options := goxformat.Options{
+			options := glippyformat.Options{
 				Width: 20 + int(rawWidth % 101),
 				TabWidth: 8,
 				FitBudget: 1_000,
 			}
-			formatted, err := goxformat.File(file, options)
+			formatted, err := glippyformat.File(file, options)
 			if err != nil {
 				if len(formatted) != 0 {
 					t.Fatalf(
@@ -48,7 +48,7 @@ func FuzzFormatValidSource(f *testing.F) {
 			if err != nil {
 				t.Fatalf("formatted output does not parse: %v", err)
 			}
-			again, err := goxformat.File(reparsed, options)
+			again, err := glippyformat.File(reparsed, options)
 			if err != nil {
 				t.Fatalf("repeat formatting failed: %v", err)
 			}
@@ -84,12 +84,12 @@ func FuzzFormatValidFragment(f *testing.F) {
 			if err != nil {
 				return
 			}
-			options := goxformat.Options{
+			options := glippyformat.Options{
 				Width: 20 + int(rawWidth % 101),
 				TabWidth: 8,
 				FitBudget: 1_000,
 			}
-			formatted, err := goxformat.Fragment(fragment, options)
+			formatted, err := glippyformat.Fragment(fragment, options)
 			if err != nil {
 				if len(formatted) != 0 {
 					t.Fatalf(
@@ -103,7 +103,7 @@ func FuzzFormatValidFragment(f *testing.F) {
 			if err != nil {
 				t.Fatalf("formatted fragment does not parse: %v", err)
 			}
-			again, err := goxformat.Fragment(reparsed, options)
+			again, err := glippyformat.Fragment(reparsed, options)
 			if err != nil {
 				t.Fatalf("repeat fragment formatting failed: %v", err)
 			}

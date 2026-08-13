@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func FuzzSourceLedgerReconstruction(f *testing.F) {

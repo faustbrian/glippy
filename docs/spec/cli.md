@@ -9,7 +9,7 @@ here.
 [RFC2119]: https://www.rfc-editor.org/rfc/rfc2119
 [RFC8174]: https://www.rfc-editor.org/rfc/rfc8174
 
-The current product and binary name is `gox`. ADR 0001 requires one final
+The current product and binary name is `glippy`. ADR 0001 requires one final
 collision and trademark audit before the first public tag.
 The user-facing summary of this normative contract is the
 [`command-reference.md`](../command-reference.md) guide.
@@ -17,26 +17,26 @@ The user-facing summary of this normative contract is the
 ## Commands
 
 ```text
-gox fmt [paths...]
-gox fmt --write [paths...]
-gox fmt --check [paths...]
-gox fmt --diff [paths...]
-gox lint [paths...]
-gox lint --fix [paths...]
-gox lint --generate-baseline=<path> [paths...]
-gox check [paths...]
-gox explain <rule>
-gox version
-gox completion <bash|zsh|fish>
+glippy fmt [paths...]
+glippy fmt --write [paths...]
+glippy fmt --check [paths...]
+glippy fmt --diff [paths...]
+glippy lint [paths...]
+glippy lint --fix [paths...]
+glippy lint --generate-baseline=<path> [paths...]
+glippy check [paths...]
+glippy explain <rule>
+glippy version
+glippy completion <bash|zsh|fish>
 ```
 
-`gox version` MUST accept no operands or flags and MUST write exactly
-`gox <version>\n` to standard output. Version resolution MUST prefer explicit
+`glippy version` MUST accept no operands or flags and MUST write exactly
+`glippy <version>\n` to standard output. Version resolution MUST prefer explicit
 link-time release metadata, then a non-development Go module build version, and
 finally `devel`. The command MUST NOT read source or configuration files or
 modify the filesystem.
 
-`gox completion <bash|zsh|fish>` MUST accept exactly one supported shell and
+`glippy completion <bash|zsh|fish>` MUST accept exactly one supported shell and
 write one deterministic completion script to standard output. The script MUST
 cover the complete command surface, command-specific flags and enum values,
 filesystem operands, supported shells, and every rule ID in the compiled
@@ -47,7 +47,7 @@ cancellation and output failures retain the common exit categories.
 Installation is documented in
 [`shell-completion.md`](../shell-completion.md).
 
-`gox explain <rule>` MUST accept exactly one rule ID and render the complete
+`glippy explain <rule>` MUST accept exactly one rule ID and render the complete
 human documentation derived from that rule's immutable compiled metadata. It
 MUST NOT discover project files or load configuration. Unknown rule IDs and
 invalid argument counts exit as invalid invocation without writing stdout.
@@ -75,7 +75,7 @@ unified differences for changed files in normalized path order, omit unchanged
 files, and use the normalized source path plus `.orig` as the old label and the
 source path as the new label. Labels containing tabs or line breaks MUST be
 quoted. A changed selection exits with findings; an already formatted selection
-exits successfully without output. Matching MUST remain bounded: Gox uses
+exits successfully without output. Matching MUST remain bounded: Glippy uses
 unique patience anchors, a capped LCS for remaining regions, and a complete
 delete-and-insert region when a work ceiling is reached.
 
@@ -316,7 +316,7 @@ caller-owned store across the package run, apply the resolved bounded-pruning
 policy after every non-canceled run, remove only canonical publication
 temporaries strictly older than 24 hours, and close the store before reporting.
 Configuration, cache-root, open, prune, and close failures MUST be visible tool
-failures; Gox MUST NOT present a cache-maintenance failure as cached success.
+failures; Glippy MUST NOT present a cache-maintenance failure as cached success.
 Syntax-only commands and every formatter or fix path MUST remain independent of
 the persistent analysis cache. An invalid cache-root policy is an invalid
 invocation, cache filesystem failures use the filesystem category, and cache
@@ -367,7 +367,7 @@ operations are scoped through the selected project root. On platforms where
 cannot redirect those operations outside the authorized tree.
 
 Common rename APIs cannot condition replacement on the destination still
-having a particular inode. Gox revalidates immediately before rename and
+having a particular inode. Glippy revalidates immediately before rename and
 refuses observed source or symlink changes, but it does not claim protection
 against a path change in the final validation-to-rename interval. A directory
 sync failure is reported as a filesystem error after rename; in that case the
@@ -385,7 +385,7 @@ If JSON construction, encoding, or stream output fails after replacements,
 stderr MUST name every completed or possibly completed replacement, and the
 invocation MUST return the applicable failure category.
 
-Gox MUST advertise runtime support only for macOS and Linux. It MUST advertise
+Glippy MUST advertise runtime support only for macOS and Linux. It MUST advertise
 write and fix mode support only for operating-system, architecture, and local
 filesystem combinations with runtime replacement evidence. The current Phase 2
 evidence covers Darwin arm64 on APFS and Linux arm64 on overlayfs. Windows and
@@ -393,7 +393,7 @@ all other operating systems MUST remain unsupported unless a later maintainer
 decision changes the platform policy and corresponding runtime evidence passes.
 
 Network, distributed, and userspace filesystems MUST remain outside the
-supported write/fix boundary until separately admitted. Gox MUST NOT claim
+supported write/fix boundary until separately admitted. Glippy MUST NOT claim
 forced-power-loss durability. A successful write means the documented sync and
 replacement sequence completed under the operating system contract; it does not
 extend that contract to storage hardware or unverified filesystem semantics.

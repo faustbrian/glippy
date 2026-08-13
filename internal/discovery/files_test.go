@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/discovery"
+	"github.com/faustbrian/glippy/internal/discovery"
 )
 
 func TestGoFilesRecursesDeterministicallyWithinProjectPolicy(t *testing.T) {

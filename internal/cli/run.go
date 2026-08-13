@@ -1,4 +1,4 @@
-// Package cli owns Gox command dispatch and process-facing I/O contracts.
+// Package cli owns Glippy command dispatch and process-facing I/O contracts.
 package cli
 
 import (
@@ -13,17 +13,17 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/faustbrian/gox/internal/completion"
-	"github.com/faustbrian/gox/internal/config"
-	goxdiff "github.com/faustbrian/gox/internal/diff"
-	"github.com/faustbrian/gox/internal/discovery"
-	"github.com/faustbrian/gox/internal/filesystem"
-	goxformat "github.com/faustbrian/gox/internal/format"
-	"github.com/faustbrian/gox/internal/goversion"
-	goxreport "github.com/faustbrian/gox/internal/report"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
-	goxversion "github.com/faustbrian/gox/internal/version"
+	"github.com/faustbrian/glippy/internal/completion"
+	"github.com/faustbrian/glippy/internal/config"
+	glippydiff "github.com/faustbrian/glippy/internal/diff"
+	"github.com/faustbrian/glippy/internal/discovery"
+	"github.com/faustbrian/glippy/internal/filesystem"
+	glippyformat "github.com/faustbrian/glippy/internal/format"
+	"github.com/faustbrian/glippy/internal/goversion"
+	glippyreport "github.com/faustbrian/glippy/internal/report"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
+	glippyversion "github.com/faustbrian/glippy/internal/version"
 )
 
 const (
@@ -37,15 +37,15 @@ const (
 	ExitCanceled = 130
 )
 
-var defaultFormatOptions = goxformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000}
+var defaultFormatOptions = glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000}
 
-const formatUsage = "gox: expected 'fmt [--write|--check|--diff] [--reporter=text|json] [--config=<path>] [--stdin-filepath=<path>] [--fragment=declaration|statement|expression] [path...]'\n"
+const formatUsage = "glippy: expected 'fmt [--write|--check|--diff] [--reporter=text|json] [--config=<path>] [--stdin-filepath=<path>] [--fragment=declaration|statement|expression] [path...]'\n"
 
-const completionUsage = "gox: expected 'completion <bash|zsh|fish>'\n"
+const completionUsage = "glippy: expected 'completion <bash|zsh|fish>'\n"
 
-const explainUsage = "gox: expected 'explain <rule>'\n"
+const explainUsage = "glippy: expected 'explain <rule>'\n"
 
-const versionUsage = "gox: expected 'version'\n"
+const versionUsage = "glippy: expected 'version'\n"
 
 const maximumFormatWorkers = 8
 
@@ -54,18 +54,18 @@ type formatInvocation struct {
 	stdinFilepath string
 	configPath string
 	paths []string
-	reporter goxreport.Format
+	reporter glippyreport.Format
 	check bool
 	diff bool
 	write bool
 }
 
-// Run executes one Gox invocation against explicit process streams.
+// Run executes one Glippy invocation against explicit process streams.
 func Run(arguments []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return RunContext(context.Background(), arguments, stdin, stdout, stderr)
 }
 
-// RunContext executes one Gox invocation and observes cancellation between bounded operations.
+// RunContext executes one Glippy invocation and observes cancellation between bounded operations.
 func RunContext(
 	ctx context.Context,
 	arguments []string,
@@ -76,7 +76,7 @@ func RunContext(
 		if stderr == nil {
 			return ExitFilesystemError
 		}
-		return report(stderr, ExitFilesystemError, "gox: process streams are required\n")
+		return report(stderr, ExitFilesystemError, "glippy: process streams are required\n")
 	}
 	if len(arguments) > 0 && arguments[0] == "version" {
 		return runVersion(ctx, arguments, stdout, stderr)
@@ -87,7 +87,7 @@ func RunContext(
 			return report(
 				stderr,
 				ExitInternalError,
-				"gox completion: initialize rule registry: %v\n",
+				"glippy completion: initialize rule registry: %v\n",
 				err,
 			)
 		}
@@ -99,7 +99,7 @@ func RunContext(
 			return report(
 				stderr,
 				ExitInternalError,
-				"gox explain: initialize rule registry: %v\n",
+				"glippy explain: initialize rule registry: %v\n",
 				err,
 			)
 		}
@@ -115,7 +115,7 @@ func RunContext(
 			return report(
 				stderr,
 				ExitInternalError,
-				"gox check: initialize rule registry: %v\n",
+				"glippy check: initialize rule registry: %v\n",
 				err,
 			)
 		}
@@ -142,7 +142,7 @@ func RunContext(
 			return report(
 				stderr,
 				ExitInternalError,
-				"gox lint: initialize rule registry: %v\n",
+				"glippy lint: initialize rule registry: %v\n",
 				err,
 			)
 		}
@@ -171,7 +171,7 @@ func RunContext(
 		return report(stderr, ExitInvalidInvocation, formatUsage)
 	}
 	if ctx == nil {
-		if invocation.reporter == goxreport.JSON {
+		if invocation.reporter == glippyreport.JSON {
 			return reportFormatJSON(
 				stdout,
 				stderr,
@@ -183,10 +183,10 @@ func RunContext(
 				errors.New("context is required"),
 			)
 		}
-		return report(stderr, ExitInternalError, "gox: context is required\n")
+		return report(stderr, ExitInternalError, "glippy: context is required\n")
 	}
 	if err := ctx.Err(); err != nil {
-		if invocation.reporter == goxreport.JSON {
+		if invocation.reporter == glippyreport.JSON {
 			return reportFormatJSON(
 				stdout,
 				stderr,
@@ -198,7 +198,7 @@ func RunContext(
 				err,
 			)
 		}
-		return report(stderr, ExitCanceled, "gox: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy: %v\n", err)
 	}
 	if len(invocation.paths) > 0 {
 		if invocation.fragmentKind != 0 || invocation.stdinFilepath != "" {
@@ -214,7 +214,7 @@ func RunContext(
 			)
 		}
 		if invocation.diff {
-			if invocation.reporter == goxreport.JSON {
+			if invocation.reporter == glippyreport.JSON {
 				return reportInvalidFormatInvocation(invocation, stdout, stderr)
 			}
 			return runFormatDiff(ctx, invocation, stdout, stderr)
@@ -225,7 +225,7 @@ func RunContext(
 		if len(invocation.paths) != 1 {
 			return reportInvalidFormatInvocation(invocation, stdout, stderr)
 		}
-		if invocation.reporter == goxreport.JSON {
+		if invocation.reporter == glippyreport.JSON {
 			return reportInvalidFormatInvocation(invocation, stdout, stderr)
 		}
 		return runFormatFile(ctx, invocation, stdout, stderr)
@@ -233,27 +233,27 @@ func RunContext(
 	if invocation.check || invocation.diff || invocation.write {
 		return reportInvalidFormatInvocation(invocation, stdout, stderr)
 	}
-	if invocation.reporter == goxreport.JSON {
+	if invocation.reporter == glippyreport.JSON {
 		return reportInvalidFormatInvocation(invocation, stdout, stderr)
 	}
 	formatOptions, exitCode, err := resolveFormatOptions(invocation)
 	if err != nil {
-		return report(stderr, exitCode, "gox fmt: %v\n", err)
+		return report(stderr, exitCode, "glippy fmt: %v\n", err)
 	}
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy fmt: %v\n", err)
 	}
 	input, err := source.ReadAll(stdin)
 	if err != nil {
 		return report(
 			stderr,
 			exitCodeForError(ExitFilesystemError, err),
-			"gox fmt: read standard input: %v\n",
+			"glippy fmt: read standard input: %v\n",
 			err,
 		)
 	}
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy fmt: %v\n", err)
 	}
 	sourcePath := invocation.stdinFilepath
 	if sourcePath == "" {
@@ -266,16 +266,16 @@ func RunContext(
 		formatOptions,
 	)
 	if err != nil {
-		return report(stderr, exitCode, "gox fmt: %v\n", err)
+		return report(stderr, exitCode, "glippy fmt: %v\n", err)
 	}
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy fmt: %v\n", err)
 	}
 	if err := write(stdout, formatted); err != nil {
 		return report(
 			stderr,
 			ExitFilesystemError,
-			"gox fmt: write standard output: %v\n",
+			"glippy fmt: write standard output: %v\n",
 			err,
 		)
 	}
@@ -303,30 +303,30 @@ func runCompletion(
 		return report(stderr, ExitInvalidInvocation, completionUsage)
 	}
 	if ctx == nil {
-		return report(stderr, ExitInternalError, "gox completion: context is required\n")
+		return report(stderr, ExitInternalError, "glippy completion: context is required\n")
 	}
 	if registry == nil {
 		return report(
 			stderr,
 			ExitInternalError,
-			"gox completion: rule registry is required\n",
+			"glippy completion: rule registry is required\n",
 		)
 	}
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox completion: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy completion: %v\n", err)
 	}
 	output, err := completion.Render(shell, registry.IDs())
 	if err != nil {
-		return report(stderr, ExitInternalError, "gox completion: render: %v\n", err)
+		return report(stderr, ExitInternalError, "glippy completion: render: %v\n", err)
 	}
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox completion: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy completion: %v\n", err)
 	}
 	if err := write(stdout, output); err != nil {
 		return report(
 			stderr,
 			ExitFilesystemError,
-			"gox completion: write standard output: %v\n",
+			"glippy completion: write standard output: %v\n",
 			err,
 		)
 	}
@@ -343,31 +343,35 @@ func runExplain(
 		return report(stderr, ExitInvalidInvocation, explainUsage)
 	}
 	if ctx == nil {
-		return report(stderr, ExitInternalError, "gox explain: context is required\n")
+		return report(stderr, ExitInternalError, "glippy explain: context is required\n")
 	}
 	if registry == nil {
-		return report(stderr, ExitInternalError, "gox explain: rule registry is required\n")
+		return report(
+			stderr,
+			ExitInternalError,
+			"glippy explain: rule registry is required\n",
+		)
 	}
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox explain: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy explain: %v\n", err)
 	}
-	output, found := goxreport.RenderRuleText(registry, arguments[1])
+	output, found := glippyreport.RenderRuleText(registry, arguments[1])
 	if !found {
 		return report(
 			stderr,
 			ExitInvalidInvocation,
-			"gox explain: unknown rule %q\n",
+			"glippy explain: unknown rule %q\n",
 			arguments[1],
 		)
 	}
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox explain: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy explain: %v\n", err)
 	}
 	if err := write(stdout, output); err != nil {
 		return report(
 			stderr,
 			ExitFilesystemError,
-			"gox explain: write standard output: %v\n",
+			"glippy explain: write standard output: %v\n",
 			err,
 		)
 	}
@@ -379,16 +383,16 @@ func runVersion(ctx context.Context, arguments []string, stdout, stderr io.Write
 		return report(stderr, ExitInvalidInvocation, versionUsage)
 	}
 	if ctx == nil {
-		return report(stderr, ExitInternalError, "gox version: context is required\n")
+		return report(stderr, ExitInternalError, "glippy version: context is required\n")
 	}
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox version: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy version: %v\n", err)
 	}
-	if err := write(stdout, []byte("gox " + goxversion.Current() + "\n")); err != nil {
+	if err := write(stdout, []byte("glippy " + glippyversion.Current() + "\n")); err != nil {
 		return report(
 			stderr,
 			ExitFilesystemError,
-			"gox version: write standard output: %v\n",
+			"glippy version: write standard output: %v\n",
 			err,
 		)
 	}
@@ -396,7 +400,7 @@ func runVersion(ctx context.Context, arguments []string, stdout, stderr io.Write
 }
 
 func reportInvalidFormatInvocation(invocation formatInvocation, stdout, stderr io.Writer) int {
-	if invocation.reporter == goxreport.JSON {
+	if invocation.reporter == glippyreport.JSON {
 		return reportFormatJSON(
 			stdout,
 			stderr,
@@ -476,7 +480,7 @@ func boolCount(values ...bool) int {
 type formatTask struct {
 	file discovery.File
 	root string
-	options goxformat.Options
+	options glippyformat.Options
 }
 
 type formatTaskError struct {
@@ -498,7 +502,7 @@ func newFormatTaskError(exitCode int, format string, arguments ...any) error {
 
 func reportFormatTaskError(stderr io.Writer, err error) int {
 	exitCode := formatTaskErrorExitCode(err)
-	return report(stderr, exitCode, "gox fmt: %v\n", err)
+	return report(stderr, exitCode, "glippy fmt: %v\n", err)
 }
 
 func formatTaskErrorExitCode(err error) int {
@@ -616,10 +620,10 @@ func runFormatCheck(
 ) int {
 	tasks, exitCode, err := prepareFormatTasks(ctx, invocation)
 	if err != nil {
-		if invocation.reporter == goxreport.JSON {
+		if invocation.reporter == glippyreport.JSON {
 			return reportFormatJSON(stdout, stderr, "check", exitCode, 0, 0, nil, err)
 		}
-		return report(stderr, exitCode, "gox fmt: %v\n", err)
+		return report(stderr, exitCode, "glippy fmt: %v\n", err)
 	}
 	prepared, err := mapFormatTasks(
 		ctx,
@@ -660,7 +664,7 @@ func runFormatCheck(
 		},
 	)
 	if err != nil {
-		if invocation.reporter == goxreport.JSON {
+		if invocation.reporter == glippyreport.JSON {
 			exitCode := formatTaskErrorExitCode(err)
 			return reportFormatJSON(
 				stdout,
@@ -676,23 +680,29 @@ func runFormatCheck(
 		return reportFormatTaskError(stderr, err)
 	}
 	findings := make([]string, 0)
-	files := make([]goxreport.File, 0, len(prepared))
+	files := make([]glippyreport.File, 0, len(prepared))
 	for _, item := range prepared {
 		if item.changed {
 			findings = append(findings, item.path)
 			files = append(
 				files,
-				goxreport.File{Path: item.path, Status: goxreport.FileDifferent},
+				glippyreport.File{
+					Path: item.path,
+					Status: glippyreport.FileDifferent,
+				},
 			)
 		} else {
 			files = append(
 				files,
-				goxreport.File{Path: item.path, Status: goxreport.FileUnchanged},
+				glippyreport.File{
+					Path: item.path,
+					Status: glippyreport.FileUnchanged,
+				},
 			)
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		if invocation.reporter == goxreport.JSON {
+		if invocation.reporter == glippyreport.JSON {
 			return reportFormatJSON(
 				stdout,
 				stderr,
@@ -704,9 +714,9 @@ func runFormatCheck(
 				err,
 			)
 		}
-		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy fmt: %v\n", err)
 	}
-	if invocation.reporter == goxreport.JSON {
+	if invocation.reporter == glippyreport.JSON {
 		exitCode := ExitSuccess
 		if len(findings) > 0 {
 			exitCode = ExitFindings
@@ -726,13 +736,13 @@ func runFormatCheck(
 		return ExitSuccess
 	}
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy fmt: %v\n", err)
 	}
 	if err := write(stdout, []byte(strings.Join(findings, "\n") + "\n")); err != nil {
 		return report(
 			stderr,
 			ExitFilesystemError,
-			"gox fmt: write standard output: %v\n",
+			"glippy fmt: write standard output: %v\n",
 			err,
 		)
 	}
@@ -748,7 +758,7 @@ type preparedFormatDiff struct {
 func runFormatDiff(ctx context.Context, invocation formatInvocation, stdout, stderr io.Writer) int {
 	tasks, exitCode, err := prepareFormatTasks(ctx, invocation)
 	if err != nil {
-		return report(stderr, exitCode, "gox fmt: %v\n", err)
+		return report(stderr, exitCode, "glippy fmt: %v\n", err)
 	}
 	prepared, err := mapFormatTasks(
 		ctx,
@@ -793,9 +803,9 @@ func runFormatDiff(ctx context.Context, invocation formatInvocation, stdout, std
 	changed := false
 	for _, item := range prepared {
 		if err := ctx.Err(); err != nil {
-			return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
+			return report(stderr, ExitCanceled, "glippy fmt: %v\n", err)
 		}
-		difference := goxdiff.Unified(
+		difference := glippydiff.Unified(
 			item.path + ".orig",
 			item.path,
 			item.input,
@@ -807,14 +817,14 @@ func runFormatDiff(ctx context.Context, invocation formatInvocation, stdout, std
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy fmt: %v\n", err)
 	}
 	if output.Len() > 0 {
 		if err := write(stdout, []byte(output.String())); err != nil {
 			return report(
 				stderr,
 				ExitFilesystemError,
-				"gox fmt: write standard output: %v\n",
+				"glippy fmt: write standard output: %v\n",
 				err,
 			)
 		}
@@ -830,7 +840,7 @@ func prepareFormatTasks(
 	invocation formatInvocation,
 ) ([]formatTask, int, error) {
 	selected := make(map[string]discovery.File)
-	optionsByConfiguration := make(map[string]goxformat.Options)
+	optionsByConfiguration := make(map[string]glippyformat.Options)
 	for _, input := range invocation.paths {
 		if err := ctx.Err(); err != nil {
 			return nil, ExitCanceled, err
@@ -926,10 +936,10 @@ func runFormatWriteReported(
 ) int {
 	tasks, exitCode, err := prepareFormatTasks(ctx, invocation)
 	if err != nil {
-		if invocation.reporter == goxreport.JSON {
+		if invocation.reporter == glippyreport.JSON {
 			return reportFormatJSON(stdout, stderr, "write", exitCode, 0, 0, nil, err)
 		}
-		return report(stderr, exitCode, "gox fmt: %v\n", err)
+		return report(stderr, exitCode, "glippy fmt: %v\n", err)
 	}
 	prepared, err := mapFormatTasks(
 		ctx,
@@ -969,7 +979,7 @@ func runFormatWriteReported(
 					task.file.Path,
 				)
 			}
-			formatted, err := goxformat.File(file, task.options)
+			formatted, err := glippyformat.File(file, task.options)
 			if err != nil {
 				return preparedFormatWrite{}, &formatTaskError{
 					exitCode: ExitInternalError,
@@ -988,7 +998,7 @@ func runFormatWriteReported(
 		},
 	)
 	if err != nil {
-		if invocation.reporter == goxreport.JSON {
+		if invocation.reporter == glippyreport.JSON {
 			exitCode := formatTaskErrorExitCode(err)
 			return reportFormatJSON(
 				stdout,
@@ -1003,10 +1013,10 @@ func runFormatWriteReported(
 		}
 		return reportFormatTaskError(stderr, err)
 	}
-	files := make([]goxreport.File, len(prepared))
+	files := make([]glippyreport.File, len(prepared))
 	changedCount := 0
 	for index, item := range prepared {
-		files[index] = goxreport.File{Path: item.path, Status: goxreport.FilePending}
+		files[index] = glippyreport.File{Path: item.path, Status: glippyreport.FilePending}
 		if item.changed {
 			changedCount++
 		}
@@ -1014,7 +1024,7 @@ func runFormatWriteReported(
 	replaced := make([]string, 0, len(prepared))
 	for index, item := range prepared {
 		if err := ctx.Err(); err != nil {
-			if invocation.reporter == goxreport.JSON {
+			if invocation.reporter == glippyreport.JSON {
 				return reportFormatJSON(
 					stdout,
 					stderr,
@@ -1030,8 +1040,8 @@ func runFormatWriteReported(
 		}
 		if err := replace(item.snapshot, item.output); err != nil {
 			if errors.Is(err, filesystem.ErrStale) {
-				files[index].Status = goxreport.FileConflict
-				if invocation.reporter == goxreport.JSON {
+				files[index].Status = glippyreport.FileConflict
+				if invocation.reporter == glippyreport.JSON {
 					return reportFormatJSON(
 						stdout,
 						stderr,
@@ -1051,13 +1061,13 @@ func runFormatWriteReported(
 					"",
 				)
 			}
-			files[index].Status = goxreport.FileFailed
+			files[index].Status = glippyreport.FileFailed
 			possiblyReplaced := ""
 			if item.changed {
 				possiblyReplaced = item.path
-				files[index].Status = goxreport.FilePossiblyFormatted
+				files[index].Status = glippyreport.FilePossiblyFormatted
 			}
-			if invocation.reporter == goxreport.JSON {
+			if invocation.reporter == glippyreport.JSON {
 				return reportFormatJSON(
 					stdout,
 					stderr,
@@ -1079,13 +1089,13 @@ func runFormatWriteReported(
 		}
 		if item.changed {
 			replaced = append(replaced, item.path)
-			files[index].Status = goxreport.FileFormatted
+			files[index].Status = glippyreport.FileFormatted
 		} else {
-			files[index].Status = goxreport.FileUnchanged
+			files[index].Status = glippyreport.FileUnchanged
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		if invocation.reporter == goxreport.JSON {
+		if invocation.reporter == glippyreport.JSON {
 			return reportFormatJSON(
 				stdout,
 				stderr,
@@ -1099,7 +1109,7 @@ func runFormatWriteReported(
 		}
 		return reportFormatWriteFailure(stderr, ExitCanceled, err, replaced, "")
 	}
-	if invocation.reporter == goxreport.JSON {
+	if invocation.reporter == glippyreport.JSON {
 		return reportFormatJSON(
 			stdout,
 			stderr,
@@ -1122,7 +1132,7 @@ func reportFormatWriteFailure(
 	possiblyReplaced string,
 ) int {
 	if len(replaced) == 0 && possiblyReplaced == "" {
-		return report(stderr, exitCode, "gox fmt: %v\n", err)
+		return report(stderr, exitCode, "glippy fmt: %v\n", err)
 	}
 	paths := append([]string(nil), replaced...)
 	heading := "files replaced before failure"
@@ -1133,7 +1143,7 @@ func reportFormatWriteFailure(
 	return report(
 		stderr,
 		exitCode,
-		"gox fmt: %v\ngox fmt: %s:\n%s\n",
+		"glippy fmt: %v\nglippy fmt: %s:\n%s\n",
 		err,
 		heading,
 		strings.Join(paths, "\n"),
@@ -1144,14 +1154,14 @@ func reportFormatJSON(
 	stdout, stderr io.Writer,
 	mode string,
 	exitCode, selected, changed int,
-	files []goxreport.File,
+	files []glippyreport.File,
 	err error,
 ) int {
-	errs := []goxreport.Error{}
+	errs := []glippyreport.Error{}
 	if err != nil {
-		errs = append(errs, goxreport.Error{Message: err.Error()})
+		errs = append(errs, glippyreport.Error{Message: err.Error()})
 	}
-	result := goxreport.NewFormatResult(
+	result := glippyreport.NewFormatResult(
 		mode,
 		exitCategory(exitCode),
 		exitCode,
@@ -1161,12 +1171,12 @@ func reportFormatJSON(
 		files,
 		errs,
 	)
-	encoded, err := goxreport.MarshalJSON(result)
+	encoded, err := glippyreport.MarshalJSON(result)
 	if err != nil {
 		return report(
 			stderr,
 			moreSevereExitCode(exitCode, ExitInternalError),
-			"gox fmt: encode JSON report: %v\n",
+			"glippy fmt: encode JSON report: %v\n",
 			err,
 		)
 	}
@@ -1177,9 +1187,9 @@ func reportFormatJSON(
 			possiblyCompleted := false
 			for _, file := range files {
 				switch file.Status {
-				case goxreport.FileFormatted:
+				case glippyreport.FileFormatted:
 					completed = append(completed, file.Path)
-				case goxreport.FilePossiblyFormatted:
+				case glippyreport.FilePossiblyFormatted:
 					completed = append(completed, file.Path)
 					possiblyCompleted = true
 				}
@@ -1192,14 +1202,14 @@ func reportFormatJSON(
 				return report(
 					stderr,
 					outputExitCode,
-					"gox fmt: write JSON report: %v\ngox fmt: %s:\n%s\n",
+					"glippy fmt: write JSON report: %v\nglippy fmt: %s:\n%s\n",
 					err,
 					heading,
 					strings.Join(completed, "\n"),
 				)
 			}
 		}
-		return report(stderr, outputExitCode, "gox fmt: write JSON report: %v\n", err)
+		return report(stderr, outputExitCode, "glippy fmt: write JSON report: %v\n", err)
 	}
 	return exitCode
 }
@@ -1234,14 +1244,14 @@ func moreSevereExitCode(left, right int) int {
 
 func runFormatFile(ctx context.Context, invocation formatInvocation, stdout, stderr io.Writer) int {
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy fmt: %v\n", err)
 	}
 	info, err := os.Lstat(invocation.paths[0])
 	if err != nil {
 		return report(
 			stderr,
 			ExitFilesystemError,
-			"gox fmt: inspect %q: %v\n",
+			"glippy fmt: inspect %q: %v\n",
 			invocation.paths[0],
 			err,
 		)
@@ -1254,12 +1264,12 @@ func runFormatFile(ctx context.Context, invocation formatInvocation, stdout, std
 		return report(
 			stderr,
 			exitCodeForError(ExitFilesystemError, err),
-			"gox fmt: %v\n",
+			"glippy fmt: %v\n",
 			err,
 		)
 	}
 	if _, err := goversion.Resolve(invocation.paths[0], selection.Root); err != nil {
-		return report(stderr, sourceVersionErrorExitCode(err), "gox fmt: %v\n", err)
+		return report(stderr, sourceVersionErrorExitCode(err), "glippy fmt: %v\n", err)
 	}
 	files, err := discovery.GoFiles(
 		ctx,
@@ -1270,50 +1280,54 @@ func runFormatFile(ctx context.Context, invocation formatInvocation, stdout, std
 		return report(
 			stderr,
 			exitCodeForError(ExitFilesystemError, err),
-			"gox fmt: %v\n",
+			"glippy fmt: %v\n",
 			err,
 		)
 	}
 	if len(files) != 1 {
-		return report(stderr, ExitInternalError, "gox fmt: expected one discovered file\n")
+		return report(
+			stderr,
+			ExitInternalError,
+			"glippy fmt: expected one discovered file\n",
+		)
 	}
 	path := files[0].Path
 	options, exitCode, err := formatOptionsForSelection(selection)
 	if err != nil {
-		return report(stderr, exitCode, "gox fmt: %v\n", err)
+		return report(stderr, exitCode, "glippy fmt: %v\n", err)
 	}
 	input, err := source.ReadFile(path)
 	if err != nil {
 		return report(
 			stderr,
 			exitCodeForError(ExitFilesystemError, err),
-			"gox fmt: read %q: %v\n",
+			"glippy fmt: read %q: %v\n",
 			path,
 			err,
 		)
 	}
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy fmt: %v\n", err)
 	}
 	formatted, exitCode, err := formatStandardInput(input, path, 0, options)
 	if err != nil {
-		return report(stderr, exitCode, "gox fmt: %v\n", err)
+		return report(stderr, exitCode, "glippy fmt: %v\n", err)
 	}
 	if err := ctx.Err(); err != nil {
-		return report(stderr, ExitCanceled, "gox fmt: %v\n", err)
+		return report(stderr, ExitCanceled, "glippy fmt: %v\n", err)
 	}
 	if err := write(stdout, formatted); err != nil {
 		return report(
 			stderr,
 			ExitFilesystemError,
-			"gox fmt: write standard output: %v\n",
+			"glippy fmt: write standard output: %v\n",
 			err,
 		)
 	}
 	return ExitSuccess
 }
 
-func resolveFormatOptions(invocation formatInvocation) (goxformat.Options, int, error) {
+func resolveFormatOptions(invocation formatInvocation) (glippyformat.Options, int, error) {
 	selection := config.Selection{}
 	var err error
 	if invocation.stdinFilepath != "" {
@@ -1325,12 +1339,12 @@ func resolveFormatOptions(invocation formatInvocation) (goxformat.Options, int, 
 		selection = config.Selection{Path: invocation.configPath, Explicit: true}
 	}
 	if err != nil {
-		return goxformat.Options{}, configurationErrorExitCode(err), err
+		return glippyformat.Options{}, configurationErrorExitCode(err), err
 	}
 	if invocation.stdinFilepath != "" {
 		if _, err := goversion.Resolve(invocation.stdinFilepath, selection.Root);
 			err != nil {
-			return goxformat.Options{}, sourceVersionErrorExitCode(err), err
+			return glippyformat.Options{}, sourceVersionErrorExitCode(err), err
 		}
 	}
 	return formatOptionsForSelection(selection)
@@ -1343,10 +1357,10 @@ func sourceVersionErrorExitCode(err error) int {
 	return ExitSourceError
 }
 
-func formatOptionsForSelection(selection config.Selection) (goxformat.Options, int, error) {
+func formatOptionsForSelection(selection config.Selection) (glippyformat.Options, int, error) {
 	registry, err := rules.NewDefaultRegistry()
 	if err != nil {
-		return goxformat.Options{}, ExitInternalError, fmt.Errorf(
+		return glippyformat.Options{}, ExitInternalError, fmt.Errorf(
 			"initialize rule registry: %w",
 			err,
 		)
@@ -1359,9 +1373,9 @@ func formatOptionsForSelection(selection config.Selection) (goxformat.Options, i
 		},
 	)
 	if err != nil {
-		return goxformat.Options{}, configurationErrorExitCode(err), err
+		return glippyformat.Options{}, configurationErrorExitCode(err), err
 	}
-	return goxformat.Options{
+	return glippyformat.Options{
 		Width: loaded.Format.LineWidth,
 		TabWidth: loaded.Format.TabWidth,
 		FitBudget: defaultFormatOptions.FitBudget,
@@ -1380,14 +1394,14 @@ func formatStandardInput(
 	input []byte,
 	sourcePath string,
 	fragmentKind source.FragmentKind,
-	options goxformat.Options,
+	options glippyformat.Options,
 ) ([]byte, int, error) {
 	if fragmentKind != 0 {
 		fragment, err := source.LoadFragment(sourcePath, fragmentKind, input)
 		if err != nil {
 			return nil, ExitSourceError, err
 		}
-		formatted, err := goxformat.Fragment(fragment, options)
+		formatted, err := glippyformat.Fragment(fragment, options)
 		if err != nil {
 			return nil, ExitInternalError, err
 		}
@@ -1397,7 +1411,7 @@ func formatStandardInput(
 	if err != nil {
 		return nil, ExitSourceError, err
 	}
-	formatted, err := goxformat.File(file, options)
+	formatted, err := glippyformat.File(file, options)
 	if err != nil {
 		return nil, ExitInternalError, err
 	}
@@ -1408,7 +1422,7 @@ func parseFormatInvocation(arguments []string) (formatInvocation, bool) {
 	if len(arguments) == 0 || arguments[0] != "fmt" {
 		return formatInvocation{}, false
 	}
-	result := formatInvocation{reporter: goxreport.Text}
+	result := formatInvocation{reporter: glippyreport.Text}
 	reporterSet := false
 	for index := 1; index < len(arguments); index++ {
 		argument := arguments[index]
@@ -1490,12 +1504,12 @@ func parseFormatInvocation(arguments []string) (formatInvocation, bool) {
 	return result, true
 }
 
-func parseReporter(value string) (goxreport.Format, bool) {
+func parseReporter(value string) (glippyreport.Format, bool) {
 	switch value {
 	case "text":
-		return goxreport.Text, true
+		return glippyreport.Text, true
 	case "json":
-		return goxreport.JSON, true
+		return glippyreport.JSON, true
 	default:
 		return "", false
 	}

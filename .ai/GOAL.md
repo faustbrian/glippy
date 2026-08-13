@@ -1,8 +1,8 @@
-# Goal: Build Gox, A Modern Go Formatter And Linter
+# Goal: Build Glippy, A Modern Go Formatter And Linter
 
 ## Mission
 
-Build `gox` as a modern, fast, cohesive Go developer tool that combines a
+Build `glippy` as a modern, fast, cohesive Go developer tool that combines a
 width-aware source formatter with a high-signal linter and safe fixer. The
 formatter experience SHOULD be comparable in ambition, predictability, and
 ergonomics to Oxfmt. The linter experience SHOULD be comparable in focus,
@@ -19,12 +19,12 @@ parser, syntax tree, token, package-loading, type-checking, analysis, and SSA
 capabilities rather than creating a competing Go language frontend without
 evidence that the standard frontend cannot satisfy a concrete requirement.
 
-Architecture and correctness come before rule count. Gox MUST first establish
+Architecture and correctness come before rule count. Glippy MUST first establish
 a lossless-enough shared frontend, deterministic formatter, safe edit model,
 and scalable analysis engine. A broad rule catalog MAY grow after those
 foundations are proven.
 
-`gox` is a working name. Before the first public release, the project MUST
+`glippy` is a working name. Before the first public release, the project MUST
 complete a naming, module-path, binary-name, trademark, and ecosystem-collision
 audit and either retain the name with evidence or choose a replacement.
 
@@ -41,18 +41,18 @@ shown here.
 
 ## Goal State
 
-At 100%, Gox MUST provide one installable, versioned Go binary with these
+At 100%, Glippy MUST provide one installable, versioned Go binary with these
 cohesive product surfaces:
 
 ```text
-gox fmt [paths...]
-gox fmt --write [paths...]
-gox fmt --check [paths...]
-gox lint [paths...]
-gox lint --fix [paths...]
-gox check [paths...]
-gox explain <rule>
-gox version
+glippy fmt [paths...]
+glippy fmt --write [paths...]
+glippy fmt --check [paths...]
+glippy lint [paths...]
+glippy lint --fix [paths...]
+glippy check [paths...]
+glippy explain <rule>
+glippy version
 ```
 
 The completed product MUST:
@@ -81,7 +81,7 @@ The completed product MUST:
 
 ### Primary Product References
 
-Oxfmt and Oxlint are the primary product references for Gox:
+Oxfmt and Oxlint are the primary product references for Glippy:
 
 - [Oxfmt](https://oxc.rs/docs/guide/usage/formatter.html) is the reference for
   a dedicated, deterministic, high-throughput formatter with a cohesive CLI,
@@ -94,7 +94,7 @@ Oxfmt and Oxlint are the primary product references for Gox:
   compiler-style frontend and infrastructure across developer tools while
   keeping formatter and linter responsibilities distinct.
 
-Gox MUST study the current authoritative Oxfmt, Oxlint, and Oxc source and
+Glippy MUST study the current authoritative Oxfmt, Oxlint, and Oxc source and
 documentation at the time each corresponding subsystem is designed. Historical
 descriptions and assumptions MUST NOT substitute for current source evidence.
 
@@ -114,16 +114,16 @@ authorities for syntax and semantics. The project SHOULD reuse:
 - `golang.org/x/tools/go/ssa` for analyses whose contracts require SSA.
 
 `gofmt`, `go/format`, `go/printer`, and `gofumpt` are compatibility inputs and
-differential-test references. They are not the product ceiling for Gox layout.
+differential-test references. They are not the product ceiling for Glippy layout.
 
 ### Explicitly Rejected Reference Direction
 
-Gox MUST NOT model its architecture, configuration, execution engine, or
+Glippy MUST NOT model its architecture, configuration, execution engine, or
 default product experience after ESLint. ESLint's breadth MAY inform a later
 coverage inventory, but its legacy architecture, plugin overhead, configuration
 complexity, and accumulated compatibility surface are not design targets.
 
-Rule breadth MUST NOT be treated as evidence that the Gox foundation is ready.
+Rule breadth MUST NOT be treated as evidence that the Glippy foundation is ready.
 The project MUST prefer a small set of fast, credible, well-documented rules
 over a large catalog built on unstable traversal, fixing, or configuration
 contracts.
@@ -132,7 +132,7 @@ contracts.
 
 ### One Product, Separate Engines
 
-Gox MUST ship as one binary and one configuration system, but formatting and
+Glippy MUST ship as one binary and one configuration system, but formatting and
 linting MUST remain separate internal engines:
 
 - the formatter owns whitespace and canonical layout;
@@ -148,7 +148,7 @@ because a lint rule could recommend them.
 
 ### Correctness Before Speed
 
-Gox SHOULD be fast enough to run continuously, but optimization MUST follow a
+Glippy SHOULD be fast enough to run continuously, but optimization MUST follow a
 measured, correct implementation. Performance work MUST preserve determinism,
 source fidelity, diagnostics, and fix safety.
 
@@ -170,9 +170,9 @@ complexity, performance, and migration rules SHOULD be separate opt-in groups.
 
 ### Safe By Default
 
-Gox MUST NOT write a file unless the complete resulting file parses and all
-applicable formatter or fix invariants pass. Gox MUST NOT guess how to combine
-overlapping fixes. Gox MUST NOT hide partial writes or silently skip malformed
+Glippy MUST NOT write a file unless the complete resulting file parses and all
+applicable formatter or fix invariants pass. Glippy MUST NOT guess how to combine
+overlapping fixes. Glippy MUST NOT hide partial writes or silently skip malformed
 configuration.
 
 ### Deterministic Everywhere
@@ -213,7 +213,7 @@ Given:
 if _,err:=client.Discover(nil);!errors.Is(err,ErrContextRequired){t.Fatal(err)}
 ```
 
-Gox MUST produce a stable expanded form equivalent to:
+Glippy MUST produce a stable expanded form equivalent to:
 
 ```go
 if _, err := client.Discover(nil); !errors.Is(err, ErrContextRequired) {
@@ -227,7 +227,7 @@ Given semicolon-separated statements:
 ctx,cancel:=context.WithCancel(t.Context());cancel();result:=work(ctx)
 ```
 
-Gox MUST render separate statements on separate lines. It MAY introduce a
+Glippy MUST render separate statements on separate lines. It MAY introduce a
 blank line only when a documented structural grouping rule requires one.
 
 ### Wrap A Boolean Chain
@@ -238,7 +238,7 @@ When a condition fits, it SHOULD remain flat:
 if foo && bar && baz {
 ```
 
-When it does not fit, Gox MUST choose a valid deterministic broken layout:
+When it does not fit, Glippy MUST choose a valid deterministic broken layout:
 
 ```go
 if foo &&
@@ -253,7 +253,7 @@ line unless the Go grammar and semicolon rules prove another layout valid.
 
 ### Wrap Calls And Literals
 
-When a call group does not fit, Gox SHOULD render one logical argument per
+When a call group does not fit, Glippy SHOULD render one logical argument per
 line and MUST emit any trailing comma required by Go syntax:
 
 ```go
@@ -274,7 +274,7 @@ grouping and breaking behavior.
 
 ### Check Without Mutation
 
-`gox check ./...` MUST provide one non-mutating continuous-integration entry
+`glippy check ./...` MUST provide one non-mutating continuous-integration entry
 point that:
 
 - identifies files whose formatted output differs;
@@ -285,7 +285,7 @@ point that:
 
 ### Fix Safely
 
-`gox lint --fix ./...` MUST:
+`glippy lint --fix ./...` MUST:
 
 - apply only fixes classified as safe by default;
 - refuse conflicting edits;
@@ -512,27 +512,27 @@ Special handling MUST be specified and tested for:
 
 Import grouping, sorting, insertion, and removal MUST be an explicit product
 decision. The formatter MUST NOT silently claim missing-import or unused-import
-repair as ordinary layout. If Gox supports import organization, it MUST define
+repair as ordinary layout. If Glippy supports import organization, it MUST define
 whether it belongs to `fmt`, a safe lint fix, or a separate code action and
 MUST test initialization, blank import, dot import, cgo, comment, and grouping
 behavior.
 
 ### Gofmt Compatibility
 
-During Phase 0, the project MUST measure whether desired Gox output can also be
+During Phase 0, the project MUST measure whether desired Glippy output can also be
 a gofmt fixed point:
 
 ```text
-gofmt(goxfmt(input)) == goxfmt(input)
+gofmt(glippyfmt(input)) == glippyfmt(input)
 ```
 
 The decision MUST be corpus-backed and recorded. If strict fixed-point
 compatibility is achievable without defeating the product, it SHOULD be an
-initial invariant because it reduces adoption conflict. If it is not, Gox MUST
+initial invariant because it reduces adoption conflict. If it is not, Glippy MUST
 document exact divergence classes and provide a migration path for repositories
 whose continuous integration still enforces gofmt.
 
-Gox MUST always maintain its own idempotency invariant regardless of the gofmt
+Glippy MUST always maintain its own idempotency invariant regardless of the gofmt
 decision.
 
 ## Formatter Correctness Contract
@@ -562,7 +562,7 @@ shape without changing semantics.
 
 ### Native Rule Contract
 
-Gox SHOULD expose a small native rule interface whose metadata declares at
+Glippy SHOULD expose a small native rule interface whose metadata declares at
 least:
 
 - stable rule identifier;
@@ -596,7 +596,7 @@ type Rule interface {
 }
 ```
 
-The design MUST support adapting suitable `go/analysis.Analyzer` values so Gox
+The design MUST support adapting suitable `go/analysis.Analyzer` values so Glippy
 can interoperate with Go's analysis ecosystem without surrendering control of
 its scheduling, configuration, reporting, or fix safety.
 
@@ -665,7 +665,7 @@ nondeterministically ordered diagnostics.
 
 ### Suppressions
 
-Gox MUST support narrow, auditable suppressions. The suppression design MUST:
+Glippy MUST support narrow, auditable suppressions. The suppression design MUST:
 
 - identify exact rule IDs;
 - support a reason policy;
@@ -678,7 +678,7 @@ Gox MUST support narrow, auditable suppressions. The suppression design MUST:
 
 ### Rule Documentation
 
-`gox explain <rule>` and the published documentation MUST derive from one
+`glippy explain <rule>` and the published documentation MUST derive from one
 canonical metadata source. Every rule MUST include incorrect examples, correct
 examples, prerequisites, configuration, fix safety, and known limitations.
 
@@ -757,7 +757,7 @@ The final design MUST define:
 - formatter width measurement; and
 - configuration diagnostics with source ranges where possible.
 
-Unknown fields and invalid values MUST fail clearly. Gox MUST NOT silently
+Unknown fields and invalid values MUST fail clearly. Glippy MUST NOT silently
 ignore a misspelled rule or formatter option.
 
 Configuration scope SHOULD remain understandable without reproducing a
@@ -832,7 +832,7 @@ marketing microbenchmarks alone. Measure at least:
 - cache hit, miss, and invalidation behavior.
 
 Oxfmt and Oxlint SHOULD inform the product expectation of continuous,
-low-friction use, but Gox MUST publish its own reproducible Go-workload
+low-friction use, but Glippy MUST publish its own reproducible Go-workload
 benchmarks rather than transferring claims from another language ecosystem.
 
 ### Concurrency
@@ -868,7 +868,7 @@ or facts.
 
 ## Security And Robustness
 
-Gox processes untrusted repositories and generated source. It MUST:
+Glippy processes untrusted repositories and generated source. It MUST:
 
 - bound recursion, layout search, concurrency, file size, and memory where
   feasible;
@@ -894,7 +894,7 @@ The initial repository SHOULD keep public boundaries visible without premature
 package fragmentation. A starting layout MAY be:
 
 ```text
-cmd/gox/
+cmd/glippy/
 internal/source/
 internal/syntax/
 internal/format/
@@ -958,14 +958,14 @@ not cover the claim.
 Use gofmt, go/format, gofumpt, and supported Go parser versions as differential
 oracles where their contracts overlap. Differences MUST be classified as:
 
-1. intentional Gox layout;
+1. intentional Glippy layout;
 2. accepted upstream version difference;
 3. unsupported syntax or version;
 4. source-fidelity defect;
 5. semantic-risk defect; or
 6. unresolved investigation.
 
-Differential tests MUST NOT force Gox to abandon deliberate width-aware output.
+Differential tests MUST NOT force Glippy to abandon deliberate width-aware output.
 
 ### Corpus Tests
 
@@ -1044,7 +1044,7 @@ Integration coverage MUST exercise:
 
 ### Supported Go Versions
 
-Each Gox release MUST document:
+Each Glippy release MUST document:
 
 - minimum runtime Go version if installed from source;
 - toolchain version used to build official binaries;
@@ -1206,7 +1206,7 @@ and continuous integration.
 
 ### Exit Gate: 55%
 
-Phase 2 is complete when Gox can replace a formatter command in a real Go
+Phase 2 is complete when Glippy can replace a formatter command in a real Go
 repository, check mode is reliably non-mutating, write mode is atomic and
 validated, editor latency meets the recorded budget, and the formatter has no
 unresolved high-risk corpus findings.
@@ -1227,7 +1227,7 @@ rule quantity to destabilize architecture.
 - Implement syntax-tier scheduling and filtered shared traversal.
 - Implement deterministic diagnostic collection and sorting.
 - Implement severity and preset resolution.
-- Implement canonical rule documentation and `gox explain`.
+- Implement canonical rule documentation and `glippy explain`.
 - Implement suppression parsing, ownership, and diagnostics.
 - Implement safe, suggestion, and unsafe fix metadata.
 - Implement stale-range detection, overlap detection, and conflict reporting.
@@ -1307,7 +1307,7 @@ unbounded resource use.
 
 ### Objective
 
-Deliver Gox as a trustworthy, documented, supportable formatter-and-linter
+Deliver Glippy as a trustworthy, documented, supportable formatter-and-linter
 product with a stable adoption path.
 
 ### Required Work
@@ -1335,7 +1335,7 @@ product with a stable adoption path.
 
 ### Exit Gate: 100%
 
-Gox reaches 100% only when all final acceptance criteria below are supported by
+Glippy reaches 100% only when all final acceptance criteria below are supported by
 fresh evidence against the release candidate and no unresolved correctness,
 source-fidelity, fix-safety, determinism, or release-blocking performance
 finding remains.
@@ -1416,7 +1416,7 @@ reparse every output, and maintain targeted precedence/semicolon fixtures.
 
 ### Gofmt Workflow Conflict
 
-**Risk:** repositories run gofmt after Gox and produce perpetual diffs.
+**Risk:** repositories run gofmt after Glippy and produce perpetual diffs.
 
 **Required mitigation:** measure fixed-point compatibility early; either enforce
 it or publish precise divergence and migration behavior.
@@ -1458,7 +1458,7 @@ detection, reparsing, formatting, validation, and unsafe opt-in.
 
 ### Configuration Sprawl
 
-**Risk:** compatibility demands turn Gox into many inconsistent dialects.
+**Risk:** compatibility demands turn Glippy into many inconsistent dialects.
 
 **Required mitigation:** few formatter options, typed schemas, explicit
 versioning, and rejection of options without a demonstrated adoption need.
@@ -1473,7 +1473,7 @@ use cases.
 
 ### Name Collision
 
-**Risk:** `gox` conflicts with existing Go tools, module paths, binaries, or
+**Risk:** `glippy` conflicts with existing Go tools, module paths, binaries, or
 trademarks.
 
 **Required mitigation:** complete the naming audit before public release and
@@ -1578,7 +1578,7 @@ behavior.
 
 ## Completion Definition
 
-This goal is complete only when Gox is a trustworthy daily-use replacement for
+This goal is complete only when Glippy is a trustworthy daily-use replacement for
 the combination of a conventional Go formatter, width-aware line rewriter, and
 high-signal lint/fix runner for its documented scope.
 

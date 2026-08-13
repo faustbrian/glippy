@@ -1,7 +1,7 @@
 # Phase 0 Baselines
 
 These benchmarks measure the cost of the standard Go frontend operations that
-Gox expects to compose. They are baselines, not product performance claims or
+Glippy expects to compose. They are baselines, not product performance claims or
 CI thresholds. The workload is an owned, valid, comment-bearing Go file with
 blocks, generics, calls, and boolean expressions.
 
@@ -14,15 +14,15 @@ GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkSyntaxRuleTraversa
 go test ./benchmarks -run '^$' -bench '^BenchmarkPackagesLoadSyntax(Cold|Warm)BuildCache$' -benchmem -benchtime=1x -count=3
 GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkPackageAnalyzerFactCache$' -benchmem -benchtime=1x -count=5
 GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkNativeAnalysisResultCache$' -benchmem -benchtime=1x -count=5
-GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkGoxFormatManyClassicLoops$' -benchmem -benchtime=10x -count=3
+GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkGlippyFormatManyClassicLoops$' -benchmem -benchtime=10x -count=3
 go test ./internal/format/doc -run '^$' -bench '^BenchmarkRenderAdversarial(Nesting|Siblings)$' -benchmem -benchtime=3x -count=5
 go test ./internal/format/doc -run '^TestRenderBoundsAdversarialDepthAndBreadthAllocations$' -count=1
 go test ./internal/format/doc -run '^$' -fuzz '^FuzzRenderDeterministic$' -fuzztime=30s -timeout=45s
 
 (
-  task_cache=$(mktemp -d "${TMPDIR:-/tmp}/gox-editor-benchmark.XXXXXX")
+  task_cache=$(mktemp -d "${TMPDIR:-/tmp}/glippy-editor-benchmark.XXXXXX")
   trap 'find "$task_cache" -mindepth 1 -delete; rmdir "$task_cache"' EXIT HUP INT TERM
-  GOWORK=off GOCACHE="$task_cache" go test ./benchmarks -run '^$' -bench '^BenchmarkGoxEditorStdin$' -benchmem -benchtime=10x -count=5
+  GOWORK=off GOCACHE="$task_cache" go test ./benchmarks -run '^$' -bench '^BenchmarkGlippyEditorStdin$' -benchmem -benchtime=10x -count=5
 )
 ./benchmarks/editor-latency.sh
 ./benchmarks/peak-rss.sh
@@ -204,7 +204,7 @@ host contention makes the dispersion material:
 The direct shared pass is the selected Phase 3 scheduler. A single naive walk
 had a 1.81-microsecond lower median at one rule, but direct dispatch had lower
 medians from three through 25 rules and keeps one scheduling path as the
-catalog grows. Gox
+catalog grows. Glippy
 performs one union dispatch, so an inspector index has no repeated query over
 which to amortize its roughly 28-30 KiB construction cost. The high timing
 variance prevents a CI latency threshold; the allocation result and scaling
@@ -258,7 +258,7 @@ scale still needs peak-memory and stable-runner budgets.
 ## Editor Latency Probe
 
 The Phase 2 editor probe formats the 879-byte owned hostile workload through
-the complete standard-input CLI path. `BenchmarkGoxEditorStdin` includes
+the complete standard-input CLI path. `BenchmarkGlippyEditorStdin` includes
 configuration resolution, input reading, source loading, formatting,
 validation, and a discarded stdout write while excluding process startup.
 `editor-latency.sh` builds the current binary and an owned Go timing driver with
@@ -296,19 +296,19 @@ package loads on one task-owned warm Go build cache. It measures peak resident
 memory through the platform `/usr/bin/time` and runs five samples by default
 for two repository-scale, non-writing workloads:
 
-- formatter-only check over the default Gox repository selection; and
+- formatter-only check over the default Glippy repository selection; and
 - recursive combined format and opt-in `suspicious` lint check, which selects
-  the current types, CFG, and SSA tiers over all Gox packages.
+  the current types, CFG, and SSA tiers over all Glippy packages.
 
 Exit 1 is an expected completed measurement because either workload may find
 formatting differences or diagnostics. Every other nonzero status fails the
 probe. Results are emitted as CSV with peak RSS normalized to bytes on Darwin
-and Linux. `GOX_PEAK_RSS_RUNS` may select a different positive sample count.
+and Linux. `GLIPPY_PEAK_RSS_RUNS` may select a different positive sample count.
 The script removes its binary, configuration, measurement output, and build
 cache on every exit path.
 
-`GOX_PEAK_RSS_FORMAT_ROOT` may replace only the formatter workload with another
-directory. The typed workload deliberately remains the owned Gox packages so
+`GLIPPY_PEAK_RSS_FORMAT_ROOT` may replace only the formatter workload with another
+directory. The typed workload deliberately remains the owned Glippy packages so
 an unrelated module or workspace cannot silently change the selected analysis
 contract. Record the external root's immutable revision, selected-file count,
 provenance, and environment beside any result.
@@ -332,8 +332,8 @@ typed     387399680 413581312 407846912 357351424 417349632
 
 An additional 2026-08-12 formatter campaign used a temporary Git archive of
 `go-libraries` revision `1be04c0e6f17f587dc6083b701467620b95d511d` as
-`GOX_PEAK_RSS_FORMAT_ROOT`. The snapshot contained only committed bytes from
-that object and was deleted after the run. The Gox binary used source revision
+`GLIPPY_PEAK_RSS_FORMAT_ROOT`. The snapshot contained only committed bytes from
+that object and was deleted after the run. The Glippy binary used source revision
 `2a21699`. Schema-1 check reporting confirmed 5,138 selected files, 4,904
 formatting differences, a complete result, and findings exit 1 without
 mutation.
@@ -348,7 +348,7 @@ peak RSS and a 1,659,682,816-2,057,584,640-byte range:
 This is release-scale formatter evidence for one immutable 5,138-file snapshot
 on one non-isolated host. It does not establish a memory budget, cross-platform
 behavior, or typed large-workspace memory. The typed rows emitted by that
-campaign still exercised Gox itself and are not evidence about `go-libraries`.
+campaign still exercised Glippy itself and are not evidence about `go-libraries`.
 
 ### Bounded Arena Capacity Follow-up
 
@@ -378,10 +378,10 @@ retaining the first render's arena through repeat-format validation produced a
 2,380,267,520-byte median; both designs were rejected. Latency remained too
 variable for a new claim.
 
-The default Gox repository is an owned repeatable workload, but it is not a
+The default Glippy repository is an owned repeatable workload, but it is not a
 release-scale proxy for a large module or workspace. Measurements therefore
 describe one host and revision only. The platform `time` result also does not
-sample the aggregate simultaneous RSS of Gox and every package-loading
+sample the aggregate simultaneous RSS of Glippy and every package-loading
 subprocess. Do not establish a CI or product-wide memory threshold until
 representative large repositories run on stable supported hosts and the
 observed variance supports a justified budget. The following campaign adds a
@@ -446,9 +446,9 @@ darwin 8.38/1694957568 7.16/1408253952 6.53/1479950336 7.66/1643085824 6.32/1452
 linux  10.86/1296248832 10.43/1477431296 9.83/1588207616 10.19/1391017984 9.44/1180524544
 ```
 
-Darwin memory is the Gox process maximum from `/usr/bin/time -l`. Linux memory
+Darwin memory is the Glippy process maximum from `/usr/bin/time -l`. Linux memory
 is the cgroup-v2 `memory.peak` value and therefore also includes the minimal
-container runtime processes. The Linux figure is conservative for Gox but is
+container runtime processes. The Linux figure is conservative for Glippy but is
 not directly interchangeable with Darwin process RSS.
 
 The budget is executable and has headroom over every recorded local supported-OS
@@ -469,7 +469,7 @@ metadata and samples as a short-lived artifact.
 
 The workflow supplies the campaign's pinned budgets. `peak-rss.sh` enforces
 those supplied thresholds and rejects a run when the requested Go host, kernel
-operating system or architecture, clean Gox revision, or clean corpus revision
+operating system or architecture, clean Glippy revision, or clean corpus revision
 does not match. This prevents architecture emulation, uncommitted source, or a
 moving corpus from being recorded as native evidence. The workflow is manual
 because its purpose is release evidence, not a noisy per-commit wall-clock
@@ -477,15 +477,15 @@ assertion. Its existence is not evidence that the four jobs passed; the
 recorded run URL, job conclusions, runner image versions, and raw artifacts
 remain required before the provisional limits become stable release budgets.
 
-The first native run, [`31611144933`](https://github.com/faustbrian/gox/actions/runs/31611144933),
+The first native run, [`31611144933`](https://github.com/faustbrian/glippy/actions/runs/31611144933),
 rejected the original 15-second maximum. Its first repository-scale samples
 completed in 17.370 seconds on Linux arm64, 20.470 seconds on Linux amd64,
 30.130 seconds on Darwin arm64, and 67.690 seconds on Darwin amd64; every sample
 remained below the 2-GiB memory ceiling. The replacement 90-second provisional
 maximum gave 33% headroom over the slowest observation.
 
-The complete rerun, [`31611653501`](https://github.com/faustbrian/gox/actions/runs/31611653501),
-passed at Gox revision `345a8de5c8dfd7980863a075123940919e7c4e63`.
+The complete rerun, [`31611653501`](https://github.com/faustbrian/glippy/actions/runs/31611653501),
+passed at Glippy revision `345a8de5c8dfd7980863a075123940919e7c4e63`.
 Every native runner completed 20 editor samples, five formatter samples, the
 typed side-workload, and artifact retention:
 

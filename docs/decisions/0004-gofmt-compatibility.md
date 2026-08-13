@@ -9,27 +9,27 @@ Local Go 1.26.5 experiments show the motivating expanded `if`, split ordinary
 statements, trailing-operator boolean chain, one-argument-per-line call,
 expanded function literal, selector chain, and type union can all be exact
 gofmt fixed points. Gofmt itself leaves ordinary same-line semicolon-separated
-statements compressed, so Gox still adds the intended value.
+statements compressed, so Glippy still adds the intended value.
 
 The project-owned Phase 1 corpus now records the incompatible classes directly.
 For the same valid formatted file, Go 1.26.5 gofmt sorts a retained import
 group, normalizes hexadecimal prefixes, removes redundant parentheses, and
-adds tabular alignment to declarations and struct fields. Gox preserves import
+adds tabular alignment to declarations and struct fields. Glippy preserves import
 order, literal spelling, and parentheses and emits structural indentation
 without alignment. The corpus also records the deliberate width-aware
 `if`-header layout that gofmt flattens.
 
 ## Decision
 
-Gox does not promise a product-wide fixed point under gofmt. For each construct
+Glippy does not promise a product-wide fixed point under gofmt. For each construct
 class recorded as compatible, Phase 1 still requires:
 
 ```text
-gofmt(goxfmt(input)) == goxfmt(input)
+gofmt(glippyfmt(input)) == glippyfmt(input)
 ```
 
 under the pinned Go toolchain. Each incompatible corpus fixture MUST name its
-divergence and pin the exact gofmt output. Gox's own parse, normalized
+divergence and pin the exact gofmt output. Glippy's own parse, normalized
 equivalence, comment/directive accounting, and idempotency checks remain
 mandatory regardless of gofmt compatibility.
 
@@ -44,7 +44,7 @@ The initial divergence classes are:
    normalizes.
 
 Every difference discovered by the corpus must be classified as intentional
-Gox layout, accepted toolchain difference, unsupported syntax/version,
+Glippy layout, accepted toolchain difference, unsupported syntax/version,
 source-fidelity defect, semantic-risk defect, or unresolved investigation.
 Supported-version expansion MUST revalidate every compatible and divergent
 fixture before release.
@@ -60,9 +60,9 @@ fixture before release.
 ## Consequences
 
 Golden and corpus tests record the Go toolchain version. Repositories that
-enforce gofmt cannot run it after Gox over the documented divergent classes
+enforce gofmt cannot run it after Glippy over the documented divergent classes
 without churn. They must keep their existing formatter until migration or make
-Gox the sole formatting authority and remove the conflicting gofmt check. Gox
+Glippy the sole formatting authority and remove the conflicting gofmt check. Glippy
 does not yet provide a gofmt-compatibility mode. The
 [formatter migration guide](../migration-from-go-formatters.md) defines the
 required rehearsal, coordinated cutover, and rollback boundaries.

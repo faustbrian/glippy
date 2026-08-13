@@ -5,25 +5,25 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
-	"github.com/faustbrian/gox/internal/suppressions"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
+	"github.com/faustbrian/glippy/internal/suppressions"
 )
 
 func TestParseAssignsPhysicalSuppressionScopes(t *testing.T) {
 	t.Parallel()
 
-	input := `//gox:ignore-file file-rule -- generated adapter
+	input := `//glippy:ignore-file file-rule -- generated adapter
 package sample
 
 func run() {
-	lineTarget() //gox:ignore-line line-rule -- platform branch
-	//gox:ignore next-rule -- legacy call
+	lineTarget() //glippy:ignore-line line-rule -- platform branch
+	//glippy:ignore next-rule -- legacy call
 	nextTarget()
 	outsideNext()
-	//gox:ignore-start range-rule -- expires=2026-09-01 paired setup
+	//glippy:ignore-start range-rule -- expires=2026-09-01 paired setup
 	rangeTarget()
-	//gox:ignore-end range-rule
+	//glippy:ignore-end range-rule
 	outsideRange()
 }
 `
@@ -111,6 +111,32 @@ func run() {
 	}
 }
 
+func TestParseUsesGlippySuppressionsAndDiagnosesLegacyAlias(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n//glippy:ignore canonical-rule -- reviewed\nfunc canonical() {}\n" +
+		"//gox:ignore legacy-rule -- migrate this alias\nfunc legacy() {}\n"
+	file := loadFile(t, input)
+	index, problems := suppressions.Parse(
+		file,
+		suppressions.ParseOptions{KnownRules: []string{"canonical-rule", "legacy-rule"}},
+	)
+	if len(index.Directives()) != 2 {
+		t.Fatalf(
+			"Directives() = %#v, want both compatibility directives",
+			index.Directives(),
+		)
+	}
+	if len(problems) != 1 ||
+		problems[0].Kind != suppressions.ProblemLegacyDirective ||
+		problems[0].Message != "legacy //gox: suppression; migrate to //glippy:" {
+		t.Fatalf(
+			"Parse() problems = %#v, want one deterministic migration problem",
+			problems,
+		)
+	}
+}
+
 func TestValidateStablePreservesPhysicalSuppressionTargets(t *testing.T) {
 	t.Parallel()
 
@@ -123,65 +149,65 @@ func TestValidateStablePreservesPhysicalSuppressionTargets(t *testing.T) {
 		{
 			name: "next line target drifts when one statement line expands",
 			before: "package sample\nfunc run(ready bool) {\n" +
-				"//gox:ignore duplicate-condition -- legacy branch\n" +
+				"//glippy:ignore duplicate-condition -- legacy branch\n" +
 				"if ready { use() } else if ready { retry() }\n}\n",
 			after: "package sample\nfunc run(ready bool) {\n" +
-				"\t//gox:ignore duplicate-condition -- legacy branch\n" +
+				"\t//glippy:ignore duplicate-condition -- legacy branch\n" +
 				"\tif ready {\n\t\tuse()\n\t} else if ready {\n\t\tretry()\n\t}\n}\n",
 			wantErr: true,
 		},
 		{
 			name: "same line target drifts when statements split",
 			before: "package sample\nfunc run() { first(); second() " +
-				"//gox:ignore-line duplicate-condition -- legacy branch\n}\n",
+				"//glippy:ignore-line duplicate-condition -- legacy branch\n}\n",
 			after: "package sample\nfunc run() {\n\tfirst()\n\tsecond() " +
-				"//gox:ignore-line duplicate-condition -- legacy branch\n}\n",
+				"//glippy:ignore-line duplicate-condition -- legacy branch\n}\n",
 			wantErr: true,
 		},
 		{
 			name: "direct targets retain the same tokens after indentation changes",
-			before: "package sample\nfunc run() {\n//gox:ignore duplicate-condition\n" +
-				"target()\nother() //gox:ignore-line duplicate-condition\n}\n",
-			after: "package sample\nfunc run() {\n\t//gox:ignore duplicate-condition\n" +
-				"\ttarget()\n\tother() //gox:ignore-line duplicate-condition\n}\n",
+			before: "package sample\nfunc run() {\n//glippy:ignore duplicate-condition\n" +
+				"target()\nother() //glippy:ignore-line duplicate-condition\n}\n",
+			after: "package sample\nfunc run() {\n\t//glippy:ignore duplicate-condition\n" +
+				"\ttarget()\n\tother() //glippy:ignore-line duplicate-condition\n}\n",
 		},
 		{
 			name: "paired range target drifts across its end",
-			before: "package sample\n//gox:ignore-start duplicate-condition -- legacy branch\n" +
-				"func first() {}\nfunc second() {}\n//gox:ignore-end duplicate-condition\n",
-			after: "package sample\n//gox:ignore-start duplicate-condition -- legacy branch\n" +
-				"func first() {}\n//gox:ignore-end duplicate-condition\nfunc second() {}\n",
+			before: "package sample\n//glippy:ignore-start duplicate-condition -- legacy branch\n" +
+				"func first() {}\nfunc second() {}\n//glippy:ignore-end duplicate-condition\n",
+			after: "package sample\n//glippy:ignore-start duplicate-condition -- legacy branch\n" +
+				"func first() {}\n//glippy:ignore-end duplicate-condition\nfunc second() {}\n",
 			wantErr: true,
 		},
 		{
 			name: "paired range owns the same tokens after layout changes",
-			before: "package sample\n//gox:ignore-start duplicate-condition -- legacy branch\n" +
-				"func run(){first();second()}\n//gox:ignore-end duplicate-condition\n",
-			after: "package sample\n//gox:ignore-start duplicate-condition -- legacy branch\n" +
-				"func run() {\n\tfirst()\n\tsecond()\n}\n//gox:ignore-end duplicate-condition\n",
+			before: "package sample\n//glippy:ignore-start duplicate-condition -- legacy branch\n" +
+				"func run(){first();second()}\n//glippy:ignore-end duplicate-condition\n",
+			after: "package sample\n//glippy:ignore-start duplicate-condition -- legacy branch\n" +
+				"func run() {\n\tfirst()\n\tsecond()\n}\n//glippy:ignore-end duplicate-condition\n",
 		},
 		{
 			name: "file scope owns all tokens after layout changes",
-			before: "//gox:ignore-file duplicate-condition -- generated adapter\n" +
+			before: "//glippy:ignore-file duplicate-condition -- generated adapter\n" +
 				"package sample\nfunc run(){first();second()}\n",
-			after: "//gox:ignore-file duplicate-condition -- generated adapter\n" +
+			after: "//glippy:ignore-file duplicate-condition -- generated adapter\n" +
 				"package sample\n\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
 		},
 		{
 			name: "unregistered rule still has stable syntax ownership",
-			before: "package sample\n//gox:ignore future-rule\nfunc run(){first();second()}\n",
-			after: "package sample\n//gox:ignore future-rule\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
+			before: "package sample\n//glippy:ignore future-rule\nfunc run(){first();second()}\n",
+			after: "package sample\n//glippy:ignore future-rule\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
 			wantErr: true,
 		},
 		{
 			name: "malformed direct suppression has no target contract",
-			before: "package sample\n//gox:ignore duplicate-condition extra\nfunc run(){first();second()}\n",
-			after: "package sample\n//gox:ignore duplicate-condition extra\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
+			before: "package sample\n//glippy:ignore duplicate-condition extra\nfunc run(){first();second()}\n",
+			after: "package sample\n//glippy:ignore duplicate-condition extra\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
 		},
 		{
 			name: "unknown directive has no target contract",
-			before: "package sample\n//gox:unknown duplicate-condition\nfunc run(){first();second()}\n",
-			after: "package sample\n//gox:unknown duplicate-condition\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
+			before: "package sample\n//glippy:unknown duplicate-condition\nfunc run(){first();second()}\n",
+			after: "package sample\n//glippy:unknown duplicate-condition\nfunc run() {\n\tfirst()\n\tsecond()\n}\n",
 		},
 	}
 	for _, test := range tests {
@@ -207,14 +233,14 @@ func TestValidateStablePreservesPhysicalSuppressionTargets(t *testing.T) {
 func TestParseReportsMalformedAndUnknownDirectivesInSourceOrder(t *testing.T) {
 	t.Parallel()
 
-	input := `//gox:ignore known-rule
-//gox:ignore
-//gox:ignore unknown-rule -- reason
-//gox:ignore-end unknown-rule -- invalid end reason
-//gox:ignore known-rule --
+	input := `//glippy:ignore known-rule
+//glippy:ignore
+//glippy:ignore unknown-rule -- reason
+//glippy:ignore-end unknown-rule -- invalid end reason
+//glippy:ignore known-rule --
 package sample
 
-//gox:ignore-file known-rule -- too late
+//glippy:ignore-file known-rule -- too late
 func run() {}
 `
 	file := loadFile(t, input)
@@ -247,9 +273,9 @@ func TestParseRequiresDeterministicRangePairs(t *testing.T) {
 
 	input := `package sample
 
-//gox:ignore-end unmatched-rule
-//gox:ignore-start nested-rule -- first
-//gox:ignore-start nested-rule -- duplicate
+//glippy:ignore-end unmatched-rule
+//glippy:ignore-start nested-rule -- first
+//glippy:ignore-start nested-rule -- duplicate
 func run() {}
 `
 	file := loadFile(t, input)
@@ -301,7 +327,7 @@ func TestParseRejectsDuplicateKnownRuleConfiguration(t *testing.T) {
 func TestParseAcceptsTabsAndCRLFAtDirectiveBoundaries(t *testing.T) {
 	t.Parallel()
 
-	input := "package sample\r\n\r\nfunc run() {\r\n\t//gox:ignore\tnext-rule\t--\tlegacy call\r\n\tnextTarget()\r\n}\r\n"
+	input := "package sample\r\n\r\nfunc run() {\r\n\t//glippy:ignore\tnext-rule\t--\tlegacy call\r\n\tnextTarget()\r\n}\r\n"
 	file := loadFile(t, input)
 	index, problems := suppressions.Parse(
 		file,
@@ -322,11 +348,11 @@ func TestParseDiagnosesSuppressionsExpiredAtExplicitCutoff(t *testing.T) {
 	input := `package sample
 
 func run() {
-	//gox:ignore active-rule -- expires=2026-08-12 temporary compatibility
+	//glippy:ignore active-rule -- expires=2026-08-12 temporary compatibility
 	activeTarget()
-	//gox:ignore expired-rule -- expires=2026-08-11 obsolete compatibility
+	//glippy:ignore expired-rule -- expires=2026-08-11 obsolete compatibility
 	expiredTarget()
-	//gox:ignore invalid-rule -- expires=2026-02-30 invalid date
+	//glippy:ignore invalid-rule -- expires=2026-02-30 invalid date
 	invalidTarget()
 }
 `
@@ -377,9 +403,9 @@ func TestParseRetainsExpiryWithoutCutoffAndRequiresHumanReason(t *testing.T) {
 	input := `package sample
 
 func run() {
-	//gox:ignore active-rule -- expires=2026-08-12 temporary compatibility
+	//glippy:ignore active-rule -- expires=2026-08-12 temporary compatibility
 	activeTarget()
-	//gox:ignore missing-rule -- expires=2026-08-12
+	//glippy:ignore missing-rule -- expires=2026-08-12
 	missingTarget()
 }
 `
@@ -410,7 +436,7 @@ func run() {
 func TestIndexDoesNotMatchAnotherSourceVersion(t *testing.T) {
 	t.Parallel()
 
-	input := "package sample\nfunc run() {\n\ttarget() //gox:ignore-line known-rule\n}\n"
+	input := "package sample\nfunc run() {\n\ttarget() //glippy:ignore-line known-rule\n}\n"
 	file := loadFile(t, input)
 	index, problems := suppressions.Parse(
 		file,
@@ -455,9 +481,9 @@ func TestIndexDoesNotMatchAnotherSourceVersion(t *testing.T) {
 func TestApplyFiltersDiagnosticsAndReportsUnusedDirectives(t *testing.T) {
 	t.Parallel()
 
-	input := `//gox:ignore-file used-rule -- broad waiver
-//gox:ignore-file used-rule -- redundant waiver
-//gox:ignore-file unused-rule -- no finding
+	input := `//glippy:ignore-file used-rule -- broad waiver
+//glippy:ignore-file used-rule -- redundant waiver
+//glippy:ignore-file unused-rule -- no finding
 package sample
 
 func run() { target() }
@@ -503,24 +529,24 @@ func run() { target() }
 }
 
 func FuzzParse(f *testing.F) {
-	f.Add([]byte("package sample\n//gox:ignore known-rule -- reason\nfunc run() {}\n"))
+	f.Add([]byte("package sample\n//glippy:ignore known-rule -- reason\nfunc run() {}\n"))
 	f.Add(
 		[]byte(
-			"package sample\n//gox:ignore known-rule -- expires=2026-08-11 temporary\nfunc run() {}\n",
+			"package sample\n//glippy:ignore known-rule -- expires=2026-08-11 temporary\nfunc run() {}\n",
 		),
 	)
 	f.Add(
 		[]byte(
-			"package sample\n//gox:ignore known-rule -- expires=2026-02-30 invalid\nfunc run() {}\n",
+			"package sample\n//glippy:ignore known-rule -- expires=2026-02-30 invalid\nfunc run() {}\n",
 		),
 	)
-	f.Add([]byte("//gox:ignore-file known-rule\r\npackage sample\r\n"))
+	f.Add([]byte("//glippy:ignore-file known-rule\r\npackage sample\r\n"))
 	f.Add(
 		[]byte(
-			"package sample\n//gox:ignore-start known-rule\n//gox:ignore-end known-rule\n",
+			"package sample\n//glippy:ignore-start known-rule\n//glippy:ignore-end known-rule\n",
 		),
 	)
-	f.Add([]byte("package sample\n//gox:ignore known-rule\nfunc run(){first();second()}\n"))
+	f.Add([]byte("package sample\n//glippy:ignore known-rule\nfunc run(){first();second()}\n"))
 	f.Fuzz(
 		func(t *testing.T, input []byte) {
 			file, _ := source.Load("fuzz.go", input)

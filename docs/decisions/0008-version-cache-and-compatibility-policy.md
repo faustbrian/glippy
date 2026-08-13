@@ -20,7 +20,7 @@ local builds identify themselves as development builds.
 
 The CLI cache boundary was revisited against Oxc commit `9d49d279` on
 2026-08-12. The current `apps/oxlint` command surface contains no general
-persistent result-cache option to copy. Gox therefore keeps this policy
+persistent result-cache option to copy. Glippy therefore keeps this policy
 Go-specific and limited to the package-loading and typed-analysis costs already
 measured in this repository.
 
@@ -32,13 +32,13 @@ happen to accept.
 
 ## Decision
 
-Gox supports Go 1.25 and Go 1.26 source. Release archives will be built with
+Glippy supports Go 1.25 and Go 1.26 source. Release archives will be built with
 Go 1.26.5 and will have no external Go runtime dependency. Source installation
 uses the module's Go 1.26 toolchain requirement. Windows is intentionally
 unsupported; the admitted release targets are macOS and Linux on amd64 and
 arm64.
 
-For each physical source path, Gox selects the nearest containing `go.mod`
+For each physical source path, Glippy selects the nearest containing `go.mod`
 within the discovered project root, then the root `go.work`, then Go 1.26 as
 the explicit default. Patch directives normalize to their language family.
 Missing directives use the default; malformed files and versions outside Go
@@ -49,7 +49,7 @@ newer than the selected source version. Cache identity uses that same selected
 version instead of a build-time constant.
 
 The Go parser is intentionally syntax-only and does not reject every semantic
-feature by module language version. Gox does not add type loading to formatting
+feature by module language version. Glippy does not add type loading to formatting
 or syntax linting merely to reject a construct such as Go 1.26
 `new(expression)` in a Go 1.25 module. Those modes preserve and reparse the
 syntax without claiming that it type-checks; typed linting retains
@@ -60,10 +60,10 @@ and the formatter, lint, corpus, and compatibility gates pass. The complete
 user-facing contract is in
 [`supported-go-versions.md`](../supported-go-versions.md).
 
-`gox version` prints one deterministic product version. Explicit link-time
+`glippy version` prints one deterministic product version. Explicit link-time
 release metadata takes precedence over the Go main-module version; a binary
 with neither reports `devel`. Official release builders set
-`github.com/faustbrian/gox/internal/version.linked` through Go's `-X` linker
+`github.com/faustbrian/glippy/internal/version.linked` through Go's `-X` linker
 flag. Version inspection performs no source, configuration, package, or network
 work.
 
@@ -133,7 +133,7 @@ Duplicate rule or component identities fail instead of being resolved by input
 order.
 
 Resolved typed rule options, including canonical metadata defaults, use the
-`gox-rule-options-v1` canonical encoding. The cache consumer derives each digest
+`glippy-rule-options-v1` canonical encoding. The cache consumer derives each digest
 from the same immutable snapshot routed to the rule instead of accepting a
 caller-supplied surrogate.
 
@@ -171,7 +171,7 @@ threshold.
 
 The first CLI policy is explicit and opt-in through versioned configuration.
 One typed `lint` or combined `check` invocation opens one store under
-`GOX_CACHE_DIR` or the platform user-cache directory, supplies the resolved
+`GLIPPY_CACHE_DIR` or the platform user-cache directory, supplies the resolved
 result-affecting canonical configuration and fixed prototype
 language/formatter identities, and closes the store before reporting.
 Versioned builds use their product version as tool identity; `devel` builds use

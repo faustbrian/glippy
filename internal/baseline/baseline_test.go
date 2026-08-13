@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/baseline"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/baseline"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestParseRejectsUnknownOrNoncanonicalBaselineData(t *testing.T) {
@@ -86,7 +86,7 @@ func TestParseRejectsUnknownOrNoncanonicalBaselineData(t *testing.T) {
 			func(t *testing.T) {
 				t.Parallel()
 				_, err := baseline.Parse(
-					".gox-baseline.json",
+					".glippy-baseline.json",
 					[]byte(test.input),
 					baseline.ParseOptions{KnownRules: []string{"known"}},
 				)
@@ -141,7 +141,7 @@ func TestGenerateAggregatesPortableStructuralFingerprintsDeterministically(t *te
 		t.Fatalf("Encode() leaked source or omitted final newline: %q", encoded)
 	}
 	parsed, err := baseline.Parse(
-		".gox-baseline.json",
+		".glippy-baseline.json",
 		encoded,
 		baseline.ParseOptions{KnownRules: []string{"call-rule"}},
 	)
@@ -303,7 +303,7 @@ func FuzzParseCanonicalRoundTrip(f *testing.F) {
 	f.Fuzz(
 		func(t *testing.T, input []byte) {
 			document, err := baseline.Parse(
-				".gox-baseline.json",
+				".glippy-baseline.json",
 				input,
 				baseline.ParseOptions{KnownRules: []string{"known"}},
 			)
@@ -315,7 +315,7 @@ func FuzzParseCanonicalRoundTrip(f *testing.F) {
 				t.Fatal(err)
 			}
 			if _, err := baseline.Parse(
-				".gox-baseline.json",
+				".glippy-baseline.json",
 				encoded,
 				baseline.ParseOptions{KnownRules: []string{"known"}},
 			);

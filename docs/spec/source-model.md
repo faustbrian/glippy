@@ -70,7 +70,7 @@ authority.
 
 Directive classification MUST cover build constraints, `//go:generate`,
 `//go:embed`, compiler directives including linkname, `//line`, cgo preambles,
-generated-file markers, and Gox suppression directives. Exact directive bytes
+generated-file markers, and Glippy suppression directives. Exact directive bytes
 and relative order MUST survive formatting. Their same-line relationship to
 both neighboring physical tokens MUST remain stable, as MUST their
 adjacent-line or blank-line relationship to the following token. Suppressions
@@ -98,7 +98,7 @@ editable source units.
 
 ## Source Size Boundary
 
-Gox accepts at most 67,108,864 bytes (64 MiB) for one complete Go file or one
+Glippy accepts at most 67,108,864 bytes (64 MiB) for one complete Go file or one
 physical standard-input fragment. The limit is measured over exact input bytes
 before cloning, parsing, snapshotting for a write or fix, or cloning a package
 overlay. An input of exactly 67,108,864 bytes is permitted; the next byte is a
@@ -115,8 +115,8 @@ stream remain filesystem failures rather than being reclassified as source
 size failures.
 
 For typed disk input, `go/packages` and its Go-tool subprocess may read source
-while selecting the package before Gox's parse hook receives the bytes. The
-hook enforces the boundary before Gox constructs its immutable source unit or
+while selecting the package before Glippy's parse hook receives the bytes. The
+hook enforces the boundary before Glippy constructs its immutable source unit or
 invokes the Go parser, but this limit is not evidence that upstream package
 selection itself has a 64 MiB memory ceiling.
 

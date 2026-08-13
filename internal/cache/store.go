@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	entryMagic = "GOXCACHE\x01"
+	entryMagic = "GLIPPYCACHE\x01"
 	entryVersion = "v1"
 	headerSize = len(entryMagic) + sha256.Size + sha256.Size + 8
 	temporaryRandomSize = 8

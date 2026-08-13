@@ -1,25 +1,25 @@
 # Command Reference
 
-Gox currently uses its development product and binary name. This reference
+Glippy v0.2 uses its intended product and binary identity. This reference
 documents the implemented command surface; it is not an installation contract
-or public-release announcement. The final naming audit remains required before
-the first public tag or stable installation path.
+or release announcement. The source repository has not been remotely renamed
+and no v0.2 tag or release is authorized before maintainer review.
 
 ## Command Summary
 
 | Command | Purpose | Writes source |
 | --- | --- | --- |
-| `gox fmt [path]` | Format standard input or one explicit file to standard output | No |
-| `gox fmt --check [paths...]` | Report files whose canonical formatting differs | No |
-| `gox fmt --diff [paths...]` | Print unified formatting differences | No |
-| `gox fmt --write [paths...]` | Validate and replace changed files | Yes |
-| `gox lint [paths...]` | Report enabled lint diagnostics | No |
-| `gox lint --fix [paths...]` | Apply safe fixes | Yes |
-| `gox lint --generate-baseline=<path> [paths...]` | Write a deterministic adoption baseline | Baseline only |
-| `gox check [paths...]` | Check formatting and lint diagnostics together | No |
-| `gox explain <rule>` | Print canonical rule documentation | No |
-| `gox version` | Print the resolved Gox version | No |
-| `gox completion <shell>` | Generate Bash, Zsh, or Fish completion | No |
+| `glippy fmt [path]` | Format standard input or one explicit file to standard output | No |
+| `glippy fmt --check [paths...]` | Report files whose canonical formatting differs | No |
+| `glippy fmt --diff [paths...]` | Print unified formatting differences | No |
+| `glippy fmt --write [paths...]` | Validate and replace changed files | Yes |
+| `glippy lint [paths...]` | Report enabled lint diagnostics | No |
+| `glippy lint --fix [paths...]` | Apply safe fixes | Yes |
+| `glippy lint --generate-baseline=<path> [paths...]` | Write a deterministic adoption baseline | Baseline only |
+| `glippy check [paths...]` | Check formatting and lint diagnostics together | No |
+| `glippy explain <rule>` | Print canonical rule documentation | No |
+| `glippy version` | Print the resolved Glippy version | No |
+| `glippy completion <shell>` | Generate Bash, Zsh, or Fish completion | No |
 
 ## Inputs
 
@@ -41,29 +41,29 @@ With no path, `fmt` reads one complete Go file from standard input and writes
 only its formatted bytes to standard output:
 
 ```sh
-gox fmt < source.go > source.formatted.go
+glippy fmt < source.go > source.formatted.go
 ```
 
 One explicit file may be formatted to standard output without changing it:
 
 ```sh
-gox fmt source.go
+glippy fmt source.go
 ```
 
 Use `--stdin-filepath` to supply project, configuration, and source-version
 context for editor input. The named file is not read or written:
 
 ```sh
-gox fmt --stdin-filepath=/project/source.go < buffer.go
+glippy fmt --stdin-filepath=/project/source.go < buffer.go
 ```
 
 Incomplete editor buffers are not accepted as complete files. Explicit
 declaration, statement, and expression fragments use an equals-form flag:
 
 ```sh
-gox fmt --fragment=declaration < declaration.go
-gox fmt --fragment=statement < statement.go
-gox fmt --fragment=expression < expression.go
+glippy fmt --fragment=declaration < declaration.go
+glippy fmt --fragment=statement < statement.go
+glippy fmt --fragment=expression < expression.go
 ```
 
 Fragment mode and `--stdin-filepath` cannot be combined with filesystem
@@ -72,9 +72,9 @@ operands or a write, check, or diff mode.
 ### Check, diff, and write
 
 ```sh
-gox fmt --check .
-gox fmt --diff .
-gox fmt --write .
+glippy fmt --check .
+glippy fmt --diff .
+glippy fmt --write .
 ```
 
 `--check` prints changed paths and exits with findings when any selected file
@@ -105,9 +105,9 @@ standard output contains formatted source or a unified diff.
 ## Lint
 
 ```sh
-gox lint .
-gox lint ./...
-gox lint --reporter=json ./...
+glippy lint .
+glippy lint ./...
+glippy lint --reporter=json ./...
 ```
 
 Ordinary lint is non-writing. Fix-class flags may write source, while
@@ -118,7 +118,7 @@ resolved warning with `lint.warnings-as-errors`, and retain final per-rule
 control through `lint.rules`. The legacy singular `lint.preset` remains
 accepted for v0.1 configuration compatibility but cannot be combined with
 `lint.presets`. Use
-`gox explain <rule>` to inspect a rule's prerequisites, configuration, fix
+`glippy explain <rule>` to inspect a rule's prerequisites, configuration, fix
 safety, examples, and known limitations. The
 [suppression reference](suppressions.md) defines exact-rule waivers, scopes,
 reasons, expiry, unused directives, and formatter ownership.
@@ -132,7 +132,7 @@ reasons, expiry, unused directives, and formatter ownership.
 | `--fix-unsafe` | Unsafe only |
 
 The flags are independently composable. Enabling unsafe fixes does not enable
-safe or suggestion fixes. Gox refuses ambiguous alternatives, stale source,
+safe or suggestion fixes. Glippy refuses ambiguous alternatives, stale source,
 overlapping edits, generated files, and symlink-traversing write targets.
 Accepted edits are reparsed, formatted, reanalyzed, and validated before one
 file is replaced. Fix transactions are single-file and do not claim multi-file
@@ -151,8 +151,8 @@ reporter. See the [lint baseline reference](baselines.md).
 ## Combined Check
 
 ```sh
-gox check .
-gox check --reporter=json ./...
+glippy check .
+glippy check --reporter=json ./...
 ```
 
 `check` is the non-mutating CI entry point. It compares canonical formatting
@@ -167,7 +167,7 @@ current directory.
 ## Rule Documentation
 
 ```sh
-gox explain duplicate-condition
+glippy explain duplicate-condition
 ```
 
 `explain` accepts exactly one registered rule ID. Its output derives from the
@@ -178,19 +178,19 @@ no project discovery or configuration loading. The
 ## Version
 
 ```sh
-gox version
+glippy version
 ```
 
-The command writes exactly `gox <version>` followed by a newline. A local build
+The command writes exactly `glippy <version>` followed by a newline. A local build
 without version metadata reports `devel`. Version inspection does not load a
 project or configuration.
 
 ## Shell Completion
 
 ```sh
-gox completion bash
-gox completion zsh
-gox completion fish
+glippy completion bash
+glippy completion zsh
+glippy completion fish
 ```
 
 Completion generation includes the commands, supported options, enum values,
@@ -199,7 +199,7 @@ filesystem operands, and rule IDs compiled into that binary. See the
 
 ## Configuration
 
-Gox discovers `.gox.toml` at the selected project boundary unless `--config`
+Glippy discovers `.glippy.toml` at the selected project boundary unless `--config`
 names one exact file. Configuration requires `version = 1`; unknown fields,
 unknown rules, duplicate semantic keys, and invalid values fail rather than
 being ignored. See the [configuration contract](spec/configuration.md) for the

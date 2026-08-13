@@ -83,7 +83,7 @@ chmod +x "$output"
 				budget: "0",
 				maximumMS: "1",
 				wantError: true,
-				wantOutput: "GOX_EDITOR_LATENCY_BUDGET_MS must be a positive integer",
+				wantOutput: "GLIPPY_EDITOR_LATENCY_BUDGET_MS must be a positive integer",
 			},
 		} {
 		t.Run(
@@ -99,7 +99,7 @@ chmod +x "$output"
 						toolDirectory +
 						string(os.PathListSeparator) +
 						os.Getenv("PATH"),
-					"GOX_EDITOR_LATENCY_BUDGET_MS=" + test.budget,
+					"GLIPPY_EDITOR_LATENCY_BUDGET_MS=" + test.budget,
 					"FAKE_EDITOR_MAXIMUM_MS=" + test.maximumMS,
 				)
 				output, err := command.CombinedOutput()
@@ -153,7 +153,7 @@ cat >"$output" <<'SCRIPT'
 if [ "${1:-}" = "check" ] && [ ! -e "$GOMODCACHE/downloaded" ]; then
 	exit 2
 fi
-sleep "${FAKE_GOX_SLEEP_SECONDS:-0}"
+sleep "${FAKE_GLIPPY_SLEEP_SECONDS:-0}"
 exit 1
 SCRIPT
 chmod +x "$output"
@@ -200,11 +200,12 @@ chmod +x "$output"
 						toolDirectory +
 						string(os.PathListSeparator) +
 						os.Getenv("PATH"),
-					"GOX_PEAK_RSS_RUNS=1",
-					"GOX_PEAK_RSS_FORMAT_ROOT=" + formatRoot,
-					"GOX_PEAK_RSS_FORMAT_BUDGET_BYTES=" + test.memoryBudget,
-					"GOX_PEAK_RSS_FORMAT_BUDGET_SECONDS=" + test.latencyBudget,
-					"FAKE_GOX_SLEEP_SECONDS=" + test.sleep,
+					"GLIPPY_PEAK_RSS_RUNS=1",
+					"GLIPPY_PEAK_RSS_FORMAT_ROOT=" + formatRoot,
+					"GLIPPY_PEAK_RSS_FORMAT_BUDGET_BYTES=" + test.memoryBudget,
+					"GLIPPY_PEAK_RSS_FORMAT_BUDGET_SECONDS=" +
+						test.latencyBudget,
+					"FAKE_GLIPPY_SLEEP_SECONDS=" + test.sleep,
 				)
 				output, err := command.CombinedOutput()
 				if (err != nil) != test.wantError {
@@ -261,7 +262,7 @@ case "$*" in
 		if [ "$2" = "$FAKE_FORMAT_ROOT" ]; then
 			printf '%s\n' "$FAKE_CORPUS_REVISION"
 		else
-			printf '%s\n' "$FAKE_GOX_REVISION"
+			printf '%s\n' "$FAKE_GLIPPY_REVISION"
 		fi
 		;;
 	*'status --porcelain=v1 --untracked-files=all') ;;
@@ -283,7 +284,7 @@ esac
 			unameOS string
 			unameArch string
 			corpusRevision string
-			goxRevision string
+			glippyRevision string
 			wantError string
 		}{
 			{
@@ -293,7 +294,7 @@ esac
 				unameOS: "Darwin",
 				unameArch: "arm64",
 				corpusRevision: "abc123",
-				goxRevision: "gox123",
+				glippyRevision: "glippy123",
 				wantError: "release budget requires darwin/arm64; Go host is linux/arm64",
 			},
 			{
@@ -303,7 +304,7 @@ esac
 				unameOS: "Darwin",
 				unameArch: "x86_64",
 				corpusRevision: "abc123",
-				goxRevision: "gox123",
+				glippyRevision: "glippy123",
 				wantError: "release budget requires native darwin/arm64; kernel is darwin/amd64",
 			},
 			{
@@ -313,18 +314,18 @@ esac
 				unameOS: "Darwin",
 				unameArch: "arm64",
 				corpusRevision: "different",
-				goxRevision: "gox123",
+				glippyRevision: "glippy123",
 				wantError: "formatter corpus revision is different; want abc123",
 			},
 			{
-				name: "Gox revision mismatch",
+				name: "Glippy revision mismatch",
 				goHostOS: "darwin",
 				goHostArch: "arm64",
 				unameOS: "Darwin",
 				unameArch: "arm64",
 				corpusRevision: "abc123",
-				goxRevision: "different",
-				wantError: "Gox revision is different; want gox123",
+				glippyRevision: "different",
+				wantError: "Glippy revision is different; want glippy123",
 			},
 		} {
 		t.Run(
@@ -340,17 +341,17 @@ esac
 						toolDirectory +
 						string(os.PathListSeparator) +
 						os.Getenv("PATH"),
-					"GOX_PEAK_RSS_FORMAT_ROOT=" + formatRoot,
-					"GOX_PEAK_RSS_FORMAT_REVISION=abc123",
-					"GOX_RELEASE_GOX_REVISION=gox123",
-					"GOX_RELEASE_EXPECTED_GOOS=darwin",
-					"GOX_RELEASE_EXPECTED_GOARCH=arm64",
+					"GLIPPY_PEAK_RSS_FORMAT_ROOT=" + formatRoot,
+					"GLIPPY_PEAK_RSS_FORMAT_REVISION=abc123",
+					"GLIPPY_RELEASE_GLIPPY_REVISION=glippy123",
+					"GLIPPY_RELEASE_EXPECTED_GOOS=darwin",
+					"GLIPPY_RELEASE_EXPECTED_GOARCH=arm64",
 					"FAKE_GO_HOST_OS=" + test.goHostOS,
 					"FAKE_GO_HOST_ARCH=" + test.goHostArch,
 					"FAKE_UNAME_OS=" + test.unameOS,
 					"FAKE_UNAME_ARCH=" + test.unameArch,
 					"FAKE_CORPUS_REVISION=" + test.corpusRevision,
-					"FAKE_GOX_REVISION=" + test.goxRevision,
+					"FAKE_GLIPPY_REVISION=" + test.glippyRevision,
 					"FAKE_FORMAT_ROOT=" + resolvedFormatRoot,
 				)
 				output, err := command.CombinedOutput()
@@ -416,11 +417,11 @@ exit 1
 	command.Env = append(
 		os.Environ(),
 		"PATH=" + toolDirectory + string(os.PathListSeparator) + os.Getenv("PATH"),
-		"GOX_PEAK_RSS_RUNS=1",
-		"GOX_PEAK_RSS_FORMAT_ROOT=" + t.TempDir(),
-		"GOX_PEAK_RSS_FORMAT_BUDGET_BYTES=2147483648",
-		"GOX_PEAK_RSS_FORMAT_BUDGET_SECONDS=15",
-		"GOX_TIME_COMMAND=" + fakeTime,
+		"GLIPPY_PEAK_RSS_RUNS=1",
+		"GLIPPY_PEAK_RSS_FORMAT_ROOT=" + t.TempDir(),
+		"GLIPPY_PEAK_RSS_FORMAT_BUDGET_BYTES=2147483648",
+		"GLIPPY_PEAK_RSS_FORMAT_BUDGET_SECONDS=15",
+		"GLIPPY_TIME_COMMAND=" + fakeTime,
 		"FAKE_TIME_ELAPSED_SECONDS=15.500",
 		"FAKE_TIME_PEAK_BYTES=1024",
 	)

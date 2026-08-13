@@ -6,8 +6,8 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 type CheckSummary struct {

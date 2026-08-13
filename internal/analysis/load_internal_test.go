@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestPackageSourceCollectorOrdersMultipleFatalSourceFailures(t *testing.T) {

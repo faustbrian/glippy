@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestIdenticalBranchesReportsEquivalentIfElseBodies(t *testing.T) {
@@ -91,7 +91,7 @@ func TestIdenticalBranchesHonorsSuppressionsAndGeneratedFiles(t *testing.T) {
 		t,
 		`package sample
 func run(ready bool) {
-	//gox:ignore identical-branches -- compatibility branches remain explicit
+	//glippy:ignore identical-branches -- compatibility branches remain explicit
 	if ready { work() } else { work() }
 }
 func work() {}

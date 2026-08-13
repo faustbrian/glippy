@@ -101,23 +101,44 @@ func findProjectRoot(start string) (string, error) {
 }
 
 func findConfiguration(root string) (string, error) {
+	var canonical string
+	var legacy string
 	for directory := root; ; directory = filepath.Dir(directory) {
-		candidate := filepath.Join(directory, Filename)
-		info, err := os.Stat(candidate)
-		switch {
-		case err == nil && !info.Mode().IsRegular():
-			return "", fmt.Errorf(
-				"configuration path %q is not a regular file",
-				candidate,
-			)
-		case err == nil:
-			return candidate, nil
-		case !os.IsNotExist(err):
-			return "", fmt.Errorf("inspect configuration path %q: %w", candidate, err)
+		for _, name := range []string{Filename, LegacyFilename} {
+			candidate := filepath.Join(directory, name)
+			info, err := os.Stat(candidate)
+			switch {
+			case err == nil && !info.Mode().IsRegular():
+				return "", fmt.Errorf(
+					"configuration path %q is not a regular file",
+					candidate,
+				)
+			case err == nil && name == Filename && canonical == "":
+				canonical = candidate
+			case err == nil && name == LegacyFilename && legacy == "":
+				legacy = candidate
+			case err != nil && !os.IsNotExist(err):
+				return "", fmt.Errorf(
+					"inspect configuration path %q: %w",
+					candidate,
+					err,
+				)
+			}
 		}
 		parent := filepath.Dir(directory)
 		if parent == directory {
-			return "", nil
+			break
 		}
 	}
+	if canonical != "" && legacy != "" {
+		return "", fmt.Errorf(
+			"both %s and %s were found; remove the legacy configuration or select one explicitly with --config",
+			Filename,
+			LegacyFilename,
+		)
+	}
+	if canonical != "" {
+		return canonical, nil
+	}
+	return legacy, nil
 }

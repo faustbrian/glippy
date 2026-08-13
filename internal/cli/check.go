@@ -8,19 +8,19 @@ import (
 	"io"
 	"strings"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	goxformat "github.com/faustbrian/gox/internal/format"
-	goxreport "github.com/faustbrian/gox/internal/report"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/analysis"
+	glippyformat "github.com/faustbrian/glippy/internal/format"
+	glippyreport "github.com/faustbrian/glippy/internal/report"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
-const checkUsage = "gox: expected 'check [--reporter=text|json] [--config=<path>] [path...]'\n"
+const checkUsage = "glippy: expected 'check [--reporter=text|json] [--config=<path>] [path...]'\n"
 
 type checkInvocation struct {
 	configPath string
 	paths []string
-	reporter goxreport.Format
+	reporter glippyreport.Format
 }
 
 type checkExecution struct {
@@ -33,7 +33,7 @@ func parseCheckInvocation(arguments []string) (checkInvocation, bool) {
 	if len(arguments) == 0 || arguments[0] != "check" {
 		return checkInvocation{}, false
 	}
-	result := checkInvocation{reporter: goxreport.Text}
+	result := checkInvocation{reporter: glippyreport.Text}
 	reporterSet := false
 	for index := 1; index < len(arguments); index++ {
 		argument := arguments[index]
@@ -210,7 +210,7 @@ func runCombinedCheck(
 				err,
 			)
 		}
-		formatted, err := goxformat.File(file, task.options.format)
+		formatted, err := glippyformat.File(file, task.options.format)
 		if err != nil {
 			return reportCombinedCheck(
 				invocation,
@@ -243,10 +243,10 @@ func runCombinedCheck(
 			},
 		)
 	}
-	baselineInputs := make([]goxreport.LintTextInput, len(executions))
+	baselineInputs := make([]glippyreport.LintTextInput, len(executions))
 	baselineResults := make([]analysis.Result, len(executions))
 	for index, execution := range executions {
-		baselineInputs[index] = goxreport.LintTextInput{
+		baselineInputs[index] = glippyreport.LintTextInput{
 			File: execution.file,
 			Result: execution.analysis,
 		}
@@ -267,7 +267,7 @@ func runCombinedCheck(
 	for index := range executions {
 		executions[index].analysis = baselineResults[index]
 	}
-	if invocation.reporter == goxreport.JSON {
+	if invocation.reporter == glippyreport.JSON {
 		exitCode = ExitSuccess
 		for _, execution := range executions {
 			if execution.formatChanged ||
@@ -293,8 +293,8 @@ func runCombinedCheck(
 			fmt.Fprintf(&output, "%s: format differs\n", execution.file.Path())
 			exitCode = ExitFindings
 		}
-		lintOutput, err := goxreport.RenderLintText(
-			[]goxreport.LintTextInput{
+		lintOutput, err := glippyreport.RenderLintText(
+			[]glippyreport.LintTextInput{
 				{File: execution.file, Result: execution.analysis},
 			},
 		)
@@ -302,7 +302,7 @@ func runCombinedCheck(
 			return report(
 				stderr,
 				ExitInternalError,
-				"gox check: render lint report: %v\n",
+				"glippy check: render lint report: %v\n",
 				err,
 			)
 		}
@@ -329,7 +329,7 @@ func runCombinedCheck(
 			return report(
 				stderr,
 				moreSevereExitCode(exitCode, ExitFilesystemError),
-				"gox check: write standard output: %v\n",
+				"glippy check: write standard output: %v\n",
 				err,
 			)
 		}
@@ -400,7 +400,7 @@ func runCombinedPackageCheck(
 				err,
 			)
 		}
-		formatted, err := goxformat.File(file, task.options.format)
+		formatted, err := glippyformat.File(file, task.options.format)
 		if err != nil {
 			return reportCombinedPackageCheck(
 				invocation,
@@ -472,20 +472,20 @@ func reportCombinedPackageCheck(
 	executions []checkExecution,
 	err error,
 ) int {
-	if invocation.reporter == goxreport.JSON {
-		formats := make([]goxreport.CheckFormatOutcome, len(executions))
+	if invocation.reporter == glippyreport.JSON {
+		formats := make([]glippyreport.CheckFormatOutcome, len(executions))
 		for index, execution := range executions {
-			formats[index] = goxreport.CheckFormatOutcome{
+			formats[index] = glippyreport.CheckFormatOutcome{
 				Path: execution.file.Path(),
 				Digest: execution.file.Digest(),
 				Different: execution.formatChanged,
 			}
 		}
-		errs := []goxreport.Error{}
+		errs := []glippyreport.Error{}
 		if err != nil {
-			errs = append(errs, goxreport.Error{Message: err.Error()})
+			errs = append(errs, glippyreport.Error{Message: err.Error()})
 		}
-		reportResult, reportErr := goxreport.NewPackageCheckResult(
+		reportResult, reportErr := glippyreport.NewPackageCheckResult(
 			exitCategory(exitCode),
 			exitCode,
 			complete,
@@ -497,16 +497,16 @@ func reportCombinedPackageCheck(
 			return report(
 				stderr,
 				moreSevereExitCode(exitCode, ExitInternalError),
-				"gox check: construct typed JSON report: %v\n",
+				"glippy check: construct typed JSON report: %v\n",
 				reportErr,
 			)
 		}
-		encoded, reportErr := goxreport.MarshalCheckJSON(reportResult)
+		encoded, reportErr := glippyreport.MarshalCheckJSON(reportResult)
 		if reportErr != nil {
 			return report(
 				stderr,
 				moreSevereExitCode(exitCode, ExitInternalError),
-				"gox check: encode typed JSON report: %v\n",
+				"glippy check: encode typed JSON report: %v\n",
 				reportErr,
 			)
 		}
@@ -514,25 +514,25 @@ func reportCombinedPackageCheck(
 			return report(
 				stderr,
 				moreSevereExitCode(exitCode, ExitFilesystemError),
-				"gox check: write JSON report: %v\n",
+				"glippy check: write JSON report: %v\n",
 				reportErr,
 			)
 		}
 		return exitCode
 	}
 	if err != nil {
-		return report(stderr, exitCode, "gox check: %v\n", err)
+		return report(stderr, exitCode, "glippy check: %v\n", err)
 	}
 	inputs, err := packageLintTextInputs(result)
 	if err != nil {
 		return report(
 			stderr,
 			ExitInternalError,
-			"gox check: prepare typed text report: %v\n",
+			"glippy check: prepare typed text report: %v\n",
 			err,
 		)
 	}
-	lintOutput, err := goxreport.RenderPackageLintText(
+	lintOutput, err := glippyreport.RenderPackageLintText(
 		inputs,
 		result.LoadDiagnostics,
 		result.SourceProblems,
@@ -541,7 +541,7 @@ func reportCombinedPackageCheck(
 		return report(
 			stderr,
 			ExitInternalError,
-			"gox check: render typed text report: %v\n",
+			"glippy check: render typed text report: %v\n",
 			err,
 		)
 	}
@@ -557,7 +557,7 @@ func reportCombinedPackageCheck(
 			return report(
 				stderr,
 				moreSevereExitCode(exitCode, ExitFilesystemError),
-				"gox check: write standard output: %v\n",
+				"glippy check: write standard output: %v\n",
 				err,
 			)
 		}
@@ -566,9 +566,9 @@ func reportCombinedPackageCheck(
 }
 
 func reportInvalidCheckInvocation(arguments []string, stdout, stderr io.Writer) int {
-	invocation := checkInvocation{reporter: goxreport.Text}
+	invocation := checkInvocation{reporter: glippyreport.Text}
 	if requestsCheckJSONReporter(arguments) {
-		invocation.reporter = goxreport.JSON
+		invocation.reporter = glippyreport.JSON
 	} else {
 		return report(stderr, ExitInvalidInvocation, checkUsage)
 	}
@@ -591,27 +591,27 @@ func reportCombinedCheck(
 	executions []checkExecution,
 	err error,
 ) int {
-	if invocation.reporter != goxreport.JSON {
+	if invocation.reporter != glippyreport.JSON {
 		if err == nil {
 			return exitCode
 		}
-		return report(stderr, exitCode, "gox check: %v\n", err)
+		return report(stderr, exitCode, "glippy check: %v\n", err)
 	}
 	analyses := make([]analysis.Result, len(executions))
-	formats := make([]goxreport.CheckFormatOutcome, len(executions))
+	formats := make([]glippyreport.CheckFormatOutcome, len(executions))
 	for index, execution := range executions {
 		analyses[index] = execution.analysis
-		formats[index] = goxreport.CheckFormatOutcome{
+		formats[index] = glippyreport.CheckFormatOutcome{
 			Path: execution.file.Path(),
 			Digest: execution.file.Digest(),
 			Different: execution.formatChanged,
 		}
 	}
-	errs := []goxreport.Error{}
+	errs := []glippyreport.Error{}
 	if err != nil {
-		errs = append(errs, goxreport.Error{Message: err.Error()})
+		errs = append(errs, glippyreport.Error{Message: err.Error()})
 	}
-	result, resultErr := goxreport.NewCheckResult(
+	result, resultErr := glippyreport.NewCheckResult(
 		exitCategory(exitCode),
 		exitCode,
 		complete,
@@ -623,16 +623,16 @@ func reportCombinedCheck(
 		return report(
 			stderr,
 			moreSevereExitCode(exitCode, ExitInternalError),
-			"gox check: construct JSON report: %v\n",
+			"glippy check: construct JSON report: %v\n",
 			resultErr,
 		)
 	}
-	encoded, resultErr := goxreport.MarshalCheckJSON(result)
+	encoded, resultErr := glippyreport.MarshalCheckJSON(result)
 	if resultErr != nil {
 		return report(
 			stderr,
 			moreSevereExitCode(exitCode, ExitInternalError),
-			"gox check: encode JSON report: %v\n",
+			"glippy check: encode JSON report: %v\n",
 			resultErr,
 		)
 	}
@@ -640,7 +640,7 @@ func reportCombinedCheck(
 		return report(
 			stderr,
 			moreSevereExitCode(exitCode, ExitFilesystemError),
-			"gox check: write JSON report: %v\n",
+			"glippy check: write JSON report: %v\n",
 			resultErr,
 		)
 	}

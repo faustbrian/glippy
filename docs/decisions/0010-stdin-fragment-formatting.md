@@ -20,7 +20,7 @@ translation. File-position directives and file-wide markers are rejected.
 Expression trailing whitespace remains in the physical ledger but outside the
 synthetic parentheses, separated from the wrapper close by non-line-breaking
 synthetic trivia. Statement references to the named wrapper are rejected. A
-keyed `goxfragment` element is rejected when syntax cannot prove that it names
+keyed `glippyfragment` element is rejected when syntax cannot prove that it names
 a user-owned local declaration or struct field, because resolving a named
 composite as a struct or map would require type information.
 
@@ -43,7 +43,7 @@ The complete normative contract is in `docs/spec/fragments.md`.
 
 Callers must name the fragment kind. Diagnostics require physical/synthetic
 position mapping. Some file-level comments and directives are deliberately
-unsupported in fragment mode. Statement fragments using `goxfragment` as a
+unsupported in fragment mode. Statement fragments using `glippyfragment` as a
 key in a composite are conservatively rejected unless the key resolves to a
 user-owned local declaration or syntax proves a user-owned struct type.
 

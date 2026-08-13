@@ -15,13 +15,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/cache"
-	"github.com/faustbrian/gox/internal/filesystem"
-	fixengine "github.com/faustbrian/gox/internal/fix"
-	goxreport "github.com/faustbrian/gox/internal/report"
-	"github.com/faustbrian/gox/internal/rules"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/filesystem"
+	fixengine "github.com/faustbrian/glippy/internal/fix"
+	glippyreport "github.com/faustbrian/glippy/internal/report"
+	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
+	"github.com/faustbrian/glippy/internal/suppressions"
 )
 
 type cliSyntaxRule struct {
@@ -128,7 +129,7 @@ func inspect(pointer *int) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n"),
 		0o600,
 	);
@@ -141,7 +142,7 @@ func inspect(pointer *int) {
 	exitCode := Run([]string{"lint", path}, strings.NewReader(""), &stdout, &stderr)
 	want := path +
 		":4:7: warn[nilness]: nil dereference in load\n" +
-		"  help: run `gox explain nilness` for the rule contract and limitations\n"
+		"  help: run `glippy explain nilness` for the rule contract and limitations\n"
 	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
 		t.Fatalf(
 			"Run(lint nilness) = exit %d, stdout %q, stderr %q",
@@ -207,7 +208,7 @@ func attach(ctx context.Context) context.Context {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n"),
 		0o600,
 	);
@@ -291,7 +292,7 @@ func match(err error) bool {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte(
 			"version = 1\n[lint]\npreset = \"suspicious\"\n[lint.rules]\ncontext-key = \"off\"\ndefer-in-infinite-loop = \"off\"\nnilness = \"off\"\n",
 		),
@@ -383,7 +384,7 @@ func run() {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte(
 			"version = 1\n[lint]\npreset = \"suspicious\"\n[lint.rules]\nnilness = \"off\"\n",
 		),
@@ -461,7 +462,7 @@ func TestRunAppliesConfiguredSuppressionReasonPolicyAcrossSyntaxCommands(t *test
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte("version = 1\n[lint.suppressions]\nrequire-reason = true\n"),
 		0o600,
 	);
@@ -470,7 +471,7 @@ func TestRunAppliesConfiguredSuppressionReasonPolicyAcrossSyntaxCommands(t *test
 	}
 	path := filepath.Join(root, "sample.go")
 	input := []byte(
-		`//gox:ignore-file duplicate-condition
+		`//glippy:ignore-file duplicate-condition
 package sample
 
 func run(ready bool) {
@@ -526,7 +527,7 @@ func TestRunAppliesConfiguredSuppressionReasonPolicyToPackageAnalysis(t *testing
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte(
 			"version = 1\n[lint]\npreset = \"suspicious\"\n[lint.suppressions]\nrequire-reason = true\nexpiry-cutoff = \"2026-08-11\"\n",
 		),
@@ -537,8 +538,8 @@ func TestRunAppliesConfiguredSuppressionReasonPolicyToPackageAnalysis(t *testing
 	}
 	path := filepath.Join(root, "sample.go")
 	input := []byte(
-		`//gox:ignore-file nilness
-//gox:ignore-file nilness -- expires=2026-08-11 temporary compatibility
+		`//glippy:ignore-file nilness
+//glippy:ignore-file nilness -- expires=2026-08-11 temporary compatibility
 package sample
 
 func inspect(pointer *int) {
@@ -571,7 +572,7 @@ func inspect(pointer *int) {
 			)
 		}
 		if command == "lint" {
-			var result goxreport.LintResult
+			var result glippyreport.LintResult
 			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 				t.Fatalf(
 					"decode typed lint JSON: %v; output = %q",
@@ -587,7 +588,7 @@ func inspect(pointer *int) {
 				t.Fatalf("Run(typed lint reasons) result = %#v", result)
 			}
 		} else {
-			var result goxreport.CheckResult
+			var result glippyreport.CheckResult
 			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 				t.Fatalf(
 					"decode typed check JSON: %v; output = %q",
@@ -626,7 +627,7 @@ func TestRunAppliesConfiguredSuppressionExpiryCutoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte("version = 1\n[lint.suppressions]\nexpiry-cutoff = \"2026-08-11\"\n"),
 		0o600,
 	);
@@ -635,7 +636,7 @@ func TestRunAppliesConfiguredSuppressionExpiryCutoff(t *testing.T) {
 	}
 	path := filepath.Join(root, "sample.go")
 	input := []byte(
-		`//gox:ignore-file duplicate-condition -- expires=2026-08-11 temporary compatibility
+		`//glippy:ignore-file duplicate-condition -- expires=2026-08-11 temporary compatibility
 package sample
 
 func run(ready bool) {
@@ -719,7 +720,7 @@ func TestRunLintCheckAppliesTypedRuleOptionsFromConfiguration(t *testing.T) {
 		err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte(
@@ -1072,7 +1073,7 @@ func TestRunLintCheckAnalyzesConfiguredSyntaxRulesWithoutMutation(t *testing.T) 
 	if err := os.WriteFile(path, input, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte("version = 1\n[lint.rules]\ncall-rule = \"error\"\n"),
@@ -1090,7 +1091,7 @@ func TestRunLintCheckAnalyzesConfiguredSyntaxRulesWithoutMutation(t *testing.T) 
 		lintInvocation{
 			configPath: configurationPath,
 			paths: []string{path},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -1126,15 +1127,15 @@ func TestRunLintGenerateBaselineWritesVisibleDiagnostics(t *testing.T) {
 	t.Parallel()
 
 	invocation, valid := parseLintInvocation(
-		[]string{"lint", "--generate-baseline=.gox-baseline.json", "source.go"},
+		[]string{"lint", "--generate-baseline=.glippy-baseline.json", "source.go"},
 	)
 	if !valid ||
-		invocation.generateBaseline != ".gox-baseline.json" ||
+		invocation.generateBaseline != ".glippy-baseline.json" ||
 		len(invocation.paths) != 1 {
 		t.Fatalf("parseLintInvocation() = %#v, %t", invocation, valid)
 	}
 	if _, valid := parseLintInvocation(
-		[]string{"lint", "--generate-baseline=.gox-baseline.json", "--fix", "source.go"},
+		[]string{"lint", "--generate-baseline=.glippy-baseline.json", "--fix", "source.go"},
 	);
 		valid {
 		t.Fatal("parseLintInvocation() accepted baseline generation with fixes")
@@ -1142,7 +1143,7 @@ func TestRunLintGenerateBaselineWritesVisibleDiagnostics(t *testing.T) {
 	if _, valid := parseLintInvocation(
 		[]string{
 			"lint",
-			"--generate-baseline=.gox-baseline.json",
+			"--generate-baseline=.glippy-baseline.json",
 			"--reporter=json",
 			"source.go",
 		},
@@ -1165,7 +1166,7 @@ func TestRunLintGenerateBaselineWritesVisibleDiagnostics(t *testing.T) {
 		err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte("version = 1\n[lint.rules]\ncall-rule = \"error\"\n"),
@@ -1187,7 +1188,7 @@ func TestRunLintGenerateBaselineWritesVisibleDiagnostics(t *testing.T) {
 		newCLISyntaxRegistry(t),
 	)
 
-	baselinePath := filepath.Join(root, ".gox-baseline.json")
+	baselinePath := filepath.Join(root, ".glippy-baseline.json")
 	encoded, err := os.ReadFile(baselinePath)
 	if err != nil {
 		t.Fatal(err)
@@ -1224,7 +1225,7 @@ func TestRunLintCheckAppliesConfiguredBaselineAndReportsStaleEntries(t *testing.
 	if err := os.WriteFile(path, input, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte("version = 1\n[lint.rules]\ncall-rule = \"error\"\n"),
@@ -1236,9 +1237,9 @@ func TestRunLintCheckAppliesConfiguredBaselineAndReportsStaleEntries(t *testing.
 	registry := newCLISyntaxRegistry(t)
 	invocation := lintInvocation{
 		configPath: configurationPath,
-		generateBaseline: ".gox-baseline.json",
+		generateBaseline: ".glippy-baseline.json",
 		paths: []string{path},
-		reporter: goxreport.Text,
+		reporter: glippyreport.Text,
 	}
 	if exitCode := runLintGenerateBaseline(
 		context.Background(),
@@ -1255,7 +1256,7 @@ func TestRunLintCheckAppliesConfiguredBaselineAndReportsStaleEntries(t *testing.
 		[]byte(
 			"version = 1\n" +
 				"[lint.rules]\ncall-rule = \"error\"\n" +
-				"[lint.baseline]\npath = \".gox-baseline.json\"\nreport-stale = true\n",
+				"[lint.baseline]\npath = \".glippy-baseline.json\"\nreport-stale = true\n",
 		),
 		0o600,
 	);
@@ -1281,7 +1282,7 @@ func TestRunLintCheckAppliesConfiguredBaselineAndReportsStaleEntries(t *testing.
 		checkInvocation{
 			configPath: configurationPath,
 			paths: []string{path},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -1334,12 +1335,12 @@ func TestRunLintFixDoesNotApplyBaselinedFixes(t *testing.T) {
 	if err := os.WriteFile(path, input, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	writeConfig := func(baselined bool) {
 		t.Helper()
 		contents := "version = 1\n[lint.rules]\nfix-rule = \"error\"\n"
 		if baselined {
-			contents += "[lint.baseline]\npath = \".gox-baseline.json\"\n"
+			contents += "[lint.baseline]\npath = \".glippy-baseline.json\"\n"
 		}
 		if err := os.WriteFile(configurationPath, []byte(contents), 0o600); err != nil {
 			t.Fatal(err)
@@ -1349,9 +1350,9 @@ func TestRunLintFixDoesNotApplyBaselinedFixes(t *testing.T) {
 	registry := newCLIFixRegistry(t, rules.FixSafe)
 	invocation := lintInvocation{
 		configPath: configurationPath,
-		generateBaseline: ".gox-baseline.json",
+		generateBaseline: ".glippy-baseline.json",
 		paths: []string{path},
-		reporter: goxreport.Text,
+		reporter: glippyreport.Text,
 	}
 	if exitCode := runLintGenerateBaseline(
 		context.Background(),
@@ -1402,10 +1403,10 @@ func TestRunLintCheckReportsMissingBaselineAsFilesystemFailure(t *testing.T) {
 	if err := os.WriteFile(path, []byte("package sample\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
-		[]byte("version = 1\n" + "[lint.baseline]\npath = \".gox-baseline.json\"\n"),
+		[]byte("version = 1\n" + "[lint.baseline]\npath = \".glippy-baseline.json\"\n"),
 		0o600,
 	);
 		err != nil {
@@ -1418,7 +1419,7 @@ func TestRunLintCheckReportsMissingBaselineAsFilesystemFailure(t *testing.T) {
 		lintInvocation{
 			configPath: configurationPath,
 			paths: []string{path},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -1445,7 +1446,7 @@ func TestRunLintCheckComposesPresetsAndEscalatesWarnings(t *testing.T) {
 		err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte(
@@ -1542,7 +1543,7 @@ func TestPrepareLintInputPlansBindsResolvedSourceVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(root, ".gox.toml"),
+		filepath.Join(root, ".glippy.toml"),
 		[]byte("version = 1\n[lint]\npreset = \"suspicious\"\n"),
 		0o600,
 	);
@@ -1583,7 +1584,7 @@ func TestRunLintCheckUsesOneConfigurationSnapshotForTierAndExecution(t *testing.
 		err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte("version = 1\n[lint.rules]\ncall-rule = \"error\"\n"),
@@ -1614,7 +1615,7 @@ func TestRunLintCheckUsesOneConfigurationSnapshotForTierAndExecution(t *testing.
 		lintInvocation{
 			configPath: configurationPath,
 			paths: []string{path},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -1645,7 +1646,7 @@ func TestRunLintCheckEmitsVersionedJSON(t *testing.T) {
 	var stderr bytes.Buffer
 	exitCode := runLintCheck(
 		context.Background(),
-		lintInvocation{paths: []string{path}, reporter: goxreport.JSON},
+		lintInvocation{paths: []string{path}, reporter: glippyreport.JSON},
 		&stdout,
 		&stderr,
 		newCLISyntaxRegistry(t),
@@ -1653,7 +1654,7 @@ func TestRunLintCheckEmitsVersionedJSON(t *testing.T) {
 	if exitCode != ExitFindings || stderr.Len() != 0 {
 		t.Fatalf("runLintCheck() exit = %d, stderr = %q", exitCode, stderr.String())
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode lint JSON: %v; output = %q", err, stdout.String())
 	}
@@ -1701,7 +1702,7 @@ func TestRunLintUsesDefaultRegistryForCleanAndSuppressionOutcomes(t *testing.T) 
 	suppressedPath := filepath.Join(root, "suppressed.go")
 	if err := os.WriteFile(
 		suppressedPath,
-		[]byte("package sample\n//gox:ignore unknown-rule\nfunc run(){}\n"),
+		[]byte("package sample\n//glippy:ignore unknown-rule\nfunc run(){}\n"),
 		0o600,
 	);
 		err != nil {
@@ -1722,6 +1723,59 @@ func TestRunLintUsesDefaultRegistryForCleanAndSuppressionOutcomes(t *testing.T) 
 	}
 }
 
+func TestRunLintReportsLegacyGoxSuppressionMigrationInTextAndJSON(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "legacy.go")
+	if err := os.WriteFile(
+		path,
+		[]byte(
+			"package sample\n//gox:ignore duplicate-condition -- migrate alias\nfunc run() {}\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := Run([]string{"lint", path}, failingReader{}, &stdout, &stderr);
+		exitCode != ExitFindings ||
+			stderr.Len() != 0 ||
+			!strings.Contains(
+				stdout.String(),
+				"suppression[legacy-directive]: legacy //gox: suppression; migrate to //glippy:",
+			) {
+		t.Fatalf(
+			"Run(lint legacy text) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode := Run(
+		[]string{"lint", "--reporter=json", path},
+		failingReader{},
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf("Run(lint legacy JSON) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+	var result glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode legacy JSON: %v; output = %q", err, stdout.String())
+	}
+	if len(result.SuppressionProblems) != 1 ||
+		result.SuppressionProblems[0].Kind != suppressions.ProblemLegacyDirective {
+		t.Fatalf("legacy JSON suppression problems = %#v", result.SuppressionProblems)
+	}
+}
+
 func TestRunLintInvalidJSONInvocationReturnsJSON(t *testing.T) {
 	t.Parallel()
 
@@ -1736,7 +1790,7 @@ func TestRunLintInvalidJSONInvocationReturnsJSON(t *testing.T) {
 	if exitCode != ExitInvalidInvocation || stderr.Len() != 0 {
 		t.Fatalf("Run(invalid lint JSON) = exit %d, stderr %q", exitCode, stderr.String())
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode lint JSON: %v; output = %q", err, stdout.String())
 	}
@@ -1813,7 +1867,7 @@ func TestRunLintCheckRoutesTypedPackagePatternsToPackageAnalysis(t *testing.T) {
 		var stderr bytes.Buffer
 		exitCode := runLintCheck(
 			context.Background(),
-			lintInvocation{paths: []string{input}, reporter: goxreport.Text},
+			lintInvocation{paths: []string{input}, reporter: glippyreport.Text},
 			&stdout,
 			&stderr,
 			newCLITypesRegistry(t),
@@ -1852,7 +1906,7 @@ func TestRunPackageCommandsReuseConfiguredPersistentCache(t *testing.T) {
 	if err := os.WriteFile(path, input, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte(
@@ -1870,7 +1924,7 @@ max-bytes = 1048576
 		t.Fatal(err)
 	}
 	cacheRoot := filepath.Join(t.TempDir(), "analysis-cache")
-	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+	t.Setenv("GLIPPY_CACHE_DIR", cacheRoot)
 	runs := new(atomic.Int64)
 	registry := newCLITypesRegistryWithRuns(t, runs)
 
@@ -1961,7 +2015,7 @@ func target() {}
 	if err := os.WriteFile(path, input, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	configuration := `version = 1
 
 [analysis]
@@ -1974,7 +2028,7 @@ cgo-enabled = true
 		t.Fatal(err)
 	}
 	cacheRoot := filepath.Join(t.TempDir(), "analysis-cache")
-	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+	t.Setenv("GLIPPY_CACHE_DIR", cacheRoot)
 	t.Setenv("GOOS", "darwin")
 	t.Setenv("GOARCH", "arm64")
 	t.Setenv("CGO_ENABLED", "0")
@@ -2100,7 +2154,7 @@ func TestRunPackageCommandPrunesConfiguredPersistentCache(t *testing.T) {
 		err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte(
@@ -2131,7 +2185,7 @@ max-bytes = 0
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+	t.Setenv("GLIPPY_CACHE_DIR", cacheRoot)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -2181,7 +2235,7 @@ func TestRunPackageCommandRemovesStaleCacheTemporaryEntries(t *testing.T) {
 	if err := os.WriteFile(path, []byte("package staletemporary\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte("version = 1\n[cache]\nenabled = true\n"),
@@ -2208,7 +2262,7 @@ func TestRunPackageCommandRemovesStaleCacheTemporaryEntries(t *testing.T) {
 	if err := os.Chtimes(temporary, stale, stale); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+	t.Setenv("GLIPPY_CACHE_DIR", cacheRoot)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -2251,7 +2305,7 @@ func TestRunPackageCommandSkipsCachePruningAfterCancellation(t *testing.T) {
 		err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte(
@@ -2282,7 +2336,7 @@ max-bytes = 0
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+	t.Setenv("GLIPPY_CACHE_DIR", cacheRoot)
 	ctx, cancel := context.WithCancel(context.Background())
 	registry := newCLITypesRegistryWithHooks(t, nil, cancel)
 
@@ -2327,7 +2381,7 @@ func TestRunSyntaxCommandsRemainIndependentOfConfiguredPersistentCache(t *testin
 	if err := os.WriteFile(path, input, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte(
@@ -2349,7 +2403,7 @@ enabled = true
 		t.Fatal(err)
 	}
 	cacheRoot := filepath.Join(root, ".cache", "analysis")
-	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+	t.Setenv("GLIPPY_CACHE_DIR", cacheRoot)
 	registry := newCLISyntaxRegistry(t)
 
 	for _, command := range []string{"lint", "check", "fix"} {
@@ -2428,7 +2482,7 @@ func TestRunPackageCommandRefusesCacheInsideProject(t *testing.T) {
 	if err := os.WriteFile(path, []byte("package containedcache\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte("version = 1\n[cache]\nenabled = true\n"),
@@ -2438,7 +2492,7 @@ func TestRunPackageCommandRefusesCacheInsideProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	cacheRoot := filepath.Join(root, ".cache", "analysis")
-	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+	t.Setenv("GLIPPY_CACHE_DIR", cacheRoot)
 
 	registry := newCLITypesRegistry(t)
 	for _, command := range []string{"lint", "check"} {
@@ -2502,7 +2556,7 @@ func TestRunPackageCommandReportsCacheOpenFailureAsFilesystemError(t *testing.T)
 	if err := os.WriteFile(path, []byte("package cacheopenfailure\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	if err := os.WriteFile(
 		configurationPath,
 		[]byte("version = 1\n[cache]\nenabled = true\n"),
@@ -2515,7 +2569,7 @@ func TestRunPackageCommandReportsCacheOpenFailureAsFilesystemError(t *testing.T)
 	if err := os.WriteFile(cacheRoot, []byte("occupied"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GOX_CACHE_DIR", cacheRoot)
+	t.Setenv("GLIPPY_CACHE_DIR", cacheRoot)
 
 	registry := newCLITypesRegistry(t)
 	for _, command := range []string{"lint", "check"} {
@@ -2580,7 +2634,7 @@ func TestRunLintCheckRoutesControlFlowRulesThroughPackageAnalysis(t *testing.T) 
 	var stderr bytes.Buffer
 	exitCode := runLintCheck(
 		context.Background(),
-		lintInvocation{paths: []string{path}, reporter: goxreport.Text},
+		lintInvocation{paths: []string{path}, reporter: glippyreport.Text},
 		&stdout,
 		&stderr,
 		newCLIControlFlowRegistry(t),
@@ -2624,7 +2678,7 @@ func TestRunLintCheckRoutesSSARulesThroughPackageAnalysis(t *testing.T) {
 	var stderr bytes.Buffer
 	exitCode := runLintCheck(
 		context.Background(),
-		lintInvocation{paths: []string{path}, reporter: goxreport.Text},
+		lintInvocation{paths: []string{path}, reporter: glippyreport.Text},
 		&stdout,
 		&stderr,
 		newCLISSARegistry(t),
@@ -2675,7 +2729,7 @@ func TestRunLintCheckReportsTypedPrerequisiteFailuresAsSourceErrors(t *testing.T
 		context.Background(),
 		lintInvocation{
 			paths: []string{filepath.Join(root, "...")},
-			reporter: goxreport.JSON,
+			reporter: glippyreport.JSON,
 		},
 		&stdout,
 		&stderr,
@@ -2689,7 +2743,7 @@ func TestRunLintCheckReportsTypedPrerequisiteFailuresAsSourceErrors(t *testing.T
 			stderr.String(),
 		)
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode typed lint JSON: %v; output = %q", err, stdout.String())
 	}
@@ -2731,7 +2785,7 @@ func TestRunLintCheckReportsTypedSourceModelFailuresAsSourceErrors(t *testing.T)
 		context.Background(),
 		lintInvocation{
 			paths: []string{filepath.Join(root, "...")},
-			reporter: goxreport.JSON,
+			reporter: glippyreport.JSON,
 		},
 		&stdout,
 		&stderr,
@@ -2745,7 +2799,7 @@ func TestRunLintCheckReportsTypedSourceModelFailuresAsSourceErrors(t *testing.T)
 			stderr.String(),
 		)
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode typed source-problem JSON: %v; output = %q", err, stdout.String())
 	}
@@ -2787,7 +2841,7 @@ func TestRunLintCheckRejectsHeterogeneousTypedPackageRoots(t *testing.T) {
 
 	exitCode := runLintCheck(
 		context.Background(),
-		lintInvocation{paths: paths, reporter: goxreport.Text},
+		lintInvocation{paths: paths, reporter: glippyreport.Text},
 		&stdout,
 		&stderr,
 		newCLITypesRegistry(t),
@@ -2832,7 +2886,7 @@ func TestRunLintFixAppliesFormatsAndReanalyzesOneSafeTypedFix(t *testing.T) {
 		lintInvocation{
 			fix: true,
 			paths: []string{filepath.Join(root, "...")},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -2879,7 +2933,7 @@ func primary() {}
 	if err := os.WriteFile(path, input, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	configuration := `version = 1
 
 [analysis]
@@ -2900,7 +2954,7 @@ cgo-enabled = true
 			configPath: configurationPath,
 			fix: true,
 			paths: []string{filepath.Join(root, "...")},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -2957,7 +3011,7 @@ func TestRunLintFixRejectsTypedFixThatFailsPackageValidation(t *testing.T) {
 		lintInvocation{
 			fix: true,
 			paths: []string{filepath.Join(root, "...")},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -3017,7 +3071,7 @@ func TestRunLintFixReselectsTypedFixesAfterEachPackageWrite(t *testing.T) {
 		lintInvocation{
 			fix: true,
 			paths: []string{filepath.Join(root, "...")},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -3078,7 +3132,7 @@ func TestRunLintFixReportsFindingEnabledInEarlierFileByLaterWrite(t *testing.T) 
 		lintInvocation{
 			fix: true,
 			paths: []string{filepath.Join(root, "...")},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -3149,7 +3203,7 @@ func TestRunLintFixRejectsTypedSourceThroughSymlinkedDirectory(t *testing.T) {
 		lintInvocation{
 			fix: true,
 			paths: []string{filepath.Join(linkedDirectory, "source.go")},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -3223,7 +3277,10 @@ func TestRunLintCheckRetainsCompletedResultsBeforeLaterSourceFailure(t *testing.
 
 	exitCode := runLintCheck(
 		context.Background(),
-		lintInvocation{paths: []string{invalidPath, validPath}, reporter: goxreport.JSON},
+		lintInvocation{
+			paths: []string{invalidPath, validPath},
+			reporter: glippyreport.JSON,
+		},
 		&stdout,
 		&stderr,
 		registry,
@@ -3232,7 +3289,7 @@ func TestRunLintCheckRetainsCompletedResultsBeforeLaterSourceFailure(t *testing.
 	if exitCode != ExitSourceError || stderr.Len() != 0 {
 		t.Fatalf("runLintCheck() exit = %d, stderr = %q", exitCode, stderr.String())
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode incomplete lint JSON: %v; output = %q", err, stdout.String())
 	}
@@ -3252,14 +3309,14 @@ func TestRunLintCheckTreatsSuppressedOnlyDiagnosticsAsSuccess(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "suppressed.go")
 	input := []byte(
-		"package sample\n//gox:ignore call-rule -- accepted here\nfunc run(){target()}\n",
+		"package sample\n//glippy:ignore call-rule -- accepted here\nfunc run(){target()}\n",
 	)
 	if err := os.WriteFile(path, input, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	registry := newCLISyntaxRegistry(t)
 
-	for _, reporter := range []goxreport.Format{goxreport.Text, goxreport.JSON} {
+	for _, reporter := range []glippyreport.Format{glippyreport.Text, glippyreport.JSON} {
 		reporter := reporter
 		t.Run(
 			string(reporter),
@@ -3283,7 +3340,7 @@ func TestRunLintCheckTreatsSuppressedOnlyDiagnosticsAsSuccess(t *testing.T) {
 						stderr.String(),
 					)
 				}
-				if reporter == goxreport.Text {
+				if reporter == glippyreport.Text {
 					if stdout.Len() != 0 {
 						t.Fatalf(
 							"runLintCheck() stdout = %q, want empty",
@@ -3292,7 +3349,7 @@ func TestRunLintCheckTreatsSuppressedOnlyDiagnosticsAsSuccess(t *testing.T) {
 					}
 					return
 				}
-				var result goxreport.LintResult
+				var result glippyreport.LintResult
 				if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 					t.Fatalf(
 						"decode suppressed lint JSON: %v; output = %q",
@@ -3315,7 +3372,7 @@ func TestPrepareLintTasksBindsOneConfigurationSnapshotToEverySelectedFile(t *tes
 	t.Parallel()
 
 	root := t.TempDir()
-	configurationPath := filepath.Join(root, ".gox.toml")
+	configurationPath := filepath.Join(root, ".glippy.toml")
 	writeConfiguration := func(severity string) {
 		t.Helper()
 		if err := os.WriteFile(
@@ -3386,7 +3443,7 @@ func TestRunLintCheckReportsSourceFailureAndCancellationInJSON(t *testing.T) {
 	var stderr bytes.Buffer
 	exitCode := runLintCheck(
 		context.Background(),
-		lintInvocation{paths: []string{path}, reporter: goxreport.JSON},
+		lintInvocation{paths: []string{path}, reporter: glippyreport.JSON},
 		&stdout,
 		&stderr,
 		registry,
@@ -3394,7 +3451,7 @@ func TestRunLintCheckReportsSourceFailureAndCancellationInJSON(t *testing.T) {
 	if exitCode != ExitSourceError || stderr.Len() != 0 {
 		t.Fatalf("runLintCheck(invalid) = exit %d, stderr %q", exitCode, stderr.String())
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode source-error JSON: %v", err)
 	}
@@ -3417,7 +3474,7 @@ func TestRunLintCheckReportsSourceFailureAndCancellationInJSON(t *testing.T) {
 	stderr.Reset()
 	exitCode = runLintCheck(
 		ctx,
-		lintInvocation{paths: []string{path}, reporter: goxreport.JSON},
+		lintInvocation{paths: []string{path}, reporter: glippyreport.JSON},
 		&stdout,
 		&stderr,
 		registry,
@@ -3425,7 +3482,7 @@ func TestRunLintCheckReportsSourceFailureAndCancellationInJSON(t *testing.T) {
 	if exitCode != ExitCanceled || stderr.Len() != 0 {
 		t.Fatalf("runLintCheck(canceled) = exit %d, stderr %q", exitCode, stderr.String())
 	}
-	result = goxreport.LintResult{}
+	result = glippyreport.LintResult{}
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode canceled JSON: %v", err)
 	}
@@ -3449,7 +3506,7 @@ func TestRunLintCheckPreservesCancellationWhenJSONOutputFails(t *testing.T) {
 
 	exitCode := runLintCheck(
 		ctx,
-		lintInvocation{paths: []string{"."}, reporter: goxreport.JSON},
+		lintInvocation{paths: []string{"."}, reporter: glippyreport.JSON},
 		failingWriter{},
 		&stderr,
 		registry,
@@ -3482,7 +3539,7 @@ func TestRunLintFixAppliesAndFormatsOneSafeFix(t *testing.T) {
 
 	exitCode := runLintFix(
 		context.Background(),
-		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.Text},
+		lintInvocation{fix: true, paths: []string{path}, reporter: glippyreport.Text},
 		&stdout,
 		&stderr,
 		newCLIFixRegistry(t, rules.FixSafe),
@@ -3527,7 +3584,7 @@ func TestRunLintFixLeavesSuggestionDiagnosticsUnchanged(t *testing.T) {
 
 	exitCode := runLintFix(
 		context.Background(),
-		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.Text},
+		lintInvocation{fix: true, paths: []string{path}, reporter: glippyreport.Text},
 		&stdout,
 		&stderr,
 		newCLIFixRegistry(t, rules.FixSuggestion),
@@ -3573,7 +3630,7 @@ func TestRunLintFixAppliesOnlyExplicitSuggestionFixes(t *testing.T) {
 		lintInvocation{
 			fixSuggestions: true,
 			paths: []string{path},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -3612,7 +3669,7 @@ func TestRunLintFixLeavesBuiltInIneffectiveBreakSuggestionUnchanged(t *testing.T
 
 	exitCode := runLintFix(
 		context.Background(),
-		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.Text},
+		lintInvocation{fix: true, paths: []string{path}, reporter: glippyreport.Text},
 		&stdout,
 		&stderr,
 		registry,
@@ -3670,7 +3727,7 @@ func run() {
 		lintInvocation{
 			fixSuggestions: true,
 			paths: []string{path},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -3705,7 +3762,7 @@ func TestRunLintFixAppliesOnlyExplicitUnsafeFixes(t *testing.T) {
 
 	exitCode := runLintFix(
 		context.Background(),
-		lintInvocation{fixUnsafe: true, paths: []string{path}, reporter: goxreport.Text},
+		lintInvocation{fixUnsafe: true, paths: []string{path}, reporter: glippyreport.Text},
 		&stdout,
 		&stderr,
 		newCLIFixRegistry(t, rules.FixUnsafe),
@@ -3776,7 +3833,7 @@ func TestRunLintExplicitFixModesUseFixReporter(t *testing.T) {
 						stderr.String(),
 					)
 				}
-				var result goxreport.LintResult
+				var result glippyreport.LintResult
 				if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 					t.Fatalf(
 						"decode lint %s JSON: %v; output = %q",
@@ -3849,7 +3906,7 @@ func TestRunLintFixPrevalidatesAmbiguousEnabledAlternativesBeforeWriting(t *test
 			fix: true,
 			fixSuggestions: true,
 			paths: []string{firstPath, secondPath},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -3898,7 +3955,7 @@ func TestRunLintFixReportsConflictsInJSONWithoutWriting(t *testing.T) {
 
 	exitCode := runLintFix(
 		context.Background(),
-		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.JSON},
+		lintInvocation{fix: true, paths: []string{path}, reporter: glippyreport.JSON},
 		&stdout,
 		&stderr,
 		registry,
@@ -3907,7 +3964,7 @@ func TestRunLintFixReportsConflictsInJSONWithoutWriting(t *testing.T) {
 	if exitCode != ExitConflict || stderr.Len() != 0 {
 		t.Fatalf("runLintFix() exit = %d, stderr = %q", exitCode, stderr.String())
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode lint fix JSON: %v; output = %q", err, stdout.String())
 	}
@@ -3916,7 +3973,7 @@ func TestRunLintFixReportsConflictsInJSONWithoutWriting(t *testing.T) {
 		!result.Summary.Complete ||
 		result.Summary.RejectedFixes != 2 ||
 		len(result.Files) != 1 ||
-		result.Files[0].Status != goxreport.LintFileConflict ||
+		result.Files[0].Status != glippyreport.LintFileConflict ||
 		len(result.RejectedFixes) != 2 {
 		t.Fatalf("lint fix JSON = %#v", result)
 	}
@@ -3950,7 +4007,7 @@ func TestRunLintFixReportsPostFormatAnalysisFailureAsInternalWithoutWriting(t *t
 
 	exitCode := runLintFix(
 		context.Background(),
-		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.JSON},
+		lintInvocation{fix: true, paths: []string{path}, reporter: glippyreport.JSON},
 		&stdout,
 		&stderr,
 		registry,
@@ -3959,7 +4016,7 @@ func TestRunLintFixReportsPostFormatAnalysisFailureAsInternalWithoutWriting(t *t
 	if exitCode != ExitInternalError || stderr.Len() != 0 {
 		t.Fatalf("runLintFix() exit = %d, stderr = %q", exitCode, stderr.String())
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode failed lint fix JSON: %v; output = %q", err, stdout.String())
 	}
@@ -4003,7 +4060,7 @@ func TestRunLintFixDisclosesCompletedWritesWhenTextReportingFails(t *testing.T) 
 
 	exitCode := runLintFix(
 		context.Background(),
-		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.Text},
+		lintInvocation{fix: true, paths: []string{path}, reporter: glippyreport.Text},
 		failingWriter{},
 		&stderr,
 		registry,
@@ -4036,7 +4093,7 @@ func TestRunLintFixDisclosesCompletedWritesWhenJSONReportingFails(t *testing.T) 
 
 	exitCode := runLintFix(
 		context.Background(),
-		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.JSON},
+		lintInvocation{fix: true, paths: []string{path}, reporter: glippyreport.JSON},
 		failingWriter{},
 		&stderr,
 		newCLIFixRegistry(t, rules.FixSafe),
@@ -4064,7 +4121,7 @@ func TestRunLintFixJSONReportsConfirmedReplacement(t *testing.T) {
 
 	exitCode := runLintFix(
 		context.Background(),
-		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.JSON},
+		lintInvocation{fix: true, paths: []string{path}, reporter: glippyreport.JSON},
 		&stdout,
 		&stderr,
 		newCLIFixRegistry(t, rules.FixSafe),
@@ -4073,7 +4130,7 @@ func TestRunLintFixJSONReportsConfirmedReplacement(t *testing.T) {
 	if exitCode != ExitSuccess || stderr.Len() != 0 {
 		t.Fatalf("runLintFix() exit = %d, stderr = %q", exitCode, stderr.String())
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode lint fix JSON: %v; output = %q", err, stdout.String())
 	}
@@ -4083,7 +4140,7 @@ func TestRunLintFixJSONReportsConfirmedReplacement(t *testing.T) {
 		result.Summary.FixedFiles != 1 ||
 		result.Summary.AppliedFixes != 1 ||
 		len(result.Files) != 1 ||
-		result.Files[0].Status != goxreport.LintFileFixed ||
+		result.Files[0].Status != glippyreport.LintFileFixed ||
 		result.Files[0].SourceDigest == result.Files[0].ResultDigest ||
 		len(result.AppliedFixes) != 1 {
 		t.Fatalf("lint fix JSON = %#v", result)
@@ -4126,7 +4183,7 @@ func TestRunLintFixPrevalidatesEverySourceBeforeWriting(t *testing.T) {
 		lintInvocation{
 			fix: true,
 			paths: []string{generatedPath, firstPath},
-			reporter: goxreport.Text,
+			reporter: glippyreport.Text,
 		},
 		&stdout,
 		&stderr,
@@ -4180,7 +4237,7 @@ func TestRunLintFixRefusesPathThroughSymlinkedDirectory(t *testing.T) {
 
 	exitCode := runLintFix(
 		context.Background(),
-		lintInvocation{fix: true, paths: []string{path}, reporter: goxreport.Text},
+		lintInvocation{fix: true, paths: []string{path}, reporter: glippyreport.Text},
 		&stdout,
 		&stderr,
 		newCLIFixRegistry(t, rules.FixSafe),
@@ -4237,7 +4294,7 @@ func TestRunLintFixCancellationReportsConfirmedWriteAndPendingFile(t *testing.T)
 
 	exitCode := runLintFix(
 		ctx,
-		lintInvocation{fix: true, paths: []string{root}, reporter: goxreport.JSON},
+		lintInvocation{fix: true, paths: []string{root}, reporter: glippyreport.JSON},
 		&stdout,
 		&stderr,
 		newCLIFixRegistry(t, rules.FixSafe),
@@ -4246,14 +4303,14 @@ func TestRunLintFixCancellationReportsConfirmedWriteAndPendingFile(t *testing.T)
 	if exitCode != ExitCanceled || stderr.Len() != 0 {
 		t.Fatalf("runLintFix() exit = %d, stderr = %q", exitCode, stderr.String())
 	}
-	var result goxreport.LintResult
+	var result glippyreport.LintResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode canceled lint fix JSON: %v; output = %q", err, stdout.String())
 	}
 	if result.Summary.Complete ||
 		len(result.Files) != 2 ||
-		result.Files[0].Status != goxreport.LintFileFixed ||
-		result.Files[1].Status != goxreport.LintFilePending {
+		result.Files[0].Status != glippyreport.LintFileFixed ||
+		result.Files[1].Status != glippyreport.LintFilePending {
 		t.Fatalf("canceled lint fix JSON = %#v", result)
 	}
 	first, err := os.ReadFile(firstPath)
@@ -4290,10 +4347,10 @@ func TestRecordLintFixTransactionKeepsOriginalResultAfterStaleWrite(t *testing.T
 		file: before,
 		resultFile: before,
 		result: analysis.Result{Path: before.Path(), Digest: before.Digest()},
-		outcome: goxreport.LintFixOutcome{
+		outcome: glippyreport.LintFixOutcome{
 			Path: before.Path(),
 			SourceDigest: before.Digest(),
-			Status: goxreport.LintFilePending,
+			Status: glippyreport.LintFilePending,
 		},
 	}
 	transaction := fixengine.Transaction{
@@ -4319,7 +4376,7 @@ func TestRecordLintFixTransactionKeepsOriginalResultAfterStaleWrite(t *testing.T
 
 	if execution.result.Digest != before.Digest() ||
 		execution.resultFile != before ||
-		execution.outcome.Status != goxreport.LintFileConflict ||
+		execution.outcome.Status != glippyreport.LintFileConflict ||
 		len(execution.outcome.Applied) != 1 ||
 		len(execution.outcome.Rejected) != 1 ||
 		execution.outcome.Rejected[0].Reason != fixengine.RejectionStaleSource ||
@@ -4334,19 +4391,19 @@ func TestLintFixFileStatusPreservesReplacementCertainty(t *testing.T) {
 	tests := []struct {
 		name string
 		transaction fixengine.Transaction
-		want goxreport.LintFileStatus
+		want glippyreport.LintFileStatus
 	}{
 		{
 			name: "completed",
 			transaction: fixengine.Transaction{Status: fixengine.WriteCompleted},
-			want: goxreport.LintFileFixed,
+			want: glippyreport.LintFileFixed,
 		},
 		{
 			name: "possible",
 			transaction: fixengine.Transaction{
 				Status: fixengine.WritePossiblyCompleted,
 			},
-			want: goxreport.LintFilePossiblyFixed,
+			want: glippyreport.LintFilePossiblyFixed,
 		},
 		{
 			name: "conflict",
@@ -4357,12 +4414,12 @@ func TestLintFixFileStatusPreservesReplacementCertainty(t *testing.T) {
 					},
 				},
 			},
-			want: goxreport.LintFileConflict,
+			want: glippyreport.LintFileConflict,
 		},
 		{
 			name: "unchanged",
 			transaction: fixengine.Transaction{Status: fixengine.WriteNotPerformed},
-			want: goxreport.LintFileUnchanged,
+			want: glippyreport.LintFileUnchanged,
 		},
 	}
 	for _, test := range tests {
@@ -4394,10 +4451,10 @@ func TestReportLintFixJSONDisclosesCompletedWritesWhenResultConstructionFails(t 
 			file: file,
 			resultFile: file,
 			result: analysis.Result{Path: "/project/other.go", Digest: file.Digest()},
-			outcome: goxreport.LintFixOutcome{
+			outcome: glippyreport.LintFixOutcome{
 				Path: file.Path(),
 				SourceDigest: file.Digest(),
-				Status: goxreport.LintFileFixed,
+				Status: glippyreport.LintFileFixed,
 			},
 		},
 	}

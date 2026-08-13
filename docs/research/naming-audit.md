@@ -4,16 +4,15 @@
 - Candidate refresh: 2026-08-11
 - Maintainer development-name decision: 2026-08-12
 - Final-candidate technical refresh: 2026-08-13
-- Maintainer final public-release acceptance: 2026-08-13
+- Maintainer Glippy v0.2 direction: 2026-08-13
 
 ## Conclusion
 
-`gox` has direct ecosystem collisions. After reviewing the final-candidate
-technical evidence below, the maintainer explicitly accepted those naming and
-trademark-risk boundaries and retained **Gox**, binary `gox`, repository
-`github.com/faustbrian/gox`, and module path `github.com/faustbrian/gox` for the
-first public release. This is a product-risk decision, not legal clearance in
-any jurisdiction or trademark class.
+`glippy` has direct ecosystem collisions. The maintainer selected **Glippy**,
+binary `glippy`, intended repository `github.com/faustbrian/glippy`, and module
+path `github.com/faustbrian/glippy` for v0.2 development after Gox v0.1.0. This
+is a maintainer product-risk decision, not legal clearance in any jurisdiction
+or trademark class.
 
 The earlier technical screen recommended **Gofettle**, binary `gofettle`, and
 module path `github.com/faustbrian/gofettle`. That proposal came from this
@@ -24,22 +23,16 @@ development identity. It remains historical candidate evidence only.
 
 | Project | Current evidence | Collision |
 | --- | --- | --- |
-| [mitchellh/gox](https://github.com/mitchellh/gox) | 4,576 GitHub stars; archived but still installed as `gox` | Established Go cross-compiler using the exact binary name |
-| [mentasystems/gox](https://github.com/mentasystems/gox) | Active experimental Go linter with direct `go install` instructions | Exact binary plus overlapping `check` and `explain` commands |
-| [germtb/gox](https://github.com/germtb/gox) | Active Go/JSX tool distributed through Go install, GitHub releases, and Homebrew | Exact binary plus overlapping `fmt` and `version` commands |
-| [icza/gox](https://github.com/icza/gox), [8byt/gox](https://github.com/8byt/gox), [topxeq/gox](https://github.com/topxeq/gox) | Existing Go repositories and modules | Repository, module, and search ambiguity |
+| [F1bonacc1/glippy](https://github.com/F1bonacc1/glippy) | Active Go clipboard project; pushed 2026-04-23; Go proxy lists v1.1.0 and v1.2.0 | Exact repository and likely binary/module search ambiguity |
+| [quequotion/glippy](https://github.com/quequotion/glippy), [oscard0m/glippy](https://github.com/oscard0m/glippy), and `unkarelian/Glippy` | Existing exact-name repositories in other or unspecified languages | Repository and search ambiguity |
+| [GitHub user `glippy`](https://github.com/glippy) | Account created in 2013 and occupied | Exact account namespace unavailable |
 
-The 2026-08-13 final-candidate GitHub repository search for
-`gox in:name language:Go` returned 620 results. Exact repository names include
-the projects above plus active `icza/gox`, `topxeq/gox`, `doors-dev/gox`, and
-others. The Go proxy confirms published versions for the Mitchell, Menta
-Systems, and Germ module paths. The exact GitHub user `gox` is occupied.
-
-Package and domain checks add further collisions: npm contains `gox` 0.1.0,
-crates.io contains `gox` 0.4.0, and both `gox.io` and `gox.dev` are registered.
-No Homebrew core formula, Arch AUR package, PyPI project, or Docker user named
-`gox` was found at the refresh time, but Germ distributes its binary through a
-tap. These negative results are not reservations and can change independently.
+The 2026-08-13 unauthenticated GitHub repository search for `glippy in:name`
+returned nine results; adding `language:Go` returned the single active
+`F1bonacc1/glippy` project. The Go proxy confirms its published v1.1.0 and
+v1.2.0 module versions. The exact GitHub user `glippy` is occupied. No broader
+package, domain, or trademark search was completed for this rename, so no
+negative availability claim is made.
 
 ## Replacement Candidate Screen
 
@@ -66,21 +59,17 @@ secured.
 
 ## Search Record And Limits
 
-Queries covered authenticated GitHub repository search, GitHub and Docker user
-lookups, pkg.go.dev, the Go module proxy, Homebrew's formula API, AUR RPC, npm,
-PyPI, crates.io, WHOIS, and RDAP. Search results are point-in-time evidence
-dated above. USPTO, TMview, and WIPO entry points still do not provide a
-reliable automated exact-mark clearance result for this audit. `Gox` is a very
-short mark used by multiple software projects, so absence of an automated
-record could not establish legal availability in any jurisdiction or class.
+The Glippy refresh used GitHub repository and account APIs and the Go module
+proxy. Results are point-in-time evidence dated above. Trademark registries and
+jurisdiction-specific legal review were not completed. `Glippy` is a short mark
+used by multiple software projects, so this audit cannot establish legal
+availability in any jurisdiction or class.
 
-The technical refresh is complete and demonstrates material collision risk.
-The maintainer accepted that risk for Gox before v0.1.0. Jurisdiction- and
-class-specific trademark advice remains the recommended route to legal
-clearance; a negative automated search must not be treated as legal advice or
-clearance.
+The technical refresh demonstrates material collision risk, which the
+maintainer accepted for the v0.2 development direction. Gox v0.1.0 remains the
+immutable historical release identity.
 
 ## Revisit Trigger
 
 Refresh the technical screen before a later stable-identity expansion, package
-manager registration, or whenever a material new `gox` collision appears.
+manager registration, or whenever a material new `glippy` collision appears.

@@ -11,7 +11,7 @@ here.
 
 ## Identity
 
-A cache key MUST identify one result namespace and MUST include the Gox tool
+A cache key MUST identify one result namespace and MUST include the Glippy tool
 version, build Go toolchain, selected source language version, canonical
 configuration digest, build tags, GOOS, GOARCH, cgo selection, and formatter
 compatibility mode. Every enabled lint rule MUST contribute its rule ID,
@@ -19,7 +19,7 @@ severity, and canonical options digest.
 
 The options digest MUST be derived from the resolved typed option snapshot,
 including canonical metadata defaults, ordered by option name and encoded with
-the `gox-rule-options-v1` schema. A cache caller MUST NOT substitute an
+the `glippy-rule-options-v1` schema. A cache caller MUST NOT substitute an
 unrelated digest for the values delivered to the rule callback.
 
 A consumer MUST add one named, digested component for every applicable source,
@@ -29,7 +29,7 @@ MUST distinguish different paths, packages, environment fields, and fact
 producers. A consumer MUST NOT use the cache until it can enumerate every input
 capable of changing its result.
 
-The key schema is `gox-cache-key-v1`. Fields are length-prefixed before hashing
+The key schema is `glippy-cache-key-v1`. Fields are length-prefixed before hashing
 with SHA-256. Unordered build tags, rules, and components are canonicalized
 without mutating caller input. Duplicate rule IDs and duplicate component
 kind/identity pairs MUST fail. Missing required scalar values or digests MUST
@@ -68,7 +68,7 @@ Zero leaves one dimension unlimited; negative limits and a request with no
 positive limit MUST fail. Counts and byte totals cover only canonical entry
 files, including their storage headers. A caller MAY also supply an explicit
 stale-publication cutoff. Pruning then removes only regular files whose names
-match the complete Gox key-and-random-suffix temporary grammar and whose
+match the complete Glippy key-and-random-suffix temporary grammar and whose
 modification times are strictly older than that cutoff. Newer temporaries,
 malformed names, unknown files, and directories MUST remain untouched. A
 writer suspended beyond the cutoff can fail visibly if its temporary is
@@ -116,7 +116,7 @@ host is not isolated.
 
 The CLI MAY enable this cache only through an explicit project configuration.
 An enabled invocation MUST own one store for the complete typed `lint` or
-`check` run, place it under `GOX_CACHE_DIR` or the platform user-cache
+`check` run, place it under `GLIPPY_CACHE_DIR` or the platform user-cache
 directory, pass the resolved canonical configuration digest, and close the
 store before reporting. A versioned build MUST use its product version as tool
 identity; a `devel` build MUST bind the SHA-256 digest of its executable so two

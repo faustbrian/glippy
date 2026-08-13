@@ -9,12 +9,12 @@ Composable Clippy-style policy makes strict analysis easy to enable, but an
 established repository may have existing findings that cannot be resolved in
 one change. Disabling rules or adding source suppressions would also weaken
 new-code enforcement. PHPStan baselines demonstrate a useful adoption surface,
-but Gox must preserve exact source identity, deterministic operation, safe fix
+but Glippy must preserve exact source identity, deterministic operation, safe fix
 selection, and source privacy.
 
 ## Decision
 
-Gox uses a strict JSON baseline with its own schema version. An entry binds an
+Glippy uses a strict JSON baseline with its own schema version. An entry binds an
 exact rule ID, stable message key, portable project-relative path, SHA-256 of
 the exact diagnostic source span, and occurrence count. Optional reason and
 expiry fields are metadata. Absolute offsets and source snippets are excluded.
@@ -25,7 +25,7 @@ remain visible. Stale and expired entries are findings for analyzed files;
 entries outside the current selection remain unexamined. Expiry depends on an
 explicit configured cutoff rather than wall-clock time.
 
-`gox lint --generate-baseline=<path>` generates from visible diagnostics for
+`glippy lint --generate-baseline=<path>` generates from visible diagnostics for
 one project root and configuration. It cannot run with fixes or JSON output.
 Creation and update use the shared rooted, stale-aware, same-directory atomic
 filesystem boundary.

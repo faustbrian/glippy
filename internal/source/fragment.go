@@ -169,15 +169,15 @@ func LoadFragment(path string, kind FragmentKind, input []byte) (*Fragment, erro
 func wrapperForFragment(kind FragmentKind) (fragmentWrapper, error) {
 	switch kind {
 	case FragmentDeclaration:
-		return fragmentWrapper{prefix: "package goxfragment\n", suffix: "\n"}, nil
+		return fragmentWrapper{prefix: "package glippyfragment\n", suffix: "\n"}, nil
 	case FragmentStatement:
 		return fragmentWrapper{
-			prefix: "package goxfragment\nfunc goxfragment() {\n",
+			prefix: "package glippyfragment\nfunc glippyfragment() {\n",
 			suffix: "\n}\n",
 		}, nil
 	case FragmentExpression:
 		return fragmentWrapper{
-			prefix: "package goxfragment\nvar _ = (\n",
+			prefix: "package glippyfragment\nvar _ = (\n",
 			suffix: " )\n",
 			trimTrailingWhitespace: true,
 		}, nil
@@ -210,7 +210,7 @@ func selectFragmentSyntax(
 			}
 		}
 		function, ok := file.Decls[0].(*ast.FuncDecl)
-		if !ok || function.Name.Name != "goxfragment" || function.Body == nil {
+		if !ok || function.Name.Name != "glippyfragment" || function.Body == nil {
 			return FragmentSyntax{}, &fragmentBoundaryError{
 				message: "statement fragment changed its selected boundary",
 			}
@@ -341,7 +341,7 @@ func syntheticFunctionReference(function *ast.FuncDecl) token.Pos {
 					}
 					identifier, ok := keyed.Key.(*ast.Ident)
 					if ok &&
-						identifier.Name == "goxfragment" &&
+						identifier.Name == "glippyfragment" &&
 						identifier.Obj == nil {
 						position = identifier.Pos()
 						return false
@@ -432,7 +432,8 @@ func classifyFragmentDirectives(
 func validateFragmentDirectives(path string, physical []byte, directives []Directive) error {
 	var result error
 	for _, directive := range directives {
-		if directive.Kind == DirectiveGoxSuppression ||
+		if directive.Kind == DirectiveGlippySuppression ||
+			directive.Kind == DirectiveLegacyGoxSuppression ||
 			directive.Kind == DirectiveExternalSuppression {
 			continue
 		}
@@ -547,7 +548,7 @@ func fragmentLineColumn(physical []byte, offset int) (int, int) {
 }
 
 func sanitizeFragmentMessage(message string) string {
-	return strings.ReplaceAll(message, "goxfragment", "fragment wrapper")
+	return strings.ReplaceAll(message, "glippyfragment", "fragment wrapper")
 }
 
 // ValidateFragmentEquivalent verifies normalized syntax and physical

@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/faustbrian/gox/internal/analysis"
-	"github.com/faustbrian/gox/internal/baseline"
-	fixengine "github.com/faustbrian/gox/internal/fix"
-	"github.com/faustbrian/gox/internal/source"
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/baseline"
+	fixengine "github.com/faustbrian/glippy/internal/fix"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 // LintTextInput binds one analysis result to the source used for locations.

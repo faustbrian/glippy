@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faustbrian/gox/internal/diff"
+	"github.com/faustbrian/glippy/internal/diff"
 )
 
 func TestUnifiedSeparatesDistantChangesWithDeterministicContext(t *testing.T) {
