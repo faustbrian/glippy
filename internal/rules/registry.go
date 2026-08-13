@@ -65,9 +65,15 @@ func NewRegistry(nativeRules ...Rule) (*Registry, error) {
 	return &Registry{ids: ids, entries: entries}, nil
 }
 
-// NewDefaultRegistry constructs the canonical built-in rule registry.
+// NewDefaultRegistry constructs the native built-in rule registry.
 func NewDefaultRegistry() (*Registry, error) {
-	return NewRegistry(
+	return NewRegistry(DefaultRules()...)
+}
+
+// DefaultRules returns the native built-in rules for product-level registry
+// composition with adapted analyzers.
+func DefaultRules() []Rule {
+	return []Rule{
 		contextKeyRule{},
 		deferInInfiniteLoopRule{},
 		duplicateConditionRule{},
@@ -76,7 +82,7 @@ func NewDefaultRegistry() (*Registry, error) {
 		ineffectiveBreakRule{},
 		nilnessRule{},
 		redundantBoolComparisonRule{},
-	)
+	}
 }
 
 // IDs returns registered IDs in canonical order.

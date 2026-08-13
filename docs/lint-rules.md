@@ -17,6 +17,7 @@ not stable release promises.
 - [ineffective-break](#ineffective-break)
 - [nilness](#nilness)
 - [redundant-bool-comparison](#redundant-bool-comparison)
+- [self-assignment](#self-assignment)
 
 ## context-key
 
@@ -436,4 +437,54 @@ if ready == true {
 if ready {
 	run()
 }
+```
+
+## self-assignment
+
+detects assignments that leave a value unchanged
+
+A value assigned directly to itself has no effect and usually indicates a copied expression, a
+mistaken assignment target, or code left behind after a refactor. Glippy exposes the standard Go
+assign analyzer through its typed scheduler, deterministic diagnostics, suppressions, baselines, and
+fix-safety model.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+- `remove-self-assignment` (`suggestion`): remove the ineffective self-assignment
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule follows the standard Go assign analyzer and intentionally excludes assignments whose
+  evaluation can have observable effects, including map index expressions.
+- The removal fix is suggestion-only because deleting an assignment requires confirmation that the
+  statement was not an intentional marker.
+- Removing a statement that shares a physical line through an explicit semicolon can retain an empty
+  statement after formatting; review suggestion output before accepting it.
+
+### Example: Assign the intended value
+
+**Incorrect**
+
+```go
+value = value
+```
+
+**Correct**
+
+```go
+value = replacement
 ```

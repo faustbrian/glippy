@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/faustbrian/glippy/internal/report"
-	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/rulecatalog"
 )
 
 func main() {
@@ -19,7 +19,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	registry, err := rules.NewDefaultRegistry()
+	registry, err := rulecatalog.NewRegistry()
 	if err != nil {
 		fail("construct rule registry", err)
 	}

@@ -336,6 +336,7 @@ func TestRunLintReportsBuiltInDuplicateCondition(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+	writeSyntaxOnlyProductConfig(t, root)
 	path := filepath.Join(root, "source.go")
 	input := []byte(
 		"package sample\nfunc classify(first, second bool) int {\n\tif first && second {\n\t\treturn 1\n\t} else if first {\n\t\treturn 2\n\t} else if first && second {\n\t\treturn 3\n\t}\n\treturn 0\n}\n",
@@ -408,6 +409,7 @@ func TestRunLintReportsBuiltInIneffectiveBreak(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+	writeSyntaxOnlyProductConfig(t, root)
 	path := filepath.Join(root, "source.go")
 	input := []byte(
 		"package sample\nfunc run(done <-chan struct{}) {\nloop:\n\tfor {\n\t\tselect {\n\t\tcase <-done:\n\t\t\tbreak\n\t\tdefault:\n\t\t\tbreak loop\n\t\t}\n\t}\n}\n",
@@ -590,6 +592,7 @@ func TestRunLintFixLeavesBuiltInDuplicateConditionUnchanged(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+	writeSyntaxOnlyProductConfig(t, root)
 	path := filepath.Join(root, "source.go")
 	input := []byte("package sample\nfunc run(ready bool) { if ready {} else if ready {} }\n")
 	if err := os.WriteFile(path, input, 0o600); err != nil {
@@ -1084,6 +1087,7 @@ func TestRunCombinedCheckOrdersTextFindingsByPath(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+	writeSyntaxOnlyProductConfig(t, root)
 	if err := os.WriteFile(
 		filepath.Join(root, "go.mod"),
 		[]byte("module example.com/project\n"),
@@ -1120,6 +1124,7 @@ func TestRunCombinedCheckSourceFailureDoesNotEmitPartialText(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+	writeSyntaxOnlyProductConfig(t, root)
 	if err := os.WriteFile(
 		filepath.Join(root, "go.mod"),
 		[]byte("module example.com/project\n"),
@@ -1168,6 +1173,7 @@ func TestRunCombinedCheckSourceFailureReportsIncompleteJSON(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+	writeSyntaxOnlyProductConfig(t, root)
 	if err := os.WriteFile(
 		filepath.Join(root, "go.mod"),
 		[]byte("module example.com/project\n"),
@@ -1256,7 +1262,7 @@ func TestRunCombinedCheckHonorsLintAndFormatConfiguration(t *testing.T) {
 		err != nil {
 		t.Fatal(err)
 	}
-	configuration := "version = 1\n[format]\nline-width = 30\n[lint.rules]\nduplicate-condition = \"off\"\n"
+	configuration := "version = 1\n[format]\nline-width = 30\n[lint.rules]\nduplicate-condition = \"off\"\nself-assignment = \"off\"\n"
 	if err := os.WriteFile(filepath.Join(root, ".glippy.toml"), []byte(configuration), 0o600);
 		err != nil {
 		t.Fatal(err)

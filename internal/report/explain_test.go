@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/faustbrian/glippy/internal/report"
+	"github.com/faustbrian/glippy/internal/rulecatalog"
 	"github.com/faustbrian/glippy/internal/rules"
 )
 
@@ -492,7 +493,7 @@ func TestRenderRuleCatalogMarkdownProtectsExampleCodeFences(t *testing.T) {
 func TestPublishedRuleCatalogIsCurrent(t *testing.T) {
 	t.Parallel()
 
-	registry, err := rules.NewDefaultRegistry()
+	registry, err := rulecatalog.NewRegistry()
 	if err != nil {
 		t.Fatal(err)
 	}

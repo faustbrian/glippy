@@ -21,6 +21,7 @@ import (
 	glippyformat "github.com/faustbrian/glippy/internal/format"
 	"github.com/faustbrian/glippy/internal/goversion"
 	glippyreport "github.com/faustbrian/glippy/internal/report"
+	"github.com/faustbrian/glippy/internal/rulecatalog"
 	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
 	glippyversion "github.com/faustbrian/glippy/internal/version"
@@ -82,7 +83,7 @@ func RunContext(
 		return runVersion(ctx, arguments, stdout, stderr)
 	}
 	if len(arguments) > 0 && arguments[0] == "completion" {
-		registry, err := rules.NewDefaultRegistry()
+		registry, err := rulecatalog.NewRegistry()
 		if err != nil {
 			return report(
 				stderr,
@@ -94,7 +95,7 @@ func RunContext(
 		return runCompletion(ctx, arguments, stdout, stderr, registry)
 	}
 	if len(arguments) > 0 && arguments[0] == "explain" {
-		registry, err := rules.NewDefaultRegistry()
+		registry, err := rulecatalog.NewRegistry()
 		if err != nil {
 			return report(
 				stderr,
@@ -110,7 +111,7 @@ func RunContext(
 		if !valid {
 			return reportInvalidCheckInvocation(arguments, stdout, stderr)
 		}
-		registry, err := rules.NewDefaultRegistry()
+		registry, err := rulecatalog.NewRegistry()
 		if err != nil {
 			return report(
 				stderr,
@@ -137,7 +138,7 @@ func RunContext(
 			}
 			return report(stderr, ExitInvalidInvocation, lintUsage)
 		}
-		registry, err := rules.NewDefaultRegistry()
+		registry, err := rulecatalog.NewRegistry()
 		if err != nil {
 			return report(
 				stderr,
@@ -1358,7 +1359,7 @@ func sourceVersionErrorExitCode(err error) int {
 }
 
 func formatOptionsForSelection(selection config.Selection) (glippyformat.Options, int, error) {
-	registry, err := rules.NewDefaultRegistry()
+	registry, err := rulecatalog.NewRegistry()
 	if err != nil {
 		return glippyformat.Options{}, ExitInternalError, fmt.Errorf(
 			"initialize rule registry: %w",

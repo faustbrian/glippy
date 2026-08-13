@@ -1672,6 +1672,7 @@ func TestRunLintUsesDefaultRegistryForCleanAndSuppressionOutcomes(t *testing.T) 
 	t.Parallel()
 
 	root := t.TempDir()
+	writeSyntaxOnlyProductConfig(t, root)
 	cleanPath := filepath.Join(root, "clean.go")
 	if err := os.WriteFile(cleanPath, []byte("package sample\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -1726,7 +1727,9 @@ func TestRunLintUsesDefaultRegistryForCleanAndSuppressionOutcomes(t *testing.T) 
 func TestRunLintReportsLegacyGoxSuppressionMigrationInTextAndJSON(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "legacy.go")
+	root := t.TempDir()
+	writeSyntaxOnlyProductConfig(t, root)
+	path := filepath.Join(root, "legacy.go")
 	if err := os.WriteFile(
 		path,
 		[]byte(
@@ -1806,6 +1809,7 @@ func TestRunLintPackagePatternKeepsSyntaxOnlyRulesOffPackageLoading(t *testing.T
 	t.Parallel()
 
 	root := t.TempDir()
+	writeSyntaxOnlyProductConfig(t, root)
 	if err := os.WriteFile(
 		filepath.Join(root, "go.mod"),
 		[]byte("module example.com/project\n\ngo 1.26.0\n"),
@@ -3810,6 +3814,7 @@ func TestRunLintExplicitFixModesUseFixReporter(t *testing.T) {
 				t.Parallel()
 
 				root := t.TempDir()
+				writeSyntaxOnlyProductConfig(t, root)
 				path := filepath.Join(root, "source.go")
 				input := []byte("package sample\n")
 				if err := os.WriteFile(path, input, 0o600); err != nil {
@@ -4742,5 +4747,282 @@ func newCLIFixRuleFor(ruleID, target, replacement string, safety rules.FixSafety
 				{Incorrect: "target()", Correct: replacement + "()"},
 			},
 		},
+	}
+}
+
+func TestRunExposesStandardSelfAssignmentAnalyzer(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/selfassignment\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sample.go")
+	input := []byte(
+		`package sample
+
+func reset(value int) int {
+    value = value
+    return value
+}
+
+func replace(value, replacement int) int {
+    value = replacement
+    return value
+}
+`,
+	)
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".glippy.toml"),
+		[]byte("version = 1\n[lint]\npreset = \"correctness\"\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"lint", path}, strings.NewReader(""), &stdout, &stderr)
+	want := path +
+		":4:5: warn[self-assignment]: self-assignment of value\n" +
+		"  help: https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/assign\n" +
+		"  fix[suggestion]: remove-self-assignment\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(lint self-assignment) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("Run(lint self-assignment) mutated source: %q", got)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run(
+		[]string{"explain", "self-assignment"},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	for _, contract := range
+		[]string{
+			"self-assignment\n",
+			"presets: correctness\n",
+			"analysis tier: types\n",
+			"generated files: excluded\n",
+			"type-error packages: excluded\n",
+			"remove-self-assignment [suggestion]",
+		} {
+		if !strings.Contains(stdout.String(), contract) {
+			t.Fatalf(
+				"Run(explain self-assignment) output does not contain %q:\n%s",
+				contract,
+				stdout.String(),
+			)
+		}
+	}
+	if exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(explain self-assignment) = exit %d, stderr %q",
+			exitCode,
+			stderr.String(),
+		)
+	}
+}
+
+func TestRunAppliesStandardSelfAssignmentSuggestionOnlyWhenRequested(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/selfassignmentfix\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sample.go")
+	if err := os.WriteFile(
+		path,
+		[]byte(
+			"package sample\n\nfunc reset(value int) int {\n\tvalue = value\n\treturn value\n}\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".glippy.toml"),
+		[]byte("version = 1\n[lint]\npreset = \"correctness\"\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"lint", "--fix-suggestions", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(lint --fix-suggestions self-assignment) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	want := "package sample\n\nfunc reset(value int) int {\n\treturn value\n}\n"
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != want {
+		t.Fatalf("fixed self-assignment source = %q, error = %v", got, err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run(
+		[]string{"lint", "--fix-suggestions", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitSuccess ||
+		stdout.Len() != 0 ||
+		stderr.Len() != 0 ||
+		!bytes.Equal(second, got) {
+		t.Fatalf(
+			"second self-assignment fix = exit %d, stdout %q, stderr %q, source %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			second,
+		)
+	}
+}
+
+func TestRunBaselinesStandardSelfAssignmentDeterministically(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/selfassignmentbaseline\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sample.go")
+	if err := os.WriteFile(
+		path,
+		[]byte(
+			"package sample\nfunc reset(value int) int { value = value; return value }\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(root, ".glippy.toml")
+	if err := os.WriteFile(
+		configPath,
+		[]byte("version = 1\n[lint]\npreset = \"correctness\"\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	baselinePath := filepath.Join(root, ".glippy-baseline.json")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"lint", "--generate-baseline=.glippy-baseline.json", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitSuccess ||
+		stdout.String() !=
+			"glippy lint: wrote baseline " + baselinePath + " (1 diagnostics)\n" ||
+		stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(generate self-assignment baseline) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	baselineBytes, err := os.ReadFile(baselinePath)
+	if err != nil || !bytes.Contains(baselineBytes, []byte(`"rule_id": "self-assignment"`)) {
+		t.Fatalf("self-assignment baseline = %q, error = %v", baselineBytes, err)
+	}
+	if err := os.WriteFile(
+		configPath,
+		[]byte(
+			"version = 1\n[lint]\npreset = \"correctness\"\n" +
+				"[lint.baseline]\npath = \".glippy-baseline.json\"\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run([]string{"lint", path}, strings.NewReader(""), &stdout, &stderr)
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(lint baselined self-assignment) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
+func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
+	t.Helper()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/syntaxfixture\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".glippy.toml"),
+		[]byte("version = 1\n[lint.rules]\nself-assignment = \"off\"\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
 	}
 }
