@@ -27,18 +27,23 @@ not stable release promises.
 - [identical-branches](#identical-branches)
 - [impossible-comparison](#impossible-comparison)
 - [impossible-type-assertion](#impossible-type-assertion)
+- [inconsistent-receiver-name](#inconsistent-receiver-name)
 - [ineffective-break](#ineffective-break)
 - [lock-held-across-blocking-call](#lock-held-across-blocking-call)
 - [loop-capture](#loop-capture)
+- [mixed-receiver-type](#mixed-receiver-type)
 - [nil-context](#nil-context)
 - [nilness](#nilness)
 - [redundant-bool-comparison](#redundant-bool-comparison)
+- [redundant-else](#redundant-else)
 - [resource-not-closed](#resource-not-closed)
 - [self-assignment](#self-assignment)
 - [subsumed-condition](#subsumed-condition)
 - [suspicious-range](#suspicious-range)
 - [time-duration-unit](#time-duration-unit)
 - [time-layout](#time-layout)
+- [unnecessary-conversion](#unnecessary-conversion)
+- [unnecessary-sprintf](#unnecessary-sprintf)
 
 ## almost-swapped
 
@@ -906,6 +911,55 @@ value.(interface{ Read(int) })
 value.(interface{ Read() })
 ```
 
+## inconsistent-receiver-name
+
+detects different receiver names on methods of one type
+
+Methods on one named type are easier to scan when they use one short, consistent receiver name. A
+one-off receiver spelling often survives a copied method or rename and makes examples and
+documentation inconsistent.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: none
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `style`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The most frequent receiver name is treated as canonical; ties use the earliest method in canonical
+  file and declaration order.
+- Unnamed and blank receivers do not participate in receiver-name selection.
+- No fix is offered because renaming must account for every receiver reference in the method body.
+
+### Example: Use one receiver name per type
+
+**Incorrect**
+
+```go
+func (client *Client) Open() {}
+func (c *Client) Close() {}
+```
+
+**Correct**
+
+```go
+func (c *Client) Open() {}
+func (c *Client) Close() {}
+```
+
 ## ineffective-break
 
 detects unlabeled breaks that cannot exit the surrounding loop
@@ -1069,6 +1123,57 @@ for _, value = range values { go func() { use(value) }() }
 
 ```go
 for _, value := range values { go func() { use(value) }() }
+```
+
+## mixed-receiver-type
+
+detects mixed pointer and value receivers on one type
+
+Mixing pointer and value receivers on one named type can make mutation, copying, method sets, and
+interface satisfaction harder to reason about. A consistent receiver form communicates the type's
+ownership model.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: none
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `style`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The majority receiver form is treated as canonical; ties use the earliest method in canonical file
+  and declaration order.
+- A deliberate value receiver for immutable inspection alongside pointer mutation may be valid and
+  can be suppressed.
+- No fix is offered because changing receiver form can alter method sets, interface satisfaction,
+  copying, and mutation semantics.
+
+### Example: Choose one receiver form
+
+**Incorrect**
+
+```go
+func (v Value) Read() {}
+func (v *Value) Write() {}
+```
+
+**Correct**
+
+```go
+func (v *Value) Read() {}
+func (v *Value) Write() {}
 ```
 
 ## nil-context
@@ -1241,6 +1346,55 @@ if ready == true {
 if ready {
 	run()
 }
+```
+
+## redundant-else
+
+detects else blocks after a branch that always terminates
+
+An else block is structurally unnecessary when the matching if branch always returns or transfers
+control. Moving the alternative after the if reduces nesting while preserving which path executes.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: syntax
+- Node interests: `if-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: not applicable
+- Categories: `complexity`, `style`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- If statements with initializers are excluded because the else branch may depend on initializer
+  scope.
+- Termination is proven only from return, branch statements, nested blocks, or if statements whose
+  two branches terminate.
+- No fix is offered because removing else braces must preserve comments and surrounding statement
+  ownership.
+
+### Example: Continue after the terminating branch
+
+**Incorrect**
+
+```go
+if err != nil { return err } else { use(value) }
+```
+
+**Correct**
+
+```go
+if err != nil { return err }
+use(value)
 ```
 
 ## resource-not-closed
@@ -1532,4 +1686,103 @@ time.Parse("2006-02-01", value)
 
 ```go
 time.Parse("2006-01-02", value)
+```
+
+## unnecessary-conversion
+
+detects conversions whose input already has the target type
+
+Converting a value to the exact type it already has cannot change its representation or method set.
+The extra conversion obscures the expression and can survive after a refactor has made an earlier
+type boundary redundant.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `style`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only conversions whose source and target types are identical under go/types are reported.
+- Conversions between distinct defined types and underlying types remain visible because they
+  establish a real type boundary.
+- Compile-time constant conversions remain visible because they can document an intentional type
+  boundary.
+- No fix is offered until parent precedence and comments inside conversion delimiters have a
+  dedicated source-preservation proof.
+
+### Example: Use the value directly
+
+**Incorrect**
+
+```go
+text := string(value) // value is already string
+```
+
+**Correct**
+
+```go
+text := value
+```
+
+## unnecessary-sprintf
+
+detects fmt.Sprintf calls that only reproduce a string value
+
+fmt.Sprintf with the exact format %s is unnecessary when its only argument is already a string, has
+a string underlying type, or is a byte slice. Direct use or conversion is clearer and avoids the
+formatting machinery.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `style`, `performance`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only the standard library fmt.Sprintf function with one exact compile-time %s directive and one
+  argument is checked.
+- Stringer, Formatter, interface, type-parameter, rune-slice, and wider formatting cases are
+  excluded because their output contracts can differ.
+- No fix is offered until argument comments and parent-expression precedence have a dedicated
+  source-preservation proof.
+
+### Example: Use an existing string directly
+
+**Incorrect**
+
+```go
+text := fmt.Sprintf("%s", value)
+```
+
+**Correct**
+
+```go
+text := value
 ```

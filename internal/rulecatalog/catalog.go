@@ -33,14 +33,19 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewDeferInLoopRule(),
 		rules.NewDiscardedErrorRule(),
 		rules.NewHTTPCanonicalHeaderKeyRule(),
+		rules.NewInconsistentReceiverNameRule(),
 		rules.NewImpossibleComparisonRule(),
 		rules.NewLockHeldAcrossBlockingCallRule(),
 		rules.NewLoopCaptureRule(),
+		rules.NewMixedReceiverTypeRule(),
 		rules.NewNilContextRule(),
 		rules.NewResourceNotClosedRule(),
+		rules.NewRedundantElseRule(),
 		rules.NewSubsumedConditionRule(),
 		rules.NewSuspiciousRangeRule(),
 		rules.NewTimeDurationUnitRule(),
+		rules.NewUnnecessaryConversionRule(),
+		rules.NewUnnecessarySprintfRule(),
 	)
 	all = append(all, rules.NewAlmostSwappedRule())
 	registry, err := rules.NewRegistry(all...)
