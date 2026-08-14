@@ -166,6 +166,29 @@ func TestRunRejectsAmbiguousSingularAndPluralPresetPolicy(t *testing.T) {
 	}
 }
 
+func TestRunOptionsSnapshotsLintLevelDirectives(t *testing.T) {
+	t.Parallel()
+
+	options := analysis.RunOptions{
+		Presets: []rules.Preset{rules.PresetCorrectness},
+		LintLevels: []rules.LintLevelDirective{
+			{Level: rules.LintDeny, Targets: []string{"warnings", "correctness"}},
+		},
+	}
+	resolution, err := options.RuleResolution()
+	if err != nil {
+		t.Fatal(err)
+	}
+	options.LintLevels[0].Targets[0] = "mutated-input"
+	if resolution.LintLevels[0].Targets[0] != "warnings" {
+		t.Fatalf("RuleResolution() retained input alias: %#v", resolution.LintLevels)
+	}
+	resolution.LintLevels[0].Targets[1] = "mutated-output"
+	if options.LintLevels[0].Targets[1] != "correctness" {
+		t.Fatalf("RuleResolution() returned aliased targets: %#v", options.LintLevels)
+	}
+}
+
 func TestRunEmptyRegistryProducesOneCompleteEmptyResult(t *testing.T) {
 	t.Parallel()
 

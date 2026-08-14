@@ -19,6 +19,7 @@ type RunOptions struct {
 	WarningsAsErrors bool
 	Overrides map[string]rules.Severity
 	RuleOptions map[string]rules.OptionSet
+	LintLevels []rules.LintLevelDirective
 	Only []string
 	Except []string
 	RequireSuppressionReason bool
@@ -127,7 +128,22 @@ func (options RunOptions) RuleResolution() (rules.ResolveOptions, error) {
 		RuleOptions: options.RuleOptions,
 		SourceGoVersion: options.SourceGoVersion,
 		WarningsAsErrors: options.WarningsAsErrors,
+		LintLevels: cloneLintLevelDirectives(options.LintLevels),
 		Only: slices.Clone(options.Only),
 		Except: slices.Clone(options.Except),
 	}, nil
+}
+
+func cloneLintLevelDirectives(directives []rules.LintLevelDirective) []rules.LintLevelDirective {
+	if directives == nil {
+		return nil
+	}
+	result := make([]rules.LintLevelDirective, len(directives))
+	for index, directive := range directives {
+		result[index] = rules.LintLevelDirective{
+			Level: directive.Level,
+			Targets: slices.Clone(directive.Targets),
+		}
+	}
+	return result
 }

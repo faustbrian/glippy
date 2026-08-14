@@ -196,6 +196,22 @@ duplicate, empty, or whitespace-padded IDs MUST be rejected as invalid
 invocations. The resulting selection MUST determine the required analysis tier
 and MUST apply consistently to checks, baselines, and fixes.
 
+`lint` and combined `check` MUST accept ordered `-A`/`--allow`,
+`-W`/`--warn`, `-D`/`--deny`, and `-F`/`--forbid` directives. Each directive
+MUST target one or more comma-separated exact rule IDs, selectable preset
+groups, or the special `warnings` set. Restriction MUST target exact rule IDs,
+and migration MUST remain target-gated. Directives MUST apply in argument order
+after configured policy and `--only` eligibility; `--except` MUST remain an
+absolute exclusion, and configured warning escalation MUST apply last. The
+`warnings` target MUST affect only rules currently at warning severity and MUST
+NOT enable disabled rules. A later `allow` or `warn` that would lower a
+forbidden rule MUST fail as an invalid invocation. The resolved selection and
+severity MUST be shared by syntax and package analysis, baseline generation,
+fix planning, combined check, and every diagnostic reporter.
+Short flags MUST accept both a separate target and the Clippy-compatible
+concatenated spelling, such as `-Dwarnings`; long flags MUST accept separate or
+equals-form targets.
+
 Both analysis paths run enabled syntax rules and never write source. The typed
 path additionally runs types-tier, CFG-tier, and SSA-tier rules over the shared
 package result. Visible rule diagnostics, suppression problems, and unused

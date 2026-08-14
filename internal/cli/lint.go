@@ -26,7 +26,7 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const lintUsage = "glippy: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--only=<rules>] [--except=<rules>] [--new-from=<git-ref>] [--generate-baseline=<path>] [--reporter=text|json|github|sarif] [--config=<path>] [path...]'\n"
+const lintUsage = "glippy: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [-A|--allow <rules-or-groups>] [-W|--warn <rules-or-groups>] [-D|--deny <rules-or-groups>] [-F|--forbid <rules-or-groups>] [--only=<rules>] [--except=<rules>] [--new-from=<git-ref>] [--generate-baseline=<path>] [--reporter=text|json|github|sarif] [--config=<path>] [path...]'\n"
 
 type lintInvocation struct {
 	configPath string
@@ -35,6 +35,7 @@ type lintInvocation struct {
 	fixUnsafe bool
 	generateBaseline string
 	newFrom string
+	lintLevels []rules.LintLevelDirective
 	only []string
 	except []string
 	paths []string
@@ -118,6 +119,15 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 	exceptSet := false
 	for index := 1; index < len(arguments); index++ {
 		argument := arguments[index]
+		if directive, consumed, matched, valid := parseLintLevelDirective(arguments, index);
+			matched {
+			if !valid {
+				return lintInvocation{}, false
+			}
+			result.lintLevels = append(result.lintLevels, directive)
+			index += consumed
+			continue
+		}
 		switch {
 		case argument == "--fix" && !fixSet:
 			result.fix = true
@@ -241,6 +251,69 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 		return lintInvocation{}, false
 	}
 	return result, true
+}
+
+func parseLintLevelDirective(
+	arguments []string,
+	index int,
+) (rules.LintLevelDirective, int, bool, bool) {
+	if index < 0 || index >= len(arguments) {
+		return rules.LintLevelDirective{}, 0, false, false
+	}
+	argument := arguments[index]
+	type levelFlag struct {
+		short string
+		long string
+		level rules.LintLevel
+	}
+	flags := []levelFlag{
+		{short: "-A", long: "--allow", level: rules.LintAllow},
+		{short: "-W", long: "--warn", level: rules.LintWarn},
+		{short: "-D", long: "--deny", level: rules.LintDeny},
+		{short: "-F", long: "--forbid", level: rules.LintForbid},
+	}
+	for _, flag := range flags {
+		value := ""
+		consumed := 0
+		switch {
+		case strings.HasPrefix(argument, flag.long + "="):
+			value = strings.TrimPrefix(argument, flag.long + "=")
+		case strings.HasPrefix(argument, flag.short) && argument != flag.short:
+			value = strings.TrimPrefix(argument, flag.short)
+		case argument == flag.long || argument == flag.short:
+			if index + 1 >= len(arguments) ||
+				strings.HasPrefix(arguments[index + 1], "-") {
+				return rules.LintLevelDirective{}, 0, true, false
+			}
+			value = arguments[index + 1]
+			consumed = 1
+		default:
+			continue
+		}
+		targets, valid := parseRuleFilter(value)
+		if !valid {
+			return rules.LintLevelDirective{}, 0, true, false
+		}
+		return rules.LintLevelDirective{
+			Level: flag.level,
+			Targets: targets,
+		}, consumed, true, true
+	}
+	return rules.LintLevelDirective{}, 0, false, false
+}
+
+func cloneLintLevelDirectives(directives []rules.LintLevelDirective) []rules.LintLevelDirective {
+	if directives == nil {
+		return nil
+	}
+	result := make([]rules.LintLevelDirective, len(directives))
+	for index, directive := range directives {
+		result[index] = rules.LintLevelDirective{
+			Level: directive.Level,
+			Targets: slices.Clone(directive.Targets),
+		}
+	}
+	return result
 }
 
 func parseRuleFilter(value string) ([]string, bool) {
@@ -401,6 +474,7 @@ func runLintCheck(
 		registry,
 		invocation.only,
 		invocation.except,
+		invocation.lintLevels,
 	)
 	if err != nil {
 		return reportLintFailure(invocation, stdout, stderr, exitCode, nil, err)
@@ -622,6 +696,7 @@ func runLintGenerateBaseline(
 			registry,
 			invocation.only,
 			invocation.except,
+			invocation.lintLevels,
 		)
 		if err != nil {
 			return report(stderr, exitCode, "glippy lint: generate baseline: %v\n", err)
@@ -982,6 +1057,7 @@ func prepareLintInputPlans(
 				registry,
 				invocation.only,
 				invocation.except,
+				invocation.lintLevels,
 			)
 			if err != nil {
 				return nil, exitCode, err
@@ -1148,6 +1224,7 @@ func prepareLintTasks(
 		registry,
 		invocation.only,
 		invocation.except,
+		invocation.lintLevels,
 	)
 }
 
@@ -1158,6 +1235,7 @@ func prepareLintTasksFromPlans(
 	registry *rules.Registry,
 	only []string,
 	except []string,
+	lintLevels []rules.LintLevelDirective,
 ) ([]lintTask, int, error) {
 	selected := make(map[string]discovery.File)
 	optionsByConfiguration := make(map[string]lintTaskOptions)
@@ -1211,6 +1289,7 @@ func prepareLintTasksFromPlans(
 				registry,
 				only,
 				except,
+				lintLevels,
 			)
 			if err != nil {
 				return nil, exitCode, err
@@ -1231,6 +1310,7 @@ func lintOptionsForSelection(
 	registry *rules.Registry,
 	only []string,
 	except []string,
+	lintLevels []rules.LintLevelDirective,
 ) (lintTaskOptions, int, error) {
 	loaded, err := config.Load(
 		selection,
@@ -1249,6 +1329,7 @@ func lintOptionsForSelection(
 			WarningsAsErrors: loaded.Lint.WarningsAsErrors,
 			Overrides: loaded.Lint.Rules,
 			RuleOptions: loaded.Lint.RuleOptions,
+			LintLevels: cloneLintLevelDirectives(lintLevels),
 			Only: slices.Clone(only),
 			Except: slices.Clone(except),
 			RequireSuppressionReason: loaded.Lint.Suppressions.RequireReason,
@@ -1326,6 +1407,7 @@ func runLintFix(
 			registry,
 			invocation.only,
 			invocation.except,
+			invocation.lintLevels,
 		)
 		if err == nil {
 			executions, exitCode, err = prepareLintFixExecutions(

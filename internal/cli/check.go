@@ -16,11 +16,12 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const checkUsage = "glippy: expected 'check [--new-from=<git-ref>] [--reporter=text|json|github|sarif] [--config=<path>] [path...]'\n"
+const checkUsage = "glippy: expected 'check [-A|--allow <rules-or-groups>] [-W|--warn <rules-or-groups>] [-D|--deny <rules-or-groups>] [-F|--forbid <rules-or-groups>] [--new-from=<git-ref>] [--reporter=text|json|github|sarif] [--config=<path>] [path...]'\n"
 
 type checkInvocation struct {
 	configPath string
 	newFrom string
+	lintLevels []rules.LintLevelDirective
 	paths []string
 	reporter glippyreport.Format
 }
@@ -40,6 +41,15 @@ func parseCheckInvocation(arguments []string) (checkInvocation, bool) {
 	reporterSet := false
 	for index := 1; index < len(arguments); index++ {
 		argument := arguments[index]
+		if directive, consumed, matched, valid := parseLintLevelDirective(arguments, index);
+			matched {
+			if !valid {
+				return checkInvocation{}, false
+			}
+			result.lintLevels = append(result.lintLevels, directive)
+			index += consumed
+			continue
+		}
 		switch {
 		case strings.HasPrefix(argument, "--new-from=") && result.newFrom == "":
 			result.newFrom = strings.TrimPrefix(argument, "--new-from=")
@@ -166,6 +176,7 @@ func runCombinedCheck(
 		lintInvocation{
 			configPath: invocation.configPath,
 			newFrom: invocation.newFrom,
+			lintLevels: invocation.lintLevels,
 			paths: invocation.paths,
 			reporter: invocation.reporter,
 		},
@@ -200,6 +211,7 @@ func runCombinedCheck(
 		registry,
 		nil,
 		nil,
+		invocation.lintLevels,
 	)
 	if err != nil {
 		return reportCombinedCheck(invocation, stdout, stderr, exitCode, false, nil, err)

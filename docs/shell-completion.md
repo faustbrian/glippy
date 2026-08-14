@@ -12,6 +12,12 @@ reporter completion additionally offers `github` and `sarif`.
 Generation writes only to standard output. It does not inspect a project,
 configuration, source file, package graph, or network resource.
 
+For `lint` and `check`, completion includes short and long `allow`, `warn`,
+`deny`, and `forbid` flags plus exact rules, selectable groups, and the special
+`warnings` target. Restriction and migration are intentionally absent as group
+targets because their policy requires exact rule IDs or an explicit migration
+target.
+
 ## Bash
 
 Write the script to a directory loaded by `bash-completion`:

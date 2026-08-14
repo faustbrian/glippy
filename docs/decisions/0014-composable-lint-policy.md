@@ -19,6 +19,9 @@ strict identifiers and configuration failures reinforce Glippy's existing exact
 rule IDs and typed schema; opaque numeric levels do not communicate policy well
 enough for Glippy.
 
+The implementation refresh is recorded in
+[the current Clippy lint-level audit](../research/clippy-lint-levels-2026-08-14.md).
+
 ## Decision
 
 Schema version 1 accepts an order-independent `lint.presets` list. Glippy unions
@@ -38,6 +41,16 @@ or API contract exists.
 Formatting remains outside lint policy. No preset may add line length,
 spacing, brace placement, wrapping, or another layout diagnostic owned by
 `glippy fmt`.
+
+The `lint` and `check` commands additionally accept ordered `allow`, `warn`,
+`deny`, and `forbid` directives. Targets may be exact rule IDs, selectable
+groups, or the special currently-warning set. These directives apply after
+configuration and exact `--only` eligibility, while `--except` remains an
+absolute exclusion and configured warning escalation remains last. `forbid`
+locks every matched rule against a later `allow` or `warn`; such an attempted
+lowering is an invalid invocation. The `warnings` target never enables a rule
+that is off. Restriction and migration retain their existing exact-ID and
+target-gated boundaries.
 
 ## Alternatives
 
@@ -59,6 +72,14 @@ severity switch while retaining exact exceptions. Adding a rule to a selected
 non-default group can create a new diagnostic and follows the published lint
 compatibility process. The default remains correctness only. Cache identity
 changes when group membership or warning escalation changes.
+
+One invocation can evaluate or temporarily strengthen policy without editing
+project configuration. Because directives are ordered, scripts must preserve
+argument order. The effective command-line policy is invocation state rather
+than persistent configuration. It does not alter the project configuration
+digest, but its resolved rule IDs, severities, and options remain cache-key
+inputs and determine the analysis result consumed by every reporter and fix
+path.
 
 ## Revisit Trigger
 

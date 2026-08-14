@@ -33,6 +33,7 @@ type ResolveOptions struct {
 	RuleOptions map[string]OptionSet
 	SourceGoVersion string
 	WarningsAsErrors bool
+	LintLevels []LintLevelDirective
 	Only []string
 	Except []string
 }
@@ -230,7 +231,13 @@ func (r *Registry) ResolveOptions(options ResolveOptions) ([]Selection, error) {
 	if err != nil {
 		return nil, err
 	}
-	selection := make([]Selection, 0, len(r.ids))
+	levelTargets, err := r.validateLintLevels(options.LintLevels)
+	if err != nil {
+		return nil, err
+	}
+	severities := make(map[string]Severity, len(r.ids))
+	eligible := make(map[string]struct{}, len(r.ids))
+	forbidden := make(map[string]struct{})
 	for _, id := range r.ids {
 		metadata := r.entries[id].metadata
 		severity := SeverityOff
@@ -257,6 +264,54 @@ func (r *Registry) ResolveOptions(options ResolveOptions) ([]Selection, error) {
 		if _, excluded := except[id]; excluded {
 			continue
 		}
+		eligible[id] = struct{}{}
+		severities[id] = severity
+	}
+	for index, directive := range options.LintLevels {
+		matched := slices.Clone(levelTargets[index].ids)
+		if levelTargets[index].warnings {
+			for _, id := range r.ids {
+				if severities[id] == SeverityWarn {
+					matched = append(matched, id)
+				}
+			}
+		}
+		slices.Sort(matched)
+		matched = slices.Compact(matched)
+		for _, id := range matched {
+			if _, applies := eligible[id]; !applies {
+				continue
+			}
+			if _, locked := forbidden[id]; locked {
+				if directive.Level == LintAllow || directive.Level == LintWarn {
+					return nil, fmt.Errorf(
+						"cannot lower forbidden rule %q to %s",
+						id,
+						directive.Level,
+					)
+				}
+				continue
+			}
+			switch directive.Level {
+			case LintAllow:
+				severities[id] = SeverityOff
+			case LintWarn:
+				severities[id] = SeverityWarn
+			case LintDeny:
+				severities[id] = SeverityError
+			case LintForbid:
+				severities[id] = SeverityError
+				forbidden[id] = struct{}{}
+			}
+		}
+	}
+	selection := make([]Selection, 0, len(r.ids))
+	for _, id := range r.ids {
+		if _, selected := eligible[id]; !selected {
+			continue
+		}
+		metadata := r.entries[id].metadata
+		severity := severities[id]
 		if severity == SeverityOff {
 			continue
 		}
@@ -296,6 +351,78 @@ func (r *Registry) ResolveOptions(options ResolveOptions) ([]Selection, error) {
 		)
 	}
 	return selection, nil
+}
+
+type validatedLintLevelTargets struct {
+	ids []string
+	warnings bool
+}
+
+func (r *Registry) validateLintLevels(
+	directives []LintLevelDirective,
+) ([]validatedLintLevelTargets, error) {
+	result := make([]validatedLintLevelTargets, len(directives))
+	for index, directive := range directives {
+		if !validLintLevel(directive.Level) {
+			return nil, fmt.Errorf("invalid lint level %q", directive.Level)
+		}
+		if len(directive.Targets) == 0 {
+			return nil, fmt.Errorf(
+				"lint level %q requires at least one target",
+				directive.Level,
+			)
+		}
+		seen := make(map[string]struct{}, len(directive.Targets))
+		matched := make(map[string]struct{})
+		for _, target := range directive.Targets {
+			if _, duplicate := seen[target]; duplicate {
+				return nil, fmt.Errorf("duplicate lint level target %q", target)
+			}
+			seen[target] = struct{}{}
+			if target == "warnings" {
+				result[index].warnings = true
+				continue
+			}
+			preset := Preset(target)
+			if validPreset(preset) {
+				if preset == PresetRestriction {
+					return nil, fmt.Errorf(
+						"restriction lint level must target exact rule IDs",
+					)
+				}
+				if preset == PresetMigration {
+					return nil, fmt.Errorf(
+						"migration lint level requires an explicit target",
+					)
+				}
+				for _, id := range r.ids {
+					if slices.Contains(r.entries[id].metadata.Presets, preset) {
+						matched[id] = struct{}{}
+					}
+				}
+				continue
+			}
+			if _, found := r.entries[target]; !found {
+				return nil, fmt.Errorf("unknown lint level target %q", target)
+			}
+			matched[target] = struct{}{}
+		}
+		result[index].ids = make([]string, 0, len(matched))
+		for id := range matched {
+			result[index].ids = append(result[index].ids, id)
+		}
+		sort.Strings(result[index].ids)
+	}
+	return result, nil
+}
+
+func validLintLevel(level LintLevel) bool {
+	switch level {
+	case LintAllow, LintWarn, LintDeny, LintForbid:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *Registry) validateRuleFilter(name string, ids []string) (map[string]struct{}, error) {

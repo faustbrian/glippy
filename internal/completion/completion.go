@@ -51,6 +51,8 @@ func Render(shell Shell, ruleIDs []string) ([]byte, error) {
 }
 
 func renderBash(ruleIDs []string) string {
+	lintTargets := "warnings correctness suspicious performance complexity style pedantic " +
+		strings.Join(ruleIDs, " ")
 	return `# bash completion for glippy
 _glippy_completion() {
 	local current previous command
@@ -86,6 +88,12 @@ _glippy_completion() {
 		`" -- "$current") )
 			return
 			;;
+		lint:-A|lint:-W|lint:-D|lint:-F|lint:--allow|lint:--warn|lint:--deny|lint:--forbid|check:-A|check:-W|check:-D|check:-F|check:--allow|check:--warn|check:--deny|check:--forbid)
+			COMPREPLY=( $(compgen -W "` +
+		lintTargets +
+		`" -- "$current") )
+			return
+			;;
 		rules:--preset)
 			COMPREPLY=( $(compgen -W "correctness suspicious performance complexity style pedantic restriction migration" -- "$current") )
 			return
@@ -106,11 +114,11 @@ _glippy_completion() {
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		lint)
-			COMPREPLY=( $(compgen -W "--fix --fix-suggestions --fix-unsafe --only --except --new-from= --generate-baseline= --reporter --reporter=text --reporter=json --reporter=github --reporter=sarif --config" -- "$current") )
+			COMPREPLY=( $(compgen -W "-A -W -D -F --allow --warn --deny --forbid --fix --fix-suggestions --fix-unsafe --only --except --new-from= --generate-baseline= --reporter --reporter=text --reporter=json --reporter=github --reporter=sarif --config" -- "$current") )
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		check)
-			COMPREPLY=( $(compgen -W "--new-from= --reporter --reporter=text --reporter=json --reporter=github --reporter=sarif --config" -- "$current") )
+			COMPREPLY=( $(compgen -W "-A -W -D -F --allow --warn --deny --forbid --new-from= --reporter --reporter=text --reporter=json --reporter=github --reporter=sarif --config" -- "$current") )
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		lsp)
@@ -141,6 +149,8 @@ complete -F _glippy_completion glippy
 }
 
 func renderZsh(ruleIDs []string) string {
+	lintTargets := "warnings correctness suspicious performance complexity style pedantic " +
+		strings.Join(ruleIDs, " ")
 	return `#compdef glippy
 
 _glippy() {
@@ -164,6 +174,30 @@ _glippy() {
 			;;
 		lint)
 			_arguments \
+				'-A[set allow lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'--allow=[set allow lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'-W[set warn lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'--warn=[set warn lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'-D[set deny lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'--deny=[set deny lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'-F[set forbid lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'--forbid=[set forbid lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
 				'--fix[apply safe fixes]' \
 				'--fix-suggestions[apply suggestion fixes]' \
 				'--fix-unsafe[apply unsafe fixes]' \
@@ -181,6 +215,30 @@ _glippy() {
 			;;
 		check)
 			_arguments \
+				'-A[set allow lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'--allow=[set allow lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'-W[set warn lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'--warn=[set warn lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'-D[set deny lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'--deny=[set deny lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'-F[set forbid lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
+				'--forbid=[set forbid lint level]:rule or group:('` +
+		lintTargets +
+		`')' \
 				'--new-from=[report findings introduced since a Git ref]:git ref' \
 				'--reporter=[select reporter]:reporter:(text json github sarif)' \
 				'--config=[use an explicit configuration]:configuration file:_files' \
@@ -226,6 +284,8 @@ _glippy "$@"
 
 func renderFish(ruleIDs []string) string {
 	var output strings.Builder
+	lintTargets := "warnings correctness suspicious performance complexity style pedantic " +
+		strings.Join(ruleIDs, " ")
 	output.WriteString(
 		`complete -c glippy -f
 complete -c glippy -n '__fish_use_subcommand' -a fmt -d 'Format Go source'
@@ -252,6 +312,19 @@ complete -c glippy -n '__fish_seen_subcommand_from fmt lint check lsp' -l config
 complete -c glippy -n '__fish_seen_subcommand_from config; and __fish_seen_subcommand_from check show' -l config -r -F -d 'Use an explicit configuration'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l stdin-filepath -r -F -d 'Supply stdin path context'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -a '--fragment=declaration --fragment=statement --fragment=expression' -d 'Format a source fragment'
+
+complete -c glippy -n '__fish_seen_subcommand_from lint check' -s A -l allow -r -a '` +
+			lintTargets +
+			`' -d 'Set allow lint level'
+complete -c glippy -n '__fish_seen_subcommand_from lint check' -s W -l warn -r -a '` +
+			lintTargets +
+			`' -d 'Set warn lint level'
+complete -c glippy -n '__fish_seen_subcommand_from lint check' -s D -l deny -r -a '` +
+			lintTargets +
+			`' -d 'Set deny lint level'
+complete -c glippy -n '__fish_seen_subcommand_from lint check' -s F -l forbid -r -a '` +
+			lintTargets +
+			`' -d 'Set forbid lint level'
 
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix -d 'Apply safe fixes'
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix-suggestions -d 'Apply suggestion fixes'

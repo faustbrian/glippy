@@ -71,6 +71,7 @@ glippy fmt --check [paths...]
 glippy fmt --diff [paths...]
 glippy lint [paths...]
 glippy lint --fix [paths...]
+glippy lint -Wperformance -Dwarnings [paths...]
 glippy lint --only=<rules> [paths...]
 glippy lint --except=<rules> [paths...]
 glippy lint --new-from=<git-ref> [paths...]
@@ -121,8 +122,12 @@ and cache settings.
 Use `glippy rules` to discover the compiled catalog by preset, fix
 availability, or exact analysis tier. `lint --only` and `lint --except` apply
 exact comma-separated rule IDs after project policy, with exclusions winning
-over inclusions. `explain --json` exposes the same canonical metadata through
-a schema-versioned machine contract.
+over inclusions. Both `lint` and `check` accept ordered Clippy-style
+`-A/--allow`, `-W/--warn`, `-D/--deny`, and `-F/--forbid` directives targeting
+exact rule IDs, selectable groups, or the currently enabled `warnings` set.
+Later directives override earlier ones, except that a forbidden rule cannot be
+lowered. `explain --json` exposes the same canonical metadata through a
+schema-versioned machine contract.
 
 The v0.2 pedantic catalog includes bounded Go-native simplifications for blank
 identifiers, direct closures, nil-and-length checks, time helpers, buffer

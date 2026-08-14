@@ -149,6 +149,79 @@ func TestRunCheckIntegrationReportersIncludeFormattingDifferences(t *testing.T) 
 	}
 }
 
+func TestRunLintLevelSeverityFlowsToIntegrationReporters(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/lintlevelreporters\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "source.go")
+	writeChangedCLIFile(
+		t,
+		path,
+		"package sample\n\nfunc run(ready bool) {\n\tif ready {\n\t\tprintln(\"first\")\n\t} else if ready {\n\t\tprintln(\"second\")\n\t}\n}\n",
+	)
+
+	var github bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := RunContext(
+		context.Background(),
+		[]string{"lint", "-Dwarnings", "--reporter=github", path},
+		strings.NewReader(""),
+		&github,
+		&stderr,
+	)
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		!strings.Contains(github.String(), "::error ") ||
+		!strings.Contains(github.String(), "title=duplicate-condition") {
+		t.Fatalf(
+			"RunContext(lint-level github) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			github.String(),
+			stderr.String(),
+		)
+	}
+
+	var sarif bytes.Buffer
+	stderr.Reset()
+	exitCode = RunContext(
+		context.Background(),
+		[]string{"lint", "-Dwarnings", "--reporter=sarif", path},
+		strings.NewReader(""),
+		&sarif,
+		&stderr,
+	)
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf(
+			"RunContext(lint-level sarif) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			sarif.String(),
+			stderr.String(),
+		)
+	}
+	var decoded struct {
+		Runs []struct {
+			Results []struct {
+				RuleID string `json:"ruleId"`
+				Level string `json:"level"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(sarif.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode lint-level SARIF: %v\n%s", err, sarif.Bytes())
+	}
+	if len(decoded.Runs) != 1 ||
+		len(decoded.Runs[0].Results) != 1 ||
+		decoded.Runs[0].Results[0].RuleID != "duplicate-condition" ||
+		decoded.Runs[0].Results[0].Level != "error" {
+		t.Fatalf("lint-level SARIF = %#v\n%s", decoded, sarif.Bytes())
+	}
+}
+
 func TestInvalidLintAndCheckInvocationsUseIntegrationReporters(t *testing.T) {
 	t.Parallel()
 

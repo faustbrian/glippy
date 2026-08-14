@@ -14,12 +14,14 @@ and no v0.2 tag or release is authorized before maintainer review.
 | `glippy fmt --diff [paths...]` | Print unified formatting differences | No |
 | `glippy fmt --write [paths...]` | Validate and replace changed files | Yes |
 | `glippy lint [paths...]` | Report enabled lint diagnostics | No |
+| `glippy lint -W<target> -Dwarnings [paths...]` | Apply ordered command-line lint levels | No |
 | `glippy lint --only=<rules> [paths...]` | Run only exact rule IDs after project policy | No |
 | `glippy lint --except=<rules> [paths...]` | Exclude exact rule IDs after project policy | No |
 | `glippy lint --new-from=<git-ref> [paths...]` | Report diagnostics on changed lines | No |
 | `glippy lint --fix [paths...]` | Apply safe fixes | Yes |
 | `glippy lint --generate-baseline=<path> [paths...]` | Write a deterministic adoption baseline | Baseline only |
 | `glippy check [paths...]` | Check formatting and lint diagnostics together | No |
+| `glippy check -D warnings [paths...]` | Check with command-line warning denial | No |
 | `glippy check --new-from=<git-ref> [paths...]` | Check changed-line formatting and diagnostics | No |
 | `glippy lsp [flags]` | Serve live diagnostics, formatting, and validated code actions over stdio | No |
 | `glippy init [directory]` | Create a starter `.glippy.toml` without overwriting | Configuration only |
@@ -157,6 +159,32 @@ emits SARIF 2.1.0. Machine reporters omit source snippets and replacement text.
 See the [machine output reference](machine-output.md) for field, range,
 completeness, ordering, and fix-provenance semantics.
 
+### Command-line lint levels
+
+`lint` and `check` accept ordered Clippy-style diagnostic policy:
+
+| Short | Long | Result |
+| --- | --- | --- |
+| `-A <target>` or `-A<target>` | `--allow=<target>` | Disable matching rules |
+| `-W <target>` or `-W<target>` | `--warn=<target>` | Enable matching rules as warnings |
+| `-D <target>` or `-D<target>` | `--deny=<target>` | Enable matching rules as errors |
+| `-F <target>` or `-F<target>` | `--forbid=<target>` | Enable matching rules as errors and prevent later lowering |
+
+A target is an exact rule ID, one of `correctness`, `suspicious`,
+`performance`, `complexity`, `style`, or `pedantic`, or the special target
+`warnings`. Comma-separated targets are accepted without whitespace.
+`restriction` must use exact rule IDs, and `migration` remains unavailable
+without an explicit migration target.
+
+Directives apply in command-line order after configured presets and per-rule
+overrides. `--only` determines the eligible rule set first, lint-level
+directives update that set, `--except` remains an absolute exclusion, and
+configured warning escalation runs last. `warnings` changes only rules that
+are warnings at that point and never enables disabled rules. Lowering a rule
+after it has been forbidden is an invalid invocation instead of a silent
+override. The resolved severity is shared by text, JSON, GitHub, SARIF,
+baseline generation, fix planning, and combined check.
+
 `--only=<id[,id...]>` restricts the resolved project policy to exact rule IDs.
 It temporarily re-enables a configured-off rule at its metadata default
 severity, or at warning severity when the rule is disabled by default.
@@ -207,6 +235,8 @@ completion or failure signal.
 
 `check` accepts `--config=<path>` and
 `--reporter=text|json|github|sarif` and defaults to the current directory.
+It accepts the same ordered lint-level directives as `lint`; they affect only
+the lint half of the combined non-mutating result.
 
 With `--new-from`, formatting differences are actionable only when the full
 formatter transformation is owned by changed lines. A difference touching an

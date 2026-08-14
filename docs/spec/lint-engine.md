@@ -224,7 +224,10 @@ opt-ins. Restriction rules are selected individually rather than as a group;
 migration rules require an explicit target contract.
 
 The file driver MUST union selected preset groups, apply explicit rule
-overrides, escalate warnings when configured, and resolve typed options once.
+overrides, apply ordered command-line lint levels, escalate warnings when
+configured, and resolve typed options once. Command-line levels MUST preserve
+the `--only`, `--except`, warning-set, restriction, migration, and irreversible
+forbid semantics defined by the CLI contract.
 It MUST then record the maximum enabled requirement, execute the shared syntax
 runner once, and apply the source-versioned suppression index before returning
 reporter-facing records. Unsuppressed diagnostics, suppressed diagnostics,

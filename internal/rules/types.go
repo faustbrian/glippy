@@ -50,6 +50,24 @@ const (
 	SeverityError Severity = "error"
 )
 
+// LintLevel is one command-line diagnostic policy compatible with Clippy's
+// allow, warn, deny, and forbid model.
+type LintLevel string
+
+const (
+	LintAllow LintLevel = "allow"
+	LintWarn LintLevel = "warn"
+	LintDeny LintLevel = "deny"
+	LintForbid LintLevel = "forbid"
+)
+
+// LintLevelDirective applies one ordered level to exact rule IDs or preset
+// groups. A forbidden rule cannot be lowered by a later directive.
+type LintLevelDirective struct {
+	Level LintLevel
+	Targets []string
+}
+
 // Preset is one coherent built-in rule group.
 type Preset string
 

@@ -341,6 +341,7 @@ func (b *lspBackend) task(path string) (lintTask, rules.Requirement, error) {
 		b.registry,
 		nil,
 		nil,
+		nil,
 	)
 	if err != nil {
 		return lintTask{}, 0, err

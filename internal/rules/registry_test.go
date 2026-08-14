@@ -438,6 +438,185 @@ func TestRegistryComposesPresetGroupsAndEscalatesWarnings(t *testing.T) {
 	}
 }
 
+func TestRegistryAppliesOrderedClippyStyleLintLevels(t *testing.T) {
+	t.Parallel()
+
+	correctness := validMetadata("correctness-rule")
+	performance := validMetadata("performance-rule")
+	performance.Presets = []rules.Preset{rules.PresetPerformance}
+	pedantic := validMetadata("pedantic-rule")
+	pedantic.Presets = []rules.Preset{rules.PresetPedantic}
+	registry, err := rules.NewRegistry(
+		metadataRule{metadata: correctness},
+		metadataRule{metadata: performance},
+		metadataRule{metadata: pedantic},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	selection, err := registry.ResolveOptions(
+		rules.ResolveOptions{
+			Presets: []rules.Preset{rules.PresetCorrectness},
+			LintLevels: []rules.LintLevelDirective{
+				{Level: rules.LintWarn, Targets: []string{"performance"}},
+				{Level: rules.LintDeny, Targets: []string{"correctness"}},
+				{Level: rules.LintAllow, Targets: []string{"correctness"}},
+				{Level: rules.LintAllow, Targets: []string{"pedantic"}},
+				{Level: rules.LintForbid, Targets: []string{"pedantic-rule"}},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selection) != 2 ||
+		selection[0].ID != "pedantic-rule" ||
+		selection[0].Severity != rules.SeverityError ||
+		selection[1].ID != "performance-rule" ||
+		selection[1].Severity != rules.SeverityWarn {
+		t.Fatalf("ResolveOptions(lint levels) = %#v", selection)
+	}
+
+	selection, err = registry.ResolveOptions(
+		rules.ResolveOptions{
+			Presets: []rules.Preset{rules.PresetCorrectness},
+			WarningsAsErrors: true,
+			LintLevels: []rules.LintLevelDirective{
+				{Level: rules.LintWarn, Targets: []string{"performance"}},
+				{Level: rules.LintAllow, Targets: []string{"correctness"}},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selection) != 1 ||
+		selection[0].ID != "performance-rule" ||
+		selection[0].Severity != rules.SeverityError {
+		t.Fatalf("ResolveOptions(escalated lint levels) = %#v", selection)
+	}
+}
+
+func TestRegistryRejectsLoweringAForbiddenLintLevel(t *testing.T) {
+	t.Parallel()
+
+	registry, err := rules.NewRegistry(
+		metadataRule{metadata: validMetadata("correctness-rule")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = registry.ResolveOptions(
+		rules.ResolveOptions{
+			LintLevels: []rules.LintLevelDirective{
+				{Level: rules.LintForbid, Targets: []string{"correctness-rule"}},
+				{Level: rules.LintAllow, Targets: []string{"correctness"}},
+			},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "cannot lower forbidden rule") {
+		t.Fatalf("ResolveOptions(forbid lowering) error = %v", err)
+	}
+}
+
+func TestRegistryKeepsWarningsTargetScopedToEnabledWarnings(t *testing.T) {
+	t.Parallel()
+
+	correctness := validMetadata("correctness-rule")
+	disabled := validMetadata("disabled-rule")
+	disabled.Presets = []rules.Preset{rules.PresetSuspicious}
+	registry, err := rules.NewRegistry(
+		metadataRule{metadata: disabled},
+		metadataRule{metadata: correctness},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	selection, err := registry.ResolveOptions(
+		rules.ResolveOptions{
+			Presets: []rules.Preset{rules.PresetCorrectness},
+			LintLevels: []rules.LintLevelDirective{
+				{Level: rules.LintDeny, Targets: []string{"warnings"}},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selection) != 1 ||
+		selection[0].ID != "correctness-rule" ||
+		selection[0].Severity != rules.SeverityError {
+		t.Fatalf("ResolveOptions(warnings) = %#v", selection)
+	}
+}
+
+func TestRegistryRejectsInvalidLintLevelTargets(t *testing.T) {
+	t.Parallel()
+
+	registry, err := rules.NewRegistry(
+		metadataRule{metadata: validMetadata("correctness-rule")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		directive rules.LintLevelDirective
+		want string
+	}{
+		{
+			name: "unknown",
+			directive: rules.LintLevelDirective{
+				Level: rules.LintWarn,
+				Targets: []string{"missing-rule"},
+			},
+			want: "unknown lint level target",
+		},
+		{
+			name: "restriction group",
+			directive: rules.LintLevelDirective{
+				Level: rules.LintWarn,
+				Targets: []string{"restriction"},
+			},
+			want: "restriction lint level must target exact rule IDs",
+		},
+		{
+			name: "migration group",
+			directive: rules.LintLevelDirective{
+				Level: rules.LintWarn,
+				Targets: []string{"migration"},
+			},
+			want: "migration lint level requires an explicit target",
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				_, err := registry.ResolveOptions(
+					rules.ResolveOptions{
+						LintLevels: []rules.LintLevelDirective{
+							test.directive,
+						},
+					},
+				)
+				if err == nil || !strings.Contains(err.Error(), test.want) {
+					t.Fatalf(
+						"ResolveOptions(%s) error = %v, want %q",
+						test.name,
+						err,
+						test.want,
+					)
+				}
+			},
+		)
+	}
+}
+
 func TestRegistryReportsInvalidOverridesInRuleIDOrder(t *testing.T) {
 	t.Parallel()
 

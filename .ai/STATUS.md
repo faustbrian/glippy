@@ -1290,3 +1290,13 @@ probes, and non-mutating Glippy plus `pkg/prompts` dogfood support admission.
 No fix is offered where scope, ownership, indexing, comments, dispatch, or error
 behavior is not generally equivalent. Complexity coverage and Clippy-style
 lint-level and fix-preview UX remain subsequent comparability work.
+
+The v0.3 lint-policy batch now adds ordered Clippy-style `allow`, `warn`,
+`deny`, and `forbid` directives to `lint` and combined `check`. Exact rule IDs,
+selectable groups, and the current warning set share one precedence contract;
+restriction remains exact-ID-only, migration remains target-gated, excluded
+rules cannot be re-enabled, and forbidden rules cannot be lowered. Syntax and
+typed selections, baseline generation, fixes, text and machine reporters, and
+shell completion consume the same resolved severities. Non-mutating fix
+preview and calibrated complexity coverage remain the next comparability
+batches.
