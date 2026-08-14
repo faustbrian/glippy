@@ -13,6 +13,7 @@ not stable release promises.
 - [append-no-values](#append-no-values)
 - [atomic-update-assignment](#atomic-update-assignment)
 - [bad-bit-mask](#bad-bit-mask)
+- [blank-error-discard](#blank-error-discard)
 - [buffer-string-conversion](#buffer-string-conversion)
 - [context-cancel-leak](#context-cancel-leak)
 - [context-key](#context-key)
@@ -277,6 +278,59 @@ value&0b0010 == 0b0001
 
 ```go
 value&0b0010 == 0b0010
+```
+
+## blank-error-discard
+
+detects error values explicitly assigned to blank identifiers
+
+Assigning an error value to the blank identifier suppresses the compiler's unused-value protection
+while discarding the failure channel. This restriction rule makes that choice auditable for projects
+that require every error to be handled or suppressed with a reason. It is enabled only by exact rule
+ID and complements the suspicious discarded-error rule for bare call statements.
+
+- Default severity: `warn`
+- Presets: `restriction`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `assign-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+- `include-tests` (`boolean`; optional, default `false`): report blank error discards in files whose
+  base name ends in _test.go
+
+### Known limitations
+
+- The rule intentionally reports deliberate best-effort error discards; enable it only when project
+  policy requires a reasoned suppression for those sites.
+- Formatted-output and documented always-nil in-memory writer results excluded by discarded-error
+  are excluded here as well.
+- Blank identifiers in declarations and implicit discards outside assignment statements are not
+  covered.
+- Test files are excluded by default; include-tests enables the same policy for tests.
+- Generated files and packages with type errors are excluded.
+
+### Example: Handle or explain discarded errors
+
+**Incorrect**
+
+```go
+_ = file.Close()
+```
+
+**Correct**
+
+```go
+if err := file.Close(); err != nil { return err }
 ```
 
 ## buffer-string-conversion

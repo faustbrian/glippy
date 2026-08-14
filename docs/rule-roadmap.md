@@ -39,6 +39,11 @@ The response and stream lifecycle track has admitted its first two CFG rules:
 terminal error on every normally returning path. Alias and interface expansion
 remains evidence-gated rather than silently increasing either rule to SSA.
 
+The first restriction rule, `blank-error-discard`, provides an exact-ID policy
+for projects that prohibit explicit `_ = err` and tuple-error discards. It is
+not part of a selectable preset: deliberate best-effort operations require a
+reasoned suppression, and test files remain separately configurable.
+
 ## Investigation Queue
 
 The queue contains defect classes to investigate, not accepted rule IDs.

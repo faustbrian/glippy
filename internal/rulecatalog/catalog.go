@@ -28,6 +28,7 @@ func NewRegistry() (*rules.Registry, error) {
 	all := append(rules.DefaultRules(), standard...)
 	all = append(
 		all,
+		rules.NewBlankErrorDiscardRule(),
 		rules.NewBadBitMaskRule(),
 		rules.NewBufferStringConversionRule(),
 		rules.NewContextCancelLeakRule(),

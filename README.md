@@ -149,6 +149,13 @@ every normally returning path after a direct `database/sql.Rows.Next` or
 `bufio.Scanner.Scan` loop to observe the matching terminal error. Discarded
 results and checks against a reassigned iterator do not satisfy the contract.
 
+The restriction catalog includes `blank-error-discard`, Glippy's Go analogue
+to Clippy's `let_underscore_must_use`. Projects can enable it by exact rule ID
+to require every explicit blank-identifier error discard to be handled or
+suppressed with a reason. Test files remain excluded unless the typed
+`include-tests` option is enabled, and the restriction group cannot be enabled
+wholesale.
+
 ## Installation
 
 No Glippy release is published yet. The historical Gox v0.1.0 release remains
