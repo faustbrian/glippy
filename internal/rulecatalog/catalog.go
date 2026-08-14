@@ -73,6 +73,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewTooManyParametersRule(),
 		rules.NewTooManyResultsRule(),
 		rules.NewUncheckedRowsErrorRule(),
+		rules.NewUncheckedScannerErrorRule(),
 	)
 	all = append(all, rules.NewAlmostSwappedRule())
 	registry, err := rules.NewRegistry(all...)

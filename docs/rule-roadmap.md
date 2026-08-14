@@ -33,11 +33,11 @@ Work proceeds in this order:
 Formatter-owned layout never enters this queue. A semantic transformation is
 considered through the fix coordinator, not hidden inside formatting.
 
-The response and stream lifecycle track has admitted its first CFG rule:
-`unchecked-rows-error` proves that direct `database/sql.Rows.Next` loops check
-the matching terminal error on every normally returning path. Alias and
-interface expansion remains evidence-gated rather than silently increasing the
-rule to SSA.
+The response and stream lifecycle track has admitted its first two CFG rules:
+`unchecked-rows-error` and `unchecked-scanner-error` prove that direct
+`database/sql.Rows.Next` and `bufio.Scanner.Scan` loops check the matching
+terminal error on every normally returning path. Alias and interface expansion
+remains evidence-gated rather than silently increasing either rule to SSA.
 
 ## Investigation Queue
 

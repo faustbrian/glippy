@@ -84,6 +84,7 @@ not stable release promises.
 - [too-many-results](#too-many-results)
 - [unbuffered-signal-channel](#unbuffered-signal-channel)
 - [unchecked-rows-error](#unchecked-rows-error)
+- [unchecked-scanner-error](#unchecked-scanner-error)
 - [unnecessary-conversion](#unnecessary-conversion)
 - [unnecessary-format](#unnecessary-format)
 - [unnecessary-sprintf](#unnecessary-sprintf)
@@ -3715,6 +3716,62 @@ return nil
 ```go
 for rows.Next() { scan(rows) }
 return rows.Err()
+```
+
+## unchecked-scanner-error
+
+detects scanner iteration without a checked terminal error
+
+bufio.Scanner.Scan returns false both at end of input and when scanning stops because of an error.
+Code that returns normally after the loop must observe Scanner.Err or it can silently accept
+truncated input. This rule follows the shared control-flow graph from each direct Scanner.Scan loop
+and reports when any normally returning path can bypass observation of the matching Scanner.Err
+result.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The initial contract recognizes direct identifier-backed bufio.Scanner.Scan and Scanner.Err calls;
+  aliases stored in fields, containers, or other variables are not tracked.
+- A direct assignment to the scanner variable invalidates later checks against a replacement value;
+  writes through range targets and indirect aliases are not modeled.
+- Passing Scanner.Err to another call counts as observing the result; the rule does not inspect the
+  callee's behavior.
+- The shared CFG recognizes predeclared panic as non-returning; imported and project-local
+  termination helpers are treated as returning.
+- Generated files and packages with type errors are excluded.
+
+### Example: Check the terminal scanner error
+
+**Incorrect**
+
+```go
+for scanner.Scan() { consume(scanner.Bytes()) }
+return nil
+```
+
+**Correct**
+
+```go
+for scanner.Scan() { consume(scanner.Bytes()) }
+return scanner.Err()
 ```
 
 ## unnecessary-conversion
