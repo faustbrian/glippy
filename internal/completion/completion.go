@@ -63,7 +63,7 @@ _glippy_completion() {
 	command="${COMP_WORDS[1]}"
 
 	if (( COMP_CWORD == 1 )); then
-		COMPREPLY=( $(compgen -W "fmt lint check init config rules explain version completion" -- "$current") )
+		COMPREPLY=( $(compgen -W "fmt lint check lsp init config rules explain version completion" -- "$current") )
 		return
 	fi
 	if [[ "$command" == "config" && COMP_CWORD -eq 2 ]]; then
@@ -94,7 +94,7 @@ _glippy_completion() {
 			COMPREPLY=( $(compgen -W "lexical syntax types cfg ssa" -- "$current") )
 			return
 			;;
-		fmt:--config|fmt:--stdin-filepath|lint:--config|check:--config|config:--config)
+		fmt:--config|fmt:--stdin-filepath|lint:--config|check:--config|lsp:--config|config:--config)
 			COMPREPLY=( $(compgen -f -- "$current") )
 			return
 			;;
@@ -112,6 +112,9 @@ _glippy_completion() {
 		check)
 			COMPREPLY=( $(compgen -W "--new-from= --reporter --reporter=text --reporter=json --reporter=github --reporter=sarif --config" -- "$current") )
 			COMPREPLY+=( $(compgen -f -- "$current") )
+			;;
+		lsp)
+			COMPREPLY=( $(compgen -W "--fix-suggestions --fix-unsafe --config" -- "$current") )
 			;;
 		init)
 			COMPREPLY=( $(compgen -d -- "$current") )
@@ -144,7 +147,7 @@ _glippy() {
 	local context state state_descr line
 	typeset -A opt_args
 	_arguments -C \
-		'1:command:(fmt lint check init config rules explain version completion)' \
+		'1:command:(fmt lint check lsp init config rules explain version completion)' \
 		'*::argument:->arguments'
 
 	case "$line[1]" in
@@ -182,6 +185,12 @@ _glippy() {
 				'--reporter=[select reporter]:reporter:(text json github sarif)' \
 				'--config=[use an explicit configuration]:configuration file:_files' \
 				'*:path:_files'
+			;;
+		lsp)
+			_arguments \
+				'--fix-suggestions[offer suggestion code actions]' \
+				'--fix-unsafe[offer unsafe code actions]' \
+				'--config=[use an explicit configuration]:configuration file:_files'
 			;;
 		init)
 			_arguments '1:directory:_directories'
@@ -222,6 +231,7 @@ func renderFish(ruleIDs []string) string {
 complete -c glippy -n '__fish_use_subcommand' -a fmt -d 'Format Go source'
 complete -c glippy -n '__fish_use_subcommand' -a lint -d 'Lint Go source'
 complete -c glippy -n '__fish_use_subcommand' -a check -d 'Check formatting and lint diagnostics'
+complete -c glippy -n '__fish_use_subcommand' -a lsp -d 'Serve editor diagnostics and code actions'
 complete -c glippy -n '__fish_use_subcommand' -a init -d 'Create a Glippy configuration'
 complete -c glippy -n '__fish_use_subcommand' -a config -d 'Inspect Glippy configuration'
 complete -c glippy -n '__fish_use_subcommand' -a rules -d 'List lint rules'
@@ -238,7 +248,7 @@ complete -c glippy -n '__fish_seen_subcommand_from fmt' -l check -d 'Report file
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l diff -d 'Print unified formatting differences'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l reporter -r -a 'text json' -d 'Select reporter'
 complete -c glippy -n '__fish_seen_subcommand_from lint check' -l reporter -r -a 'text json github sarif' -d 'Select reporter'
-complete -c glippy -n '__fish_seen_subcommand_from fmt lint check' -l config -r -F -d 'Use an explicit configuration'
+complete -c glippy -n '__fish_seen_subcommand_from fmt lint check lsp' -l config -r -F -d 'Use an explicit configuration'
 complete -c glippy -n '__fish_seen_subcommand_from config; and __fish_seen_subcommand_from check show' -l config -r -F -d 'Use an explicit configuration'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l stdin-filepath -r -F -d 'Supply stdin path context'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -a '--fragment=declaration --fragment=statement --fragment=expression' -d 'Format a source fragment'
@@ -254,6 +264,9 @@ complete -c glippy -n '__fish_seen_subcommand_from lint' -l except -r -a '` +
 			`' -d 'Exclude exact rule IDs'
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l generate-baseline -r -F -d 'Write lint baseline'
 complete -c glippy -n '__fish_seen_subcommand_from lint check' -l new-from -r -d 'Report findings introduced since a Git ref'
+
+complete -c glippy -n '__fish_seen_subcommand_from lsp' -l fix-suggestions -d 'Offer suggestion code actions'
+complete -c glippy -n '__fish_seen_subcommand_from lsp' -l fix-unsafe -d 'Offer unsafe code actions'
 
 complete -c glippy -n '__fish_seen_subcommand_from rules' -l preset -r -a 'correctness suspicious performance complexity style pedantic restriction migration' -d 'Filter by preset'
 complete -c glippy -n '__fish_seen_subcommand_from rules' -l fixable -d 'Show only rules with fixes'

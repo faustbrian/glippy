@@ -71,7 +71,16 @@ func runPackageAnalysis(
 	registry *rules.Registry,
 	task lintPackageTask,
 ) (analysis.PackageResult, error) {
-	loadOptions := packageLoadOptions(task, nil)
+	return runPackageAnalysisWithOverlay(ctx, registry, task, nil)
+}
+
+func runPackageAnalysisWithOverlay(
+	ctx context.Context,
+	registry *rules.Registry,
+	task lintPackageTask,
+	overlay map[string][]byte,
+) (analysis.PackageResult, error) {
+	loadOptions := packageLoadOptions(task, overlay)
 	if !task.options.cache.Enabled {
 		return analysis.RunPackages(ctx, registry, task.options.analysis, loadOptions)
 	}

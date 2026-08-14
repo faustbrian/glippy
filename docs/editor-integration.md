@@ -91,13 +91,43 @@ stdin/stdout contract, and `%{buffer_name}` expansion.
 
 ## Diagnostics And Code Actions
 
-The current binary does not advertise an LSP server, live editor diagnostics,
-or editor code actions. Use `glippy lint` or `glippy check` as an external editor or
-task-runner command.
+Start the stdio language server with:
 
-A future Glippy lint action must be one source-version-bound transaction: select
-one named fix under its safety policy, reject stale or overlapping edits, apply
-the edit to the in-memory source, reparse, run the shared formatter, validate
-the final source, and return that final replacement. Editors must not apply a
-Glippy lint edit and then invoke an unrelated formatter over the intermediate
-buffer. Suggestion and unsafe actions remain explicit opt-ins.
+```sh
+glippy lsp
+```
+
+Configure it beside `gopls`, leaving Go language intelligence to `gopls` and
+assigning Glippy diagnostics, code actions, and formatting to Glippy. Do not
+also run the one-shot formatter for the same save event. The client must send
+absolute local `file:` URIs and full-document synchronization updates with
+strictly increasing versions.
+
+The server publishes syntax diagnostics without package loading. When enabled
+rules require types, CFG, or SSA, it loads the containing package with the
+current buffer as an overlay and uses the configured persistent cache. Invalid
+source or project state is a document diagnostic rather than a fallback to a
+different policy. Closing the buffer clears its diagnostics.
+Rule diagnostics carry a documentation link to the canonical generated rule
+catalog; `glippy explain <rule>` renders the same metadata locally.
+
+Safe quick fixes and a `source.fixAll.glippy` action are available by default.
+Launch with one or both explicit flags to broaden the offered action classes:
+
+```sh
+glippy lsp --fix-suggestions
+glippy lsp --fix-suggestions --fix-unsafe
+```
+
+Each action is bound to the exact open document version and returns one
+whole-document replacement. Glippy rejects stale, overlapping, ambiguous, or
+invalid fixes; reparses, formats, and reanalyzes the complete in-memory result;
+and never writes the source file. Suggestion and unsafe authorization are
+independent, and the fix-all action always includes safe fixes only. Canceled
+requests return the protocol request-canceled error without publishing their
+result.
+
+The server rediscovers configuration for each analysis or formatting request,
+so later requests observe a changed configuration without weakening an
+in-flight request's snapshot. An explicit policy can be pinned for the complete
+session with `--config=/absolute/path/to/.glippy.toml`.

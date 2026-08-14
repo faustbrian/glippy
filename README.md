@@ -6,7 +6,7 @@ deterministic width-aware layout decisions. Its linter keeps correctness-focused
 defaults, pays only for the analysis tiers enabled rules require, and routes
 all source changes through an explicit conflict-safe transaction.
 
-Glippy v0.2 is under development and is not tagged or published. The existing
+Glippy v0.3 is under development and is not tagged or published. The existing
 v0.1.0 release remains Gox under `github.com/faustbrian/gox`; its module tags,
 binary, archives, and attestations are immutable historical identities. The
 maintainer accepted the documented Glippy ecosystem-collision risk for v0.2;
@@ -79,6 +79,7 @@ glippy lint --reporter=github [paths...]
 glippy lint --reporter=sarif [paths...]
 glippy check [paths...]
 glippy check --new-from=<git-ref> [paths...]
+glippy lsp [--fix-suggestions] [--fix-unsafe]
 glippy init [directory]
 glippy config check [path]
 glippy config show [path]
@@ -102,6 +103,14 @@ Lint and combined check support GitHub workflow annotations and SARIF 2.1.0 in
 addition to human text and Glippy's versioned JSON envelope. Formatter-only
 commands remain `text|json` because GitHub and SARIF report diagnostics rather
 than formatted source streams.
+
+`glippy lsp` provides full-buffer synchronization, live syntax or typed
+diagnostics, document formatting, version-bound individual fixes, and a
+whole-document "fix all safe" action over standard input/output. It analyzes
+the editor's exact buffer through package overlays, never writes source, and
+uses the same configuration, cache, suppression, baseline, formatter, and fix
+validation contracts as the command-line paths. Suggestion and unsafe actions
+remain hidden unless their corresponding LSP flags are supplied.
 
 `glippy init` creates a strict starter `.glippy.toml` without overwriting an
 existing path. `glippy config check` validates discovered or explicit policy,

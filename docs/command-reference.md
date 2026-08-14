@@ -21,6 +21,7 @@ and no v0.2 tag or release is authorized before maintainer review.
 | `glippy lint --generate-baseline=<path> [paths...]` | Write a deterministic adoption baseline | Baseline only |
 | `glippy check [paths...]` | Check formatting and lint diagnostics together | No |
 | `glippy check --new-from=<git-ref> [paths...]` | Check changed-line formatting and diagnostics | No |
+| `glippy lsp [flags]` | Serve live diagnostics, formatting, and validated code actions over stdio | No |
 | `glippy init [directory]` | Create a starter `.glippy.toml` without overwriting | Configuration only |
 | `glippy config check [path]` | Validate discovered or explicit configuration | No |
 | `glippy config show [path]` | Explain effective configuration and rule selection | No |
@@ -253,6 +254,35 @@ glippy completion fish
 Completion generation includes the commands, supported options, enum values,
 filesystem operands, and rule IDs compiled into that binary. See the
 [shell-completion guide](shell-completion.md) for shell-specific setup.
+
+## LSP
+
+```sh
+glippy lsp
+glippy lsp --fix-suggestions
+glippy lsp --fix-suggestions --fix-unsafe --config=/project/.glippy.toml
+```
+
+The server uses LSP 3.17-compatible `Content-Length` framing over standard
+input/output, accepts absolute local `file:` URIs, and advertises full-document
+synchronization, document formatting, and code actions. Opening or replacing a
+buffer publishes diagnostics for that exact document version. Closing it
+clears diagnostics. Typed, CFG, and SSA selections use the editor bytes as a
+package overlay and participate in the configured persistent cache. Rule
+diagnostics include a canonical documentation link matching `glippy explain`.
+
+Individual safe actions and `source.fixAll.glippy` are available by default.
+Suggestion actions require `--fix-suggestions`; unsafe actions require
+`--fix-unsafe`. Every action returns one version-bound whole-document edit only
+after source identity, edit conflicts, parsing, canonical formatting, and
+syntax or typed reanalysis succeed. The server never writes the document or
+any project source. Request cancellation returns the LSP request-canceled
+error and cannot publish the canceled result.
+
+Malformed source, configuration, package, or analysis state is published as a
+Glippy diagnostic for the current version. Incremental edits, stale document
+versions, non-file URIs, oversized messages, ambiguous framing, and invalid
+UTF-16 ranges are refused. See the [editor guide](editor-integration.md).
 
 ## Configuration
 

@@ -1268,3 +1268,15 @@ physical byte locations; SARIF uses absolute file URIs, canonical rule
 metadata, and invocation notifications for tool failures. Formatter-only modes
 remain text/JSON. Editor diagnostics and code actions and the next
 pedantic/performance catalog remain subsequent v0.3 batches.
+
+The v0.3 editor batch now adds a bounded stdio LSP service over the shared
+frontend and engines. Full-document open and change notifications publish
+versioned syntax or overlay-backed typed diagnostics; close clears them.
+Formatting uses the canonical formatter, while individual fixes and safe
+fix-all return exact-version whole-document edits only after conflict checks,
+parsing, formatting, and reanalysis. Safe actions are the default; suggestion
+and unsafe actions require independent startup flags. Persistent typed caches
+include exact overlay identity, active request cancellation does not end the
+session, late process-canceled results are not published, and the service never
+writes source. Shell completion and public CLI, editor, and ADR contracts cover
+the new surface. The next v0.3 batch is the first dedicated performance preset.

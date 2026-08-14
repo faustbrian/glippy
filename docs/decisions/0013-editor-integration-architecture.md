@@ -1,6 +1,6 @@
 # ADR 0013: Editor Integration Architecture
 
-- Status: accepted for formatter integration; diagnostics and code actions deferred
+- Status: accepted; persistent diagnostics and code actions admitted for v0.3
 - Date: 2026-08-12
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
@@ -129,3 +129,20 @@ Revisit this decision when a supported environment exceeds the formatter
 latency budget, representative typed editor diagnostics repeatedly pay package
 loading cost, a validated editor adoption requires safe in-memory code actions,
 or shared cache lifetime demonstrates a material measured improvement.
+
+## 2026-08-14 Revisit
+
+The trigger is satisfied by version-bound lint actions over unsaved buffers and
+continuous typed diagnostics using exact package overlays. The v0.3 service
+therefore adds `glippy lsp` without replacing the established one-shot
+formatter path.
+
+The admitted service reuses configuration discovery, source loading, package
+analysis, persistent cache identity, suppressions, baselines, formatter
+validation, and fix coordination. It supports full-document synchronization,
+versioned diagnostics, formatting, individual authorized fixes, safe fix-all,
+request cancellation, and stale-version refusal. Suggestion and unsafe actions
+remain explicit process-start flags, and no LSP operation writes project
+source. Incremental synchronization, non-file documents, multi-file actions,
+workspace mutation, and a separate editor plugin API remain outside this
+decision.

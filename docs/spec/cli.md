@@ -29,6 +29,7 @@ glippy lint --new-from=<git-ref> [paths...]
 glippy lint --generate-baseline=<path> [paths...]
 glippy check [paths...]
 glippy check --new-from=<git-ref> [paths...]
+glippy lsp [--fix-suggestions] [--fix-unsafe] [--config=<path>]
 glippy init [directory]
 glippy config check [path]
 glippy config show [path]
@@ -77,6 +78,33 @@ filesystem. Invalid shells and argument counts are invalid invocations;
 cancellation and output failures retain the common exit categories.
 Installation is documented in
 [`shell-completion.md`](../shell-completion.md).
+
+`glippy lsp` MUST use bounded LSP 3.17-compatible `Content-Length` framing over
+standard input/output and MUST accept only normalized absolute local `file:`
+document URIs. It MUST advertise full-document synchronization, document
+formatting, and code actions. Incremental changes, non-increasing document
+versions, malformed or duplicate length headers, oversized headers or payloads,
+and invalid UTF-16 positions MUST be refused rather than guessed.
+
+Every published diagnostic MUST identify the exact open document version that
+produced it. Typed, CFG, and SSA analysis MUST use the complete editor buffer as
+a package overlay and MUST participate in persistent analysis caching only when
+the selected configuration enables it. Syntax selections MUST remain
+independent of package loading and persistent caches. Configuration, source,
+package, and analysis failures MUST remain visible document diagnostics instead
+of silently falling back to defaults. Closing a document MUST clear its
+diagnostics.
+
+Safe individual code actions and one `source.fixAll.glippy` action MUST be
+available by default. `--fix-suggestions` and `--fix-unsafe` MUST independently
+authorize those additional individual action classes; neither may broaden the
+safe-only fix-all action. Every returned edit MUST bind the current document
+version, coordinate exact source ranges, reject conflicts and stale source,
+reparse, run the canonical formatter, and reanalyze the complete result before
+returning one whole-document replacement. The LSP MUST NOT write source files.
+Cancellation MUST prevent publication of an incomplete analysis or action;
+canceling an active request MUST return the LSP request-canceled error without
+ending the session.
 
 `glippy rules` MUST list registered rule IDs in canonical order with default
 severity, preset membership, exact analysis tier, and available fix safety.

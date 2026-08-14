@@ -88,6 +88,22 @@ func RunContext(
 	if len(arguments) > 0 && arguments[0] == "version" {
 		return runVersion(ctx, arguments, stdout, stderr)
 	}
+	if len(arguments) > 0 && arguments[0] == "lsp" {
+		invocation, valid := parseLSPInvocation(arguments)
+		if !valid {
+			return report(stderr, ExitInvalidInvocation, lspUsage)
+		}
+		registry, err := rulecatalog.NewRegistry()
+		if err != nil {
+			return report(
+				stderr,
+				ExitInternalError,
+				"glippy lsp: initialize rule registry: %v\n",
+				err,
+			)
+		}
+		return runLSP(ctx, invocation, stdin, stdout, stderr, registry)
+	}
 	if len(arguments) > 0 && arguments[0] == "completion" {
 		registry, err := rulecatalog.NewRegistry()
 		if err != nil {
