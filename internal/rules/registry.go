@@ -33,6 +33,8 @@ type ResolveOptions struct {
 	RuleOptions map[string]OptionSet
 	SourceGoVersion string
 	WarningsAsErrors bool
+	Only []string
+	Except []string
 }
 
 // CloneMetadata returns an independent copy of rule metadata.
@@ -220,6 +222,14 @@ func (r *Registry) ResolveOptions(options ResolveOptions) ([]Selection, error) {
 			return nil, err
 		}
 	}
+	only, err := r.validateRuleFilter("only", options.Only)
+	if err != nil {
+		return nil, err
+	}
+	except, err := r.validateRuleFilter("except", options.Except)
+	if err != nil {
+		return nil, err
+	}
 	selection := make([]Selection, 0, len(r.ids))
 	for _, id := range r.ids {
 		metadata := r.entries[id].metadata
@@ -232,6 +242,20 @@ func (r *Registry) ResolveOptions(options ResolveOptions) ([]Selection, error) {
 		}
 		if override, found := overrides[id]; found {
 			severity = override
+		}
+		if len(only) > 0 {
+			if _, selected := only[id]; !selected {
+				continue
+			}
+			if severity == SeverityOff {
+				severity = metadata.DefaultSeverity
+				if severity == SeverityOff {
+					severity = SeverityWarn
+				}
+			}
+		}
+		if _, excluded := except[id]; excluded {
+			continue
 		}
 		if severity == SeverityOff {
 			continue
@@ -272,6 +296,20 @@ func (r *Registry) ResolveOptions(options ResolveOptions) ([]Selection, error) {
 		)
 	}
 	return selection, nil
+}
+
+func (r *Registry) validateRuleFilter(name string, ids []string) (map[string]struct{}, error) {
+	result := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if _, found := r.entries[id]; !found {
+			return nil, fmt.Errorf("unknown rule %q in %s filter", id, name)
+		}
+		if _, duplicate := result[id]; duplicate {
+			return nil, fmt.Errorf("duplicate rule %q in %s filter", id, name)
+		}
+		result[id] = struct{}{}
+	}
+	return result, nil
 }
 
 func validateOptionSet(metadata Metadata, configured OptionSet) error {

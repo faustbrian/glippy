@@ -63,7 +63,7 @@ _glippy_completion() {
 	command="${COMP_WORDS[1]}"
 
 	if (( COMP_CWORD == 1 )); then
-		COMPREPLY=( $(compgen -W "fmt lint check init config explain version completion" -- "$current") )
+		COMPREPLY=( $(compgen -W "fmt lint check init config rules explain version completion" -- "$current") )
 		return
 	fi
 	if [[ "$command" == "config" && COMP_CWORD -eq 2 ]]; then
@@ -74,6 +74,20 @@ _glippy_completion() {
 	case "$command:$previous" in
 		fmt:--reporter|lint:--reporter|check:--reporter)
 			COMPREPLY=( $(compgen -W "text json" -- "$current") )
+			return
+			;;
+		lint:--only|lint:--except)
+			COMPREPLY=( $(compgen -W "` +
+		strings.Join(ruleIDs, " ") +
+		`" -- "$current") )
+			return
+			;;
+		rules:--preset)
+			COMPREPLY=( $(compgen -W "correctness suspicious performance complexity style pedantic restriction migration" -- "$current") )
+			return
+			;;
+		rules:--tier)
+			COMPREPLY=( $(compgen -W "lexical syntax types cfg ssa" -- "$current") )
 			return
 			;;
 		fmt:--config|fmt:--stdin-filepath|lint:--config|check:--config|config:--config)
@@ -88,7 +102,7 @@ _glippy_completion() {
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		lint)
-			COMPREPLY=( $(compgen -W "--fix --fix-suggestions --fix-unsafe --new-from= --generate-baseline= --reporter --reporter=text --reporter=json --config" -- "$current") )
+			COMPREPLY=( $(compgen -W "--fix --fix-suggestions --fix-unsafe --only --except --new-from= --generate-baseline= --reporter --reporter=text --reporter=json --config" -- "$current") )
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		check)
@@ -102,8 +116,11 @@ _glippy_completion() {
 			COMPREPLY=( $(compgen -W "--config --config=" -- "$current") )
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
+		rules)
+			COMPREPLY=( $(compgen -W "--preset --preset= --fixable --tier --tier=" -- "$current") )
+			;;
 		explain)
-			COMPREPLY=( $(compgen -W "` +
+			COMPREPLY=( $(compgen -W "--json ` +
 		strings.Join(ruleIDs, " ") +
 		`" -- "$current") )
 			;;
@@ -123,7 +140,7 @@ _glippy() {
 	local context state state_descr line
 	typeset -A opt_args
 	_arguments -C \
-		'1:command:(fmt lint check init config explain version completion)' \
+		'1:command:(fmt lint check init config rules explain version completion)' \
 		'*::argument:->arguments'
 
 	case "$line[1]" in
@@ -143,6 +160,12 @@ _glippy() {
 				'--fix[apply safe fixes]' \
 				'--fix-suggestions[apply suggestion fixes]' \
 				'--fix-unsafe[apply unsafe fixes]' \
+				'--only=[run only exact rule IDs]:rule IDs:('` +
+		strings.Join(ruleIDs, " ") +
+		`')' \
+				'--except=[exclude exact rule IDs]:rule IDs:('` +
+		strings.Join(ruleIDs, " ") +
+		`')' \
 				'--new-from=[report findings introduced since a Git ref]:git ref' \
 				'--generate-baseline=[write lint baseline]:baseline path:_files' \
 				'--reporter=[select reporter]:reporter:(text json)' \
@@ -165,8 +188,16 @@ _glippy() {
 				'--config=[use an explicit configuration]:configuration file:_files' \
 				'2:path:_files'
 			;;
+		rules)
+			_arguments \
+				'--preset=[filter by preset]:preset:(correctness suspicious performance complexity style pedantic restriction migration)' \
+				'--fixable[show only rules with fixes]' \
+				'--tier=[filter by exact analysis tier]:tier:(lexical syntax types cfg ssa)'
+			;;
 		explain)
-			_arguments '1:rule ID:(` +
+			_arguments \
+				'--json[render versioned JSON]' \
+				'1:rule ID:(` +
 		strings.Join(ruleIDs, " ") +
 		`)'
 			;;
@@ -189,6 +220,7 @@ complete -c glippy -n '__fish_use_subcommand' -a lint -d 'Lint Go source'
 complete -c glippy -n '__fish_use_subcommand' -a check -d 'Check formatting and lint diagnostics'
 complete -c glippy -n '__fish_use_subcommand' -a init -d 'Create a Glippy configuration'
 complete -c glippy -n '__fish_use_subcommand' -a config -d 'Inspect Glippy configuration'
+complete -c glippy -n '__fish_use_subcommand' -a rules -d 'List lint rules'
 complete -c glippy -n '__fish_use_subcommand' -a explain -d 'Explain a lint rule'
 complete -c glippy -n '__fish_use_subcommand' -a version -d 'Print the Glippy version'
 complete -c glippy -n '__fish_use_subcommand' -a completion -d 'Generate shell completions'
@@ -209,8 +241,19 @@ complete -c glippy -n '__fish_seen_subcommand_from fmt' -a '--fragment=declarati
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix -d 'Apply safe fixes'
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix-suggestions -d 'Apply suggestion fixes'
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix-unsafe -d 'Apply unsafe fixes'
+complete -c glippy -n '__fish_seen_subcommand_from lint' -l only -r -a '` +
+			strings.Join(ruleIDs, " ") +
+			`' -d 'Run only exact rule IDs'
+complete -c glippy -n '__fish_seen_subcommand_from lint' -l except -r -a '` +
+			strings.Join(ruleIDs, " ") +
+			`' -d 'Exclude exact rule IDs'
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l generate-baseline -r -F -d 'Write lint baseline'
 complete -c glippy -n '__fish_seen_subcommand_from lint check' -l new-from -r -d 'Report findings introduced since a Git ref'
+
+complete -c glippy -n '__fish_seen_subcommand_from rules' -l preset -r -a 'correctness suspicious performance complexity style pedantic restriction migration' -d 'Filter by preset'
+complete -c glippy -n '__fish_seen_subcommand_from rules' -l fixable -d 'Show only rules with fixes'
+complete -c glippy -n '__fish_seen_subcommand_from rules' -l tier -r -a 'lexical syntax types cfg ssa' -d 'Filter by exact analysis tier'
+complete -c glippy -n '__fish_seen_subcommand_from explain' -l json -d 'Render versioned JSON'
 
 `,
 	)

@@ -19,6 +19,8 @@ type RunOptions struct {
 	WarningsAsErrors bool
 	Overrides map[string]rules.Severity
 	RuleOptions map[string]rules.OptionSet
+	Only []string
+	Except []string
 	RequireSuppressionReason bool
 	SuppressionExpiryCutoff string
 	Cache *PackageCacheOptions
@@ -125,5 +127,7 @@ func (options RunOptions) RuleResolution() (rules.ResolveOptions, error) {
 		RuleOptions: options.RuleOptions,
 		SourceGoVersion: options.SourceGoVersion,
 		WarningsAsErrors: options.WarningsAsErrors,
+		Only: slices.Clone(options.Only),
+		Except: slices.Clone(options.Except),
 	}, nil
 }

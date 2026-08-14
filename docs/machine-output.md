@@ -1,8 +1,9 @@
 # Machine Output Reference
 
 Glippy exposes schema-version-1 JSON for path-based formatter checks and writes,
-lint checks and fixes, and the combined non-mutating check. Select it with
-`--reporter=json`:
+lint checks and fixes, the combined non-mutating check, and canonical rule
+explanations. Select a reporter for path commands or request rule metadata
+directly:
 
 ```sh
 glippy fmt --check --reporter=json ./...
@@ -10,12 +11,48 @@ glippy fmt --write --reporter=json ./...
 glippy lint --reporter=json ./...
 glippy lint --fix --reporter=json ./...
 glippy check --reporter=json ./...
+glippy explain duplicate-condition --json
 ```
 
 JSON is unavailable when standard output belongs to formatted source or a
 unified diff. Consumers must use the schema version and symbolic outcome
 category instead of parsing human output or inferring meaning from an exit code
 alone.
+
+## Rule Explanation
+
+`glippy explain <rule> --json` returns canonical compiled metadata without
+project or configuration discovery:
+
+```json
+{
+  "schema_version": 1,
+  "command": "explain",
+  "rule": {
+    "id": "duplicate-condition",
+    "summary": "...",
+    "documentation": "...",
+    "default_severity": "warn",
+    "presets": ["correctness"],
+    "minimum_go_version": "1.25",
+    "analysis_tier": "syntax",
+    "node_interests": ["if-stmt"],
+    "requires_dependency_syntax": false,
+    "run_on_generated": false,
+    "run_despite_type_errors": false,
+    "categories": ["correctness"],
+    "fixes": [],
+    "options": [],
+    "known_limitations": ["..."],
+    "examples": []
+  }
+}
+```
+
+Machine tier names are `lexical`, `syntax`, `types`, `control-flow`, and
+`ssa`. Option defaults are deterministic textual values using the same typed
+metadata as configuration validation. Deprecation appears only when present;
+all collection fields are arrays rather than `null`.
 
 ## Common Envelope
 

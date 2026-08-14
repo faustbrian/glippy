@@ -71,6 +71,8 @@ glippy fmt --check [paths...]
 glippy fmt --diff [paths...]
 glippy lint [paths...]
 glippy lint --fix [paths...]
+glippy lint --only=<rules> [paths...]
+glippy lint --except=<rules> [paths...]
 glippy lint --new-from=<git-ref> [paths...]
 glippy lint --generate-baseline=<path> [paths...]
 glippy check [paths...]
@@ -78,7 +80,9 @@ glippy check --new-from=<git-ref> [paths...]
 glippy init [directory]
 glippy config check [path]
 glippy config show [path]
+glippy rules [--preset=<preset>] [--fixable] [--tier=<tier>]
 glippy explain <rule>
+glippy explain <rule> --json
 glippy version
 glippy completion <bash|zsh|fish>
 ```
@@ -97,6 +101,12 @@ existing path. `glippy config check` validates discovered or explicit policy,
 while `glippy config show` explains the resolved language, presets, rule
 severities and reasons, analysis tier, file policies, baseline, suppressions,
 and cache settings.
+
+Use `glippy rules` to discover the compiled catalog by preset, fix
+availability, or exact analysis tier. `lint --only` and `lint --except` apply
+exact comma-separated rule IDs after project policy, with exclusions winning
+over inclusions. `explain --json` exposes the same canonical metadata through
+a schema-versioned machine contract.
 
 The v0.2 pedantic catalog includes bounded Go-native simplifications for blank
 identifiers, direct closures, nil-and-length checks, time helpers, buffer

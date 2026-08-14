@@ -213,6 +213,8 @@ func runCombinedCheck(
 		plans,
 		invocation.configPath,
 		registry,
+		nil,
+		nil,
 	)
 	if err != nil {
 		return reportCombinedCheck(invocation, stdout, stderr, exitCode, false, nil, err)

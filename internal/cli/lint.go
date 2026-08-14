@@ -26,7 +26,7 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const lintUsage = "glippy: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--new-from=<git-ref>] [--generate-baseline=<path>] [--reporter=text|json] [--config=<path>] [path...]'\n"
+const lintUsage = "glippy: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--only=<rules>] [--except=<rules>] [--new-from=<git-ref>] [--generate-baseline=<path>] [--reporter=text|json] [--config=<path>] [path...]'\n"
 
 type lintInvocation struct {
 	configPath string
@@ -35,6 +35,8 @@ type lintInvocation struct {
 	fixUnsafe bool
 	generateBaseline string
 	newFrom string
+	only []string
+	except []string
 	paths []string
 	reporter glippyreport.Format
 }
@@ -112,6 +114,8 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 	result := lintInvocation{reporter: glippyreport.Text}
 	reporterSet := false
 	fixSet := false
+	onlySet := false
+	exceptSet := false
 	for index := 1; index < len(arguments); index++ {
 		argument := arguments[index]
 		switch {
@@ -122,6 +126,42 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 			result.fixSuggestions = true
 		case argument == "--fix-unsafe" && !result.fixUnsafe:
 			result.fixUnsafe = true
+		case strings.HasPrefix(argument, "--only=") && !onlySet:
+			parsed, valid := parseRuleFilter(strings.TrimPrefix(argument, "--only="))
+			if !valid {
+				return lintInvocation{}, false
+			}
+			result.only = parsed
+			onlySet = true
+		case argument == "--only" &&
+			!onlySet &&
+			index + 1 < len(arguments) &&
+			!strings.HasPrefix(arguments[index + 1], "--"):
+			index++
+			parsed, valid := parseRuleFilter(arguments[index])
+			if !valid {
+				return lintInvocation{}, false
+			}
+			result.only = parsed
+			onlySet = true
+		case strings.HasPrefix(argument, "--except=") && !exceptSet:
+			parsed, valid := parseRuleFilter(strings.TrimPrefix(argument, "--except="))
+			if !valid {
+				return lintInvocation{}, false
+			}
+			result.except = parsed
+			exceptSet = true
+		case argument == "--except" &&
+			!exceptSet &&
+			index + 1 < len(arguments) &&
+			!strings.HasPrefix(arguments[index + 1], "--"):
+			index++
+			parsed, valid := parseRuleFilter(arguments[index])
+			if !valid {
+				return lintInvocation{}, false
+			}
+			result.except = parsed
+			exceptSet = true
 		case strings.HasPrefix(argument, "--new-from=") && result.newFrom == "":
 			result.newFrom = strings.TrimPrefix(argument, "--new-from=")
 			if result.newFrom == "" {
@@ -201,6 +241,25 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 		return lintInvocation{}, false
 	}
 	return result, true
+}
+
+func parseRuleFilter(value string) ([]string, bool) {
+	if value == "" {
+		return nil, false
+	}
+	ids := strings.Split(value, ",")
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if id == "" || strings.TrimSpace(id) != id {
+			return nil, false
+		}
+		if _, duplicate := seen[id]; duplicate {
+			return nil, false
+		}
+		seen[id] = struct{}{}
+	}
+	sort.Strings(ids)
+	return ids, true
 }
 
 func (invocation lintInvocation) fixEnabled() bool {
@@ -355,6 +414,8 @@ func runLintCheck(
 		plans,
 		invocation.configPath,
 		registry,
+		invocation.only,
+		invocation.except,
 	)
 	if err != nil {
 		return reportLintFailure(invocation, stdout, stderr, exitCode, nil, err)
@@ -564,6 +625,8 @@ func runLintGenerateBaseline(
 			plans,
 			invocation.configPath,
 			registry,
+			invocation.only,
+			invocation.except,
 		)
 		if err != nil {
 			return report(stderr, exitCode, "glippy lint: generate baseline: %v\n", err)
@@ -907,6 +970,8 @@ func prepareLintInputPlans(
 				selection,
 				language.Language,
 				registry,
+				invocation.only,
+				invocation.except,
 			)
 			if err != nil {
 				return nil, exitCode, err
@@ -1066,7 +1131,14 @@ func prepareLintTasks(
 	if err != nil {
 		return nil, exitCode, err
 	}
-	return prepareLintTasksFromPlans(ctx, plans, invocation.configPath, registry)
+	return prepareLintTasksFromPlans(
+		ctx,
+		plans,
+		invocation.configPath,
+		registry,
+		invocation.only,
+		invocation.except,
+	)
 }
 
 func prepareLintTasksFromPlans(
@@ -1074,6 +1146,8 @@ func prepareLintTasksFromPlans(
 	plans []lintInputPlan,
 	configPath string,
 	registry *rules.Registry,
+	only []string,
+	except []string,
 ) ([]lintTask, int, error) {
 	selected := make(map[string]discovery.File)
 	optionsByConfiguration := make(map[string]lintTaskOptions)
@@ -1125,6 +1199,8 @@ func prepareLintTasksFromPlans(
 				selection,
 				language.Language,
 				registry,
+				only,
+				except,
 			)
 			if err != nil {
 				return nil, exitCode, err
@@ -1143,6 +1219,8 @@ func lintOptionsForSelection(
 	selection config.Selection,
 	sourceGoVersion string,
 	registry *rules.Registry,
+	only []string,
+	except []string,
 ) (lintTaskOptions, int, error) {
 	loaded, err := config.Load(
 		selection,
@@ -1161,6 +1239,8 @@ func lintOptionsForSelection(
 			WarningsAsErrors: loaded.Lint.WarningsAsErrors,
 			Overrides: loaded.Lint.Rules,
 			RuleOptions: loaded.Lint.RuleOptions,
+			Only: slices.Clone(only),
+			Except: slices.Clone(except),
 			RequireSuppressionReason: loaded.Lint.Suppressions.RequireReason,
 			SuppressionExpiryCutoff: loaded.Lint.Suppressions.ExpiryCutoff,
 		},
@@ -1234,6 +1314,8 @@ func runLintFix(
 			plans,
 			invocation.configPath,
 			registry,
+			invocation.only,
+			invocation.except,
 		)
 		if err == nil {
 			executions, exitCode, err = prepareLintFixExecutions(

@@ -48,7 +48,9 @@ const initUsage = "glippy: expected 'init [directory]'\n"
 
 const configUsage = "glippy: expected 'config <check|show> [--config=<path>] [path]'\n"
 
-const explainUsage = "glippy: expected 'explain <rule>'\n"
+const rulesUsage = "glippy: expected 'rules [--preset=<preset>] [--fixable] [--tier=lexical|syntax|types|cfg|ssa]'\n"
+
+const explainUsage = "glippy: expected 'explain <rule> [--json]'\n"
 
 const versionUsage = "glippy: expected 'version'\n"
 
@@ -112,6 +114,18 @@ func RunContext(
 			)
 		}
 		return runConfig(ctx, arguments, stdout, stderr, registry)
+	}
+	if len(arguments) > 0 && arguments[0] == "rules" {
+		registry, err := rulecatalog.NewRegistry()
+		if err != nil {
+			return report(
+				stderr,
+				ExitInternalError,
+				"glippy rules: initialize rule registry: %v\n",
+				err,
+			)
+		}
+		return runRules(ctx, arguments, stdout, stderr, registry)
 	}
 	if len(arguments) > 0 && arguments[0] == "explain" {
 		registry, err := rulecatalog.NewRegistry()
@@ -359,7 +373,8 @@ func runExplain(
 	stdout, stderr io.Writer,
 	registry *rules.Registry,
 ) int {
-	if len(arguments) != 2 {
+	ruleID, jsonOutput, valid := parseExplainInvocation(arguments)
+	if !valid {
 		return report(stderr, ExitInvalidInvocation, explainUsage)
 	}
 	if ctx == nil {
@@ -375,13 +390,23 @@ func runExplain(
 	if err := ctx.Err(); err != nil {
 		return report(stderr, ExitCanceled, "glippy explain: %v\n", err)
 	}
-	output, found := glippyreport.RenderRuleText(registry, arguments[1])
+	var output []byte
+	var found bool
+	var err error
+	if jsonOutput {
+		output, found, err = glippyreport.RenderRuleJSON(registry, ruleID)
+	} else {
+		output, found = glippyreport.RenderRuleText(registry, ruleID)
+	}
+	if err != nil {
+		return report(stderr, ExitInternalError, "glippy explain: render: %v\n", err)
+	}
 	if !found {
 		return report(
 			stderr,
 			ExitInvalidInvocation,
 			"glippy explain: unknown rule %q\n",
-			arguments[1],
+			ruleID,
 		)
 	}
 	if err := ctx.Err(); err != nil {
@@ -396,6 +421,149 @@ func runExplain(
 		)
 	}
 	return ExitSuccess
+}
+
+func parseExplainInvocation(arguments []string) (string, bool, bool) {
+	if len(arguments) < 2 || len(arguments) > 3 || arguments[0] != "explain" {
+		return "", false, false
+	}
+	ruleID := ""
+	jsonOutput := false
+	for _, argument := range arguments[1:] {
+		if argument == "--json" && !jsonOutput {
+			jsonOutput = true
+			continue
+		}
+		if strings.HasPrefix(argument, "-") || ruleID != "" {
+			return "", false, false
+		}
+		ruleID = argument
+	}
+	return ruleID, jsonOutput, ruleID != ""
+}
+
+func runRules(
+	ctx context.Context,
+	arguments []string,
+	stdout, stderr io.Writer,
+	registry *rules.Registry,
+) int {
+	options, valid := parseRulesInvocation(arguments)
+	if !valid {
+		return report(stderr, ExitInvalidInvocation, rulesUsage)
+	}
+	if ctx == nil {
+		return report(stderr, ExitInternalError, "glippy rules: context is required\n")
+	}
+	if registry == nil {
+		return report(
+			stderr,
+			ExitInternalError,
+			"glippy rules: rule registry is required\n",
+		)
+	}
+	if err := ctx.Err(); err != nil {
+		return report(stderr, ExitCanceled, "glippy rules: %v\n", err)
+	}
+	output, err := glippyreport.RenderRuleListText(registry, options)
+	if err != nil {
+		return report(stderr, ExitInternalError, "glippy rules: render: %v\n", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return report(stderr, ExitCanceled, "glippy rules: %v\n", err)
+	}
+	if err := write(stdout, output); err != nil {
+		return report(
+			stderr,
+			ExitFilesystemError,
+			"glippy rules: write standard output: %v\n",
+			err,
+		)
+	}
+	return ExitSuccess
+}
+
+func parseRulesInvocation(arguments []string) (glippyreport.RuleListOptions, bool) {
+	if len(arguments) == 0 || arguments[0] != "rules" {
+		return glippyreport.RuleListOptions{}, false
+	}
+	var result glippyreport.RuleListOptions
+	presetSet := false
+	tierSet := false
+	for index := 1; index < len(arguments); index++ {
+		argument := arguments[index]
+		switch {
+		case argument == "--fixable" && !result.Fixable:
+			result.Fixable = true
+		case strings.HasPrefix(argument, "--preset=") && !presetSet:
+			preset, valid := parseRulePreset(strings.TrimPrefix(argument, "--preset="))
+			if !valid {
+				return glippyreport.RuleListOptions{}, false
+			}
+			result.Preset = &preset
+			presetSet = true
+		case argument == "--preset" && !presetSet && index + 1 < len(arguments):
+			index++
+			preset, valid := parseRulePreset(arguments[index])
+			if !valid {
+				return glippyreport.RuleListOptions{}, false
+			}
+			result.Preset = &preset
+			presetSet = true
+		case strings.HasPrefix(argument, "--tier=") && !tierSet:
+			requirement, valid := parseRuleTier(strings.TrimPrefix(argument, "--tier="))
+			if !valid {
+				return glippyreport.RuleListOptions{}, false
+			}
+			result.Requirement = &requirement
+			tierSet = true
+		case argument == "--tier" && !tierSet && index + 1 < len(arguments):
+			index++
+			requirement, valid := parseRuleTier(arguments[index])
+			if !valid {
+				return glippyreport.RuleListOptions{}, false
+			}
+			result.Requirement = &requirement
+			tierSet = true
+		default:
+			return glippyreport.RuleListOptions{}, false
+		}
+	}
+	return result, true
+}
+
+func parseRulePreset(value string) (rules.Preset, bool) {
+	preset := rules.Preset(value)
+	switch preset {
+	case rules.PresetCorrectness,
+		rules.PresetSuspicious,
+		rules.PresetPerformance,
+		rules.PresetComplexity,
+		rules.PresetStyle,
+		rules.PresetPedantic,
+		rules.PresetRestriction,
+		rules.PresetMigration:
+		return preset, true
+	default:
+		return "", false
+	}
+}
+
+func parseRuleTier(value string) (rules.Requirement, bool) {
+	switch value {
+	case "lexical":
+		return rules.RequireLexical, true
+	case "syntax":
+		return rules.RequireSyntax, true
+	case "types":
+		return rules.RequireTypes, true
+	case "cfg":
+		return rules.RequireControlFlow, true
+	case "ssa":
+		return rules.RequireSSA, true
+	default:
+		return 0, false
+	}
 }
 
 func runVersion(ctx context.Context, arguments []string, stdout, stderr io.Writer) int {

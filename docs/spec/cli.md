@@ -23,6 +23,8 @@ glippy fmt --check [paths...]
 glippy fmt --diff [paths...]
 glippy lint [paths...]
 glippy lint --fix [paths...]
+glippy lint --only=<rules> [paths...]
+glippy lint --except=<rules> [paths...]
 glippy lint --new-from=<git-ref> [paths...]
 glippy lint --generate-baseline=<path> [paths...]
 glippy check [paths...]
@@ -30,7 +32,9 @@ glippy check --new-from=<git-ref> [paths...]
 glippy init [directory]
 glippy config check [path]
 glippy config show [path]
+glippy rules [--preset=<preset>] [--fixable] [--tier=<tier>]
 glippy explain <rule>
+glippy explain <rule> --json
 glippy version
 glippy completion <bash|zsh|fish>
 ```
@@ -74,10 +78,19 @@ cancellation and output failures retain the common exit categories.
 Installation is documented in
 [`shell-completion.md`](../shell-completion.md).
 
-`glippy explain <rule>` MUST accept exactly one rule ID and render the complete
-human documentation derived from that rule's immutable compiled metadata. It
-MUST NOT discover project files or load configuration. Unknown rule IDs and
-invalid argument counts exit as invalid invocation without writing stdout.
+`glippy rules` MUST list registered rule IDs in canonical order with default
+severity, preset membership, exact analysis tier, and available fix safety.
+`--preset` MUST filter exact preset membership, `--fixable` MUST require at
+least one declared fix, and `--tier` MUST accept exactly `lexical`, `syntax`,
+`types`, `cfg`, or `ssa`. Filters MUST compose and MUST NOT load project state.
+
+`glippy explain <rule>` MUST accept exactly one rule ID and an optional `--json`
+flag before or after it. Text MUST render the complete human documentation and
+JSON MUST render schema-version-1 canonical metadata with machine tier names
+`lexical`, `syntax`, `types`, `control-flow`, and `ssa`. Both forms derive from
+that rule's immutable compiled metadata and MUST NOT discover project files or
+load configuration. Unknown rule IDs and invalid argument counts exit as
+invalid invocation without writing stdout.
 Cancellation and output failures retain the common exit categories. The
 compiled registry contains only rules that satisfy the admission gate. The
 default correctness rules are `duplicate-condition` and
@@ -145,6 +158,14 @@ files, directories, and recursive patterns into one read-only package load
 with test variants enabled. Heterogeneous typed roots or configurations MUST
 fail as an invalid invocation until a per-path package configuration design is
 accepted.
+
+`lint --only=<id[,id...]>` and `lint --except=<id[,id...]>` MUST apply after
+configured presets and rule overrides. A selected configured-off rule MUST use
+its metadata default severity, or warning severity when that default is off.
+`--except` MUST win over `--only`. Unknown,
+duplicate, empty, or whitespace-padded IDs MUST be rejected as invalid
+invocations. The resulting selection MUST determine the required analysis tier
+and MUST apply consistently to checks, baselines, and fixes.
 
 Both analysis paths run enabled syntax rules and never write source. The typed
 path additionally runs types-tier, CFG-tier, and SSA-tier rules over the shared

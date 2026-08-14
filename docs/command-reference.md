@@ -14,6 +14,8 @@ and no v0.2 tag or release is authorized before maintainer review.
 | `glippy fmt --diff [paths...]` | Print unified formatting differences | No |
 | `glippy fmt --write [paths...]` | Validate and replace changed files | Yes |
 | `glippy lint [paths...]` | Report enabled lint diagnostics | No |
+| `glippy lint --only=<rules> [paths...]` | Run only exact rule IDs after project policy | No |
+| `glippy lint --except=<rules> [paths...]` | Exclude exact rule IDs after project policy | No |
 | `glippy lint --new-from=<git-ref> [paths...]` | Report diagnostics on changed lines | No |
 | `glippy lint --fix [paths...]` | Apply safe fixes | Yes |
 | `glippy lint --generate-baseline=<path> [paths...]` | Write a deterministic adoption baseline | Baseline only |
@@ -22,7 +24,9 @@ and no v0.2 tag or release is authorized before maintainer review.
 | `glippy init [directory]` | Create a starter `.glippy.toml` without overwriting | Configuration only |
 | `glippy config check [path]` | Validate discovered or explicit configuration | No |
 | `glippy config show [path]` | Explain effective configuration and rule selection | No |
+| `glippy rules [filters]` | Discover compiled rule metadata | No |
 | `glippy explain <rule>` | Print canonical rule documentation | No |
+| `glippy explain <rule> --json` | Print versioned canonical rule metadata | No |
 | `glippy version` | Print the resolved Glippy version | No |
 | `glippy completion <shell>` | Generate Bash, Zsh, or Fish completion | No |
 
@@ -148,6 +152,14 @@ Machine output is schema version 1 and omits source snippets and replacement
 text. See the [machine output reference](machine-output.md) for field, range,
 completeness, ordering, and fix-provenance semantics.
 
+`--only=<id[,id...]>` restricts the resolved project policy to exact rule IDs.
+It temporarily re-enables a configured-off rule at its metadata default
+severity, or at warning severity when the rule is disabled by default.
+`--except=<id[,id...]>` removes exact rule IDs after
+`--only`; exclusion wins when an ID appears in both filters. Unknown,
+duplicate, empty, or whitespace-padded IDs are invalid. Both filters apply to
+ordinary diagnostics, baselines, and every enabled fix class.
+
 `--generate-baseline=<path>` writes a strict source-free JSON adoption
 baseline relative to one project root. It analyzes visible diagnostics before
 baseline application and cannot be combined with fix flags or the JSON
@@ -196,12 +208,21 @@ not change the exit status. Lint diagnostics use the same changed-line filter.
 ## Rule Documentation
 
 ```sh
+glippy rules
+glippy rules --preset pedantic --fixable
+glippy rules --tier ssa
 glippy explain duplicate-condition
+glippy explain duplicate-condition --json
 ```
 
-`explain` accepts exactly one registered rule ID. Its output derives from the
-same immutable metadata used for rule registration and scheduling. It performs
-no project discovery or configuration loading. The
+`rules` lists rule IDs in deterministic order with default severity, preset
+membership, exact analysis tier, and fix safety. Filters compose by metadata;
+accepted tier values are `lexical`, `syntax`, `types`, `cfg`, and `ssa`.
+
+`explain` accepts exactly one registered rule ID and an optional `--json` flag
+before or after the ID. Its text and schema-version-1 JSON derive from the same
+immutable metadata used for rule registration and scheduling. Neither command
+performs project discovery or configuration loading. The
 [published rule catalog](lint-rules.md) is generated from the same metadata.
 
 ## Version

@@ -1247,5 +1247,14 @@ test, vendor and type-error policies, build selection, baseline status,
 suppressions, cache limits, and the currently unset migration target without
 loading packages or analyzing source. Bash, Zsh, and Fish completion and the
 public command and configuration contracts cover the new surface. Rule
-selection flags, rule discovery, machine reporters, editor service, and the
-next pedantic/performance catalog remain subsequent v0.3 batches.
+selection flags and rule discovery were the next v0.3 batch.
+
+Exact lint selection and rule discovery are now implemented. `lint --only` and
+`--except` compose after configured policy, reject malformed or unknown IDs,
+drive the maximum analysis tier, and constrain checks, baselines, and fixes.
+`glippy rules` filters canonical metadata by preset, fix availability, and
+exact tier. `glippy explain --json` exposes the same metadata through a
+schema-version-1 contract, and all three supported completion shells cover the
+new commands, flags, values, and rule IDs. GitHub/SARIF reporters, editor
+diagnostics and code actions, and the next pedantic/performance catalog remain
+subsequent v0.3 batches.

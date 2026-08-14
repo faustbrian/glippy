@@ -321,6 +321,67 @@ func TestRegistryResolvesPresetOverridesAndMaximumRequirement(t *testing.T) {
 	}
 }
 
+func TestRegistryAppliesExactRuleFiltersAfterConfiguredPolicy(t *testing.T) {
+	t.Parallel()
+
+	correctness := validMetadata("correctness-rule")
+	suspicious := validMetadata("suspicious-rule")
+	suspicious.Presets = []rules.Preset{rules.PresetSuspicious}
+	suspicious.DefaultSeverity = rules.SeverityOff
+	registry, err := rules.NewRegistry(
+		metadataRule{metadata: correctness},
+		metadataRule{metadata: suspicious},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	selection, err := registry.ResolveOptions(
+		rules.ResolveOptions{
+			Presets: []rules.Preset{rules.PresetCorrectness},
+			Overrides: map[string]rules.Severity{"correctness-rule": rules.SeverityOff},
+			Only: []string{"correctness-rule", "suspicious-rule"},
+			Except: []string{"correctness-rule"},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selection) != 1 ||
+		selection[0].ID != "suspicious-rule" ||
+		selection[0].Severity != rules.SeverityWarn {
+		t.Fatalf("ResolveOptions(filtered) = %#v", selection)
+	}
+
+	selection, err = registry.ResolveOptions(
+		rules.ResolveOptions{
+			Presets: []rules.Preset{rules.PresetCorrectness},
+			Overrides: map[string]rules.Severity{"correctness-rule": rules.SeverityOff},
+			Only: []string{"correctness-rule"},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selection) != 1 ||
+		selection[0].ID != "correctness-rule" ||
+		selection[0].Severity != rules.SeverityWarn {
+		t.Fatalf("ResolveOptions(only overrides off) = %#v", selection)
+	}
+
+	for _, options := range
+		[]rules.ResolveOptions{
+			{Only: []string{"missing-rule"}},
+			{Except: []string{"missing-rule"}},
+			{Only: []string{"correctness-rule", "correctness-rule"}},
+			{Except: []string{"correctness-rule", "correctness-rule"}},
+		} {
+		if _, err := registry.ResolveOptions(options); err == nil {
+			t.Fatalf("ResolveOptions(%#v) succeeded", options)
+		}
+	}
+}
+
 func TestRegistryComposesPresetGroupsAndEscalatesWarnings(t *testing.T) {
 	t.Parallel()
 

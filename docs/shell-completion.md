@@ -2,8 +2,9 @@
 
 Glippy generates deterministic completion scripts for Bash, Zsh, and Fish. Each
 script contains the command-specific flags and values supported by that binary,
-the `config check` and `config show` subcommands, configuration paths, and the
-exact rule IDs available to `glippy explain`. Regenerate the script after
+the `config check` and `config show` subcommands, configuration paths, rule
+discovery filters, lint selection flags, and the exact rule IDs available to
+`glippy explain`, `--only`, and `--except`. Regenerate the script after
 upgrading Glippy so newly admitted rules and CLI options become available.
 
 Generation writes only to standard output. It does not inspect a project,
