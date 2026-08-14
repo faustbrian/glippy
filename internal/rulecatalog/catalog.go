@@ -91,6 +91,11 @@ func standardAnalyzerRules() ([]rules.Rule, error) {
 		contradictoryConditionRule,
 		errorsAsTargetRule,
 		timeLayoutRule,
+		invalidBuildConstraintRule,
+		invalidDirectiveRule,
+		invalidTestSignatureRule,
+		unbufferedSignalChannelRule,
+		standardLibraryVersionRule,
 	}
 	result := make([]rules.Rule, 0, len(constructors))
 	for _, construct := range constructors {

@@ -33,8 +33,11 @@ not stable release promises.
 - [inconsistent-receiver-name](#inconsistent-receiver-name)
 - [ineffective-break](#ineffective-break)
 - [inefficient-string-comparison](#inefficient-string-comparison)
+- [invalid-build-constraint](#invalid-build-constraint)
+- [invalid-directive](#invalid-directive)
 - [invalid-slog-arguments](#invalid-slog-arguments)
 - [invalid-struct-tag](#invalid-struct-tag)
+- [invalid-test-signature](#invalid-test-signature)
 - [invalid-unmarshal-target](#invalid-unmarshal-target)
 - [lock-held-across-blocking-call](#lock-held-across-blocking-call)
 - [loop-capture](#loop-capture)
@@ -51,6 +54,7 @@ not stable release promises.
 - [redundant-nil-check](#redundant-nil-check)
 - [resource-not-closed](#resource-not-closed)
 - [self-assignment](#self-assignment)
+- [standard-library-version](#standard-library-version)
 - [standard-method-signature](#standard-method-signature)
 - [subsumed-condition](#subsumed-condition)
 - [suspicious-range](#suspicious-range)
@@ -60,6 +64,7 @@ not stable release promises.
 - [time-layout](#time-layout)
 - [time-since](#time-since)
 - [time-until](#time-until)
+- [unbuffered-signal-channel](#unbuffered-signal-channel)
 - [unnecessary-conversion](#unnecessary-conversion)
 - [unnecessary-format](#unnecessary-format)
 - [unnecessary-sprintf](#unnecessary-sprintf)
@@ -1227,6 +1232,105 @@ strings.ToLower(left) == strings.ToLower(right)
 strings.EqualFold(left, right)
 ```
 
+## invalid-build-constraint
+
+detects malformed, misplaced, or inconsistent build constraints
+
+Build constraints select which source participates in a build. A malformed or misplaced //go:build
+or legacy // +build line can be ignored or select a different build than intended. Glippy adapts the
+standard buildtag analyzer for each discovered Go source file.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: syntax
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: not applicable
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The syntax-tier adapter checks discovered Go files independently; build constraints in non-Go
+  package files are not yet inspected.
+- Cross-file package loading is not required, so build-excluded Go files must be included by Glippy
+  discovery to be checked.
+
+### Example: Place the constraint in the file header
+
+**Incorrect**
+
+```go
+package sample
+//go:build linux
+```
+
+**Correct**
+
+```go
+//go:build linux
+
+package sample
+```
+
+## invalid-directive
+
+detects invalid placement or use of Go toolchain directives
+
+Known Go toolchain directives have placement and package contracts that determine whether the
+toolchain honors them. Glippy adapts the standard directive analyzer so invalid //go:debug
+directives are reported through the shared syntax pipeline.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: syntax
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: not applicable
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The upstream analyzer currently validates known //go:debug contracts and intentionally leaves
+  unknown future directives alone.
+- The syntax-tier adapter checks discovered Go files independently; directives in non-Go package
+  files are not yet inspected.
+
+### Example: Use go:debug only where the toolchain accepts it
+
+**Incorrect**
+
+```go
+//go:debug panicnil=1
+package library
+```
+
+**Correct**
+
+```go
+//go:debug panicnil=1
+package main
+```
+
 ## invalid-slog-arguments
 
 detects malformed structured logging argument lists
@@ -1317,6 +1421,51 @@ Field string `json:"field`
 
 ```go
 Field string `json:"field"`
+```
+
+## invalid-test-signature
+
+detects malformed tests, benchmarks, fuzz targets, and examples
+
+The go test driver discovers functions by exact naming and signature contracts. A near miss can
+leave intended coverage silently unexecuted or make a fuzz target invalid. Glippy adapts the
+standard tests analyzer through its typed package scheduler.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule follows the standard analyzer's test, benchmark, fuzz, and example discovery contracts.
+- Only files loaded as part of the selected package and test variants are analyzed.
+
+### Example: Keep test entry points non-generic
+
+**Incorrect**
+
+```go
+func TestValue[T any](t *testing.T) {}
+```
+
+**Correct**
+
+```go
+func TestValue(t *testing.T) {}
 ```
 
 ## invalid-unmarshal-target
@@ -2131,6 +2280,55 @@ value = value
 value = replacement
 ```
 
+## standard-library-version
+
+detects standard-library APIs newer than the source Go version
+
+Using a standard-library symbol introduced after the module or file language version makes the
+declared compatibility contract inaccurate and may fail on the supported toolchain. Glippy adapts
+the standard stdversion analyzer using package and per-file Go versions.
+
+- Default severity: `warn`
+- Presets: `correctness`, `migration`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: included
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule follows the standard analyzer's version database and deliberate exceptions for symbols
+  guarded by experiments or version constraints.
+- Modules declaring a language version before Go 1.21 are outside the upstream analyzer's reporting
+  contract.
+
+### Example: Use APIs available at the declared Go version
+
+**Incorrect**
+
+```go
+// module declares Go 1.25
+buffer.Peek(1)
+```
+
+**Correct**
+
+```go
+// module declares Go 1.26
+buffer.Peek(1)
+```
+
 ## standard-method-signature
 
 detects incorrect signatures for conventional standard methods
@@ -2545,6 +2743,54 @@ deadline.Sub(time.Now())
 
 ```go
 time.Until(deadline)
+```
+
+## unbuffered-signal-channel
+
+detects unbuffered channels passed to signal.Notify
+
+signal.Notify sends without blocking and may drop a signal when an unbuffered channel has no
+receiver ready. A buffer of at least one lets the notification survive normal scheduling delay.
+Glippy adapts the standard sigchanyzer analyzer.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+- `buffer-signal-channel` (`suggestion`): give the signal channel a buffer of one
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The analyzer recognizes direct signal.Notify calls and locally traceable channel declarations.
+- The buffer change is suggestion-only because applications may have an intentional delivery
+  protocol.
+
+### Example: Buffer the signal channel
+
+**Incorrect**
+
+```go
+signals := make(chan os.Signal)
+signal.Notify(signals, os.Interrupt)
+```
+
+**Correct**
+
+```go
+signals := make(chan os.Signal, 1)
+signal.Notify(signals, os.Interrupt)
 ```
 
 ## unnecessary-conversion

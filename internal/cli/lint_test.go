@@ -6075,6 +6075,7 @@ func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 				"impossible-type-assertion = \"off\"\n" +
 				"invalid-slog-arguments = \"off\"\n" +
 				"invalid-struct-tag = \"off\"\n" +
+				"invalid-test-signature = \"off\"\n" +
 				"invalid-unmarshal-target = \"off\"\n" +
 				"loop-capture = \"off\"\n" +
 				"nil-context = \"off\"\n" +
@@ -6082,11 +6083,13 @@ func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 				"oversized-shift = \"off\"\n" +
 				"printf-arguments = \"off\"\n" +
 				"self-assignment = \"off\"\n" +
+				"standard-library-version = \"off\"\n" +
 				"standard-method-signature = \"off\"\n" +
 				"testing-goroutine-call = \"off\"\n" +
 				"time-duration-unit = \"off\"\n" +
 				"time-layout = \"off\"\n" +
 				"unreachable-code = \"off\"\n" +
+				"unbuffered-signal-channel = \"off\"\n" +
 				"unsafe-host-port = \"off\"\n" +
 				"unused-result = \"off\"\n" +
 				"waitgroup-misuse = \"off\"\n",
