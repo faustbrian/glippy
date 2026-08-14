@@ -27,10 +27,35 @@ glippy lint --new-from=<git-ref> [paths...]
 glippy lint --generate-baseline=<path> [paths...]
 glippy check [paths...]
 glippy check --new-from=<git-ref> [paths...]
+glippy init [directory]
+glippy config check [path]
+glippy config show [path]
 glippy explain <rule>
 glippy version
 glippy completion <bash|zsh|fish>
 ```
+
+`glippy init [directory]` MUST resolve an existing directory, then atomically
+create `.glippy.toml` there with mode `0600`. It MUST use exclusive creation,
+MUST NOT replace an existing regular file or symlink, and MUST emit the created
+absolute path only after creation succeeds. The generated policy MUST select
+schema version 1, formatter width 100, tab width 8, the `correctness` preset,
+and warnings-as-errors disabled. Cancellation before creation MUST leave no
+configuration; cancellation or output failure after creation MUST disclose the
+created path.
+
+`glippy config check [path]` and `glippy config show [path]` MUST default to the
+current directory and MAY select one exact configuration through
+`--config=<path>`. `config check` MUST perform normal strict discovery,
+decoding, defaulting, source-language resolution, rule-ID validation, and
+effective rule-option validation before emitting one success record. `config
+show` MUST then deterministically report the project root,
+configuration path and origin, source and migration versions, formatter
+policy, presets, warning escalation, each enabled rule severity and reason,
+resolved rule options, maximum required tier, generated/test/vendor and
+type-error policies, build selection, baseline status, suppression policy, and
+cache policy. Neither command may load packages, analyze source, read standard
+input, or mutate project files.
 
 `glippy version` MUST accept no operands or flags and MUST write exactly
 `glippy <version>\n` to standard output. Version resolution MUST prefer explicit

@@ -44,6 +44,10 @@ const formatUsage = "glippy: expected 'fmt [--write|--check|--diff] [--reporter=
 
 const completionUsage = "glippy: expected 'completion <bash|zsh|fish>'\n"
 
+const initUsage = "glippy: expected 'init [directory]'\n"
+
+const configUsage = "glippy: expected 'config <check|show> [--config=<path>] [path]'\n"
+
 const explainUsage = "glippy: expected 'explain <rule>'\n"
 
 const versionUsage = "glippy: expected 'version'\n"
@@ -93,6 +97,21 @@ func RunContext(
 			)
 		}
 		return runCompletion(ctx, arguments, stdout, stderr, registry)
+	}
+	if len(arguments) > 0 && arguments[0] == "init" {
+		return runInit(ctx, arguments, stdout, stderr)
+	}
+	if len(arguments) > 0 && arguments[0] == "config" {
+		registry, err := rulecatalog.NewRegistry()
+		if err != nil {
+			return report(
+				stderr,
+				ExitInternalError,
+				"glippy config: initialize rule registry: %v\n",
+				err,
+			)
+		}
+		return runConfig(ctx, arguments, stdout, stderr, registry)
 	}
 	if len(arguments) > 0 && arguments[0] == "explain" {
 		registry, err := rulecatalog.NewRegistry()

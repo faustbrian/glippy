@@ -75,6 +75,9 @@ glippy lint --new-from=<git-ref> [paths...]
 glippy lint --generate-baseline=<path> [paths...]
 glippy check [paths...]
 glippy check --new-from=<git-ref> [paths...]
+glippy init [directory]
+glippy config check [path]
+glippy config show [path]
 glippy explain <rule>
 glippy version
 glippy completion <bash|zsh|fish>
@@ -88,6 +91,12 @@ without a baseline during incremental adoption with
 `--new-from=origin/main`. See the
 [command reference](docs/command-reference.md) for
 inputs, reporters, exit categories, and write behavior.
+
+`glippy init` creates a strict starter `.glippy.toml` without overwriting an
+existing path. `glippy config check` validates discovered or explicit policy,
+while `glippy config show` explains the resolved language, presets, rule
+severities and reasons, analysis tier, file policies, baseline, suppressions,
+and cache settings.
 
 The v0.2 pedantic catalog includes bounded Go-native simplifications for blank
 identifiers, direct closures, nil-and-length checks, time helpers, buffer

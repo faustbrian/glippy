@@ -13,10 +13,24 @@ func TestRunCompletionRendersSupportedShellsWithoutProjectInput(t *testing.T) {
 	tests := []struct {
 		shell string
 		marker string
+		configMarker string
 	}{
-		{shell: "bash", marker: "complete -F _glippy_completion glippy"},
-		{shell: "zsh", marker: "#compdef glippy"},
-		{shell: "fish", marker: "complete -c glippy -f"},
+		{
+			shell: "bash",
+			marker: "complete -F _glippy_completion glippy",
+			configMarker: `compgen -W "check show"`,
+		},
+		{
+			shell: "zsh",
+			marker: "#compdef glippy",
+			configMarker: "'1:config command:(check show)'",
+		},
+		{
+			shell: "fish",
+			marker: "complete -c glippy -f",
+			configMarker: "__fish_seen_subcommand_from config; and not " +
+				"__fish_seen_subcommand_from check show' -a 'check show'",
+		},
 	}
 	for _, test := range tests {
 		test := test
@@ -42,7 +56,9 @@ func TestRunCompletionRendersSupportedShellsWithoutProjectInput(t *testing.T) {
 					)
 				}
 				if !strings.Contains(stdout.String(), test.marker) ||
-					!strings.Contains(stdout.String(), "duplicate-condition") {
+					!strings.Contains(stdout.String(), "duplicate-condition") ||
+					!strings.Contains(stdout.String(), test.configMarker) ||
+					!strings.Contains(stdout.String(), "init") {
 					t.Fatalf(
 						"Run(completion %s) output is incomplete:\n%s",
 						test.shell,

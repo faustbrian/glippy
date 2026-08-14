@@ -1,6 +1,6 @@
 # Command Reference
 
-Glippy v0.2 uses its intended product and binary identity. This reference
+Glippy v0.3 uses its intended product and binary identity. This reference
 documents the implemented command surface; it is not an installation contract
 or release announcement. The source repository has not been remotely renamed
 and no v0.2 tag or release is authorized before maintainer review.
@@ -19,6 +19,9 @@ and no v0.2 tag or release is authorized before maintainer review.
 | `glippy lint --generate-baseline=<path> [paths...]` | Write a deterministic adoption baseline | Baseline only |
 | `glippy check [paths...]` | Check formatting and lint diagnostics together | No |
 | `glippy check --new-from=<git-ref> [paths...]` | Check changed-line formatting and diagnostics | No |
+| `glippy init [directory]` | Create a starter `.glippy.toml` without overwriting | Configuration only |
+| `glippy config check [path]` | Validate discovered or explicit configuration | No |
+| `glippy config show [path]` | Explain effective configuration and rule selection | No |
 | `glippy explain <rule>` | Print canonical rule documentation | No |
 | `glippy version` | Print the resolved Glippy version | No |
 | `glippy completion <shell>` | Generate Bash, Zsh, or Fish completion | No |
@@ -230,6 +233,37 @@ names one exact file. Configuration requires `version = 1`; unknown fields,
 unknown rules, duplicate semantic keys, and invalid values fail rather than
 being ignored. See the [configuration contract](spec/configuration.md) for the
 current schema and discovery policy.
+
+Create a conservative starter policy in the current or selected directory:
+
+```sh
+glippy init
+glippy init ./module
+```
+
+Initialization uses exclusive atomic creation with mode `0600`. An existing
+regular file or symlink is a conflict and remains unchanged.
+
+Validate the policy selected for a path, or one exact configuration file:
+
+```sh
+glippy config check .
+glippy config check --config ./policy/glippy.toml .
+```
+
+Explain the same effective policy:
+
+```sh
+glippy config show .
+glippy config show --config ./policy/glippy.toml ./module
+```
+
+The deterministic text output identifies the project root, selection origin,
+source language, formatter widths, presets, warning escalation, enabled rules
+and their enablement reasons, resolved options, maximum analysis tier, file and
+type-error policies, build selection, baseline status, suppression policy, and
+cache limits. The migration target is reported as unset until migration rules
+have an explicit target contract.
 
 ## Exit Codes
 

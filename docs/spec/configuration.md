@@ -25,6 +25,28 @@ only when no `.glippy.toml` exists in the searched project scope. Finding both
 names fails rather than choosing one. An explicit `--config=<path>` remains an
 exact selection and bypasses automatic-name ambiguity.
 
+`glippy init [directory]` creates this canonical starter policy through
+exclusive atomic creation and refuses to replace any existing file or symlink:
+
+```toml
+version = 1
+
+[format]
+line-width = 100
+tab-width = 8
+
+[lint]
+presets = ["correctness"]
+warnings-as-errors = false
+```
+
+`glippy config check [path]` validates the complete selected schema without
+running analysis. `glippy config show [path]` renders the fully defaulted rule
+selection and its provenance, source language, analysis tier and build inputs,
+file policies, baseline status, suppression policy, and cache limits. Both
+commands accept `--config=<path>` for exact selection. The reported migration
+target remains unset until a migration rule target is part of the schema.
+
 ```toml
 version = 1
 

@@ -63,7 +63,11 @@ _glippy_completion() {
 	command="${COMP_WORDS[1]}"
 
 	if (( COMP_CWORD == 1 )); then
-		COMPREPLY=( $(compgen -W "fmt lint check explain version completion" -- "$current") )
+		COMPREPLY=( $(compgen -W "fmt lint check init config explain version completion" -- "$current") )
+		return
+	fi
+	if [[ "$command" == "config" && COMP_CWORD -eq 2 ]]; then
+		COMPREPLY=( $(compgen -W "check show" -- "$current") )
 		return
 	fi
 
@@ -72,7 +76,7 @@ _glippy_completion() {
 			COMPREPLY=( $(compgen -W "text json" -- "$current") )
 			return
 			;;
-		fmt:--config|fmt:--stdin-filepath|lint:--config|check:--config)
+		fmt:--config|fmt:--stdin-filepath|lint:--config|check:--config|config:--config)
 			COMPREPLY=( $(compgen -f -- "$current") )
 			return
 			;;
@@ -89,6 +93,13 @@ _glippy_completion() {
 			;;
 		check)
 			COMPREPLY=( $(compgen -W "--new-from= --reporter --reporter=text --reporter=json --config" -- "$current") )
+			COMPREPLY+=( $(compgen -f -- "$current") )
+			;;
+		init)
+			COMPREPLY=( $(compgen -d -- "$current") )
+			;;
+		config)
+			COMPREPLY=( $(compgen -W "--config --config=" -- "$current") )
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		explain)
@@ -112,7 +123,7 @@ _glippy() {
 	local context state state_descr line
 	typeset -A opt_args
 	_arguments -C \
-		'1:command:(fmt lint check explain version completion)' \
+		'1:command:(fmt lint check init config explain version completion)' \
 		'*::argument:->arguments'
 
 	case "$line[1]" in
@@ -145,6 +156,15 @@ _glippy() {
 				'--config=[use an explicit configuration]:configuration file:_files' \
 				'*:path:_files'
 			;;
+		init)
+			_arguments '1:directory:_directories'
+			;;
+		config)
+			_arguments \
+				'1:config command:(check show)' \
+				'--config=[use an explicit configuration]:configuration file:_files' \
+				'2:path:_files'
+			;;
 		explain)
 			_arguments '1:rule ID:(` +
 		strings.Join(ruleIDs, " ") +
@@ -167,16 +187,22 @@ func renderFish(ruleIDs []string) string {
 complete -c glippy -n '__fish_use_subcommand' -a fmt -d 'Format Go source'
 complete -c glippy -n '__fish_use_subcommand' -a lint -d 'Lint Go source'
 complete -c glippy -n '__fish_use_subcommand' -a check -d 'Check formatting and lint diagnostics'
+complete -c glippy -n '__fish_use_subcommand' -a init -d 'Create a Glippy configuration'
+complete -c glippy -n '__fish_use_subcommand' -a config -d 'Inspect Glippy configuration'
 complete -c glippy -n '__fish_use_subcommand' -a explain -d 'Explain a lint rule'
 complete -c glippy -n '__fish_use_subcommand' -a version -d 'Print the Glippy version'
 complete -c glippy -n '__fish_use_subcommand' -a completion -d 'Generate shell completions'
 complete -c glippy -n '__fish_seen_subcommand_from fmt lint check' -F
+complete -c glippy -n '__fish_seen_subcommand_from config; and __fish_seen_subcommand_from check show' -F
+complete -c glippy -n '__fish_seen_subcommand_from init' -a '(__fish_complete_directories)'
+complete -c glippy -n '__fish_seen_subcommand_from config; and not __fish_seen_subcommand_from check show' -a 'check show'
 
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l write -d 'Write formatted files in place'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l check -d 'Report files whose formatting differs'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l diff -d 'Print unified formatting differences'
 complete -c glippy -n '__fish_seen_subcommand_from fmt lint check' -l reporter -r -a 'text json' -d 'Select reporter'
 complete -c glippy -n '__fish_seen_subcommand_from fmt lint check' -l config -r -F -d 'Use an explicit configuration'
+complete -c glippy -n '__fish_seen_subcommand_from config; and __fish_seen_subcommand_from check show' -l config -r -F -d 'Use an explicit configuration'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l stdin-filepath -r -F -d 'Supply stdin path context'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -a '--fragment=declaration --fragment=statement --fragment=expression' -d 'Format a source fragment'
 

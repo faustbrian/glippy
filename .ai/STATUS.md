@@ -1238,3 +1238,14 @@ validation, formatted application, and repeated fixed-point tests. The
 requested v0.2 rule and fix direction is implemented; final v0.2 release gates
 remain open and no tag, push, publication, or release is authorized by this
 batch.
+
+The v0.3 adoption work now includes exclusive `glippy init` configuration
+creation plus `glippy config check` and `glippy config show`. Introspection
+reports the configuration origin, source language, formatter settings, resolved
+presets, enabled rules and reasons, options, maximum analysis tier, generated,
+test, vendor and type-error policies, build selection, baseline status,
+suppressions, cache limits, and the currently unset migration target without
+loading packages or analyzing source. Bash, Zsh, and Fish completion and the
+public command and configuration contracts cover the new surface. Rule
+selection flags, rule discovery, machine reporters, editor service, and the
+next pedantic/performance catalog remain subsequent v0.3 batches.
