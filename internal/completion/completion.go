@@ -79,7 +79,7 @@ _glippy_completion() {
 			return
 			;;
 		lint:--reporter|check:--reporter)
-			COMPREPLY=( $(compgen -W "text json github sarif" -- "$current") )
+			COMPREPLY=( $(compgen -W "text short json github sarif" -- "$current") )
 			return
 			;;
 		lint:--only|lint:--except)
@@ -114,11 +114,11 @@ _glippy_completion() {
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		lint)
-			COMPREPLY=( $(compgen -W "-A -W -D -F --allow --warn --deny --forbid --fix --fix-suggestions --fix-unsafe --diff --only --except --new-from= --generate-baseline= --reporter --reporter=text --reporter=json --reporter=github --reporter=sarif --config" -- "$current") )
+			COMPREPLY=( $(compgen -W "-A -W -D -F --allow --warn --deny --forbid --fix --fix-suggestions --fix-unsafe --diff --only --except --new-from= --generate-baseline= --reporter --reporter=text --reporter=short --reporter=json --reporter=github --reporter=sarif --config" -- "$current") )
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		check)
-			COMPREPLY=( $(compgen -W "-A -W -D -F --allow --warn --deny --forbid --new-from= --reporter --reporter=text --reporter=json --reporter=github --reporter=sarif --config" -- "$current") )
+			COMPREPLY=( $(compgen -W "-A -W -D -F --allow --warn --deny --forbid --new-from= --reporter --reporter=text --reporter=short --reporter=json --reporter=github --reporter=sarif --config" -- "$current") )
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		lsp)
@@ -210,7 +210,7 @@ _glippy() {
 		`')' \
 				'--new-from=[report findings introduced since a Git ref]:git ref' \
 				'--generate-baseline=[write lint baseline]:baseline path:_files' \
-				'--reporter=[select reporter]:reporter:(text json github sarif)' \
+				'--reporter=[select reporter]:reporter:(text short json github sarif)' \
 				'--config=[use an explicit configuration]:configuration file:_files' \
 				'*:path:_files'
 			;;
@@ -241,7 +241,7 @@ _glippy() {
 		lintTargets +
 		`')' \
 				'--new-from=[report findings introduced since a Git ref]:git ref' \
-				'--reporter=[select reporter]:reporter:(text json github sarif)' \
+				'--reporter=[select reporter]:reporter:(text short json github sarif)' \
 				'--config=[use an explicit configuration]:configuration file:_files' \
 				'*:path:_files'
 			;;
@@ -308,7 +308,7 @@ complete -c glippy -n '__fish_seen_subcommand_from fmt' -l write -d 'Write forma
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l check -d 'Report files whose formatting differs'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l diff -d 'Print unified formatting differences'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l reporter -r -a 'text json' -d 'Select reporter'
-complete -c glippy -n '__fish_seen_subcommand_from lint check' -l reporter -r -a 'text json github sarif' -d 'Select reporter'
+complete -c glippy -n '__fish_seen_subcommand_from lint check' -l reporter -r -a 'text short json github sarif' -d 'Select reporter'
 complete -c glippy -n '__fish_seen_subcommand_from fmt lint check lsp' -l config -r -F -d 'Use an explicit configuration'
 complete -c glippy -n '__fish_seen_subcommand_from config; and __fish_seen_subcommand_from check show' -l config -r -F -d 'Use an explicit configuration'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l stdin-filepath -r -F -d 'Supply stdin path context'

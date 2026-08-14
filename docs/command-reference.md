@@ -120,6 +120,7 @@ standard output contains formatted source or a unified diff.
 ```sh
 glippy lint .
 glippy lint ./...
+glippy lint --reporter=short ./...
 glippy lint --reporter=json ./...
 glippy lint --reporter=github ./...
 glippy lint --reporter=sarif ./...
@@ -177,9 +178,12 @@ file is replaced. Fix transactions are single-file and do not claim multi-file
 atomicity.
 
 Lint accepts `--config=<path>` and
-`--reporter=text|json|github|sarif`. Text is the default. JSON uses Glippy's
-schema-version-1 envelope; GitHub emits workflow-command annotations; SARIF
-emits SARIF 2.1.0. Machine reporters omit source snippets and replacement text.
+`--reporter=text|short|json|github|sarif`. Text is the default and renders
+bounded physical-source frames with primary underlines. `short` retains one
+source-free location line plus notes, help, and fix names for log-oriented
+human use. JSON uses Glippy's schema-version-1 envelope; GitHub emits
+workflow-command annotations; SARIF emits SARIF 2.1.0. Machine reporters omit
+source snippets and replacement text.
 See the [machine output reference](machine-output.md) for field, range,
 completeness, ordering, and fix-provenance semantics.
 
@@ -266,6 +270,7 @@ filter command. The selected paths must belong to the resolved repository.
 
 ```sh
 glippy check .
+glippy check --reporter=short ./...
 glippy check --reporter=json ./...
 glippy check --reporter=github ./...
 glippy check --reporter=sarif ./...
@@ -279,7 +284,7 @@ has a complete result, while machine reporters preserve their documented
 completion or failure signal.
 
 `check` accepts `--config=<path>` and
-`--reporter=text|json|github|sarif` and defaults to the current directory.
+`--reporter=text|short|json|github|sarif` and defaults to the current directory.
 It accepts the same ordered lint-level directives as `lint`; they affect only
 the lint half of the combined non-mutating result.
 

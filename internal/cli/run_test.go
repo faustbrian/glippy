@@ -661,7 +661,12 @@ func TestRunCombinedCheckReportsFormatAndLintFindingsWithoutMutation(t *testing.
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := Run([]string{"check", root}, failingReader{}, &stdout, &stderr)
+	exitCode := Run(
+		[]string{"check", "--reporter=short", root},
+		failingReader{},
+		&stdout,
+		&stderr,
+	)
 
 	if exitCode != ExitFindings || stderr.Len() != 0 {
 		t.Fatalf(
@@ -735,7 +740,7 @@ func TestRunCombinedCheckReportsSSAFindingAndFormatDifferenceWithoutMutation(t *
 	var stderr bytes.Buffer
 
 	exitCode := Run(
-		[]string{"check", filepath.Join(root, "...")},
+		[]string{"check", "--reporter=short", filepath.Join(root, "...")},
 		failingReader{},
 		&stdout,
 		&stderr,

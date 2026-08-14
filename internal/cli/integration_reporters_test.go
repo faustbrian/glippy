@@ -15,10 +15,11 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-func TestParseLintAndCheckAcceptIntegrationReporters(t *testing.T) {
+func TestParseLintAndCheckAcceptDiagnosticReporters(t *testing.T) {
 	t.Parallel()
 
-	for _, reporter := range []glippyreport.Format{glippyreport.GitHub, glippyreport.SARIF} {
+	for _, reporter := range
+		[]glippyreport.Format{glippyreport.Short, glippyreport.GitHub, glippyreport.SARIF} {
 		lint, valid := parseLintInvocation(
 			[]string{"lint", "--reporter=" + string(reporter), "source.go"},
 		)
@@ -35,6 +36,79 @@ func TestParseLintAndCheckAcceptIntegrationReporters(t *testing.T) {
 	if _, valid := parseFormatInvocation([]string{"fmt", "--check", "--reporter=sarif", "."});
 		valid {
 		t.Fatal("format accepted a diagnostic-only reporter")
+	}
+}
+
+func TestRunLintAndCheckShortReporterOmitSourceFrames(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/shortreporter\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	input := "package sample\n\nfunc run() {\n\tvalue := 1\n\tvalue = value\n\t_ = value\n}\n"
+	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var human, humanErrors bytes.Buffer
+	exitCode := RunContext(
+		context.Background(),
+		[]string{"lint", path},
+		strings.NewReader(""),
+		&human,
+		&humanErrors,
+	)
+	if exitCode != ExitFindings ||
+		humanErrors.Len() != 0 ||
+		!strings.Contains(human.String(), "warn[self-assignment]") ||
+		!strings.Contains(human.String(), "5 |         value = value") {
+		t.Fatalf(
+			"RunContext(text) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			human.String(),
+			humanErrors.String(),
+		)
+	}
+
+	want := path +
+		":5:2: warn[self-assignment]: self-assignment of value\n" +
+		"  help: https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/assign\n" +
+		"  fix[suggestion]: remove-self-assignment\n"
+	for _, command := range []string{"lint", "check"} {
+		var stdout, stderr bytes.Buffer
+		exitCode := RunContext(
+			context.Background(),
+			[]string{command, "--reporter=short", path},
+			strings.NewReader(""),
+			&stdout,
+			&stderr,
+		)
+		if exitCode != ExitFindings || stderr.Len() != 0 {
+			t.Fatalf(
+				"RunContext(%s short) = exit %d, stdout %q, stderr %q",
+				command,
+				exitCode,
+				stdout.String(),
+				stderr.String(),
+			)
+		}
+		if stdout.String() != want {
+			t.Fatalf(
+				"RunContext(%s short) output = %q, want %q",
+				command,
+				stdout.String(),
+				want,
+			)
+		}
+		if strings.Contains(stdout.String(), "value = value") {
+			t.Fatalf("%s short reporter disclosed a source excerpt", command)
+		}
 	}
 }
 

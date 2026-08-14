@@ -140,7 +140,12 @@ func inspect(pointer *int) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	exitCode := Run([]string{"lint", path}, strings.NewReader(""), &stdout, &stderr)
+	exitCode := Run(
+		[]string{"lint", "--reporter=short", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
 	want := path +
 		":4:7: warn[nilness]: nil dereference in load\n" +
 		"  help: run `glippy explain nilness` for the rule contract and limitations\n"
@@ -219,7 +224,12 @@ func attach(ctx context.Context) context.Context {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	exitCode := Run([]string{"lint", path}, strings.NewReader(""), &stdout, &stderr)
+	exitCode := Run(
+		[]string{"lint", "--reporter=short", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
 	want := path +
 		":4:32: warn[context-key]: context.WithValue key has built-in type string and may collide across packages\n" +
 		"  help: use a comparable package-specific defined key type\n"
@@ -305,7 +315,12 @@ func match(err error) bool {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	exitCode := Run([]string{"lint", path}, strings.NewReader(""), &stdout, &stderr)
+	exitCode := Run(
+		[]string{"lint", "--reporter=short", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
 	want := path +
 		":9:19: warn[errors-is-arguments]: errors.Is arguments appear to be reversed\n" +
 		"  help: pass the error value first and the package sentinel second\n"
@@ -397,7 +412,12 @@ func run() {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	exitCode := Run([]string{"lint", path}, strings.NewReader(""), &stdout, &stderr)
+	exitCode := Run(
+		[]string{"lint", "--reporter=short", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
 	want := path +
 		":5:3: warn[defer-in-infinite-loop]: defer in this infinite loop cannot reach function exit and will never run\n" +
 		"  help: invoke the cleanup explicitly in each iteration or make a function exit reachable\n"
@@ -1092,7 +1112,7 @@ func TestRunLintCheckAnalyzesConfiguredSyntaxRulesWithoutMutation(t *testing.T) 
 		lintInvocation{
 			configPath: configurationPath,
 			paths: []string{path},
-			reporter: glippyreport.Text,
+			reporter: glippyreport.Short,
 		},
 		&stdout,
 		&stderr,
@@ -1616,7 +1636,7 @@ func TestRunLintCheckUsesOneConfigurationSnapshotForTierAndExecution(t *testing.
 		lintInvocation{
 			configPath: configurationPath,
 			paths: []string{path},
-			reporter: glippyreport.Text,
+			reporter: glippyreport.Short,
 		},
 		&stdout,
 		&stderr,
@@ -1712,7 +1732,12 @@ func TestRunLintUsesDefaultRegistryForCleanAndSuppressionOutcomes(t *testing.T) 
 	}
 	stdout.Reset()
 	stderr.Reset()
-	exitCode := Run([]string{"lint", suppressedPath}, failingReader{}, &stdout, &stderr)
+	exitCode := Run(
+		[]string{"lint", "--reporter=short", suppressedPath},
+		failingReader{},
+		&stdout,
+		&stderr,
+	)
 	if exitCode != ExitFindings ||
 		stderr.Len() != 0 ||
 		!strings.Contains(stdout.String(), ":2:1: suppression[unknown-rule]:") {
@@ -1872,7 +1897,7 @@ func TestRunLintCheckRoutesTypedPackagePatternsToPackageAnalysis(t *testing.T) {
 		var stderr bytes.Buffer
 		exitCode := runLintCheck(
 			context.Background(),
-			lintInvocation{paths: []string{input}, reporter: glippyreport.Text},
+			lintInvocation{paths: []string{input}, reporter: glippyreport.Short},
 			&stdout,
 			&stderr,
 			newCLITypesRegistry(t),
@@ -2045,7 +2070,11 @@ cgo-enabled = true
 	var uncachedError bytes.Buffer
 	if exitCode := runLintCheck(
 		context.Background(),
-		lintInvocation{configPath: configurationPath, paths: []string{root}},
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{root},
+			reporter: glippyreport.Short,
+		},
 		&uncachedOutput,
 		&uncachedError,
 		registry,
@@ -2074,7 +2103,11 @@ max-bytes = 1048576
 	var coldError bytes.Buffer
 	if exitCode := runLintCheck(
 		context.Background(),
-		lintInvocation{configPath: configurationPath, paths: []string{root}},
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{root},
+			reporter: glippyreport.Short,
+		},
 		&coldOutput,
 		&coldError,
 		registry,
@@ -2092,7 +2125,11 @@ max-bytes = 1048576
 	var warmError bytes.Buffer
 	if exitCode := runCombinedCheck(
 		context.Background(),
-		checkInvocation{configPath: configurationPath, paths: []string{root}},
+		checkInvocation{
+			configPath: configurationPath,
+			paths: []string{root},
+			reporter: glippyreport.Short,
+		},
 		&warmOutput,
 		&warmError,
 		registry,
@@ -2639,7 +2676,7 @@ func TestRunLintCheckRoutesControlFlowRulesThroughPackageAnalysis(t *testing.T) 
 	var stderr bytes.Buffer
 	exitCode := runLintCheck(
 		context.Background(),
-		lintInvocation{paths: []string{path}, reporter: glippyreport.Text},
+		lintInvocation{paths: []string{path}, reporter: glippyreport.Short},
 		&stdout,
 		&stderr,
 		newCLIControlFlowRegistry(t),
@@ -2683,7 +2720,7 @@ func TestRunLintCheckRoutesSSARulesThroughPackageAnalysis(t *testing.T) {
 	var stderr bytes.Buffer
 	exitCode := runLintCheck(
 		context.Background(),
-		lintInvocation{paths: []string{path}, reporter: glippyreport.Text},
+		lintInvocation{paths: []string{path}, reporter: glippyreport.Short},
 		&stdout,
 		&stderr,
 		newCLISSARegistry(t),
@@ -5406,7 +5443,12 @@ func replace(value, replacement int) int {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	exitCode := Run([]string{"lint", path}, strings.NewReader(""), &stdout, &stderr)
+	exitCode := Run(
+		[]string{"lint", "--reporter=short", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
 	want := path +
 		":4:5: warn[self-assignment]: self-assignment of value\n" +
 		"  help: https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/assign\n" +

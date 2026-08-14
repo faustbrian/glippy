@@ -9,6 +9,7 @@ type Format string
 
 const (
 	Text Format = "text"
+	Short Format = "short"
 	JSON Format = "json"
 	GitHub Format = "github"
 	SARIF Format = "sarif"

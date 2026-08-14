@@ -81,6 +81,7 @@ glippy lint --new-from=<git-ref> [paths...]
 glippy lint --generate-baseline=<path> [paths...]
 glippy lint --reporter=github [paths...]
 glippy lint --reporter=sarif [paths...]
+glippy lint --reporter=short [paths...]
 glippy check [paths...]
 glippy check --new-from=<git-ref> [paths...]
 glippy lsp [--fix-suggestions] [--fix-unsafe]
@@ -107,6 +108,11 @@ Lint and combined check support GitHub workflow annotations and SARIF 2.1.0 in
 addition to human text and Glippy's versioned JSON envelope. Formatter-only
 commands remain `text|json` because GitHub and SARIF report diagnostics rather
 than formatted source streams.
+
+Default human diagnostics render bounded physical-source frames with precise
+primary underlines, related locations, notes, help, and fix safety. Use
+`--reporter=short` for the source-free `path:line:column` form in logs. Machine
+reporters remain source-free and never include replacement text.
 
 `glippy lsp` provides full-buffer synchronization, live syntax or typed
 diagnostics, document formatting, version-bound individual fixes, and a

@@ -306,15 +306,26 @@ count both channels when they are non-empty. The reporter MUST reject
 unsupported prerequisite kind values, missing identities, digests, or messages,
 and non-normalized source-problem paths.
 
-Lint text MUST render each primary diagnostic as
-`path:line:byte-column: severity[rule-id]: message`. Related locations, notes,
-help, and named fix safety MUST use indented continuation lines. Suppression
-syntax problems and unused directives MUST remain visibly distinct. The text
-reporter MUST order source files and diagnostics canonically, validate the
-exact source identity plus every primary, related, fix-edit, directive, and
-suppression-target range, and MUST NOT emit source excerpts or replacement
-text. Physical locations follow the source model and MUST NOT be adjusted by
-`//line` directives.
+Default lint text MUST render each primary diagnostic as a
+`severity[rule-id]: message` heading followed by its physical path, line, byte
+column, bounded source frame, and primary underline. One frame MUST render at
+most six selected source lines and at most 160 source bytes from each line,
+selecting a deterministic window around the primary range and marking cropped
+prefixes or suffixes with an explicit `...`. Tabs MUST expand at a deterministic
+width of eight cells; combining marks count as zero cells and wide or full-width
+Unicode ranges as two. Terminal control and format characters in source and
+human diagnostic fields MUST be escaped rather than executed. Related
+locations, notes, help, and named fix safety MUST use visibly subordinate
+continuation lines. Suppression syntax problems and unused directives MUST
+remain visibly distinct and use the same bounded frame contract.
+
+The `short` human reporter MUST instead render each primary diagnostic as
+`path:line:byte-column: severity[rule-id]: message` with source-free indented
+continuation lines. Both human reporters MUST order source files and
+diagnostics canonically, validate the exact source identity plus every primary,
+related, fix-edit, directive, and suppression-target range, and MUST NOT emit
+fix replacement text. Physical locations follow the source model and MUST NOT
+be adjusted by `//line` directives.
 
 Typed lint text MUST render prerequisite diagnostics as
 `position: package[kind] package-id: message` when a position exists and omit
@@ -325,7 +336,9 @@ and MUST render those channels separately from rule and suppression records.
 
 Fix reporters MUST retain original-source identity for every applied or
 rejected fix and use the post-format source identity for remaining diagnostics.
-Text MUST render rejected rule, fix, reason, and original physical location.
+Default text MUST render each rejected rule, fix, reason, and original physical
+location with the same bounded original-source frame; `short` MUST retain the
+source-free location form.
 JSON MUST distinguish pending, unchanged, confirmed fixed, stale or overlapping
 conflict, failed, and possibly fixed files. A stale replacement MUST retain the
 original analysis result; a possible post-rename failure MAY retain the

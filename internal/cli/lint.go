@@ -28,7 +28,7 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const lintUsage = "glippy: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--diff] [-A|--allow <rules-or-groups>] [-W|--warn <rules-or-groups>] [-D|--deny <rules-or-groups>] [-F|--forbid <rules-or-groups>] [--only=<rules>] [--except=<rules>] [--new-from=<git-ref>] [--generate-baseline=<path>] [--reporter=text|json|github|sarif] [--config=<path>] [path...]'\n"
+const lintUsage = "glippy: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--diff] [-A|--allow <rules-or-groups>] [-W|--warn <rules-or-groups>] [-D|--deny <rules-or-groups>] [-F|--forbid <rules-or-groups>] [--only=<rules>] [--except=<rules>] [--new-from=<git-ref>] [--generate-baseline=<path>] [--reporter=text|short|json|github|sarif] [--config=<path>] [path...]'\n"
 
 type lintInvocation struct {
 	configPath string
@@ -578,7 +578,7 @@ func runLintCheck(
 			glippyreport.IntegrationInput{Files: inputs, Registry: registry},
 		)
 	}
-	output, err := glippyreport.RenderLintText(inputs)
+	output, err := renderLintText(invocation.reporter, inputs)
 	if err != nil {
 		return report(
 			stderr,
@@ -877,7 +877,8 @@ func runLintPackageCheck(
 			},
 		)
 	}
-	output, err := glippyreport.RenderPackageLintText(
+	output, err := renderPackageLintText(
+		invocation.reporter,
 		inputs,
 		result.LoadDiagnostics,
 		result.SourceProblems,
@@ -1680,7 +1681,10 @@ func runLintFix(
 			)
 		}
 		if len(previewInputs) > 0 {
-			rejectedOutput, renderErr := glippyreport.RenderLintFixText(previewInputs)
+			rejectedOutput, renderErr := renderLintFixText(
+				invocation.reporter,
+				previewInputs,
+			)
 			if renderErr != nil {
 				return reportLintFixFailure(
 					invocation,
@@ -1737,7 +1741,7 @@ func runLintFix(
 			glippyreport.IntegrationInput{Files: integrationInputs, Registry: registry},
 		)
 	}
-	output, err := glippyreport.RenderLintFixText(inputs)
+	output, err := renderLintFixText(invocation.reporter, inputs)
 	if err != nil {
 		return reportLintFixFailure(
 			invocation,

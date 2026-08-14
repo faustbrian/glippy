@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
 	"golang.org/x/tools/go/packages"
 )
@@ -165,6 +166,53 @@ func TestRenderPackageLintTextOrdersDistinctProblemChannels(t *testing.T) {
 		"/project/z.go: source: invalid source z\n"
 	if string(output) != want {
 		t.Fatalf("RenderPackageLintText() = %q, want %q", output, want)
+	}
+}
+
+func TestRenderPackageLintTextSeparatesPrerequisitesFromSourceFrames(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n"
+	file, err := source.Load("/project/source.go", []byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := analysis.Result{
+		Path: file.Path(),
+		Digest: file.Digest(),
+		Diagnostics: []rules.Diagnostic{
+			{
+				RuleID: "package-rule",
+				Severity: rules.SeverityWarn,
+				Message: "package requires review",
+				Path: file.Path(),
+				Digest: file.Digest(),
+				Range: source.Range{Start: 0, End: len("package")},
+			},
+		},
+	}
+
+	output, err := RenderPackageLintText(
+		[]LintTextInput{{File: file, Result: result}},
+		[]analysis.PackageDiagnostic{
+			{
+				PackageID: "sample",
+				Position: "/project/source.go:1:1",
+				Message: "package prerequisite",
+				Kind: packages.TypeError,
+			},
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantBoundary := "package[type] sample: package prerequisite\n\nwarn[package-rule]"
+	if !strings.Contains(string(output), wantBoundary) {
+		t.Fatalf(
+			"RenderPackageLintText() did not separate prerequisites and source frames:\n%s",
+			output,
+		)
 	}
 }
 

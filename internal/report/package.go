@@ -63,6 +63,25 @@ func RenderPackageLintText(
 	packageDiagnostics []analysis.PackageDiagnostic,
 	sourceProblems []analysis.PackageSourceProblem,
 ) ([]byte, error) {
+	return renderPackageLintText(inputs, packageDiagnostics, sourceProblems, true)
+}
+
+// RenderPackageLintShortText renders package prerequisites and source-free
+// location-oriented rule diagnostics.
+func RenderPackageLintShortText(
+	inputs []LintTextInput,
+	packageDiagnostics []analysis.PackageDiagnostic,
+	sourceProblems []analysis.PackageSourceProblem,
+) ([]byte, error) {
+	return renderPackageLintText(inputs, packageDiagnostics, sourceProblems, false)
+}
+
+func renderPackageLintText(
+	inputs []LintTextInput,
+	packageDiagnostics []analysis.PackageDiagnostic,
+	sourceProblems []analysis.PackageSourceProblem,
+	sourceFrames bool,
+) ([]byte, error) {
 	mappedPackages, err := mapPackageDiagnostics(packageDiagnostics)
 	if err != nil {
 		return nil, err
@@ -71,25 +90,38 @@ func RenderPackageLintText(
 	if err != nil {
 		return nil, err
 	}
-	lint, err := RenderLintText(inputs)
+	var lint []byte
+	if sourceFrames {
+		lint, err = RenderLintText(inputs)
+	} else {
+		lint, err = RenderLintShortText(inputs)
+	}
 	if err != nil {
 		return nil, err
 	}
 	var output strings.Builder
 	for _, diagnostic := range mappedPackages {
 		if diagnostic.Position != "" && diagnostic.Position != "-" {
-			fmt.Fprintf(&output, "%s: ", diagnostic.Position)
+			fmt.Fprintf(&output, "%s: ", safeHumanText(diagnostic.Position))
 		}
 		fmt.Fprintf(
 			&output,
 			"package[%s] %s: %s\n",
-			diagnostic.Kind,
-			diagnostic.PackageID,
-			diagnostic.Message,
+			safeHumanText(diagnostic.Kind),
+			safeHumanText(diagnostic.PackageID),
+			safeHumanText(diagnostic.Message),
 		)
 	}
 	for _, problem := range mappedSources {
-		fmt.Fprintf(&output, "%s: source: %s\n", problem.Path, problem.Message)
+		fmt.Fprintf(
+			&output,
+			"%s: source: %s\n",
+			safeHumanText(problem.Path),
+			safeHumanText(problem.Message),
+		)
+	}
+	if sourceFrames && output.Len() > 0 && len(lint) > 0 {
+		output.WriteByte('\n')
 	}
 	output.Write(lint)
 	return []byte(output.String()), nil

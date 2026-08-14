@@ -179,7 +179,7 @@ in [`editor-integration.md`](../editor-integration.md).
 
 The Phase 3 `lint` check accepts explicit files, directories, and filesystem
 package patterns ending in `...`; defaults to the current directory; and
-accepts `--reporter=text|json|github|sarif` plus an optional explicit
+accepts `--reporter=text|short|json|github|sarif` plus an optional explicit
 configuration path. It
 MUST resolve every input's project root and complete configuration before
 choosing an analysis path. When the maximum enabled tier is syntax, recursive
@@ -328,7 +328,7 @@ Stale replacement records also reject each coordinated fix with the stable
 `stale-source` reason so text consumers receive an actionable explanation.
 `check` accepts explicit files, directories, and filesystem package patterns
 ending in `...`; defaults to the current directory; and accepts
-`--reporter=text|json|github|sarif` plus an optional explicit configuration
+`--reporter=text|short|json|github|sarif` plus an optional explicit configuration
 path. It MUST
 resolve configuration and the enabled maximum analysis tier before selecting
 its input engine. Syntax-only selections use one sorted physical-file

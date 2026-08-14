@@ -1739,6 +1739,8 @@ func parseDiagnosticReporter(value string) (glippyreport.Format, bool) {
 		return reporter, true
 	}
 	switch value {
+	case string(glippyreport.Short):
+		return glippyreport.Short, true
 	case string(glippyreport.GitHub):
 		return glippyreport.GitHub, true
 	case string(glippyreport.SARIF):

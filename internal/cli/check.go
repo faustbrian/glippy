@@ -16,7 +16,7 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const checkUsage = "glippy: expected 'check [-A|--allow <rules-or-groups>] [-W|--warn <rules-or-groups>] [-D|--deny <rules-or-groups>] [-F|--forbid <rules-or-groups>] [--new-from=<git-ref>] [--reporter=text|json|github|sarif] [--config=<path>] [path...]'\n"
+const checkUsage = "glippy: expected 'check [-A|--allow <rules-or-groups>] [-W|--warn <rules-or-groups>] [-D|--deny <rules-or-groups>] [-F|--forbid <rules-or-groups>] [--new-from=<git-ref>] [--reporter=text|short|json|github|sarif] [--config=<path>] [path...]'\n"
 
 type checkInvocation struct {
 	configPath string
@@ -403,7 +403,8 @@ func runCombinedCheck(
 			fmt.Fprintf(&output, "%s: format differs\n", execution.file.Path())
 			exitCode = ExitFindings
 		}
-		lintOutput, err := glippyreport.RenderLintText(
+		lintOutput, err := renderLintText(
+			invocation.reporter,
 			[]glippyreport.LintTextInput{
 				{File: execution.file, Result: execution.analysis},
 			},
@@ -717,7 +718,8 @@ func reportCombinedPackageCheck(
 			err,
 		)
 	}
-	lintOutput, err := glippyreport.RenderPackageLintText(
+	lintOutput, err := renderPackageLintText(
+		invocation.reporter,
 		inputs,
 		result.LoadDiagnostics,
 		result.SourceProblems,

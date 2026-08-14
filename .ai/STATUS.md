@@ -1300,3 +1300,16 @@ typed selections, baseline generation, fixes, text and machine reporters, and
 shell completion consume the same resolved severities. Non-mutating fix
 preview and calibrated complexity coverage remain the next comparability
 batches.
+
+The next Clippy-comparability UX batch makes bounded physical-source frames the
+default human diagnostic form for lint and combined check. Primary ranges use
+multiline underlines, tabs expand deterministically, long lines and ranges are
+bounded with explicit omission markers, terminal control data is escaped, and
+rejected fixes retain bounded original-source frames.
+The new `--reporter=short` mode preserves the source-free
+`path:line:column` form for logs across syntax and package-aware lint, combined
+check, and fix reporting. JSON, GitHub, and SARIF remain source-free. Focused
+red-green renderer and CLI evidence, the complete test and race suites, vet,
+build, tidy-diff, non-mutating combined check, and a 100-diagnostic rendering
+benchmark pass. Additional defect rules and path-scoped policy remain open, so
+the broader Clippy-comparability goal remains active.
