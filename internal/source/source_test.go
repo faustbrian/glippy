@@ -284,6 +284,34 @@ func TestFilePositionUsesPhysicalByteLinesAndColumns(t *testing.T) {
 	}
 }
 
+func TestFileTokensInRangeReturnsOnlyIntersectingTokens(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package sample\nfunc first() { one() }\nfunc second() { two() }\n")
+	file, err := source.Load("sample.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := bytes.Index(input, []byte("func second"))
+	tokens, valid := file.TokensInRange(source.Range{Start: start, End: len(input)})
+	if !valid || len(tokens) == 0 {
+		t.Fatalf("TokensInRange() = %#v, %t", tokens, valid)
+	}
+	var joined strings.Builder
+	for _, item := range tokens {
+		joined.WriteString(item.Raw)
+	}
+	if strings.Contains(joined.String(), "first") ||
+		!strings.Contains(joined.String(), "second") ||
+		!strings.Contains(joined.String(), "two") {
+		t.Fatalf("TokensInRange() tokens = %q", joined.String())
+	}
+	if tokens, valid := file.TokensInRange(source.Range{Start: -1, End: len(input) + 1});
+		valid || tokens != nil {
+		t.Fatalf("TokensInRange(invalid) = %#v, %t", tokens, valid)
+	}
+}
+
 func TestLoadReturnsDiagnosticOnlyStateForInvalidSource(t *testing.T) {
 	t.Parallel()
 

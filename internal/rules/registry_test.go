@@ -249,6 +249,41 @@ func TestRegistryRejectsIncompleteOrInconsistentMetadata(t *testing.T) {
 			wantError: "option \"allow-comment\" default has kind \"string\"; want \"boolean\"",
 		},
 		{
+			name: "integer bounds on boolean option",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.Options[0].Minimum = int64Pointer(1)
+			},
+			wantError: "option \"allow-comment\" bounds require integer kind",
+		},
+		{
+			name: "inverted integer bounds",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.Options[0].Kind = rules.OptionInteger
+				metadata.Options[0].Default = optionValue(rules.IntegerOption(3))
+				metadata.Options[0].Minimum = int64Pointer(5)
+				metadata.Options[0].Maximum = int64Pointer(4)
+			},
+			wantError: "option \"allow-comment\" minimum 5 exceeds maximum 4",
+		},
+		{
+			name: "integer default below minimum",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.Options[0].Kind = rules.OptionInteger
+				metadata.Options[0].Default = optionValue(rules.IntegerOption(2))
+				metadata.Options[0].Minimum = int64Pointer(3)
+			},
+			wantError: "option \"allow-comment\" default 2 must be at least 3",
+		},
+		{
+			name: "integer default above maximum",
+			mutate: func(metadata *rules.Metadata) {
+				metadata.Options[0].Kind = rules.OptionInteger
+				metadata.Options[0].Default = optionValue(rules.IntegerOption(6))
+				metadata.Options[0].Maximum = int64Pointer(5)
+			},
+			wantError: "option \"allow-comment\" default 6 must be at most 5",
+		},
+		{
 			name: "empty known limitation",
 			mutate: func(metadata *rules.Metadata) {
 				metadata.KnownLimitations = []string{" "}
@@ -789,5 +824,9 @@ func validMetadata(id string) rules.Metadata {
 }
 
 func optionValue(value rules.OptionValue) *rules.OptionValue {
+	return &value
+}
+
+func int64Pointer(value int64) *int64 {
 	return &value
 }

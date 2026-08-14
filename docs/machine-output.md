@@ -83,7 +83,9 @@ project or configuration discovery:
 
 Machine tier names are `lexical`, `syntax`, `types`, `control-flow`, and
 `ssa`. Option defaults are deterministic textual values using the same typed
-metadata as configuration validation. Deprecation appears only when present;
+metadata as configuration validation. Integer options include numeric
+`minimum` and `maximum` fields when the corresponding inclusive bound is
+declared. Deprecation appears only when present;
 all collection fields are arrays rather than `null`.
 
 ## Common Envelope

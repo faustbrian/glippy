@@ -496,6 +496,15 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 					metadata.Kind,
 				)
 			}
+			if err := rules.ValidateOptionValue(metadata, value); err != nil {
+				return Config{}, semanticError(
+					path,
+					"option %q for lint rule %q %s",
+					name,
+					rule,
+					err,
+				)
+			}
 			values[name] = value
 		}
 		result.Lint.RuleOptions[rule] = rules.NewOptionSet(values)

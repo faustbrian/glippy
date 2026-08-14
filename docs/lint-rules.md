@@ -27,6 +27,7 @@ not stable release promises.
 - [duplicate-condition](#duplicate-condition)
 - [errors-as-target](#errors-as-target)
 - [errors-is-arguments](#errors-is-arguments)
+- [excessive-nesting](#excessive-nesting)
 - [http-canonical-header-key](#http-canonical-header-key)
 - [http-response-before-error](#http-response-before-error)
 - [identical-branches](#identical-branches)
@@ -78,6 +79,9 @@ not stable release promises.
 - [time-layout](#time-layout)
 - [time-since](#time-since)
 - [time-until](#time-until)
+- [too-many-lines](#too-many-lines)
+- [too-many-parameters](#too-many-parameters)
+- [too-many-results](#too-many-results)
 - [unbuffered-signal-channel](#unbuffered-signal-channel)
 - [unnecessary-conversion](#unnecessary-conversion)
 - [unnecessary-format](#unnecessary-format)
@@ -944,6 +948,54 @@ errors.Is(io.EOF, err)
 
 ```go
 errors.Is(err, io.EOF)
+```
+
+## excessive-nesting
+
+detects functions with deeply nested control flow
+
+Deeply nested branches and loops make the active conditions harder to track. This rule measures
+structural Go control-flow nesting, treats an else-if chain as one level per branch rather than
+indentation, and excludes nested function literals from their enclosing function.
+
+- Default severity: `warn`
+- Presets: `complexity`
+- Minimum Go: `1.25`
+- Analysis tier: syntax
+- Node interests: `func-decl`, `func-lit`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: not applicable
+- Categories: `complexity`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+- `maximum` (`integer`; optional, default `5`, range `1..100`): maximum permitted control-flow
+  nesting depth
+- `include-tests` (`boolean`; optional, default `false`): analyze functions declared in _test.go
+  files
+
+### Known limitations
+
+- The metric is structural and does not claim to measure cognitive complexity.
+- Closures are measured independently and do not increase their enclosing function's depth.
+
+### Example: Extract deeply nested work
+
+**Incorrect**
+
+```go
+func run() { if ready { for next() { if valid() { work() } } } }
+```
+
+**Correct**
+
+```go
+func run() { if !ready { return }; processValid() }
 ```
 
 ## http-canonical-header-key
@@ -3413,6 +3465,151 @@ deadline.Sub(time.Now())
 
 ```go
 time.Until(deadline)
+```
+
+## too-many-lines
+
+detects functions with too many logical source lines
+
+Large functions are harder to review and isolate. Glippy counts physical lines containing lexical Go
+tokens inside the function body while excluding blank lines, comment-only lines, automatically
+inserted semicolons, and the enclosing braces.
+
+- Default severity: `warn`
+- Presets: `complexity`
+- Minimum Go: `1.25`
+- Analysis tier: syntax
+- Node interests: `func-decl`, `func-lit`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: not applicable
+- Categories: `complexity`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+- `maximum` (`integer`; optional, default `100`, range `1..10000`): maximum permitted logical source
+  lines
+- `include-tests` (`boolean`; optional, default `false`): analyze functions declared in _test.go
+  files
+
+### Known limitations
+
+- A multiline literal counts as one lexical line because its interior is data rather than Go
+  structure.
+- Closures are measured independently and their bodies do not add token lines to the enclosing
+  function.
+
+### Example: Extract one coherent operation
+
+**Incorrect**
+
+```go
+func run() { stepOne(); stepTwo(); stepThree(); stepFour() }
+```
+
+**Correct**
+
+```go
+func run() { prepare(); execute() }
+```
+
+## too-many-parameters
+
+detects function signatures with too many parameters
+
+A long parameter list makes call sites difficult to read and often indicates that related inputs
+need a named value. The method receiver is not counted; each declared parameter name and each
+unnamed parameter field counts once.
+
+- Default severity: `warn`
+- Presets: `complexity`
+- Minimum Go: `1.25`
+- Analysis tier: syntax
+- Node interests: `func-type`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: not applicable
+- Categories: `complexity`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+- `maximum` (`integer`; optional, default `7`, range `1..100`): maximum permitted parameters
+- `include-tests` (`boolean`; optional, default `false`): analyze functions declared in _test.go
+  files
+
+### Known limitations
+
+- Generated files are excluded through the shared generated-file policy.
+- The rule does not infer whether replacing parameters with an options struct would improve a
+  particular API.
+
+### Example: Group related inputs
+
+**Incorrect**
+
+```go
+func send(host string, port int, user, password, path string, timeout int, retries int, secure bool)
+```
+
+**Correct**
+
+```go
+func send(target Target, credentials Credentials, policy Policy)
+```
+
+## too-many-results
+
+detects function signatures with too many results
+
+Returning many independent values makes ordering and ownership difficult to understand. Each named
+result and each unnamed result field counts once; a trailing error is counted because it remains
+part of the call contract.
+
+- Default severity: `warn`
+- Presets: `complexity`
+- Minimum Go: `1.25`
+- Analysis tier: syntax
+- Node interests: `func-type`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: not applicable
+- Categories: `complexity`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+- `maximum` (`integer`; optional, default `3`, range `1..100`): maximum permitted results
+- `include-tests` (`boolean`; optional, default `false`): analyze functions declared in _test.go
+  files
+
+### Known limitations
+
+- The rule does not infer whether a result struct would improve a particular API.
+- Named and unnamed results use the same threshold because both affect call-site arity.
+
+### Example: Return a named aggregate
+
+**Incorrect**
+
+```go
+func inspect() (string, int, bool, error)
+```
+
+**Correct**
+
+```go
+func inspect() (Inspection, error)
 ```
 
 ## unbuffered-signal-channel

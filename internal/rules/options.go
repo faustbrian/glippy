@@ -2,6 +2,7 @@ package rules
 
 import (
 	"encoding/binary"
+	"fmt"
 	"slices"
 	"sort"
 	"strconv"
@@ -50,6 +51,23 @@ func BooleanOption(value bool) OptionValue {
 // IntegerOption constructs one integer rule option value.
 func IntegerOption(value int64) OptionValue {
 	return OptionValue{kind: OptionInteger, integer: value}
+}
+
+// ValidateOptionValue checks one value against its declared kind and bounds.
+func ValidateOptionValue(metadata OptionMetadata, value OptionValue) error {
+	if value.kind != metadata.Kind {
+		return fmt.Errorf("has kind %q; want %q", value.kind, metadata.Kind)
+	}
+	if metadata.Kind != OptionInteger {
+		return nil
+	}
+	if metadata.Minimum != nil && value.integer < *metadata.Minimum {
+		return fmt.Errorf("must be at least %d", *metadata.Minimum)
+	}
+	if metadata.Maximum != nil && value.integer > *metadata.Maximum {
+		return fmt.Errorf("must be at most %d", *metadata.Maximum)
+	}
+	return nil
 }
 
 // StringOption constructs one string rule option value.
@@ -158,6 +176,14 @@ func cloneOptionMetadata(options []OptionMetadata) []OptionMetadata {
 		if option.Default != nil {
 			value := cloneOptionValue(*option.Default)
 			result[index].Default = &value
+		}
+		if option.Minimum != nil {
+			minimum := *option.Minimum
+			result[index].Minimum = &minimum
+		}
+		if option.Maximum != nil {
+			maximum := *option.Maximum
+			result[index].Maximum = &maximum
 		}
 	}
 	return result

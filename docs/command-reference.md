@@ -209,6 +209,27 @@ after it has been forbidden is an invalid invocation instead of a silent
 override. The resolved severity is shared by text, JSON, GitHub, SARIF,
 baseline generation, fix planning, and combined check.
 
+The opt-in `complexity` group currently provides `excessive-nesting`,
+`too-many-lines`, `too-many-parameters`, and `too-many-results`. Every rule has
+one bounded `maximum` integer option and excludes `_test.go` files unless its
+`include-tests` option is enabled:
+
+```toml
+[lint]
+presets = ["correctness", "complexity"]
+
+[lint.rule-options."excessive-nesting"]
+maximum = 5
+
+[lint.rule-options."too-many-lines"]
+maximum = 100
+include-tests = true
+```
+
+Complexity findings are advisory and never enabled by the default correctness
+policy. None currently offers a fix because splitting functions or changing an
+API requires design judgment.
+
 `--only=<id[,id...]>` restricts the resolved project policy to exact rule IDs.
 It temporarily re-enables a configured-off rule at its metadata default
 severity, or at warning severity when the rule is disabled by default.

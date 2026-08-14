@@ -138,6 +138,11 @@ conversions, constant formatting, and case-normalized comparisons. Five narrow
 transformations are available only through `lint --fix-suggestions` and still
 pass conflict, formatting, parse, typed-validation, and atomic-write gates.
 
+The opt-in complexity catalog measures structural nesting, logical function
+lines, parameter count, and result count with bounded per-rule thresholds.
+Test files are excluded by default, and these advisory API or decomposition
+findings never enter the correctness preset or offer automatic fixes.
+
 ## Installation
 
 No Glippy release is published yet. The historical Gox v0.1.0 release remains

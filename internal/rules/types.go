@@ -129,6 +129,8 @@ type OptionMetadata struct {
 	Kind OptionKind
 	Required bool
 	Default *OptionValue
+	Minimum *int64
+	Maximum *int64
 }
 
 // Deprecation records a rule replacement without silently changing its ID.

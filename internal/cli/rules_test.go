@@ -167,6 +167,8 @@ func TestRunExplainJSONRendersVersionedCanonicalMetadata(t *testing.T) {
 						Summary: "maximum limit",
 						Kind: rules.OptionInteger,
 						Default: ruleOptionValue(rules.IntegerOption(3)),
+						Minimum: ruleInt64Pointer(1),
+						Maximum: ruleInt64Pointer(10),
 					},
 				},
 				KnownLimitations: []string{"one limitation"},
@@ -203,6 +205,10 @@ func TestRunExplainJSONRendersVersionedCanonicalMetadata(t *testing.T) {
 			result.Rule.AnalysisTier != "control-flow" ||
 			len(result.Rule.Options) != 1 ||
 			result.Rule.Options[0].Default != "3" ||
+			result.Rule.Options[0].Minimum == nil ||
+			*result.Rule.Options[0].Minimum != 1 ||
+			result.Rule.Options[0].Maximum == nil ||
+			*result.Rule.Options[0].Maximum != 10 ||
 			!strings.HasSuffix(stdout.String(), "\n") {
 			t.Fatalf("explain JSON = %#v\n%s", result, stdout.Bytes())
 		}
@@ -210,5 +216,9 @@ func TestRunExplainJSONRendersVersionedCanonicalMetadata(t *testing.T) {
 }
 
 func ruleOptionValue(value rules.OptionValue) *rules.OptionValue {
+	return &value
+}
+
+func ruleInt64Pointer(value int64) *int64 {
 	return &value
 }

@@ -665,6 +665,13 @@ func TestParseRejectsInvalidRuleOptionsDeterministically(t *testing.T) {
 	schema := map[string][]rules.OptionMetadata{
 		"configured-rule": {
 			{Name: "enabled", Summary: "enable behavior", Kind: rules.OptionBoolean},
+			{
+				Name: "limit",
+				Summary: "bound complexity",
+				Kind: rules.OptionInteger,
+				Minimum: configInt64Pointer(1),
+				Maximum: configInt64Pointer(100),
+			},
 		},
 	}
 	tests := []struct {
@@ -687,6 +694,16 @@ func TestParseRejectsInvalidRuleOptionsDeterministically(t *testing.T) {
 			input: "version = 1\n[lint.rule-options.configured-rule]\nenabled = \"yes\"\n",
 			wantError: "option \"enabled\" for lint rule \"configured-rule\" must be boolean",
 		},
+		{
+			name: "integer below minimum",
+			input: "version = 1\n[lint.rule-options.configured-rule]\nlimit = 0\n",
+			wantError: "option \"limit\" for lint rule \"configured-rule\" must be at least 1",
+		},
+		{
+			name: "integer above maximum",
+			input: "version = 1\n[lint.rule-options.configured-rule]\nlimit = 101\n",
+			wantError: "option \"limit\" for lint rule \"configured-rule\" must be at most 100",
+		},
 	}
 	for _, test := range tests {
 		t.Run(
@@ -706,6 +723,10 @@ func TestParseRejectsInvalidRuleOptionsDeterministically(t *testing.T) {
 			},
 		)
 	}
+}
+
+func configInt64Pointer(value int64) *int64 {
+	return &value
 }
 
 func TestParseAppliesSuppressionReasonPolicy(t *testing.T) {

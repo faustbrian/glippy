@@ -54,6 +54,8 @@ type RuleOption struct {
 	Kind string `json:"kind"`
 	Required bool `json:"required"`
 	Default string `json:"default,omitempty"`
+	Minimum *int64 `json:"minimum,omitempty"`
+	Maximum *int64 `json:"maximum,omitempty"`
 }
 
 type RuleDeprecation struct {
@@ -182,6 +184,14 @@ func mapRuleMetadata(metadata rules.Metadata) RuleMetadata {
 		}
 		if option.Default != nil {
 			mapped.Default = option.Default.String()
+		}
+		if option.Minimum != nil {
+			minimum := *option.Minimum
+			mapped.Minimum = &minimum
+		}
+		if option.Maximum != nil {
+			maximum := *option.Maximum
+			mapped.Maximum = &maximum
 		}
 		result.Options[index] = mapped
 	}

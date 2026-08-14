@@ -60,6 +60,10 @@ another rule's options or mutate string-list values retained by the run.
 Required options MUST have no default and fail planning before source traversal
 when absent. Optional options MUST declare a canonical metadata default of the
 same type, and that resolved default MUST be present in the callback snapshot.
+Integer option metadata MAY declare inclusive minimum and maximum bounds.
+Registry construction MUST reject bounds on other option kinds, inverted
+bounds, and out-of-range defaults. Configuration resolution MUST reject an
+out-of-range value before any rule callback runs.
 
 Every native CFG-tier rule MUST NOT declare node interests. It MUST run once
 for every function declaration and function literal with a body in canonical

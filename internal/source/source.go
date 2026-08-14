@@ -228,6 +228,28 @@ func (f *File) Tokens() []Token {
 	return slices.Clone(f.tokens)
 }
 
+// TokensInRange returns the lexical tokens intersecting one valid physical
+// byte range without copying the complete file ledger.
+func (f *File) TokensInRange(range_ Range) ([]Token, bool) {
+	if f == nil || range_.Start < 0 || range_.End < range_.Start || range_.End > len(f.bytes) {
+		return nil, false
+	}
+	first := sort.Search(
+		len(f.tokens),
+		func(index int) bool {
+			return f.tokens[index].Range.End > range_.Start
+		},
+	)
+	last := first +
+		sort.Search(
+			len(f.tokens) - first,
+			func(index int) bool {
+				return f.tokens[first + index].Range.Start >= range_.End
+			},
+		)
+	return slices.Clone(f.tokens[first:last]), true
+}
+
 // TokenRangeAtOffset returns the exact lexical token beginning at a physical
 // byte offset without exposing the immutable token ledger.
 func (f *File) TokenRangeAtOffset(offset int) (Range, bool) {

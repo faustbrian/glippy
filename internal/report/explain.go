@@ -75,6 +75,9 @@ func RenderRuleText(registry *rules.Registry, ruleID string) ([]byte, bool) {
 		if !option.Required && option.Default != nil {
 			requirement = "optional, default " + option.Default.String()
 		}
+		if option.Minimum != nil || option.Maximum != nil {
+			requirement += ", range " + optionRange(option)
+		}
 		fmt.Fprintf(
 			&output,
 			"  %s (%s, %s): %s\n",
@@ -106,6 +109,18 @@ func RenderRuleText(registry *rules.Registry, ruleID string) ([]byte, bool) {
 		writeIndentedLines(&output, "      ", example.Correct)
 	}
 	return []byte(output.String()), true
+}
+
+func optionRange(option rules.OptionMetadata) string {
+	minimum := "unbounded"
+	maximum := "unbounded"
+	if option.Minimum != nil {
+		minimum = fmt.Sprintf("%d", *option.Minimum)
+	}
+	if option.Maximum != nil {
+		maximum = fmt.Sprintf("%d", *option.Maximum)
+	}
+	return minimum + ".." + maximum
 }
 
 func joinPresets(values []rules.Preset) string {

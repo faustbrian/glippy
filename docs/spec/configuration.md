@@ -112,6 +112,10 @@ integer, string, or string list. Unknown rule IDs, unknown fields, and values
 of the wrong type MUST fail configuration loading. A required option MUST be
 present whenever its rule is enabled and MUST NOT declare a default. Every
 optional option MUST declare one canonical metadata default of the same type.
+Integer options MAY declare inclusive minimum and maximum bounds. Bounds MUST
+apply only to integer options, the minimum MUST NOT exceed the maximum, and any
+default or configured value outside the declared range MUST fail before source
+discovery. The bounds MUST appear in human and machine rule documentation.
 Options for disabled rules MAY remain in configuration so preset changes do not
 require destructive edits. Each run MUST bind one immutable option snapshot,
 including resolved defaults, to every callback for that rule across syntax,

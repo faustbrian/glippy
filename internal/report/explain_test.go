@@ -163,13 +163,13 @@ func TestRenderRuleTextUsesCanonicalMetadata(t *testing.T) {
 				},
 				Options: []rules.OptionMetadata{
 					{
-						Name: "allow-comment",
-						Summary: "allow an explanatory comment",
-						Kind: rules.OptionBoolean,
+						Name: "maximum",
+						Summary: "maximum permitted complexity",
+						Kind: rules.OptionInteger,
 						Required: false,
-						Default: reportOptionValue(
-							rules.BooleanOption(false),
-						),
+						Default: reportOptionValue(rules.IntegerOption(15)),
+						Minimum: reportInt64Pointer(1),
+						Maximum: reportInt64Pointer(1000),
 					},
 				},
 				KnownLimitations: []string{"does not inspect generated files"},
@@ -206,7 +206,7 @@ func TestRenderRuleTextUsesCanonicalMetadata(t *testing.T) {
 		"fixes:\n" +
 		"  rewrite [safe]: replace the ignored call\n\n" +
 		"configuration:\n" +
-		"  allow-comment (boolean, optional, default false): allow an explanatory comment\n\n" +
+		"  maximum (integer, optional, default 15, range 1..1000): maximum permitted complexity\n\n" +
 		"known limitations:\n" +
 		"  - does not inspect generated files\n\n" +
 		"examples:\n" +
@@ -224,6 +224,10 @@ func TestRenderRuleTextUsesCanonicalMetadata(t *testing.T) {
 }
 
 func reportOptionValue(value rules.OptionValue) *rules.OptionValue {
+	return &value
+}
+
+func reportInt64Pointer(value int64) *int64 {
 	return &value
 }
 

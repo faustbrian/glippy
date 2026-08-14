@@ -101,6 +101,9 @@ func writeRuleMarkdown(output *strings.Builder, metadata rules.Metadata) {
 		if !option.Required && option.Default != nil {
 			requirement = "optional, default `" + option.Default.String() + "`"
 		}
+		if option.Minimum != nil || option.Maximum != nil {
+			requirement += ", range `" + optionRange(option) + "`"
+		}
 		writeWrappedMarkdown(
 			output,
 			fmt.Sprintf("- `%s` (`%s`; %s): ", option.Name, option.Kind, requirement),

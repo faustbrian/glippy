@@ -455,14 +455,8 @@ func validateOptionSet(metadata Metadata, configured OptionSet) error {
 		if !found {
 			return fmt.Errorf("rule %q has unknown option %q", metadata.ID, name)
 		}
-		if value.kind != option.Kind {
-			return fmt.Errorf(
-				"rule %q option %q has kind %q; want %q",
-				metadata.ID,
-				name,
-				value.kind,
-				option.Kind,
-			)
+		if err := ValidateOptionValue(option, value); err != nil {
+			return fmt.Errorf("rule %q option %q %w", metadata.ID, name, err)
 		}
 	}
 	return nil
@@ -633,6 +627,36 @@ func validateMetadata(metadata Metadata, packageWide bool) error {
 				option.Default.kind,
 				option.Kind,
 			)
+		}
+		if (option.Minimum != nil || option.Maximum != nil) &&
+			option.Kind != OptionInteger {
+			return fmt.Errorf(
+				"%s: option %q bounds require integer kind",
+				metadata.ID,
+				option.Name,
+			)
+		}
+		if option.Minimum != nil &&
+			option.Maximum != nil &&
+			*option.Minimum > *option.Maximum {
+			return fmt.Errorf(
+				"%s: option %q minimum %d exceeds maximum %d",
+				metadata.ID,
+				option.Name,
+				*option.Minimum,
+				*option.Maximum,
+			)
+		}
+		if option.Default != nil {
+			if err := ValidateOptionValue(option, *option.Default); err != nil {
+				return fmt.Errorf(
+					"%s: option %q default %s %w",
+					metadata.ID,
+					option.Name,
+					option.Default.String(),
+					err,
+				)
+			}
 		}
 		if _, duplicate := optionNames[option.Name]; duplicate {
 			return fmt.Errorf("%s: duplicate option name %q", metadata.ID, option.Name)
