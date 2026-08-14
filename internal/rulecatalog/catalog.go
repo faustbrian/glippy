@@ -64,6 +64,10 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewDeferBeforeErrorCheckRule(),
 		rules.NewInfiniteRecursionRule(),
 		rules.NewImpossibleInterfaceNilComparisonRule(),
+		rules.NewRegexpCompileInLoopRule(),
+		rules.NewSyncPoolNonPointerRule(),
+		rules.NewStringRangeRuneConversionRule(),
+		rules.NewInefficientIOStringWriteRule(),
 	)
 	all = append(all, rules.NewAlmostSwappedRule())
 	registry, err := rules.NewRegistry(all...)

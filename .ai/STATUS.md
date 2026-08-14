@@ -1280,3 +1280,13 @@ include exact overlay identity, active request cancellation does not end the
 session, late process-canceled results are not published, and the service never
 writes source. Shell completion and public CLI, editor, and ADR contracts cover
 the new surface. The next v0.3 batch is the first dedicated performance preset.
+
+The first dedicated v0.3 performance preset now contains four warning-level,
+types-tier rules: `regexp-compile-in-loop`, `sync-pool-non-pointer`,
+`string-range-rune-conversion`, and `inefficient-io-string-write`. Current
+Staticcheck source, focused positive and close-negative contracts, exact
+ranges, shared generated/type-error/suppression/version policies, cold package
+probes, and non-mutating Glippy plus `pkg/prompts` dogfood support admission.
+No fix is offered where scope, ownership, indexing, comments, dispatch, or error
+behavior is not generally equivalent. Complexity coverage and Clippy-style
+lint-level and fix-preview UX remain subsequent comparability work.

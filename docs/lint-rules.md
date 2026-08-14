@@ -38,6 +38,7 @@ not stable release promises.
 - [ineffective-break](#ineffective-break)
 - [ineffective-url-query-mutation](#ineffective-url-query-mutation)
 - [ineffective-value-receiver-assignment](#ineffective-value-receiver-assignment)
+- [inefficient-io-string-write](#inefficient-io-string-write)
 - [inefficient-string-comparison](#inefficient-string-comparison)
 - [infinite-recursion](#infinite-recursion)
 - [integer-division-before-conversion](#integer-division-before-conversion)
@@ -62,13 +63,16 @@ not stable release promises.
 - [redundant-closure](#redundant-closure)
 - [redundant-else](#redundant-else)
 - [redundant-nil-check](#redundant-nil-check)
+- [regexp-compile-in-loop](#regexp-compile-in-loop)
 - [resource-not-closed](#resource-not-closed)
 - [self-assignment](#self-assignment)
 - [standard-library-version](#standard-library-version)
 - [standard-method-signature](#standard-method-signature)
+- [string-range-rune-conversion](#string-range-rune-conversion)
 - [subsumed-condition](#subsumed-condition)
 - [suspicious-range](#suspicious-range)
 - [suspicious-string-conversion](#suspicious-string-conversion)
+- [sync-pool-non-pointer](#sync-pool-non-pointer)
 - [testing-goroutine-call](#testing-goroutine-call)
 - [time-duration-unit](#time-duration-unit)
 - [time-layout](#time-layout)
@@ -1476,6 +1480,52 @@ func (value counter) set() { value.count = 1 }
 func (value *counter) set() { value.count = 1 }
 ```
 
+## inefficient-io-string-write
+
+detects byte-slice conversion passed to io.WriteString
+
+Converting a byte slice to string solely for io.WriteString allocates a string representation.
+Writers already accept byte slices through Write, avoiding that conversion.
+
+- Default severity: `warn`
+- Presets: `performance`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `performance`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct calls to the standard io.WriteString function with an explicit byte-slice-to-string
+  conversion are reported.
+- No fix is offered because replacing io.WriteString with Write can change method dispatch for
+  writers implementing both io.Writer and io.StringWriter.
+
+### Example: Write the byte slice directly
+
+**Incorrect**
+
+```go
+io.WriteString(writer, string(data))
+```
+
+**Correct**
+
+```go
+writer.Write(data)
+```
+
 ## inefficient-string-comparison
 
 detects case conversion used only for string comparison
@@ -2649,6 +2699,56 @@ if values != nil && len(values) > 0 {}
 if len(values) > 0 {}
 ```
 
+## regexp-compile-in-loop
+
+detects repeated compilation of constant regular expressions in loops
+
+The regexp.Match, regexp.MatchReader, and regexp.MatchString helpers compile their pattern on every
+call. Calling them with a constant pattern in a loop repeats compilation work that can be moved
+outside the loop with regexp.Compile or regexp.MustCompile.
+
+- Default severity: `warn`
+- Presets: `performance`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `for-stmt`, `range-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `performance`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct calls to the standard regexp.Match, regexp.MatchReader, and regexp.MatchString
+  functions with compile-time constant patterns are reported.
+- Immediately invoked function literals are included; function literals stored or passed for later
+  execution are not attributed to the surrounding loop.
+- The rule offers no automatic fix because choosing declaration scope, error handling, and Compile
+  versus MustCompile requires program intent.
+
+### Example: Compile a constant pattern once
+
+**Incorrect**
+
+```go
+for _, value := range values { regexp.MatchString(`^[a-z]+$`, value) }
+```
+
+**Correct**
+
+```go
+pattern := regexp.MustCompile(`^[a-z]+$`)
+for _, value := range values { pattern.MatchString(value) }
+```
+
 ## resource-not-closed
 
 detects locally owned closers that are neither closed nor transferred
@@ -2849,6 +2949,54 @@ func (value) WriteTo(io.Writer) error
 func (value) WriteTo(io.Writer) (int64, error)
 ```
 
+## string-range-rune-conversion
+
+detects rune-slice conversions used only to range over a string
+
+Ranging directly over a string produces the same decoded rune values as ranging over []rune(string)
+without allocating a rune slice. The byte index differs from the rune-slice index, so the conversion
+is reported only when the index is absent or discarded.
+
+- Default severity: `warn`
+- Presets: `performance`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `range-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `performance`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule requires a direct conversion from a string-like value to a rune slice in a range
+  statement.
+- Ranges using a nonblank index are excluded because direct string iteration reports byte offsets
+  instead of rune indexes.
+- No automatic fix is offered until delimiter-comment ownership is proven for this transformation.
+
+### Example: Range over the string directly
+
+**Incorrect**
+
+```go
+for _, runeValue := range []rune(text) { use(runeValue) }
+```
+
+**Correct**
+
+```go
+for _, runeValue := range text { use(runeValue) }
+```
+
 ## subsumed-condition
 
 detects else-if conditions covered by an earlier branch
@@ -2991,6 +3139,55 @@ text := string(number)
 
 ```go
 text := fmt.Sprint(number)
+```
+
+## sync-pool-non-pointer
+
+detects non-pointer values stored in sync.Pool
+
+Storing a non-pointer value in sync.Pool generally allocates when the value is boxed into an
+interface. Pointer-like values avoid that allocation. Slices are intentionally reported because
+placing their multiword headers in an interface also requires allocation.
+
+- Default severity: `warn`
+- Presets: `performance`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `performance`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule reports only direct calls to (*sync.Pool).Put whose argument has a statically known
+  non-interface type.
+- Interfaces and type parameters are excluded because their dynamic representation is not known
+  locally.
+- No fix is offered because allocating, taking an address, or changing the pool's element contract
+  may alter ownership and aliasing.
+
+### Example: Pool pointers instead of values
+
+**Incorrect**
+
+```go
+pool.Put(bytes.Buffer{})
+```
+
+**Correct**
+
+```go
+pool.Put(&bytes.Buffer{})
 ```
 
 ## testing-goroutine-call
