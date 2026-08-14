@@ -13,6 +13,7 @@ not stable release promises.
 - [append-no-values](#append-no-values)
 - [atomic-update-assignment](#atomic-update-assignment)
 - [bad-bit-mask](#bad-bit-mask)
+- [buffer-string-conversion](#buffer-string-conversion)
 - [context-cancel-leak](#context-cancel-leak)
 - [context-key](#context-key)
 - [contradictory-condition](#contradictory-condition)
@@ -31,19 +32,23 @@ not stable release promises.
 - [impossible-type-assertion](#impossible-type-assertion)
 - [inconsistent-receiver-name](#inconsistent-receiver-name)
 - [ineffective-break](#ineffective-break)
+- [inefficient-string-comparison](#inefficient-string-comparison)
 - [invalid-slog-arguments](#invalid-slog-arguments)
 - [invalid-struct-tag](#invalid-struct-tag)
 - [invalid-unmarshal-target](#invalid-unmarshal-target)
 - [lock-held-across-blocking-call](#lock-held-across-blocking-call)
 - [loop-capture](#loop-capture)
 - [mixed-receiver-type](#mixed-receiver-type)
+- [needless-blank-identifier](#needless-blank-identifier)
 - [nil-context](#nil-context)
 - [nil-function-comparison](#nil-function-comparison)
 - [nilness](#nilness)
 - [oversized-shift](#oversized-shift)
 - [printf-arguments](#printf-arguments)
 - [redundant-bool-comparison](#redundant-bool-comparison)
+- [redundant-closure](#redundant-closure)
 - [redundant-else](#redundant-else)
+- [redundant-nil-check](#redundant-nil-check)
 - [resource-not-closed](#resource-not-closed)
 - [self-assignment](#self-assignment)
 - [standard-method-signature](#standard-method-signature)
@@ -53,7 +58,10 @@ not stable release promises.
 - [testing-goroutine-call](#testing-goroutine-call)
 - [time-duration-unit](#time-duration-unit)
 - [time-layout](#time-layout)
+- [time-since](#time-since)
+- [time-until](#time-until)
 - [unnecessary-conversion](#unnecessary-conversion)
+- [unnecessary-format](#unnecessary-format)
 - [unnecessary-sprintf](#unnecessary-sprintf)
 - [unreachable-code](#unreachable-code)
 - [unsafe-host-port](#unsafe-host-port)
@@ -244,6 +252,53 @@ value&0b0010 == 0b0001
 
 ```go
 value&0b0010 == 0b0010
+```
+
+## buffer-string-conversion
+
+detects conversions that duplicate bytes.Buffer accessors
+
+bytes.Buffer already exposes both String and Bytes. Converting the result of one accessor to the
+other representation adds an allocation or conversion that the matching accessor avoids.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `performance`, `style`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Map lookups using string(buffer.Bytes()) are excluded because the compiler can avoid an allocation
+  for that form.
+- Only direct bytes.Buffer receivers and the predeclared string and []byte target types are
+  reported.
+- No fix is offered because Buffer.Bytes aliases mutable storage while a converted string does not.
+
+### Example: Use the matching buffer accessor
+
+**Incorrect**
+
+```go
+text := string(buffer.Bytes())
+```
+
+**Correct**
+
+```go
+text := buffer.String()
 ```
 
 ## context-cancel-leak
@@ -1124,6 +1179,54 @@ for {
 }
 ```
 
+## inefficient-string-comparison
+
+detects case conversion used only for string comparison
+
+Converting both strings to lower or upper case allocates normalized strings solely to compare them.
+strings.EqualFold performs a Unicode-aware case-insensitive comparison directly.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `binary-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `performance`, `style`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only two matching strings.ToLower or strings.ToUpper calls with simple distinct arguments are
+  reported.
+- Mixed normalization, one-sided normalization, byte slices, and expressions with calls or indexing
+  are excluded.
+- No fix is offered because Unicode case folding is not identical to every normalization-based
+  comparison for all inputs.
+
+### Example: Compare strings with EqualFold
+
+**Incorrect**
+
+```go
+strings.ToLower(left) == strings.ToLower(right)
+```
+
+**Correct**
+
+```go
+strings.EqualFold(left, right)
+```
+
 ## invalid-slog-arguments
 
 detects malformed structured logging argument lists
@@ -1418,6 +1521,53 @@ func (v *Value) Write() {}
 ```go
 func (v *Value) Read() {}
 func (v *Value) Write() {}
+```
+
+## needless-blank-identifier
+
+detects blank identifiers that discard values implicitly discarded by Go
+
+Range clauses and channel receives can discard values without assigning them to the blank
+identifier. Removing the redundant assignment makes the operation's intent direct without changing
+which iteration or receive occurs.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `assign-stmt`, `range-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `style`, `maintainability`
+
+### Fixes
+
+- `remove-blank-identifier` (`suggestion`): remove the unnecessary blank-identifier assignment
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Map lookup blank identifiers remain visible because they can document intentional presence
+  handling.
+- Range-over-function variables are required by the language and are not reported.
+- A suggestion is withheld when removing the assignment would also remove a comment.
+
+### Example: Discard range values implicitly
+
+**Incorrect**
+
+```go
+for _, _ = range values {}
+```
+
+**Correct**
+
+```go
+for range values {}
 ```
 
 ## nil-context
@@ -1735,6 +1885,54 @@ if ready {
 }
 ```
 
+## redundant-closure
+
+detects function literals that only delegate their parameters
+
+A function literal that forwards every parameter unchanged to an identically typed function adds a
+wrapper without adding behavior. Passing the delegated function directly is clearer, while wrappers
+with captures, method values, conversions, or additional statements remain explicit.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `func-lit`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `style`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only one-statement delegation to a declared function or imported package function is reported.
+- Method values, captures, argument transformations, comments, and differing function types are
+  excluded.
+- No fix is offered because removing a wrapper can affect stack inspection and panic traces even
+  when ordinary call results are identical.
+
+### Example: Pass the delegated function directly
+
+**Incorrect**
+
+```go
+apply(func(value string) string { return strings.TrimSpace(value) })
+```
+
+**Correct**
+
+```go
+apply(strings.TrimSpace)
+```
+
 ## redundant-else
 
 detects else blocks after a branch that always terminates
@@ -1782,6 +1980,51 @@ if err != nil { return err } else { use(value) }
 ```go
 if err != nil { return err }
 use(value)
+```
+
+## redundant-nil-check
+
+detects nil checks already implied by len comparisons
+
+The built-in len function returns zero for nil slices, maps, and channels. In supported comparisons,
+a preceding nil check therefore cannot change the condition and only duplicates the length test.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `binary-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `style`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only identifier and selector expressions repeated without calls or indexing are matched.
+- Pointers to arrays and type parameters are excluded.
+- No fix is offered until comments between the two conditions have a dedicated rewrite contract.
+
+### Example: Rely on len for nil slices
+
+**Incorrect**
+
+```go
+if values != nil && len(values) > 0 {}
+```
+
+**Correct**
+
+```go
+if len(values) > 0 {}
 ```
 
 ## resource-not-closed
@@ -2216,6 +2459,94 @@ time.Parse("2006-02-01", value)
 time.Parse("2006-01-02", value)
 ```
 
+## time-since
+
+detects time.Now().Sub calls that can use time.Since
+
+time.Since expresses elapsed time directly and has the same monotonic-clock behavior as
+time.Now().Sub for a time.Time argument.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `style`, `maintainability`
+
+### Fixes
+
+- `use-time-since` (`suggestion`): replace time.Now().Sub with time.Since
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only the standard library time.Time.Sub and time.Now functions are recognized through go/types.
+- A suggestion is withheld when the rewrite would discard comments inside the original call.
+
+### Example: Use the time convenience helper
+
+**Incorrect**
+
+```go
+time.Now().Sub(start)
+```
+
+**Correct**
+
+```go
+time.Since(start)
+```
+
+## time-until
+
+detects Time.Sub(time.Now()) calls that can use time.Until
+
+time.Until expresses duration until a deadline directly and has the same monotonic-clock behavior as
+deadline.Sub(time.Now()).
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `style`, `maintainability`
+
+### Fixes
+
+- `use-time-until` (`suggestion`): replace Time.Sub(time.Now()) with time.Until
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only the standard library time.Time.Sub and time.Now functions are recognized through go/types.
+- A suggestion is withheld when the rewrite would discard comments inside the original call.
+
+### Example: Use the time convenience helper
+
+**Incorrect**
+
+```go
+deadline.Sub(time.Now())
+```
+
+**Correct**
+
+```go
+time.Until(deadline)
+```
+
 ## unnecessary-conversion
 
 detects conversions whose input already has the target type
@@ -2236,7 +2567,7 @@ type boundary redundant.
 
 ### Fixes
 
-None.
+- `remove-unnecessary-conversion` (`suggestion`): replace the identity conversion with its value
 
 ### Configuration
 
@@ -2249,8 +2580,8 @@ None.
   establish a real type boundary.
 - Compile-time constant conversions remain visible because they can document an intentional type
   boundary.
-- No fix is offered until parent precedence and comments inside conversion delimiters have a
-  dedicated source-preservation proof.
+- The suggestion retains grouping for non-primary operands and is withheld when conversion-delimiter
+  comments would be lost.
 
 ### Example: Use the value directly
 
@@ -2264,6 +2595,53 @@ text := string(value) // value is already string
 
 ```go
 text := value
+```
+
+## unnecessary-format
+
+detects formatting calls whose constant format contains no directives
+
+fmt.Sprintf adds parsing and formatting machinery only when its format contains directives. A
+compile-time constant format with no percent sign and no formatting arguments is already the
+complete result string.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `performance`, `style`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only the exact standard fmt.Sprintf call is recognized through go/types; logging, testing, error,
+  print, and scan APIs are excluded to keep pedantic noise bounded.
+- Calls with arguments, dynamic formats, and percent escapes are excluded.
+- No fix is offered because removing the final fmt use can require a separate import edit.
+
+### Example: Use a literal directly
+
+**Incorrect**
+
+```go
+text := fmt.Sprintf("ready")
+```
+
+**Correct**
+
+```go
+text := "ready"
 ```
 
 ## unnecessary-sprintf
@@ -2286,7 +2664,8 @@ formatting machinery.
 
 ### Fixes
 
-None.
+- `replace-unnecessary-sprintf` (`suggestion`): replace fmt.Sprintf with the direct string
+  representation
 
 ### Configuration
 
@@ -2296,10 +2675,10 @@ None.
 
 - Only the standard library fmt.Sprintf function with one exact compile-time %s directive and one
   argument is checked.
-- Stringer, Formatter, interface, type-parameter, rune-slice, and wider formatting cases are
-  excluded because their output contracts can differ.
-- No fix is offered until argument comments and parent-expression precedence have a dedicated
-  source-preservation proof.
+- Values implementing fmt.Stringer, fmt.Formatter, or error, along with interface, type-parameter,
+  rune-slice, and wider formatting cases, are excluded because their output contracts can differ.
+- The suggestion preserves the result's predeclared string type and is withheld when format-call
+  comments would be lost.
 
 ### Example: Use an existing string directly
 

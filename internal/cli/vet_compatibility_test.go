@@ -18,7 +18,11 @@ func TestRunExposesAndBaselinesVetCompatibilityPack(t *testing.T) {
 
 	root := t.TempDir()
 	path := filepath.Join(root, "sample.go")
-	writeCLIFixture(t, filepath.Join(root, "go.mod"), "module example.com/vetpackcli\n\ngo 1.25.0\n")
+	writeCLIFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/vetpackcli\n\ngo 1.25.0\n",
+	)
 	writeCLIFixture(t, path, vetCompatibilityCLIInput)
 	ruleIDs := []string{
 		"append-no-values",
@@ -55,7 +59,12 @@ func TestRunExposesAndBaselinesVetCompatibilityPack(t *testing.T) {
 			&stderr,
 		)
 		if exitCode != ExitFindings || stderr.Len() != 0 {
-			t.Fatalf("Run(lint vet compatibility) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+			t.Fatalf(
+				"Run(lint vet compatibility) = exit %d, stdout %q, stderr %q",
+				exitCode,
+				stdout.String(),
+				stderr.String(),
+			)
 		}
 		return bytes.Clone(stdout.Bytes())
 	}
@@ -87,16 +96,22 @@ func TestRunExposesAndBaselinesVetCompatibilityPack(t *testing.T) {
 		&stderr,
 	)
 	if exitCode != ExitSuccess ||
-		stdout.String() != "glippy lint: wrote baseline "+baselinePath+" (15 diagnostics)\n" ||
+		stdout.String() !=
+			"glippy lint: wrote baseline " + baselinePath + " (15 diagnostics)\n" ||
 		stderr.Len() != 0 {
-		t.Fatalf("Run(baseline vet compatibility) = exit %d, stdout %q, stderr %q", exitCode, stdout.String(), stderr.String())
+		t.Fatalf(
+			"Run(baseline vet compatibility) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
 	}
 	baseline, err := os.ReadFile(baselinePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, ruleID := range ruleIDs {
-		if !bytes.Contains(baseline, []byte(`"rule_id": "`+ruleID+`"`)) {
+		if !bytes.Contains(baseline, []byte(`"rule_id": "` + ruleID + `"`)) {
 			t.Fatalf("vet compatibility baseline omits %s: %q", ruleID, baseline)
 		}
 	}
@@ -113,7 +128,12 @@ func TestRunExposesAndBaselinesVetCompatibilityPack(t *testing.T) {
 		t.Fatal(err)
 	}
 	if exitCode != ExitSuccess || stderr.Len() != 0 || !bytes.Equal(baseline, secondBaseline) {
-		t.Fatalf("second vet compatibility baseline = exit %d, stderr %q, equal %t", exitCode, stderr.String(), bytes.Equal(baseline, secondBaseline))
+		t.Fatalf(
+			"second vet compatibility baseline = exit %d, stderr %q, equal %t",
+			exitCode,
+			stderr.String(),
+			bytes.Equal(baseline, secondBaseline),
+		)
 	}
 
 	for _, ruleID := range ruleIDs {
@@ -122,9 +142,15 @@ func TestRunExposesAndBaselinesVetCompatibilityPack(t *testing.T) {
 		exitCode = Run([]string{"explain", ruleID}, strings.NewReader(""), &stdout, &stderr)
 		if exitCode != ExitSuccess ||
 			stderr.Len() != 0 ||
-			!strings.HasPrefix(stdout.String(), ruleID+"\n") ||
+			!strings.HasPrefix(stdout.String(), ruleID + "\n") ||
 			!strings.Contains(stdout.String(), "analysis tier: types\n") {
-			t.Fatalf("Run(explain %s) = exit %d, stdout %q, stderr %q", ruleID, exitCode, stdout.String(), stderr.String())
+			t.Fatalf(
+				"Run(explain %s) = exit %d, stdout %q, stderr %q",
+				ruleID,
+				exitCode,
+				stdout.String(),
+				stderr.String(),
+			)
 		}
 	}
 }
@@ -133,76 +159,105 @@ func TestRunAppliesUnambiguousVetCompatibilitySuggestions(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
+		name string
 		ruleID string
-		input  string
-		want   string
+		input string
+		want string
 	}{
 		{
-			name:   "printf format insertion",
+			name: "printf format insertion",
 			ruleID: "printf-arguments",
-			input:  "package sample\n\nimport \"fmt\"\n\nfunc print(format string) {\n\tfmt.Printf(format)\n}\n",
-			want:   "package sample\n\nimport \"fmt\"\n\nfunc print(format string) {\n\tfmt.Printf(\"%s\", format)\n}\n",
+			input: "package sample\n\nimport \"fmt\"\n\nfunc print(format string) {\n\tfmt.Printf(format)\n}\n",
+			want: "package sample\n\nimport \"fmt\"\n\nfunc print(format string) {\n\tfmt.Printf(\"%s\", format)\n}\n",
 		},
 		{
-			name:   "unreachable removal",
+			name: "unreachable removal",
 			ruleID: "unreachable-code",
-			input:  "package sample\n\nimport \"fmt\"\n\nfunc run() {\n\t_ = fmt.Sprint(\"kept\")\n\treturn\n\tfmt.Println(\"unreachable\")\n}\n",
-			want:   "package sample\n\nimport \"fmt\"\n\nfunc run() {\n\t_ = fmt.Sprint(\"kept\")\n\treturn\n}\n",
+			input: "package sample\n\nimport \"fmt\"\n\nfunc run() {\n\t_ = fmt.Sprint(\"kept\")\n\treturn\n\tfmt.Println(\"unreachable\")\n}\n",
+			want: "package sample\n\nimport \"fmt\"\n\nfunc run() {\n\t_ = fmt.Sprint(\"kept\")\n\treturn\n}\n",
 		},
 		{
-			name:   "IPv6-safe address",
+			name: "IPv6-safe address",
 			ruleID: "unsafe-host-port",
-			input:  "package sample\n\nimport (\n\t\"fmt\"\n\t\"net\"\n)\n\nfunc dial(host string) {\n\t_, _ = net.Dial(\"tcp\", fmt.Sprintf(\"%s:%d\", host, 80))\n\t_ = fmt.Sprintf(\"%s\", host)\n}\n",
-			want:   "package sample\n\nimport (\n\t\"fmt\"\n\t\"net\"\n)\n\nfunc dial(host string) {\n\t_, _ = net.Dial(\"tcp\", net.JoinHostPort(host, \"80\"))\n\t_ = fmt.Sprintf(\"%s\", host)\n}\n",
+			input: "package sample\n\nimport (\n\t\"fmt\"\n\t\"net\"\n)\n\nfunc dial(host string) {\n\t_, _ = net.Dial(\"tcp\", fmt.Sprintf(\"%s:%d\", host, 80))\n\t_ = fmt.Sprintf(\"%s\", host)\n}\n",
+			want: "package sample\n\nimport (\n\t\"fmt\"\n\t\"net\"\n)\n\nfunc dial(host string) {\n\t_, _ = net.Dial(\"tcp\", net.JoinHostPort(host, \"80\"))\n\t_ = fmt.Sprintf(\"%s\", host)\n}\n",
 		},
 	}
 	for _, test := range tests {
 		test := test
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			root := t.TempDir()
-			path := filepath.Join(root, "sample.go")
-			writeCLIFixture(t, filepath.Join(root, "go.mod"), "module example.com/vetpackfix\n\ngo 1.25.0\n")
-			writeCLIFixture(t, path, test.input)
-			writeCLIFixture(
-				t,
-				filepath.Join(root, ".glippy.toml"),
-				"version = 1\n[lint]\npresets = []\n[lint.rules]\n"+test.ruleID+" = \"warn\"\n",
-			)
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				root := t.TempDir()
+				path := filepath.Join(root, "sample.go")
+				writeCLIFixture(
+					t,
+					filepath.Join(root, "go.mod"),
+					"module example.com/vetpackfix\n\ngo 1.25.0\n",
+				)
+				writeCLIFixture(t, path, test.input)
+				writeCLIFixture(
+					t,
+					filepath.Join(root, ".glippy.toml"),
+					"version = 1\n[lint]\npresets = []\n[lint.rules]\n" +
+						test.ruleID +
+						" = \"warn\"\n",
+				)
 
-			var stdout bytes.Buffer
-			var stderr bytes.Buffer
-			exitCode := Run(
-				[]string{"lint", "--fix-suggestions", path},
-				strings.NewReader(""),
-				&stdout,
-				&stderr,
-			)
-			fixed, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 || string(fixed) != test.want {
-				t.Fatalf("Run(fix %s) = exit %d, stdout %q, stderr %q, source %q", test.ruleID, exitCode, stdout.String(), stderr.String(), fixed)
-			}
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				exitCode := Run(
+					[]string{"lint", "--fix-suggestions", path},
+					strings.NewReader(""),
+					&stdout,
+					&stderr,
+				)
+				fixed, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if exitCode != ExitSuccess ||
+					stdout.Len() != 0 ||
+					stderr.Len() != 0 ||
+					string(fixed) != test.want {
+					t.Fatalf(
+						"Run(fix %s) = exit %d, stdout %q, stderr %q, source %q",
+						test.ruleID,
+						exitCode,
+						stdout.String(),
+						stderr.String(),
+						fixed,
+					)
+				}
 
-			stdout.Reset()
-			stderr.Reset()
-			exitCode = Run(
-				[]string{"lint", "--fix-suggestions", path},
-				strings.NewReader(""),
-				&stdout,
-				&stderr,
-			)
-			second, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 || !bytes.Equal(second, fixed) {
-				t.Fatalf("second fix %s = exit %d, stdout %q, stderr %q, source %q", test.ruleID, exitCode, stdout.String(), stderr.String(), second)
-			}
-		})
+				stdout.Reset()
+				stderr.Reset()
+				exitCode = Run(
+					[]string{"lint", "--fix-suggestions", path},
+					strings.NewReader(""),
+					&stdout,
+					&stderr,
+				)
+				second, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if exitCode != ExitSuccess ||
+					stdout.Len() != 0 ||
+					stderr.Len() != 0 ||
+					!bytes.Equal(second, fixed) {
+					t.Fatalf(
+						"second fix %s = exit %d, stdout %q, stderr %q, source %q",
+						test.ruleID,
+						exitCode,
+						stdout.String(),
+						stderr.String(),
+						second,
+					)
+				}
+			},
+		)
 	}
 }
 
@@ -227,7 +282,9 @@ import (
 )
 
 type payload struct {
-	Value string ` + "`json:\"value`" + `
+	Value string ` +
+	"`json:\"value`" +
+	`
 }
 
 type writer struct{}

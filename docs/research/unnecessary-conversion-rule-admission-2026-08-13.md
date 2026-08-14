@@ -33,15 +33,18 @@ Generated and ill-typed packages are excluded. The minimum source version is Go
 1.25. Exact suppressions and baselines use `unnecessary-conversion` and
 `identity-conversion`.
 
-No fix is registered until removing delimiters has dedicated precedence and
-comment-preservation evidence.
+The `remove-unnecessary-conversion` fix is suggestion-only. It retains grouping
+for non-primary operands, refuses edits that would discard comments inside the
+conversion delimiters, and passes complete-file formatting and typed validation
+before write.
 
 ## Admission Evidence
 
 The focused test first failed because the rule was absent. Fixtures cover basic,
 defined, slice, distinct-type, constant, and ordinary-call cases; exact ranges;
 metadata; generated and type-error policy; source versions; suppressions;
-deterministic baselines; JSON and explain output; and no-fix behavior.
+deterministic baselines; JSON and explain output; replacement grouping; comment
+refusal; CLI application; and repeated fixed-point behavior.
 
 Five complete-load samples on Go 1.26.5, Darwin arm64, Apple M4 Max measured a
 median of `25,578,375 ns/op`, `174,993 B/op`, and `1,152 allocs/op`. Package
@@ -54,5 +57,4 @@ Non-mutating pedantic dogfood produced no findings for this rule in Glippy or
 ## Revisit Trigger
 
 Revisit constant handling only with a source-level proof that removing an
-explicit conversion does not erase useful API intent. Add a fix only after
-precedence and interior-comment ownership are proven.
+explicit conversion does not erase useful API intent.

@@ -94,10 +94,167 @@ func TestPedanticExpressionMetadata(t *testing.T) {
 			metadata.Requirement != rules.RequireTypes ||
 			!reflect.DeepEqual(metadata.NodeInterests, interests) ||
 			metadata.RunOnGenerated ||
-			metadata.RunDespiteTypeErrors ||
-			len(metadata.Fixes) != 0 {
+			metadata.RunDespiteTypeErrors {
 			t.Fatalf("%s metadata = %#v, found = %v", id, metadata, found)
 		}
+	}
+	conversion, _ := registry.Metadata("unnecessary-conversion")
+	if !reflect.DeepEqual(
+		conversion.Fixes,
+		[]rules.FixMetadata{
+			{
+				Name: "remove-unnecessary-conversion",
+				Description: "replace the identity conversion with its value",
+				Safety: rules.FixSuggestion,
+			},
+		},
+	) {
+		t.Fatalf("unnecessary-conversion fixes = %#v", conversion.Fixes)
+	}
+	sprintf, _ := registry.Metadata("unnecessary-sprintf")
+	if !reflect.DeepEqual(
+		sprintf.Fixes,
+		[]rules.FixMetadata{
+			{
+				Name: "replace-unnecessary-sprintf",
+				Description: "replace fmt.Sprintf with the direct string representation",
+				Safety: rules.FixSuggestion,
+			},
+		},
+	) {
+		t.Fatalf("unnecessary-sprintf fixes = %#v", sprintf.Fixes)
+	}
+}
+
+func TestPedanticExpressionSuggestionsPreserveResultTypes(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "fmt"
+
+type Name string
+
+func run(text string, name Name, bytes []byte) {
+	_ = string(text)
+	_ = []byte(bytes)
+	_ = string(text + text)
+	_ = fmt.Sprintf("%s", text)
+	_ = fmt.Sprintf("%s", name)
+	_ = fmt.Sprintf("%s", bytes)
+}
+`
+	tests := []struct {
+		id string
+		fix string
+		replacements []string
+	}{
+		{
+			"unnecessary-conversion",
+			"remove-unnecessary-conversion",
+			[]string{"text", "bytes", "(text + text)"},
+		},
+		{
+			"unnecessary-sprintf",
+			"replace-unnecessary-sprintf",
+			[]string{"text", "string(name)", "string(bytes)"},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(
+			test.id,
+			func(t *testing.T) {
+				t.Parallel()
+				result := runOnePedanticRule(t, test.id, input)
+				if len(result.Files) != 1 ||
+					len(result.Files[0].Diagnostics) != len(test.replacements) {
+					t.Fatalf("%s result = %#v", test.id, result)
+				}
+				for index, diagnostic := range result.Files[0].Diagnostics {
+					if len(diagnostic.Fixes) != 1 ||
+						diagnostic.Fixes[0].Name != test.fix ||
+						diagnostic.Fixes[0].Safety != rules.FixSuggestion ||
+						len(diagnostic.Fixes[0].Edits) != 1 ||
+						diagnostic.Fixes[0].Edits[0].NewText !=
+							test.replacements[index] {
+						t.Fatalf(
+							"%s diagnostic[%d] fixes = %#v",
+							test.id,
+							index,
+							diagnostic.Fixes,
+						)
+					}
+				}
+			},
+		)
+	}
+}
+
+func TestUnnecessarySprintfPreservesCustomStringFormatting(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "fmt"
+
+type FormatterValue string
+func (FormatterValue) Format(fmt.State, rune) {}
+
+type StringValue string
+func (StringValue) String() string { return "formatted" }
+
+type ErrorValue string
+func (ErrorValue) Error() string { return "failed" }
+
+func run(plain string, formatter FormatterValue, stringer StringValue, err ErrorValue) {
+	_ = fmt.Sprintf("%s", plain)
+	_ = fmt.Sprintf("%s", formatter)
+	_ = fmt.Sprintf("%s", stringer)
+	_ = fmt.Sprintf("%s", err)
+}
+`
+	result := runOnePedanticRule(t, "unnecessary-sprintf", input)
+	assertRuleRanges(
+		t,
+		input,
+		result,
+		"unnecessary-sprintf",
+		"direct-string-representation",
+		[]string{`fmt.Sprintf("%s", plain)`},
+	)
+}
+
+func TestPedanticExpressionSuggestionsPreserveComments(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		id string
+		input string
+	}{
+		{
+			"unnecessary-conversion",
+			"package sample\nfunc run(text string) { _ = string(/* keep */ text) }\n",
+		},
+		{
+			"unnecessary-sprintf",
+			"package sample\nimport \"fmt\"\nfunc run(text string) { _ = fmt.Sprintf(\"%s\", /* keep */ text) }\n",
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(
+			test.id,
+			func(t *testing.T) {
+				t.Parallel()
+				result := runOnePedanticRule(t, test.id, test.input)
+				if len(result.Files) != 1 ||
+					len(result.Files[0].Diagnostics) != 1 ||
+					len(result.Files[0].Diagnostics[0].Fixes) != 0 {
+					t.Fatalf("%s comment result = %#v", test.id, result)
+				}
+			},
+		)
 	}
 }
 
@@ -177,6 +334,14 @@ func runOnePedanticRule(t *testing.T, ruleID, input string) analysis.PackageResu
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(result.LoadDiagnostics) != 0 || len(result.SourceProblems) != 0 {
+		t.Fatalf(
+			"%s package load = diagnostics %#v, source problems %#v",
+			ruleID,
+			result.LoadDiagnostics,
+			result.SourceProblems,
+		)
+	}
 	return result
 }
 
@@ -202,8 +367,7 @@ func assertRuleRanges(
 		if diagnostic.RuleID != ruleID ||
 			diagnostic.MessageKey != messageKey ||
 			diagnostic.Range.Start != start ||
-			diagnostic.Range.End != start + len(want[index]) ||
-			len(diagnostic.Fixes) != 0 {
+			diagnostic.Range.End != start + len(want[index]) {
 			t.Fatalf("%s diagnostic[%d] = %#v", ruleID, index, diagnostic)
 		}
 		searchFrom = start + len(want[index])

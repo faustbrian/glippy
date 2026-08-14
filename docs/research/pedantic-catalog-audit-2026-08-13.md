@@ -54,3 +54,16 @@ blank-identifier simplification and a narrow redundant-closure contract. Do not
 admit allocation, interface-breadth, signature-complexity, or documentation
 rules until real-code evidence establishes useful boundaries and option
 defaults.
+
+## 2026-08-14 Revisit Outcome
+
+The bounded second batch admits `needless-blank-identifier`, direct-delegation
+`redundant-closure`, `redundant-nil-check`, separate `time-since` and
+`time-until` identities, `buffer-string-conversion`, narrowly scoped
+`unnecessary-format`, and `inefficient-string-comparison`. Each has its own
+dated admission record and remains opt-in through `pedantic`.
+
+The initially broad no-directive formatting contract failed dogfood signal and
+was narrowed to no-argument `fmt.Sprintf` calls with constant formats. Allocation,
+interface-breadth, signature-complexity, documentation, and broad closure or
+nested-flow advice remain deferred.

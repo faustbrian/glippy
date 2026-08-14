@@ -1221,3 +1221,20 @@ replacement. One-iteration per-rule cost probes pass, and non-mutating dogfood
 finds no findings across 178 Glippy files and 57 prompts files at
 `2c9842015ab62fd7790f0d99bf54855ffa7000f2`. The seven-rule pedantic batch,
 five product-owned suggestion fixes, and final v0.2 release gates remain open.
+
+The v0.2 second pedantic batch now admits eight independently configurable
+types-tier rules: `needless-blank-identifier`, direct-delegation
+`redundant-closure`, `redundant-nil-check`, separate `time-since` and
+`time-until` identities, `buffer-string-conversion`, narrowly scoped
+`unnecessary-format`, and `inefficient-string-comparison`. Broad no-directive
+formatting initially flooded Glippy dogfood and was narrowed through a failing
+noise regression to no-argument `fmt.Sprintf` calls with constant formats.
+One-iteration package probes pass for every rule, and the final selection
+produces no diagnostics in Glippy or `pkg/prompts` at
+`f0067b6dbf812c770ec663249e9abc3f2c41d1bc`. Suggestion-only transformations
+for `unnecessary-conversion`, `unnecessary-sprintf`, blank identifiers,
+`time-since`, and `time-until` pass exact replacement, complete-file typed
+validation, formatted application, and repeated fixed-point tests. The
+requested v0.2 rule and fix direction is implemented; final v0.2 release gates
+remain open and no tag, push, publication, or release is authorized by this
+batch.

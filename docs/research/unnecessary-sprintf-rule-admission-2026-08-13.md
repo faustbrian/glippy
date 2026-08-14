@@ -26,23 +26,29 @@ oracle for Go's `fmt` package.
 The rule resolves the exact standard-library `fmt.Sprintf` object, requires one
 compile-time `%s` directive and one data argument, and admits strings, defined
 string types, and byte slices. Dynamic formats, other verbs, multiple
-directives, interfaces, type parameters, Stringer or Formatter values, and rune
-slices are excluded because their output or replacement contract can differ.
+directives, interfaces, type parameters, values implementing `fmt.Stringer`,
+`fmt.Formatter`, or `error`, and rune slices are excluded because their output
+or replacement contract can differ.
 
 Generated and ill-typed packages are excluded. The minimum source version is Go
 1.25. Exact suppressions and baselines use `unnecessary-sprintf` and
 `direct-string-representation`.
 
-No fix is registered until the replacement expression, conversion choice,
-precedence, and argument-comment ownership are all proven.
+The `replace-unnecessary-sprintf` fix is suggestion-only. It uses an argument
+directly only when the result already has predeclared string type and otherwise
+emits an explicit `string` conversion for defined strings and byte slices. It
+refuses comment-dropping edits and remains subject to complete-file typed
+validation, including refusal when removing the last fmt use would leave an
+unused import.
 
 ## Admission Evidence
 
 The focused test first failed because the rule was absent. Fixtures cover
-strings, defined strings, byte slices, interfaces, dynamic and alternate
-formats, multiple directives, exact ranges, metadata, generated and type-error
-policy, source versions, suppressions, deterministic baselines, JSON, explain,
-and no-fix behavior.
+strings, defined strings, byte slices, custom string-formatting interfaces,
+dynamic and alternate formats, multiple directives, exact ranges, metadata,
+generated and type-error policy, source versions, suppressions, deterministic
+baselines, JSON, explain, replacement selection, CLI application, typed
+validation, and repeated fixed-point behavior.
 
 Five complete-load samples on Go 1.26.5, Darwin arm64, Apple M4 Max measured a
 median of `72,726,575 ns/op`, `1,665,131 B/op`, and `13,229 allocs/op`. Import
@@ -55,5 +61,6 @@ Non-mutating pedantic dogfood produced no findings for this rule in Glippy or
 ## Revisit Trigger
 
 Broaden the recognized value set only when the direct replacement is unique and
-preserves Go formatting semantics. Add fixes per replacement class rather than
-assuming one edit fits strings, byte slices, and method-based values.
+preserves Go formatting semantics. Add import removal only through a separate
+comment-preserving import-ownership contract rather than hiding it in an
+expression edit.

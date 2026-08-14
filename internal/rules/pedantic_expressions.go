@@ -11,6 +11,11 @@ type unnecessaryConversionRule struct{}
 
 type unnecessarySprintfRule struct{}
 
+const (
+	removeUnnecessaryConversionFix = "remove-unnecessary-conversion"
+	replaceUnnecessarySprintfFix = "replace-unnecessary-sprintf"
+)
+
 // NewUnnecessaryConversionRule constructs the identity-conversion rule for
 // product registry composition.
 func NewUnnecessaryConversionRule() Rule {
@@ -34,11 +39,18 @@ func (unnecessaryConversionRule) Metadata() Metadata {
 		Requirement: RequireTypes,
 		NodeInterests: []NodeKind{NodeCallExpr},
 		Categories: []Category{CategoryStyle, CategoryMaintainability},
+		Fixes: []FixMetadata{
+			{
+				Name: removeUnnecessaryConversionFix,
+				Description: "replace the identity conversion with its value",
+				Safety: FixSuggestion,
+			},
+		},
 		KnownLimitations: []string{
 			"Only conversions whose source and target types are identical under go/types are reported.",
 			"Conversions between distinct defined types and underlying types remain visible because they establish a real type boundary.",
 			"Compile-time constant conversions remain visible because they can document an intentional type boundary.",
-			"No fix is offered until parent precedence and comments inside conversion delimiters have a dedicated source-preservation proof.",
+			"The suggestion retains grouping for non-primary operands and is withheld when conversion-delimiter comments would be lost.",
 		},
 		Examples: []Example{
 			{
@@ -73,14 +85,41 @@ func (unnecessaryConversionRule) RunTypes(ctx *TypesContext, node ast.Node) ([]F
 	if err != nil {
 		return nil, err
 	}
-	return []Finding{
+	finding := Finding{
+		MessageKey: "identity-conversion",
+		Message: "conversion is unnecessary because the value already has the target type",
+		Range: range_,
+		Help: "use the value directly",
+	}
+	argumentRange, err := ctx.Range(call.Args[0])
+	if err != nil {
+		return nil, err
+	}
+	if commentsOutsideRetainedRange(ctx.File().Comments(), range_, argumentRange) {
+		return []Finding{finding}, nil
+	}
+	replacement, found := ctx.File().Slice(argumentRange)
+	if !found {
+		return nil, fmt.Errorf(
+			"unnecessary conversion argument has an invalid source range",
+		)
+	}
+	finding.Fixes = []Fix{
 		{
-			MessageKey: "identity-conversion",
-			Message: "conversion is unnecessary because the value already has the target type",
-			Range: range_,
-			Help: "use the value directly",
+			Name: removeUnnecessaryConversionFix,
+			Safety: FixSuggestion,
+			Edits: []Edit{
+				{
+					Range: range_,
+					NewText: directExpressionReplacement(
+						call.Args[0],
+						replacement,
+					),
+				},
+			},
 		},
-	}, nil
+	}
+	return []Finding{finding}, nil
 }
 
 func (unnecessarySprintfRule) Metadata() Metadata {
@@ -94,10 +133,17 @@ func (unnecessarySprintfRule) Metadata() Metadata {
 		Requirement: RequireTypes,
 		NodeInterests: []NodeKind{NodeCallExpr},
 		Categories: []Category{CategoryStyle, CategoryPerformance},
+		Fixes: []FixMetadata{
+			{
+				Name: replaceUnnecessarySprintfFix,
+				Description: "replace fmt.Sprintf with the direct string representation",
+				Safety: FixSuggestion,
+			},
+		},
 		KnownLimitations: []string{
 			"Only the standard library fmt.Sprintf function with one exact compile-time %s directive and one argument is checked.",
-			"Stringer, Formatter, interface, type-parameter, rune-slice, and wider formatting cases are excluded because their output contracts can differ.",
-			"No fix is offered until argument comments and parent-expression precedence have a dedicated source-preservation proof.",
+			"Values implementing fmt.Stringer, fmt.Formatter, or error, along with interface, type-parameter, rune-slice, and wider formatting cases, are excluded because their output contracts can differ.",
+			"The suggestion preserves the result's predeclared string type and is withheld when format-call comments would be lost.",
 		},
 		Examples: []Example{
 			{
@@ -124,21 +170,66 @@ func (unnecessarySprintfRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Find
 	if format == nil ||
 		format.Kind() != constant.String ||
 		constant.StringVal(format) != "%s" ||
-		!directStringRepresentation(ctx.Info().TypeOf(call.Args[1])) {
+		!directStringRepresentation(ctx.Info().TypeOf(call.Args[1])) ||
+		hasCustomStringFormatting(ctx.Package(), ctx.Info().TypeOf(call.Args[1])) {
 		return nil, nil
 	}
 	range_, err := ctx.Range(call)
 	if err != nil {
 		return nil, err
 	}
-	return []Finding{
+	finding := Finding{
+		MessageKey: "direct-string-representation",
+		Message: "fmt.Sprintf is unnecessary for this string representation",
+		Range: range_,
+		Help: "use the string directly or convert the value with string",
+	}
+	argumentRange, err := ctx.Range(call.Args[1])
+	if err != nil {
+		return nil, err
+	}
+	if commentsOutsideRetainedRange(ctx.File().Comments(), range_, argumentRange) {
+		return []Finding{finding}, nil
+	}
+	argumentSource, found := ctx.File().Slice(argumentRange)
+	if !found {
+		return nil, fmt.Errorf("unnecessary sprintf argument has an invalid source range")
+	}
+	replacement := "string(" + argumentSource + ")"
+	if types.Identical(
+		types.Unalias(ctx.Info().TypeOf(call.Args[1])),
+		types.Typ[types.String],
+	) {
+		replacement = directExpressionReplacement(call.Args[1], argumentSource)
+	}
+	finding.Fixes = []Fix{
 		{
-			MessageKey: "direct-string-representation",
-			Message: "fmt.Sprintf is unnecessary for this string representation",
-			Range: range_,
-			Help: "use the string directly or convert the value with string",
+			Name: replaceUnnecessarySprintfFix,
+			Safety: FixSuggestion,
+			Edits: []Edit{{Range: range_, NewText: replacement}},
 		},
-	}, nil
+	}
+	return []Finding{finding}, nil
+}
+
+func directExpressionReplacement(expression ast.Expr, text string) string {
+	switch ast.Unparen(expression).(type) {
+	case *ast.Ident,
+		*ast.BasicLit,
+		*ast.FuncLit,
+		*ast.CompositeLit,
+		*ast.SelectorExpr,
+		*ast.IndexExpr,
+		*ast.IndexListExpr,
+		*ast.SliceExpr,
+		*ast.TypeAssertExpr,
+		*ast.CallExpr,
+		*ast.StarExpr,
+		*ast.UnaryExpr:
+		return text
+	default:
+		return "(" + text + ")"
+	}
 }
 
 func isStandardFunction(info *types.Info, expression ast.Expr, packagePath, name string) bool {
@@ -179,4 +270,38 @@ func directStringRepresentation(type_ types.Type) bool {
 	}
 	element, _ := types.Unalias(slice.Elem()).Underlying().(*types.Basic)
 	return element != nil && element.Kind() == types.Uint8
+}
+
+func hasCustomStringFormatting(package_ *types.Package, type_ types.Type) bool {
+	if package_ == nil || type_ == nil {
+		return true
+	}
+	if errorType, ok := types.Universe.Lookup("error").Type().Underlying().(*types.Interface);
+		ok && types.Implements(type_, errorType) {
+		return true
+	}
+	fmtPackage := package_
+	if package_.Path() != "fmt" {
+		fmtPackage = nil
+		for _, imported := range package_.Imports() {
+			if imported.Path() == "fmt" {
+				fmtPackage = imported
+				break
+			}
+		}
+	}
+	if fmtPackage == nil {
+		return true
+	}
+	for _, name := range []string{"Formatter", "Stringer"} {
+		object := fmtPackage.Scope().Lookup(name)
+		if object == nil {
+			return true
+		}
+		interface_, ok := types.Unalias(object.Type()).Underlying().(*types.Interface)
+		if !ok || types.Implements(type_, interface_) {
+			return true
+		}
+	}
+	return false
 }

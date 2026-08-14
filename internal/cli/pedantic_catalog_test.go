@@ -27,7 +27,12 @@ func TestRunExposesAndBaselinesPedanticCatalog(t *testing.T) {
 	}
 	input := `package sample
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+	"strings"
+	"time"
+)
 
 type Named struct{}
 
@@ -42,9 +47,21 @@ func (f *Form) Second() {}
 func (f Form) Third() {}
 
 func run(text string) string {
+	values := []string{text}
+	other := "value"
+	var buffer bytes.Buffer
 	_ = string(text)
 	_ = fmt.Sprintf("%s", text)
 	if text == "" { return "" } else { return text }
+	for _, _ = range values {}
+	_ = func(value string) string { return strings.TrimSpace(value) }
+	if values != nil && len(values) > 0 {}
+	_ = time.Now().Sub(time.Time{})
+	_ = time.Time{}.Sub(time.Now())
+	_ = string(buffer.Bytes())
+	_ = fmt.Sprintf("literal")
+	_ = strings.ToLower(text) == strings.ToLower(other)
+	return text
 }
 `
 	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
@@ -65,6 +82,14 @@ func run(text string) string {
 		"unnecessary-conversion",
 		"unnecessary-sprintf",
 		"redundant-else",
+		"needless-blank-identifier",
+		"redundant-closure",
+		"redundant-nil-check",
+		"time-since",
+		"time-until",
+		"buffer-string-conversion",
+		"unnecessary-format",
+		"inefficient-string-comparison",
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -104,7 +129,7 @@ func run(text string) string {
 	)
 	if exitCode != ExitSuccess ||
 		stdout.String() !=
-			"glippy lint: wrote baseline " + baselinePath + " (5 diagnostics)\n" ||
+			"glippy lint: wrote baseline " + baselinePath + " (13 diagnostics)\n" ||
 		stderr.Len() != 0 {
 		t.Fatalf(
 			"Run(baseline pedantic catalog) = exit %d, stdout %q, stderr %q",

@@ -85,6 +85,12 @@ policy through a [deterministic lint baseline](docs/baselines.md). See the
 [command reference](docs/command-reference.md) for
 inputs, reporters, exit categories, and write behavior.
 
+The v0.2 pedantic catalog includes bounded Go-native simplifications for blank
+identifiers, direct closures, nil-and-length checks, time helpers, buffer
+conversions, constant formatting, and case-normalized comparisons. Five narrow
+transformations are available only through `lint --fix-suggestions` and still
+pass conflict, formatting, parse, typed-validation, and atomic-write gates.
+
 ## Installation
 
 No Glippy release is published yet. The historical Gox v0.1.0 release remains

@@ -29,6 +29,7 @@ func NewRegistry() (*rules.Registry, error) {
 	all = append(
 		all,
 		rules.NewBadBitMaskRule(),
+		rules.NewBufferStringConversionRule(),
 		rules.NewContextCancelLeakRule(),
 		rules.NewDeferInLoopRule(),
 		rules.NewDiscardedErrorRule(),
@@ -38,14 +39,21 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewLockHeldAcrossBlockingCallRule(),
 		rules.NewLoopCaptureRule(),
 		rules.NewMixedReceiverTypeRule(),
+		rules.NewNeedlessBlankIdentifierRule(),
 		rules.NewNilContextRule(),
+		rules.NewRedundantClosureRule(),
 		rules.NewResourceNotClosedRule(),
 		rules.NewRedundantElseRule(),
+		rules.NewRedundantNilCheckRule(),
 		rules.NewSubsumedConditionRule(),
 		rules.NewSuspiciousRangeRule(),
 		rules.NewTimeDurationUnitRule(),
+		rules.NewTimeSinceRule(),
+		rules.NewTimeUntilRule(),
 		rules.NewUnnecessaryConversionRule(),
+		rules.NewUnnecessaryFormatRule(),
 		rules.NewUnnecessarySprintfRule(),
+		rules.NewInefficientStringComparisonRule(),
 	)
 	all = append(all, rules.NewAlmostSwappedRule())
 	registry, err := rules.NewRegistry(all...)
