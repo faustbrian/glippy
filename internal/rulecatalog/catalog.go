@@ -54,6 +54,16 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewUnnecessaryFormatRule(),
 		rules.NewUnnecessarySprintfRule(),
 		rules.NewInefficientStringComparisonRule(),
+		rules.NewIgnoredAppendResultRule(),
+		rules.NewNilMapWriteRule(),
+		rules.NewIneffectiveValueReceiverAssignmentRule(),
+		rules.NewNaNComparisonRule(),
+		rules.NewIntegerDivisionBeforeConversionRule(),
+		rules.NewIneffectiveURLQueryMutationRule(),
+		rules.NewDeferredLockRule(),
+		rules.NewDeferBeforeErrorCheckRule(),
+		rules.NewInfiniteRecursionRule(),
+		rules.NewImpossibleInterfaceNilComparisonRule(),
 	)
 	all = append(all, rules.NewAlmostSwappedRule())
 	registry, err := rules.NewRegistry(all...)

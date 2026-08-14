@@ -18,8 +18,10 @@ not stable release promises.
 - [context-key](#context-key)
 - [contradictory-condition](#contradictory-condition)
 - [copied-lock](#copied-lock)
+- [defer-before-error-check](#defer-before-error-check)
 - [defer-in-infinite-loop](#defer-in-infinite-loop)
 - [defer-in-loop](#defer-in-loop)
+- [deferred-lock](#deferred-lock)
 - [deferred-time-since](#deferred-time-since)
 - [discarded-error](#discarded-error)
 - [duplicate-condition](#duplicate-condition)
@@ -28,11 +30,17 @@ not stable release promises.
 - [http-canonical-header-key](#http-canonical-header-key)
 - [http-response-before-error](#http-response-before-error)
 - [identical-branches](#identical-branches)
+- [ignored-append-result](#ignored-append-result)
 - [impossible-comparison](#impossible-comparison)
+- [impossible-interface-nil-comparison](#impossible-interface-nil-comparison)
 - [impossible-type-assertion](#impossible-type-assertion)
 - [inconsistent-receiver-name](#inconsistent-receiver-name)
 - [ineffective-break](#ineffective-break)
+- [ineffective-url-query-mutation](#ineffective-url-query-mutation)
+- [ineffective-value-receiver-assignment](#ineffective-value-receiver-assignment)
 - [inefficient-string-comparison](#inefficient-string-comparison)
+- [infinite-recursion](#infinite-recursion)
+- [integer-division-before-conversion](#integer-division-before-conversion)
 - [invalid-build-constraint](#invalid-build-constraint)
 - [invalid-directive](#invalid-directive)
 - [invalid-slog-arguments](#invalid-slog-arguments)
@@ -42,9 +50,11 @@ not stable release promises.
 - [lock-held-across-blocking-call](#lock-held-across-blocking-call)
 - [loop-capture](#loop-capture)
 - [mixed-receiver-type](#mixed-receiver-type)
+- [nan-comparison](#nan-comparison)
 - [needless-blank-identifier](#needless-blank-identifier)
 - [nil-context](#nil-context)
 - [nil-function-comparison](#nil-function-comparison)
+- [nil-map-write](#nil-map-write)
 - [nilness](#nilness)
 - [oversized-shift](#oversized-shift)
 - [printf-arguments](#printf-arguments)
@@ -499,6 +509,55 @@ func clone(value *state) state { return *value }
 func share(value *state) *state { return value }
 ```
 
+## defer-before-error-check
+
+detects cleanup deferred before acquisition errors are checked
+
+Resource acquisition commonly returns a resource and an error. Deferring a method on that resource
+before checking the paired error can dereference an invalid resource and hide the original failure.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `block-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only a direct acquisition assignment, deferred Close call, and later err != nil comparison in the
+  same block are reported.
+- Generated files and packages with type errors are excluded.
+
+### Example: Preserve the intended behavior
+
+**Incorrect**
+
+```go
+resource, err := acquire()
+defer resource.Close()
+if err != nil { return err }
+```
+
+**Correct**
+
+```go
+resource, err := acquire()
+if err != nil { return err }
+defer resource.Close()
+```
+
 ## defer-in-infinite-loop
 
 detects defers that cannot run inside infinite loops
@@ -597,6 +656,52 @@ for _, path := range paths { file := open(path); defer file.Close() }
 
 ```go
 for _, path := range paths { process(path) }
+```
+
+## deferred-lock
+
+detects Lock calls deferred where Unlock is likely intended
+
+Deferring Mutex.Lock or RWMutex.Lock delays lock acquisition until the function returns and then
+returns while holding the lock. This is almost always a transposition of an immediate Lock followed
+by a deferred Unlock.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `defer-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule reports only the directly proven syntax and type pattern documented above.
+- Generated files and packages with type errors are excluded.
+
+### Example: Preserve the intended behavior
+
+**Incorrect**
+
+```go
+defer lock.Lock()
+```
+
+**Correct**
+
+```go
+lock.Lock()
+defer lock.Unlock()
 ```
 
 ## deferred-time-since
@@ -984,6 +1089,52 @@ if ready { run() } else { run() }
 if ready { run() } else { wait() }
 ```
 
+## ignored-append-result
+
+detects append results that are discarded
+
+append may allocate a new backing array and always returns the slice header that owns the updated
+length. Discarding that result leaves the caller's slice length unchanged and may lose the appended
+values entirely.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `assign-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only an explicit blank-identifier assignment is reported; a bare append call is already rejected
+  by the Go type checker as an unused value.
+- Generated files and packages with type errors are excluded.
+
+### Example: Preserve the intended behavior
+
+**Incorrect**
+
+```go
+_ = append(items, value)
+```
+
+**Correct**
+
+```go
+items = append(items, value)
+```
+
 ## impossible-comparison
 
 detects comparisons outside an integer type's value range
@@ -1029,6 +1180,52 @@ value < 0
 
 ```go
 value == 0
+```
+
+## impossible-interface-nil-comparison
+
+detects nil comparisons against interfaces holding concrete values
+
+Converting a concrete value to an interface produces a non-nil interface because its dynamic type is
+present, even when the concrete value is a typed nil pointer, map, slice, function, or channel.
+Comparing that conversion to nil therefore has a constant result.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `binary-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Direct conversions are reported; interface-valued operands and type parameters are excluded
+  because their dynamic value may be nil.
+- Generated files and packages with type errors are excluded.
+
+### Example: Preserve the intended behavior
+
+**Incorrect**
+
+```go
+any(42) == nil
+```
+
+**Correct**
+
+```go
+value == nil
 ```
 
 ## impossible-type-assertion
@@ -1184,6 +1381,101 @@ for {
 }
 ```
 
+## ineffective-url-query-mutation
+
+detects mutations of temporary URL query values
+
+URL.Query returns a newly parsed url.Values map. Mutating that temporary map does not update
+URL.RawQuery, so the request URL remains unchanged unless the encoded values are assigned back.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `expr-stmt`, `assign-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Direct Set, Add, Del, delete, clear, and index assignments on a temporary URL.Query result are
+  reported.
+- Mutations routed through helper functions or aliases require value-flow analysis and are excluded.
+- Generated files and packages with type errors are excluded.
+
+### Example: Preserve the intended behavior
+
+**Incorrect**
+
+```go
+request.URL.Query().Set("page", "2")
+```
+
+**Correct**
+
+```go
+query := request.URL.Query()
+query.Set("page", "2")
+request.URL.RawQuery = query.Encode()
+```
+
+## ineffective-value-receiver-assignment
+
+detects field assignments that are lost on value receivers
+
+A method with a value receiver operates on a copy. Assigning one of that receiver's fields cannot
+update the caller's value and is commonly an unintended pointer-receiver omission.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `func-decl`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct, non-promoted receiver fields in result-less methods are considered.
+- A mutation is excluded when the receiver is referenced later, captured by a function literal, or
+  has its address taken, because the copied value may still be intentionally observed within the
+  method.
+- Generated files and packages with type errors are excluded.
+
+### Example: Preserve the intended behavior
+
+**Incorrect**
+
+```go
+func (value counter) set() { value.count = 1 }
+```
+
+**Correct**
+
+```go
+func (value *counter) set() { value.count = 1 }
+```
+
 ## inefficient-string-comparison
 
 detects case conversion used only for string comparison
@@ -1230,6 +1522,96 @@ strings.ToLower(left) == strings.ToLower(right)
 
 ```go
 strings.EqualFold(left, right)
+```
+
+## infinite-recursion
+
+detects functions whose only statement directly calls themselves
+
+A function whose complete body directly returns or invokes the same function has no terminating
+path. Every invocation recurses until stack exhaustion without producing a result.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `func-decl`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule reports only the directly proven syntax and type pattern documented above.
+- Generated files and packages with type errors are excluded.
+
+### Example: Preserve the intended behavior
+
+**Incorrect**
+
+```go
+func recurse(value int) int { return recurse(value) }
+```
+
+**Correct**
+
+```go
+func recurse(value int) int { if value == 0 { return 0 }; return recurse(value - 1) }
+```
+
+## integer-division-before-conversion
+
+detects integer division converted to floating point afterward
+
+Integer division truncates before its result is converted to a floating-point type. When a
+fractional result is intended, at least one operand must be converted before the division.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Exact constant integer divisions are excluded because conversion cannot recover a missing
+  fraction.
+- Nonconstant integer ratios deliberately converted after truncation require suppression.
+- Generated files and packages with type errors are excluded.
+
+### Example: Preserve the intended behavior
+
+**Incorrect**
+
+```go
+float64(total / count)
+```
+
+**Correct**
+
+```go
+float64(total) / float64(count)
 ```
 
 ## invalid-build-constraint
@@ -1672,6 +2054,50 @@ func (v *Value) Read() {}
 func (v *Value) Write() {}
 ```
 
+## nan-comparison
+
+detects equality comparisons involving NaN
+
+IEEE floating-point NaN is unequal to every value, including itself. Comparing against math.NaN()
+with == or != therefore produces a constant result instead of testing whether a value is NaN.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `binary-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule reports only the directly proven syntax and type pattern documented above.
+- Generated files and packages with type errors are excluded.
+
+### Example: Preserve the intended behavior
+
+**Incorrect**
+
+```go
+value == math.NaN()
+```
+
+**Correct**
+
+```go
+math.IsNaN(value)
+```
+
 ## needless-blank-identifier
 
 detects blank identifiers that discard values implicitly discarded by Go
@@ -1812,6 +2238,53 @@ if lookup == nil {}
 
 ```go
 if lookup() == nil {}
+```
+
+## nil-map-write
+
+detects writes to maps proven to remain nil
+
+A declared map has a nil value until it is initialized. Assigning an entry through that nil map
+panics at runtime. This rule follows local straight-line declarations and assignments and reports
+only writes whose map is still proven nil.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule reports only the directly proven syntax and type pattern documented above.
+- Generated files and packages with type errors are excluded.
+
+### Example: Preserve the intended behavior
+
+**Incorrect**
+
+```go
+var entries map[string]int
+entries["key"] = 1
+```
+
+**Correct**
+
+```go
+entries := make(map[string]int)
+entries["key"] = 1
 ```
 
 ## nilness
