@@ -143,6 +143,12 @@ lines, parameter count, and result count with bounded per-rule thresholds.
 Test files are excluded by default, and these advisory API or decomposition
 findings never enter the correctness preset or offer automatic fixes.
 
+The v0.3 suspicious catalog also checks database row iteration through the
+shared control-flow tier. `unchecked-rows-error` requires every normally
+returning path after a direct `database/sql.Rows.Next` loop to observe the
+matching `Rows.Err` result; discarded results and checks against a reassigned
+rows variable do not satisfy the contract.
+
 ## Installation
 
 No Glippy release is published yet. The historical Gox v0.1.0 release remains

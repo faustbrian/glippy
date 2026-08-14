@@ -83,6 +83,7 @@ not stable release promises.
 - [too-many-parameters](#too-many-parameters)
 - [too-many-results](#too-many-results)
 - [unbuffered-signal-channel](#unbuffered-signal-channel)
+- [unchecked-rows-error](#unchecked-rows-error)
 - [unnecessary-conversion](#unnecessary-conversion)
 - [unnecessary-format](#unnecessary-format)
 - [unnecessary-sprintf](#unnecessary-sprintf)
@@ -3658,6 +3659,62 @@ signal.Notify(signals, os.Interrupt)
 ```go
 signals := make(chan os.Signal, 1)
 signal.Notify(signals, os.Interrupt)
+```
+
+## unchecked-rows-error
+
+detects database row iteration without a checked terminal error
+
+database/sql.Rows.Next returns false both when iteration is complete and when iteration stops
+because of an error. Code that returns normally after the loop must observe Rows.Err or it can
+silently accept a partial result set. This rule follows the shared control-flow graph from each
+direct Rows.Next loop and reports when any normally returning path can bypass observation of the
+matching Rows.Err result.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The initial contract recognizes direct identifier-backed database/sql.Rows.Next and Rows.Err
+  calls; aliases stored in fields, containers, or other variables are not tracked.
+- A direct assignment to the rows variable invalidates later checks against a replacement value;
+  writes through range targets and indirect aliases are not modeled.
+- Passing Rows.Err to another call counts as observing the result; the rule does not inspect the
+  callee's behavior.
+- The shared CFG recognizes predeclared panic as non-returning; imported and project-local
+  termination helpers are treated as returning.
+- Generated files and packages with type errors are excluded.
+
+### Example: Check the terminal iteration error
+
+**Incorrect**
+
+```go
+for rows.Next() { scan(rows) }
+return nil
+```
+
+**Correct**
+
+```go
+for rows.Next() { scan(rows) }
+return rows.Err()
 ```
 
 ## unnecessary-conversion
