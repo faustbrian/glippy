@@ -1258,3 +1258,13 @@ schema-version-1 contract, and all three supported completion shells cover the
 new commands, flags, values, and rule IDs. GitHub/SARIF reporters, editor
 diagnostics and code actions, and the next pedantic/performance catalog remain
 subsequent v0.3 batches.
+
+GitHub workflow-command and SARIF 2.1.0 reporters are now implemented for lint
+and combined check across syntax, typed/CFG/SSA, changed-code, fix, invalid
+invocation, and failure paths. Both consume the same deterministic filtered
+diagnostics as text and JSON, omit source and replacement text, and retain
+existing exit categories. GitHub annotations use escaped absolute paths and
+physical byte locations; SARIF uses absolute file URIs, canonical rule
+metadata, and invocation notifications for tool failures. Formatter-only modes
+remain text/JSON. Editor diagnostics and code actions and the next
+pedantic/performance catalog remain subsequent v0.3 batches.

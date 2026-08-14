@@ -117,6 +117,8 @@ standard output contains formatted source or a unified diff.
 glippy lint .
 glippy lint ./...
 glippy lint --reporter=json ./...
+glippy lint --reporter=github ./...
+glippy lint --reporter=sarif ./...
 ```
 
 Ordinary lint is non-writing. Fix-class flags may write source, while
@@ -147,9 +149,11 @@ Accepted edits are reparsed, formatted, reanalyzed, and validated before one
 file is replaced. Fix transactions are single-file and do not claim multi-file
 atomicity.
 
-Lint accepts `--config=<path>` and `--reporter=text|json`. Text is the default.
-Machine output is schema version 1 and omits source snippets and replacement
-text. See the [machine output reference](machine-output.md) for field, range,
+Lint accepts `--config=<path>` and
+`--reporter=text|json|github|sarif`. Text is the default. JSON uses Glippy's
+schema-version-1 envelope; GitHub emits workflow-command annotations; SARIF
+emits SARIF 2.1.0. Machine reporters omit source snippets and replacement text.
+See the [machine output reference](machine-output.md) for field, range,
 completeness, ordering, and fix-provenance semantics.
 
 `--only=<id[,id...]>` restricts the resolved project policy to exact rule IDs.
@@ -162,7 +166,7 @@ ordinary diagnostics, baselines, and every enabled fix class.
 
 `--generate-baseline=<path>` writes a strict source-free JSON adoption
 baseline relative to one project root. It analyzes visible diagnostics before
-baseline application and cannot be combined with fix flags or the JSON
+baseline application and cannot be combined with fix flags or a non-text
 reporter. See the [lint baseline reference](baselines.md).
 
 ### Changed-code adoption
@@ -189,16 +193,19 @@ filter command. The selected paths must belong to the resolved repository.
 ```sh
 glippy check .
 glippy check --reporter=json ./...
+glippy check --reporter=github ./...
+glippy check --reporter=sarif ./...
 ```
 
 `check` is the non-mutating CI entry point. It compares canonical formatting
 and runs every enabled lint tier over the same immutable source identity. Exit
 code 1 means formatting differences or lint findings; tool and source failures
 use distinct nonzero categories. Text output is buffered until the invocation
-has a complete result, while JSON reports completeness explicitly.
+has a complete result, while machine reporters preserve their documented
+completion or failure signal.
 
-`check` accepts `--config=<path>` and `--reporter=text|json` and defaults to the
-current directory.
+`check` accepts `--config=<path>` and
+`--reporter=text|json|github|sarif` and defaults to the current directory.
 
 With `--new-from`, formatting differences are actionable only when the full
 formatter transformation is owned by changed lines. A difference touching an

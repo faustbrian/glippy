@@ -19,6 +19,38 @@ unified diff. Consumers must use the schema version and symbolic outcome
 category instead of parsing human output or inferring meaning from an exit code
 alone.
 
+Lint and combined check additionally accept CI-native reporters:
+
+```sh
+glippy lint --reporter=github ./...
+glippy check --reporter=sarif ./...
+```
+
+## GitHub Workflow Annotations
+
+`--reporter=github` writes one GitHub workflow command per formatting finding,
+lint diagnostic, suppression or baseline problem, package/source problem, or
+tool failure. Clean runs are silent. Properties and messages use GitHub's
+required percent escaping. File properties are normalized absolute paths;
+locations are physical 1-based lines and UTF-8 byte columns. End positions are
+the physical position of the diagnostic's exclusive byte end.
+
+## SARIF 2.1.0
+
+`--reporter=sarif` always writes one deterministic SARIF 2.1.0 log using
+`https://json.schemastore.org/sarif-2.1.0.json`. Rule descriptors derive from
+the canonical compiled registry where available. Artifact locations are
+absolute `file:` URIs and regions use physical 1-based lines and UTF-8 byte
+columns. Tool failures set `executionSuccessful` to `false` and appear only as
+tool-execution notifications.
+
+Both integration reporters consume the same diagnostics after suppressions,
+baselines, and `--new-from` filtering. Pre-existing formatting differences are
+omitted. Neither reporter includes source snippets or fix replacement text.
+Ordering is stable across repeated runs. Their process exit codes retain the
+same categories documented below; unlike Glippy JSON, these formats do not
+embed Glippy's numeric outcome category.
+
 ## Rule Explanation
 
 `glippy explain <rule> --json` returns canonical compiled metadata without

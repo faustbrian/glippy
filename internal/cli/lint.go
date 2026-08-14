@@ -26,7 +26,7 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const lintUsage = "glippy: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--only=<rules>] [--except=<rules>] [--new-from=<git-ref>] [--generate-baseline=<path>] [--reporter=text|json] [--config=<path>] [path...]'\n"
+const lintUsage = "glippy: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--only=<rules>] [--except=<rules>] [--new-from=<git-ref>] [--generate-baseline=<path>] [--reporter=text|json|github|sarif] [--config=<path>] [path...]'\n"
 
 type lintInvocation struct {
 	configPath string
@@ -192,7 +192,7 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 				return lintInvocation{}, false
 			}
 		case strings.HasPrefix(argument, "--reporter=") && !reporterSet:
-			reporter, valid := parseReporter(
+			reporter, valid := parseDiagnosticReporter(
 				strings.TrimPrefix(argument, "--reporter="),
 			)
 			if !valid {
@@ -205,7 +205,7 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 			index + 1 < len(arguments) &&
 			!strings.HasPrefix(arguments[index + 1], "--"):
 			index++
-			reporter, valid := parseReporter(arguments[index])
+			reporter, valid := parseDiagnosticReporter(arguments[index])
 			if !valid {
 				return lintInvocation{}, false
 			}
@@ -342,21 +342,6 @@ func filterChangedPackageResult(scope *changed.Scope, result *analysis.PackageRe
 	return nil
 }
 
-func requestsLintJSONReporter(arguments []string) bool {
-	if len(arguments) == 0 || arguments[0] != "lint" {
-		return false
-	}
-	for index, argument := range arguments {
-		if argument == "--reporter=json" ||
-			(argument == "--reporter" &&
-				index + 1 < len(arguments) &&
-				arguments[index + 1] == "json") {
-			return true
-		}
-	}
-	return false
-}
-
 func runLintCheck(
 	ctx context.Context,
 	invocation lintInvocation,
@@ -430,7 +415,7 @@ func runLintCheck(
 				stdout,
 				stderr,
 				ExitCanceled,
-				results,
+				inputs,
 				err,
 			)
 		}
@@ -441,7 +426,7 @@ func runLintCheck(
 				stdout,
 				stderr,
 				exitCodeForError(ExitFilesystemError, err),
-				results,
+				inputs,
 				fmt.Errorf("read %q: %w", task.file.Path, err),
 			)
 		}
@@ -452,7 +437,7 @@ func runLintCheck(
 				stdout,
 				stderr,
 				ExitSourceError,
-				results,
+				inputs,
 				err,
 			)
 		}
@@ -463,7 +448,7 @@ func runLintCheck(
 				stdout,
 				stderr,
 				exitCodeForError(ExitInternalError, err),
-				results,
+				inputs,
 				err,
 			)
 		}
@@ -476,7 +461,7 @@ func runLintCheck(
 			stdout,
 			stderr,
 			lintBaselineErrorExitCode(err),
-			results,
+			inputs,
 			err,
 		)
 	}
@@ -488,18 +473,28 @@ func runLintCheck(
 				stdout,
 				stderr,
 				ExitInvalidInvocation,
-				results,
+				inputs,
 				err,
 			)
 		}
 		inputs[index].Result = results[index]
 	}
 	if err := ctx.Err(); err != nil {
-		return reportLintFailure(invocation, stdout, stderr, ExitCanceled, results, err)
+		return reportLintFailure(invocation, stdout, stderr, ExitCanceled, inputs, err)
 	}
 	exitCode = lintResultExitCode(results)
 	if invocation.reporter == glippyreport.JSON {
 		return reportLintJSON(stdout, stderr, "check", exitCode, true, results, nil)
+	}
+	if isIntegrationReporter(invocation.reporter) {
+		return reportIntegrationOutput(
+			"lint",
+			invocation.reporter,
+			stdout,
+			stderr,
+			exitCode,
+			glippyreport.IntegrationInput{Files: inputs, Registry: registry},
+		)
 	}
 	output, err := glippyreport.RenderLintText(inputs)
 	if err != nil {
@@ -782,6 +777,21 @@ func runLintPackageCheck(
 			ExitInternalError,
 			"glippy lint: prepare typed text report: %v\n",
 			err,
+		)
+	}
+	if isIntegrationReporter(invocation.reporter) {
+		return reportIntegrationOutput(
+			"lint",
+			invocation.reporter,
+			stdout,
+			stderr,
+			exitCode,
+			glippyreport.IntegrationInput{
+				Files: inputs,
+				PackageDiagnostics: result.LoadDiagnostics,
+				SourceProblems: result.SourceProblems,
+				Registry: registry,
+			},
 		)
 	}
 	output, err := glippyreport.RenderPackageLintText(
@@ -1518,6 +1528,7 @@ func runLintFix(
 		return reportLintFixJSON(stdout, stderr, exitCode, true, executions, nil)
 	}
 	inputs := make([]glippyreport.LintFixTextInput, len(executions))
+	integrationInputs := make([]glippyreport.LintTextInput, len(executions))
 	for index, execution := range executions {
 		inputs[index] = glippyreport.LintFixTextInput{
 			File: execution.file,
@@ -1525,6 +1536,20 @@ func runLintFix(
 			Result: execution.result,
 			Outcome: execution.outcome,
 		}
+		integrationInputs[index] = glippyreport.LintTextInput{
+			File: execution.resultFile,
+			Result: execution.result,
+		}
+	}
+	if isIntegrationReporter(invocation.reporter) {
+		return reportIntegrationOutput(
+			"lint",
+			invocation.reporter,
+			stdout,
+			stderr,
+			exitCode,
+			glippyreport.IntegrationInput{Files: integrationInputs, Registry: registry},
+		)
 	}
 	output, err := glippyreport.RenderLintFixText(inputs)
 	if err != nil {
@@ -2069,11 +2094,25 @@ func reportLintFailure(
 	invocation lintInvocation,
 	stdout, stderr io.Writer,
 	exitCode int,
-	results []analysis.Result,
+	inputs []glippyreport.LintTextInput,
 	err error,
 ) int {
+	results := make([]analysis.Result, len(inputs))
+	for index, input := range inputs {
+		results[index] = input.Result
+	}
 	if invocation.reporter == glippyreport.JSON {
 		return reportLintJSON(stdout, stderr, "check", exitCode, false, results, err)
+	}
+	if isIntegrationReporter(invocation.reporter) {
+		return reportIntegrationOutput(
+			"lint",
+			invocation.reporter,
+			stdout,
+			stderr,
+			exitCode,
+			glippyreport.IntegrationInput{Files: inputs, Errors: integrationError(err)},
+		)
 	}
 	return report(stderr, exitCode, "glippy lint: %v\n", err)
 }
@@ -2088,6 +2127,28 @@ func reportLintPackageFailure(
 	if invocation.reporter == glippyreport.JSON {
 		return reportLintPackageJSON(stdout, stderr, "check", exitCode, false, result, err)
 	}
+	if isIntegrationReporter(invocation.reporter) {
+		inputs, inputErr := packageLintTextInputs(result)
+		if inputErr != nil {
+			if err == nil {
+				err = inputErr
+			}
+			inputs = nil
+		}
+		return reportIntegrationOutput(
+			"lint",
+			invocation.reporter,
+			stdout,
+			stderr,
+			exitCode,
+			glippyreport.IntegrationInput{
+				Files: inputs,
+				PackageDiagnostics: result.LoadDiagnostics,
+				SourceProblems: result.SourceProblems,
+				Errors: integrationError(err),
+			},
+		)
+	}
 	return report(stderr, exitCode, "glippy lint: %v\n", err)
 }
 
@@ -2100,6 +2161,29 @@ func reportLintFixFailure(
 ) int {
 	if invocation.reporter == glippyreport.JSON {
 		return reportLintFixJSON(stdout, stderr, exitCode, false, executions, err)
+	}
+	if isIntegrationReporter(invocation.reporter) {
+		inputs := make([]glippyreport.LintTextInput, 0, len(executions))
+		for _, execution := range executions {
+			if execution.resultFile == nil {
+				continue
+			}
+			inputs = append(
+				inputs,
+				glippyreport.LintTextInput{
+					File: execution.resultFile,
+					Result: execution.result,
+				},
+			)
+		}
+		return reportIntegrationOutput(
+			"lint",
+			invocation.reporter,
+			stdout,
+			stderr,
+			exitCode,
+			glippyreport.IntegrationInput{Files: inputs, Errors: integrationError(err)},
+		)
 	}
 	paths, possibly := completedLintFixPaths(executions)
 	if len(paths) == 0 {

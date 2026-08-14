@@ -75,6 +75,8 @@ glippy lint --only=<rules> [paths...]
 glippy lint --except=<rules> [paths...]
 glippy lint --new-from=<git-ref> [paths...]
 glippy lint --generate-baseline=<path> [paths...]
+glippy lint --reporter=github [paths...]
+glippy lint --reporter=sarif [paths...]
 glippy check [paths...]
 glippy check --new-from=<git-ref> [paths...]
 glippy init [directory]
@@ -95,6 +97,11 @@ without a baseline during incremental adoption with
 `--new-from=origin/main`. See the
 [command reference](docs/command-reference.md) for
 inputs, reporters, exit categories, and write behavior.
+
+Lint and combined check support GitHub workflow annotations and SARIF 2.1.0 in
+addition to human text and Glippy's versioned JSON envelope. Formatter-only
+commands remain `text|json` because GitHub and SARIF report diagnostics rather
+than formatted source streams.
 
 `glippy init` creates a strict starter `.glippy.toml` without overwriting an
 existing path. `glippy config check` validates discovered or explicit policy,

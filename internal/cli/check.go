@@ -16,7 +16,7 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const checkUsage = "glippy: expected 'check [--new-from=<git-ref>] [--reporter=text|json] [--config=<path>] [path...]'\n"
+const checkUsage = "glippy: expected 'check [--new-from=<git-ref>] [--reporter=text|json|github|sarif] [--config=<path>] [path...]'\n"
 
 type checkInvocation struct {
 	configPath string
@@ -53,7 +53,7 @@ func parseCheckInvocation(arguments []string) (checkInvocation, bool) {
 			index++
 			result.newFrom = arguments[index]
 		case strings.HasPrefix(argument, "--reporter=") && !reporterSet:
-			reporter, valid := parseReporter(
+			reporter, valid := parseDiagnosticReporter(
 				strings.TrimPrefix(argument, "--reporter="),
 			)
 			if !valid {
@@ -66,7 +66,7 @@ func parseCheckInvocation(arguments []string) (checkInvocation, bool) {
 			index + 1 < len(arguments) &&
 			!strings.HasPrefix(arguments[index + 1], "--"):
 			index++
-			reporter, valid := parseReporter(arguments[index])
+			reporter, valid := parseDiagnosticReporter(arguments[index])
 			if !valid {
 				return checkInvocation{}, false
 			}
@@ -96,21 +96,6 @@ func parseCheckInvocation(arguments []string) (checkInvocation, bool) {
 		result.paths = []string{"."}
 	}
 	return result, true
-}
-
-func requestsCheckJSONReporter(arguments []string) bool {
-	if len(arguments) == 0 || arguments[0] != "check" {
-		return false
-	}
-	for index, argument := range arguments {
-		if argument == "--reporter=json" ||
-			(argument == "--reporter" &&
-				index + 1 < len(arguments) &&
-				arguments[index + 1] == "json") {
-			return true
-		}
-	}
-	return false
 }
 
 func classifyChangedFormat(
@@ -365,6 +350,40 @@ func runCombinedCheck(
 			nil,
 		)
 	}
+	if isIntegrationReporter(invocation.reporter) {
+		exitCode = ExitSuccess
+		inputs := make([]glippyreport.LintTextInput, len(executions))
+		formats := make([]glippyreport.CheckFormatOutcome, len(executions))
+		for index, execution := range executions {
+			inputs[index] = glippyreport.LintTextInput{
+				File: execution.file,
+				Result: execution.analysis,
+			}
+			formats[index] = glippyreport.CheckFormatOutcome{
+				Path: execution.file.Path(),
+				Digest: execution.file.Digest(),
+				Different: execution.formatChanged,
+				Preexisting: execution.formatPreexisting,
+			}
+			if execution.formatChanged ||
+				lintResultExitCode([]analysis.Result{execution.analysis}) ==
+					ExitFindings {
+				exitCode = ExitFindings
+			}
+		}
+		return reportIntegrationOutput(
+			"check",
+			invocation.reporter,
+			stdout,
+			stderr,
+			exitCode,
+			glippyreport.IntegrationInput{
+				Files: inputs,
+				Formats: formats,
+				Registry: registry,
+			},
+		)
+	}
 	var output bytes.Buffer
 	exitCode = ExitSuccess
 	for _, execution := range executions {
@@ -428,6 +447,7 @@ func runCombinedPackageCheck(
 	if err != nil {
 		return reportCombinedPackageCheck(
 			invocation,
+			registry,
 			stdout,
 			stderr,
 			packageAnalysisErrorExitCode(err),
@@ -440,6 +460,7 @@ func runCombinedPackageCheck(
 	if err := applyConfiguredPackageBaseline(task, &result, registry); err != nil {
 		return reportCombinedPackageCheck(
 			invocation,
+			registry,
 			stdout,
 			stderr,
 			lintBaselineErrorExitCode(err),
@@ -452,6 +473,7 @@ func runCombinedPackageCheck(
 	if err := filterChangedPackageResult(changedScope, &result); err != nil {
 		return reportCombinedPackageCheck(
 			invocation,
+			registry,
 			stdout,
 			stderr,
 			ExitInvalidInvocation,
@@ -466,6 +488,7 @@ func runCombinedPackageCheck(
 		if err := ctx.Err(); err != nil {
 			return reportCombinedPackageCheck(
 				invocation,
+				registry,
 				stdout,
 				stderr,
 				ExitCanceled,
@@ -483,6 +506,7 @@ func runCombinedPackageCheck(
 			)
 			return reportCombinedPackageCheck(
 				invocation,
+				registry,
 				stdout,
 				stderr,
 				ExitInternalError,
@@ -496,6 +520,7 @@ func runCombinedPackageCheck(
 		if err != nil {
 			return reportCombinedPackageCheck(
 				invocation,
+				registry,
 				stdout,
 				stderr,
 				ExitInternalError,
@@ -513,6 +538,7 @@ func runCombinedPackageCheck(
 		if err != nil {
 			return reportCombinedPackageCheck(
 				invocation,
+				registry,
 				stdout,
 				stderr,
 				ExitInvalidInvocation,
@@ -535,6 +561,7 @@ func runCombinedPackageCheck(
 	if err := ctx.Err(); err != nil {
 		return reportCombinedPackageCheck(
 			invocation,
+			registry,
 			stdout,
 			stderr,
 			ExitCanceled,
@@ -552,6 +579,7 @@ func runCombinedPackageCheck(
 	}
 	return reportCombinedPackageCheck(
 		invocation,
+		registry,
 		stdout,
 		stderr,
 		exitCode,
@@ -575,6 +603,7 @@ func packageCheckResult(
 
 func reportCombinedPackageCheck(
 	invocation checkInvocation,
+	registry *rules.Registry,
 	stdout, stderr io.Writer,
 	exitCode int,
 	complete bool,
@@ -631,6 +660,39 @@ func reportCombinedPackageCheck(
 		}
 		return exitCode
 	}
+	if isIntegrationReporter(invocation.reporter) {
+		inputs, inputErr := packageLintTextInputs(result)
+		if inputErr != nil {
+			if err == nil {
+				err = inputErr
+			}
+			inputs = nil
+		}
+		formats := make([]glippyreport.CheckFormatOutcome, len(executions))
+		for index, execution := range executions {
+			formats[index] = glippyreport.CheckFormatOutcome{
+				Path: execution.file.Path(),
+				Digest: execution.file.Digest(),
+				Different: execution.formatChanged,
+				Preexisting: execution.formatPreexisting,
+			}
+		}
+		return reportIntegrationOutput(
+			"check",
+			invocation.reporter,
+			stdout,
+			stderr,
+			exitCode,
+			glippyreport.IntegrationInput{
+				Files: inputs,
+				Formats: formats,
+				PackageDiagnostics: result.LoadDiagnostics,
+				SourceProblems: result.SourceProblems,
+				Errors: integrationError(err),
+				Registry: registry,
+			},
+		)
+	}
 	if err != nil {
 		return report(stderr, exitCode, "glippy check: %v\n", err)
 	}
@@ -678,11 +740,11 @@ func reportCombinedPackageCheck(
 
 func reportInvalidCheckInvocation(arguments []string, stdout, stderr io.Writer) int {
 	invocation := checkInvocation{reporter: glippyreport.Text}
-	if requestsCheckJSONReporter(arguments) {
-		invocation.reporter = glippyreport.JSON
-	} else {
+	reporter, requested := requestedDiagnosticReporter(arguments, "check")
+	if !requested {
 		return report(stderr, ExitInvalidInvocation, checkUsage)
 	}
+	invocation.reporter = reporter
 	return reportCombinedCheck(
 		invocation,
 		stdout,
@@ -702,6 +764,34 @@ func reportCombinedCheck(
 	executions []checkExecution,
 	err error,
 ) int {
+	if isIntegrationReporter(invocation.reporter) {
+		inputs := make([]glippyreport.LintTextInput, len(executions))
+		formats := make([]glippyreport.CheckFormatOutcome, len(executions))
+		for index, execution := range executions {
+			inputs[index] = glippyreport.LintTextInput{
+				File: execution.file,
+				Result: execution.analysis,
+			}
+			formats[index] = glippyreport.CheckFormatOutcome{
+				Path: execution.file.Path(),
+				Digest: execution.file.Digest(),
+				Different: execution.formatChanged,
+				Preexisting: execution.formatPreexisting,
+			}
+		}
+		return reportIntegrationOutput(
+			"check",
+			invocation.reporter,
+			stdout,
+			stderr,
+			exitCode,
+			glippyreport.IntegrationInput{
+				Files: inputs,
+				Formats: formats,
+				Errors: integrationError(err),
+			},
+		)
+	}
 	if invocation.reporter != glippyreport.JSON {
 		if err == nil {
 			return exitCode

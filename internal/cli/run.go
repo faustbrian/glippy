@@ -158,7 +158,8 @@ func RunContext(
 	if len(arguments) > 0 && arguments[0] == "lint" {
 		invocation, valid := parseLintInvocation(arguments)
 		if !valid {
-			if requestsLintJSONReporter(arguments) {
+			reporter, requested := requestedDiagnosticReporter(arguments, "lint")
+			if reporter == glippyreport.JSON {
 				return reportLintJSON(
 					stdout,
 					stderr,
@@ -167,6 +168,20 @@ func RunContext(
 					false,
 					nil,
 					errors.New(strings.TrimSpace(lintUsage)),
+				)
+			}
+			if requested && isIntegrationReporter(reporter) {
+				return reportIntegrationOutput(
+					"lint",
+					reporter,
+					stdout,
+					stderr,
+					ExitInvalidInvocation,
+					glippyreport.IntegrationInput{
+						Errors: integrationError(
+							errors.New(strings.TrimSpace(lintUsage)),
+						),
+					},
 				)
 			}
 			return report(stderr, ExitInvalidInvocation, lintUsage)
@@ -1701,6 +1716,42 @@ func parseReporter(value string) (glippyreport.Format, bool) {
 	default:
 		return "", false
 	}
+}
+
+func parseDiagnosticReporter(value string) (glippyreport.Format, bool) {
+	if reporter, valid := parseReporter(value); valid {
+		return reporter, true
+	}
+	switch value {
+	case string(glippyreport.GitHub):
+		return glippyreport.GitHub, true
+	case string(glippyreport.SARIF):
+		return glippyreport.SARIF, true
+	default:
+		return "", false
+	}
+}
+
+func requestedDiagnosticReporter(arguments []string, command string) (glippyreport.Format, bool) {
+	if len(arguments) == 0 || arguments[0] != command {
+		return "", false
+	}
+	for index, argument := range arguments {
+		var value string
+		switch {
+		case strings.HasPrefix(argument, "--reporter="):
+			value = strings.TrimPrefix(argument, "--reporter=")
+		case argument == "--reporter" && index + 1 < len(arguments):
+			value = arguments[index + 1]
+		default:
+			continue
+		}
+		reporter, valid := parseDiagnosticReporter(value)
+		if valid {
+			return reporter, true
+		}
+	}
+	return "", false
 }
 
 func report(stderr io.Writer, exitCode int, format string, arguments ...any) int {

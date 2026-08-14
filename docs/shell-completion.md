@@ -6,6 +6,8 @@ the `config check` and `config show` subcommands, configuration paths, rule
 discovery filters, lint selection flags, and the exact rule IDs available to
 `glippy explain`, `--only`, and `--except`. Regenerate the script after
 upgrading Glippy so newly admitted rules and CLI options become available.
+Formatter reporter completion offers `text` and `json`; lint and combined-check
+reporter completion additionally offers `github` and `sarif`.
 
 Generation writes only to standard output. It does not inspect a project,
 configuration, source file, package graph, or network resource.

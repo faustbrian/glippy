@@ -10,6 +10,8 @@ type Format string
 const (
 	Text Format = "text"
 	JSON Format = "json"
+	GitHub Format = "github"
+	SARIF Format = "sarif"
 )
 
 type Outcome struct {

@@ -148,7 +148,8 @@ in [`editor-integration.md`](../editor-integration.md).
 
 The Phase 3 `lint` check accepts explicit files, directories, and filesystem
 package patterns ending in `...`; defaults to the current directory; and
-accepts `--reporter=text|json` plus an optional explicit configuration path. It
+accepts `--reporter=text|json|github|sarif` plus an optional explicit
+configuration path. It
 MUST resolve every input's project root and complete configuration before
 choosing an analysis path. When the maximum enabled tier is syntax, recursive
 patterns use deterministic physical-file discovery and MUST NOT invoke
@@ -174,14 +175,15 @@ suppressions exit with findings; suppressed diagnostics alone do not. Required
 package-list, parse, type, or source-model problems exit with source error even
 when valid partial file results remain reportable. A completed typed load with
 prerequisite problems remains a complete report rather than an internal tool
-failure. Invalid configuration, filesystem failures, cancellation, and reporting failures retain
-their common exit categories. JSON remains valid and incomplete for invalid
-invocations and failures.
+failure. Invalid configuration, filesystem failures, cancellation, and
+reporting failures retain their common exit categories. JSON and SARIF remain
+valid and incomplete for invalid invocations and failures; GitHub renders a
+tool-error annotation.
 
 `lint --generate-baseline=<path>` MUST analyze normally visible diagnostics
 before baseline application and write one deterministic strict JSON document
 relative to one project root. It MUST reject heterogeneous roots,
-non-portable output paths, all fix flags, and JSON reporting. It writes only
+non-portable output paths, all fix flags, and non-text reporting. It writes only
 the baseline, never source, and MUST use the shared rooted atomic writer. The
 [baseline reference](../baselines.md) defines identity, stale, expiry, and
 machine-reporting behavior.
@@ -266,7 +268,8 @@ Stale replacement records also reject each coordinated fix with the stable
 `stale-source` reason so text consumers receive an actionable explanation.
 `check` accepts explicit files, directories, and filesystem package patterns
 ending in `...`; defaults to the current directory; and accepts
-`--reporter=text|json` plus an optional explicit configuration path. It MUST
+`--reporter=text|json|github|sarif` plus an optional explicit configuration
+path. It MUST
 resolve configuration and the enabled maximum analysis tier before selecting
 its input engine. Syntax-only selections use one sorted physical-file
 discovery and run formatting plus lint analysis against each immutable file
@@ -311,6 +314,15 @@ work MUST feed canonical outcome records that are sorted by normalized path,
 physical byte range, rule ID, severity, and stable message key before any
 reporter renders them. Text and versioned JSON reporters MUST derive their exit
 category from the same aggregate result.
+
+GitHub and SARIF reporters MUST consume that same filtered aggregate result.
+They MUST use normalized absolute paths and physical 1-based byte columns,
+MUST NOT include source snippets or replacement text, and MUST preserve
+deterministic finding order. Changed-code filtering MUST occur before either
+reporter renders. Pre-existing formatting differences MUST NOT be emitted.
+GitHub output MUST escape workflow-command data and properties. SARIF output
+MUST use version 2.1.0, emit absolute `file:` URIs, and represent tool failures
+as unsuccessful invocation notifications rather than rule results.
 
 Diff construction MUST follow normalized task order after formatting completes.
 It MUST finish the complete ordered difference before the first stdout write so
