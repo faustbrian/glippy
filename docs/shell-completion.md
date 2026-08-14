@@ -16,7 +16,9 @@ For `lint` and `check`, completion includes short and long `allow`, `warn`,
 `deny`, and `forbid` flags plus exact rules, selectable groups, and the special
 `warnings` target. Restriction and migration are intentionally absent as group
 targets because their policy requires exact rule IDs or an explicit migration
-target.
+target. Lint completion also exposes `--diff` for non-writing validated fix
+previews; the parser requires it to be combined with at least one fix-class
+flag.
 
 ## Bash
 

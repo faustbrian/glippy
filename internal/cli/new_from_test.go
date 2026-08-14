@@ -136,6 +136,48 @@ func TestRunLintNewFromFixesOnlyCompletelyOwnedEdits(t *testing.T) {
 	}
 }
 
+func TestRunLintNewFromDiffPreviewsOnlyCompletelyOwnedEdits(t *testing.T) {
+	t.Parallel()
+
+	root := initializeChangedCLIRepository(t)
+	path := filepath.Join(root, "source.go")
+	baseline := "package sample\n\nfunc changed(ready bool) bool {\n\treturn ready == true\n}\n\nfunc existing(stable bool) bool {\n\treturn stable == true\n}\n"
+	current := "package sample\n\nfunc changed(ready bool) bool {\n\treturn (ready == true)\n}\n\nfunc existing(stable bool) bool {\n\treturn stable == true\n}\n"
+	writeChangedCLIFile(t, path, baseline)
+	commitChangedCLIBaseline(t, root)
+	writeChangedCLIFile(t, path, current)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := RunContext(
+		context.Background(),
+		[]string{"lint", "--fix", "--diff", "--new-from=HEAD", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "--- " + path + ".orig\n") ||
+		!strings.Contains(stdout.String(), "-\treturn (ready == true)\n") ||
+		!strings.Contains(stdout.String(), "+\treturn (ready)\n") ||
+		strings.Contains(stdout.String(), "-\treturn stable == true\n") {
+		t.Fatalf(
+			"RunContext(diff) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != current {
+		t.Fatalf("changed-code preview source = %q, want original %q", got, current)
+	}
+}
+
 func TestRunLintNewFromRefusesFixWhenFormattingTouchesPreexistingLines(t *testing.T) {
 	t.Parallel()
 

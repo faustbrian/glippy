@@ -205,6 +205,21 @@ func (s *Snapshot) Bytes() []byte {
 	return bytes.Clone(s.bytes)
 }
 
+// Validate confirms that the captured source still identifies the same
+// regular file, bytes, and permissions without replacing it.
+func (s *Snapshot) Validate() error {
+	boundary, err := os.OpenRoot(s.root)
+	if err != nil {
+		return fmt.Errorf("open source root %q: %w", s.root, err)
+	}
+	defer boundary.Close()
+	rootInfo, err := boundary.Stat(".")
+	if err != nil || !os.SameFile(s.rootInfo, rootInfo) {
+		return fmt.Errorf("validate source root %q: %w", s.root, ErrStale)
+	}
+	return s.validateCurrent(boundary)
+}
+
 // Replace validates the source version and atomically replaces changed bytes.
 func (s *Snapshot) Replace(output []byte) error {
 	if err := source.ValidateSize(int64(len(output))); err != nil {

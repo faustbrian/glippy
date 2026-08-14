@@ -103,3 +103,11 @@ package analysis for reporting after all serialized writes.
 Formatter normalization after fixes MUST NOT make a semantic rewrite appear to
 be formatter behavior. Fix provenance remains attached to the resulting
 diagnostic outcome.
+
+Lint fix preview uses the same coordinator and validation callback but stops
+before atomic replacement. A preview MUST validate that every filesystem
+snapshot is still current, and a typed preview MUST carry earlier accepted
+candidate bytes through the package overlay used for later reselection and
+final analysis. Preview output is advisory only: a later writing invocation
+MUST repeat source-version and validation checks rather than treating a prior
+preview as authorization or reusable transaction state.

@@ -23,6 +23,9 @@ glippy fmt --check [paths...]
 glippy fmt --diff [paths...]
 glippy lint [paths...]
 glippy lint --fix [paths...]
+glippy lint --fix --diff [paths...]
+glippy lint --fix-suggestions --diff [paths...]
+glippy lint --fix-unsafe --diff [paths...]
 glippy lint --only=<rules> [paths...]
 glippy lint --except=<rules> [paths...]
 glippy lint --new-from=<git-ref> [paths...]
@@ -270,6 +273,19 @@ predeclared boolean type, an alias resolving directly to it, or untyped boolean
 type. Candidates with a retained defined boolean operand are excluded because
 the comparison may intentionally normalize the result type. Comparisons whose
 removed source contains a comment remain diagnostics without a fix.
+
+`lint --diff` MUST require at least one fix-class flag and MUST accept only the
+text reporter. It MUST NOT combine with baseline generation. Preview MUST run
+the same selection, stale-source, conflict, parsing, formatting, changed-line
+ownership, and post-fix analysis contracts as replacement without invoking the
+replacement boundary. Typed package preview MUST accumulate accepted candidate
+bytes in one exact-path overlay and MUST reselect every later file against that
+overlay. It MUST emit deterministic three-context unified differences from
+`<path>.orig` to `<path>` in canonical path order, report rejected fixes,
+remain silent for unchanged files, and return the findings category when at
+least one validated change would occur. It MUST preserve source bytes,
+permissions, and modification times. Conflicts and failures MUST retain their
+ordinary exit categories.
 
 Every lint fix mode prevalidates every selected configuration and source before
 its first write, refuses generated files and paths traversing symlinks,

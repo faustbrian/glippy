@@ -210,6 +210,38 @@ func TestSnapshotReplaceRejectsChangedSourceBytes(t *testing.T) {
 	}
 }
 
+func TestSnapshotValidateDetectsStaleSourceWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "source.go")
+	input := []byte("package sample\n")
+	if err := os.WriteFile(path, input, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := filesystem.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := snapshot.Validate(); err != nil {
+		t.Fatalf("Validate() unchanged source: %v", err)
+	}
+	changed := []byte("package changed\n")
+	if err := os.WriteFile(path, changed, 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := snapshot.Validate(); !errors.Is(err, filesystem.ErrStale) {
+		t.Fatalf("Validate() error = %v, want ErrStale", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, changed) {
+		t.Fatalf("Validate() changed current source to %q", got)
+	}
+}
+
 func TestSnapshotReplaceTreatsOversizedSourceGrowthAsStale(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "source.go")
 	if err := os.WriteFile(path, []byte("package sample\n"), 0o600); err != nil {

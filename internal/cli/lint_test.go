@@ -3107,6 +3107,170 @@ func TestRunLintFixReselectsTypedFixesAfterEachPackageWrite(t *testing.T) {
 	}
 }
 
+func TestRunLintFixDiffReselectsTypedFixesAgainstAccumulatedOverlay(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/project\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(root, "a.go")
+	firstInput := []byte(
+		"package project\nconst Gate = true\nfunc target() {}\nfunc primary() {}\n",
+	)
+	if err := os.WriteFile(firstPath, firstInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secondPath := filepath.Join(root, "b.go")
+	secondInput := []byte("package project\nfunc run() { target() }\n")
+	if err := os.WriteFile(secondPath, secondInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{
+			fix: true,
+			diff: true,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.Text,
+		},
+		&stdout,
+		&stderr,
+		newCLIPackageStateFixRegistry(t),
+	)
+
+	first, err := os.ReadFile(firstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(secondPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		strings.Count(stdout.String(), "--- ") != 1 ||
+		!strings.Contains(stdout.String(), "--- " + firstPath + ".orig\n") ||
+		!strings.Contains(stdout.String(), "+const Gate = false\n") ||
+		strings.Contains(stdout.String(), secondPath) ||
+		!bytes.Equal(first, firstInput) ||
+		!bytes.Equal(second, secondInput) {
+		t.Fatalf(
+			"runLintFix(package overlay diff) exit = %d, stdout = %q, stderr = %q, first = %q, second = %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			first,
+			second,
+		)
+	}
+}
+
+func TestRunLintFixDiffReselectsChangedTypedFixesAgainstAccumulatedOverlay(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runChangedCLIGit(t, root, "init", "-b", "main")
+	runChangedCLIGit(t, root, "config", "user.name", "Glippy Test")
+	runChangedCLIGit(t, root, "config", "user.email", "glippy@example.invalid")
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/changedtyped\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = []\n[lint.rules]\npackage-state-fix = \"warn\"\ntyped-call = \"warn\"\n",
+	)
+	firstPath := filepath.Join(root, "a.go")
+	secondPath := filepath.Join(root, "b.go")
+	writeChangedCLIFile(
+		t,
+		firstPath,
+		"package project\n\nconst Gate = false\n\nfunc retain() {\n\ttarget()\n}\n\nfunc target() {}\n\nfunc primary() {}\n",
+	)
+	writeChangedCLIFile(
+		t,
+		secondPath,
+		"package project\n\nfunc run() {\n\tother()\n}\n\nfunc other() {}\n",
+	)
+	runChangedCLIGit(t, root, "add", "go.mod", ".glippy.toml", "a.go", "b.go")
+	runChangedCLIGit(t, root, "commit", "-m", "baseline")
+	firstInput := []byte(
+		"package project\n\nconst Gate = true\n\nfunc retain() {\n\ttarget()\n}\n\nfunc target() {}\n\nfunc primary() {}\n",
+	)
+	secondInput := []byte("package project\n\nfunc run() {\n\ttarget()\n}\n\nfunc other() {}\n")
+	if err := os.WriteFile(firstPath, firstInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(secondPath, secondInput, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	stateRule, found := newCLIPackageStateFixRegistry(t).Lookup("package-state-fix")
+	if !found {
+		t.Fatal("package-state-fix is not registered")
+	}
+	typedRule, found := newCLITypesRegistry(t).Lookup("typed-call")
+	if !found {
+		t.Fatal("typed-call is not registered")
+	}
+	registry, err := rules.NewRegistry(stateRule, typedRule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{
+			fix: true,
+			diff: true,
+			newFrom: "HEAD",
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.Text,
+		},
+		&stdout,
+		&stderr,
+		registry,
+	)
+
+	first, err := os.ReadFile(firstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(secondPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		strings.Count(stdout.String(), "--- ") != 1 ||
+		!strings.Contains(stdout.String(), "--- " + firstPath + ".orig\n") ||
+		!strings.Contains(stdout.String(), "+const Gate = false\n") ||
+		strings.Contains(stdout.String(), secondPath) ||
+		!bytes.Equal(first, firstInput) ||
+		!bytes.Equal(second, secondInput) {
+		t.Fatalf(
+			"runLintFix(changed package overlay diff) exit = %d, stdout = %q, stderr = %q, first = %q, second = %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			first,
+			second,
+		)
+	}
+}
+
 func TestRunLintFixReportsFindingEnabledInEarlierFileByLaterWrite(t *testing.T) {
 	t.Parallel()
 
@@ -3787,6 +3951,360 @@ func TestRunLintFixAppliesOnlyExplicitUnsafeFixes(t *testing.T) {
 	}
 }
 
+func TestRunLintFixDiffPreviewsValidatedSafeFixWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(){target()}\n")
+	if err := os.WriteFile(path, input, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	modificationTime := time.Unix(1_700_000_000, 0)
+	if err := os.Chtimes(path, modificationTime, modificationTime); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{
+			fix: true,
+			diff: true,
+			paths: []string{path},
+			reporter: glippyreport.Text,
+		},
+		&stdout,
+		&stderr,
+		newCLIFixRegistry(t, rules.FixSafe),
+	)
+
+	want := "--- " +
+		path +
+		".orig\n" +
+		"+++ " +
+		path +
+		"\n" +
+		"@@ -1,2 +1,5 @@\n" +
+		" package sample\n" +
+		"-func run(){target()}\n" +
+		"+\n" +
+		"+func run() {\n" +
+		"+\tprimary()\n" +
+		"+}\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf(
+			"runLintFix(diff) exit = %d, stdout = %q, stderr = %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) ||
+		info.Mode().Perm() != 0o640 ||
+		!info.ModTime().Equal(modificationTime) {
+		t.Fatalf(
+			"runLintFix(diff) mutated source = %q, mode = %o, mtime = %s",
+			got,
+			info.Mode().Perm(),
+			info.ModTime(),
+		)
+	}
+}
+
+func TestRunLintFixDiffPreviewsExplicitSuggestionAndUnsafeFixes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		invocation lintInvocation
+		safety rules.FixSafety
+	}{
+		{
+			name: "suggestion",
+			invocation: lintInvocation{fixSuggestions: true},
+			safety: rules.FixSuggestion,
+		},
+		{
+			name: "unsafe",
+			invocation: lintInvocation{fixUnsafe: true},
+			safety: rules.FixUnsafe,
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+
+				path := filepath.Join(t.TempDir(), "source.go")
+				input := []byte("package sample\nfunc run(){target()}\n")
+				if err := os.WriteFile(path, input, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				invocation := test.invocation
+				invocation.diff = true
+				invocation.paths = []string{path}
+				invocation.reporter = glippyreport.Text
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+
+				exitCode := runLintFix(
+					context.Background(),
+					invocation,
+					&stdout,
+					&stderr,
+					newCLIFixRegistry(t, test.safety),
+				)
+
+				got, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if exitCode != ExitFindings ||
+					stderr.Len() != 0 ||
+					!strings.Contains(stdout.String(), "+++ " + path + "\n") ||
+					!strings.Contains(stdout.String(), "+\tprimary()\n") ||
+					!bytes.Equal(got, input) {
+					t.Fatalf(
+						"runLintFix(%s diff) exit = %d, stdout = %q, stderr = %q, source = %q",
+						test.name,
+						exitCode,
+						stdout.String(),
+						stderr.String(),
+						got,
+					)
+				}
+			},
+		)
+	}
+}
+
+func TestRunLintFixDiffOrdersChangedFilesByCanonicalPath(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	input := []byte("package sample\nfunc run(){target()}\n")
+	firstPath := filepath.Join(root, "a.go")
+	secondPath := filepath.Join(root, "z.go")
+	for _, path := range []string{firstPath, secondPath} {
+		if err := os.WriteFile(path, input, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{
+			fix: true,
+			diff: true,
+			paths: []string{secondPath, firstPath},
+			reporter: glippyreport.Text,
+		},
+		&stdout,
+		&stderr,
+		newCLIFixRegistry(t, rules.FixSafe),
+	)
+
+	firstHeader := strings.Index(stdout.String(), "--- " + firstPath + ".orig\n")
+	secondHeader := strings.Index(stdout.String(), "--- " + secondPath + ".orig\n")
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		firstHeader < 0 ||
+		secondHeader <= firstHeader ||
+		strings.Count(stdout.String(), "--- ") != 2 {
+		t.Fatalf(
+			"runLintFix(ordered diff) exit = %d, stdout = %q, stderr = %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	for _, path := range []string{firstPath, secondPath} {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, input) {
+			t.Fatalf("runLintFix(ordered diff) changed %q to %q", path, got)
+		}
+	}
+}
+
+func TestRunLintFixDiffReportsConflictsWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "source.go")
+	input := []byte("package sample\nfunc run(){target()}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(
+		newCLIFixRule("first-fix", "first", rules.FixSafe),
+		newCLIFixRule("second-fix", "second", rules.FixSafe),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{
+			fix: true,
+			diff: true,
+			paths: []string{path},
+			reporter: glippyreport.Text,
+		},
+		&stdout,
+		&stderr,
+		registry,
+	)
+
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if exitCode != ExitConflict ||
+		stderr.Len() != 0 ||
+		strings.Count(stdout.String(), "rejected fix[") != 2 ||
+		!strings.Contains(stdout.String(), "/conflict]") ||
+		!bytes.Equal(got, input) {
+		t.Fatalf(
+			"runLintFix(conflict diff) exit = %d, stdout = %q, stderr = %q, source = %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			got,
+		)
+	}
+}
+
+func TestRunLintFixDiffReportsPostFixValidationFailureWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "source.go")
+	input := []byte("package sample\nfunc run(){target()}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rule := cliPostFixFailureRule{
+		cliFixRule: newCLIFixRule("fix-rule", "primary", rules.FixSafe),
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{
+			fix: true,
+			diff: true,
+			paths: []string{path},
+			reporter: glippyreport.Text,
+		},
+		&stdout,
+		&stderr,
+		registry,
+	)
+
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if exitCode != ExitInternalError ||
+		stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "post-fix analysis failed") ||
+		!bytes.Equal(got, input) {
+		t.Fatalf(
+			"runLintFix(validation diff) exit = %d, stdout = %q, stderr = %q, source = %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			got,
+		)
+	}
+}
+
+func TestCoordinateLintFixPreviewRetainsAppliedProvenanceForStaleSource(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "source.go")
+	input := []byte("package sample\nfunc run(){target()}\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := filesystem.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := source.Load(path, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := newCLIFixRegistry(t, rules.FixSafe)
+	result, err := analysis.Run(
+		context.Background(),
+		file,
+		registry,
+		analysis.RunOptions{
+			SourceGoVersion: "go1.26",
+			Presets: []rules.Preset{rules.PresetCorrectness},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selections, err := fixengine.Select(
+		result.Diagnostics,
+		fixengine.SelectionOptions{AllowSafe: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := []byte("package sample\nfunc run(){newer()}\n")
+	if err := os.WriteFile(path, changed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	transaction, err := coordinateLintFixPreview(
+		snapshot,
+		file,
+		selections,
+		fixengine.Options{Format: defaultFormatOptions},
+	)
+
+	if !errors.Is(err, filesystem.ErrStale) ||
+		transaction.Status != fixengine.WriteNotPerformed ||
+		len(transaction.Result.Applied) != 1 ||
+		transaction.Result.Applied[0].RuleID != "fix-rule" {
+		t.Fatalf("coordinateLintFixPreview() = %#v, %v", transaction, err)
+	}
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !bytes.Equal(got, changed) {
+		t.Fatalf("coordinateLintFixPreview() changed stale source to %q", got)
+	}
+}
+
 func TestParseLintInvocationAcceptsIndependentFixModes(t *testing.T) {
 	t.Parallel()
 
@@ -3801,6 +4319,102 @@ func TestParseLintInvocationAcceptsIndependentFixModes(t *testing.T) {
 		len(invocation.paths) != 1 ||
 		invocation.paths[0] != "source.go" {
 		t.Fatalf("parseLintInvocation() = %#v, %t", invocation, valid)
+	}
+}
+
+func TestParseLintInvocationAcceptsFixDiffPreviewModes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		arguments []string
+		wantSafe bool
+		wantSuggestion bool
+		wantUnsafe bool
+	}{
+		{
+			name: "safe",
+			arguments: []string{"lint", "--fix", "--diff", "source.go"},
+			wantSafe: true,
+		},
+		{
+			name: "suggestion",
+			arguments: []string{"lint", "--fix-suggestions", "--diff", "source.go"},
+			wantSuggestion: true,
+		},
+		{
+			name: "unsafe",
+			arguments: []string{"lint", "--fix-unsafe", "--diff", "source.go"},
+			wantUnsafe: true,
+		},
+		{
+			name: "composed",
+			arguments: []string{
+				"lint",
+				"--fix",
+				"--fix-suggestions",
+				"--fix-unsafe",
+				"--diff",
+				"source.go",
+			},
+			wantSafe: true,
+			wantSuggestion: true,
+			wantUnsafe: true,
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+
+				invocation, valid := parseLintInvocation(test.arguments)
+
+				if !valid ||
+					!invocation.diff ||
+					invocation.fix != test.wantSafe ||
+					invocation.fixSuggestions != test.wantSuggestion ||
+					invocation.fixUnsafe != test.wantUnsafe ||
+					len(invocation.paths) != 1 ||
+					invocation.paths[0] != "source.go" {
+					t.Fatalf(
+						"parseLintInvocation() = %#v, %t",
+						invocation,
+						valid,
+					)
+				}
+			},
+		)
+	}
+}
+
+func TestParseLintInvocationRejectsInvalidFixDiffPreviewModes(t *testing.T) {
+	t.Parallel()
+
+	tests := [][]string{
+		{"lint", "--diff", "source.go"},
+		{"lint", "--fix", "--diff", "--reporter=json", "source.go"},
+		{"lint", "--fix", "--diff", "--reporter=github", "source.go"},
+		{"lint", "--fix", "--diff", "--reporter=sarif", "source.go"},
+		{"lint", "--fix", "--diff", "--generate-baseline=baseline.json", "source.go"},
+	}
+	for _, arguments := range tests {
+		arguments := arguments
+		t.Run(
+			strings.Join(arguments[1:], "_"),
+			func(t *testing.T) {
+				t.Parallel()
+
+				if invocation, valid := parseLintInvocation(arguments); valid {
+					t.Fatalf(
+						"parseLintInvocation(%q) = %#v, true",
+						arguments,
+						invocation,
+					)
+				}
+			},
+		)
 	}
 }
 

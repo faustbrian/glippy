@@ -283,6 +283,7 @@ func (b *lspBackend) coordinateEditorFixes(
 				b.registry,
 				*state.packageTask,
 				formatted,
+				nil,
 			)
 			return err
 		}

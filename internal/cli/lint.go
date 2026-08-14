@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/faustbrian/glippy/internal/changed"
 	"github.com/faustbrian/glippy/internal/config"
 	"github.com/faustbrian/glippy/internal/discovery"
+	glippydiff "github.com/faustbrian/glippy/internal/diff"
 	"github.com/faustbrian/glippy/internal/filesystem"
 	fixengine "github.com/faustbrian/glippy/internal/fix"
 	glippyformat "github.com/faustbrian/glippy/internal/format"
@@ -26,13 +28,14 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const lintUsage = "glippy: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [-A|--allow <rules-or-groups>] [-W|--warn <rules-or-groups>] [-D|--deny <rules-or-groups>] [-F|--forbid <rules-or-groups>] [--only=<rules>] [--except=<rules>] [--new-from=<git-ref>] [--generate-baseline=<path>] [--reporter=text|json|github|sarif] [--config=<path>] [path...]'\n"
+const lintUsage = "glippy: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--diff] [-A|--allow <rules-or-groups>] [-W|--warn <rules-or-groups>] [-D|--deny <rules-or-groups>] [-F|--forbid <rules-or-groups>] [--only=<rules>] [--except=<rules>] [--new-from=<git-ref>] [--generate-baseline=<path>] [--reporter=text|json|github|sarif] [--config=<path>] [path...]'\n"
 
 type lintInvocation struct {
 	configPath string
 	fix bool
 	fixSuggestions bool
 	fixUnsafe bool
+	diff bool
 	generateBaseline string
 	newFrom string
 	lintLevels []rules.LintLevelDirective
@@ -136,6 +139,8 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 			result.fixSuggestions = true
 		case argument == "--fix-unsafe" && !result.fixUnsafe:
 			result.fixUnsafe = true
+		case argument == "--diff" && !result.diff:
+			result.diff = true
 		case strings.HasPrefix(argument, "--only=") && !onlySet:
 			parsed, valid := parseRuleFilter(strings.TrimPrefix(argument, "--only="))
 			if !valid {
@@ -248,6 +253,9 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 		(result.fixEnabled() ||
 			result.reporter != glippyreport.Text ||
 			result.newFrom != "") {
+		return lintInvocation{}, false
+	}
+	if result.diff && (!result.fixEnabled() || result.reporter != glippyreport.Text) {
 		return lintInvocation{}, false
 	}
 	return result, true
@@ -1390,7 +1398,12 @@ func runLintFix(
 		return reportLintFixFailure(invocation, stdout, stderr, exitCode, nil, err)
 	}
 	var executions []lintFixExecution
+	var preview strings.Builder
+	var packageOverlay map[string][]byte
 	if packageMode {
+		if invocation.diff {
+			packageOverlay = make(map[string][]byte)
+		}
 		executions, exitCode, err = prepareLintPackageFixExecutions(
 			ctx,
 			packageTask,
@@ -1442,6 +1455,7 @@ func runLintFix(
 				execution,
 				invocation.selectionOptions(),
 				changedScope,
+				packageOverlay,
 			)
 			if err != nil {
 				return reportLintFixFailure(
@@ -1507,6 +1521,7 @@ func runLintFix(
 					registry,
 					*execution.packageTask,
 					formatted,
+					packageOverlay,
 				)
 			}
 			if err != nil {
@@ -1520,11 +1535,22 @@ func runLintFix(
 			postFile = analyzedFile
 			return nil
 		}
-		transaction, transactionErr := fixengine.CoordinateAndReplace(
-			execution.snapshot,
-			execution.selections,
-			options,
-		)
+		var transaction fixengine.Transaction
+		var transactionErr error
+		if invocation.diff {
+			transaction, transactionErr = coordinateLintFixPreview(
+				execution.snapshot,
+				execution.file,
+				execution.selections,
+				options,
+			)
+		} else {
+			transaction, transactionErr = fixengine.CoordinateAndReplace(
+				execution.snapshot,
+				execution.selections,
+				options,
+			)
+		}
 		recordLintFixTransaction(
 			execution,
 			postResult,
@@ -1555,6 +1581,23 @@ func runLintFix(
 				transactionErr,
 			)
 		}
+		if invocation.diff &&
+			len(transaction.Result.Applied) > 0 &&
+			!bytes.Equal(execution.file.Bytes(), transaction.Result.Bytes) {
+			if execution.packageTask != nil {
+				packageOverlay[execution.file.Path()] = bytes.Clone(
+					transaction.Result.Bytes,
+				)
+			}
+			preview.WriteString(
+				glippydiff.Unified(
+					execution.file.Path() + ".orig",
+					execution.file.Path(),
+					execution.file.Bytes(),
+					transaction.Result.Bytes,
+				),
+			)
+		}
 	}
 	if packageMode {
 		exitCode, err := refreshFinalLintPackageResults(
@@ -1562,6 +1605,7 @@ func runLintFix(
 			registry,
 			packageTask,
 			executions,
+			packageOverlay,
 		)
 		if err != nil {
 			return reportLintFixFailure(
@@ -1574,25 +1618,38 @@ func runLintFix(
 			)
 		}
 	}
-	finalChangedScope, exitCode, err := prepareChangedScope(ctx, invocation.newFrom, plans)
-	if err != nil {
-		return reportLintFixFailure(invocation, stdout, stderr, exitCode, executions, err)
-	}
-	for index := range executions {
-		if err := filterChangedResult(
-			finalChangedScope,
-			executions[index].resultFile,
-			&executions[index].result,
-		);
-			err != nil {
+	if !invocation.diff {
+		finalChangedScope, finalScopeExitCode, finalScopeErr := prepareChangedScope(
+			ctx,
+			invocation.newFrom,
+			plans,
+		)
+		if finalScopeErr != nil {
 			return reportLintFixFailure(
 				invocation,
 				stdout,
 				stderr,
-				ExitInvalidInvocation,
+				finalScopeExitCode,
 				executions,
-				err,
+				finalScopeErr,
 			)
+		}
+		for index := range executions {
+			if err := filterChangedResult(
+				finalChangedScope,
+				executions[index].resultFile,
+				&executions[index].result,
+			);
+				err != nil {
+				return reportLintFixFailure(
+					invocation,
+					stdout,
+					stderr,
+					ExitInvalidInvocation,
+					executions,
+					err,
+				)
+			}
 		}
 	}
 	if err := ctx.Err(); err != nil {
@@ -1606,6 +1663,53 @@ func runLintFix(
 		)
 	}
 	exitCode = lintFixExitCode(executions)
+	if invocation.diff {
+		previewInputs := make([]glippyreport.LintFixTextInput, 0)
+		for _, execution := range executions {
+			if len(execution.outcome.Rejected) == 0 {
+				continue
+			}
+			previewInputs = append(
+				previewInputs,
+				glippyreport.LintFixTextInput{
+					File: execution.file,
+					ResultFile: execution.resultFile,
+					Result: execution.result,
+					Outcome: execution.outcome,
+				},
+			)
+		}
+		if len(previewInputs) > 0 {
+			rejectedOutput, renderErr := glippyreport.RenderLintFixText(previewInputs)
+			if renderErr != nil {
+				return reportLintFixFailure(
+					invocation,
+					stdout,
+					stderr,
+					moreSevereExitCode(exitCode, ExitInternalError),
+					executions,
+					fmt.Errorf("render fix preview report: %w", renderErr),
+				)
+			}
+			preview.Write(rejectedOutput)
+		}
+		if preview.Len() > 0 {
+			if hasLintFixPreviewChanges(executions) {
+				exitCode = moreSevereExitCode(exitCode, ExitFindings)
+			}
+			if err := write(stdout, []byte(preview.String())); err != nil {
+				return reportLintFixFailure(
+					invocation,
+					stdout,
+					stderr,
+					moreSevereExitCode(exitCode, ExitFilesystemError),
+					executions,
+					fmt.Errorf("write standard output: %w", err),
+				)
+			}
+		}
+		return exitCode
+	}
 	if invocation.reporter == glippyreport.JSON {
 		return reportLintFixJSON(stdout, stderr, exitCode, true, executions, nil)
 	}
@@ -1657,6 +1761,39 @@ func runLintFix(
 		}
 	}
 	return exitCode
+}
+
+func hasLintFixPreviewChanges(executions []lintFixExecution) bool {
+	for _, execution := range executions {
+		if len(execution.outcome.Applied) > 0 &&
+			execution.resultFile != nil &&
+			!bytes.Equal(execution.file.Bytes(), execution.resultFile.Bytes()) {
+			return true
+		}
+	}
+	return false
+}
+
+func coordinateLintFixPreview(
+	snapshot *filesystem.Snapshot,
+	file *source.File,
+	selections []fixengine.Selection,
+	options fixengine.Options,
+) (fixengine.Transaction, error) {
+	if snapshot == nil {
+		return fixengine.Transaction{
+			Status: fixengine.WriteNotPerformed,
+		}, errors.New("fix preview requires a filesystem snapshot")
+	}
+	result, err := fixengine.Coordinate(file, selections, options)
+	transaction := fixengine.Transaction{Result: result, Status: fixengine.WriteNotPerformed}
+	if err != nil {
+		return transaction, err
+	}
+	if err := snapshot.Validate(); err != nil {
+		return transaction, err
+	}
+	return transaction, nil
 }
 
 func prepareLintPackageFixExecutions(
@@ -1737,8 +1874,14 @@ func refreshLintPackageFixExecution(
 	execution *lintFixExecution,
 	selectionOptions fixengine.SelectionOptions,
 	changedScope *changed.Scope,
+	overlay map[string][]byte,
 ) (int, error) {
-	packageResult, err := runUncachedPackageAnalysis(ctx, registry, *execution.packageTask, nil)
+	packageResult, err := runUncachedPackageAnalysis(
+		ctx,
+		registry,
+		*execution.packageTask,
+		overlay,
+	)
 	if err != nil {
 		return packageAnalysisErrorExitCode(err), err
 	}
@@ -1748,9 +1891,6 @@ func refreshLintPackageFixExecution(
 	}
 	if err := validateLintPackagePrerequisites(packageResult); err != nil {
 		return ExitSourceError, err
-	}
-	if err := filterChangedPackageResult(changedScope, &packageResult); err != nil {
-		return ExitInvalidInvocation, err
 	}
 	for _, result := range packageResult.Files {
 		if result.Path != execution.file.Path() {
@@ -1768,6 +1908,9 @@ func refreshLintPackageFixExecution(
 				"refusing to fix generated file %q",
 				file.Path(),
 			)
+		}
+		if err := filterChangedResult(changedScope, file, &result); err != nil {
+			return ExitInvalidInvocation, err
 		}
 		snapshot, exitCode, err := prepareLintPackageSnapshot(
 			ctx,
@@ -1804,8 +1947,9 @@ func refreshFinalLintPackageResults(
 	registry *rules.Registry,
 	task lintPackageTask,
 	executions []lintFixExecution,
+	overlay map[string][]byte,
 ) (int, error) {
-	packageResult, err := runUncachedPackageAnalysis(ctx, registry, task, nil)
+	packageResult, err := runUncachedPackageAnalysis(ctx, registry, task, overlay)
 	if err != nil {
 		return packageAnalysisErrorExitCode(err), err
 	}
@@ -1890,13 +2034,14 @@ func validateLintPackageFix(
 	registry *rules.Registry,
 	task lintPackageTask,
 	formatted *source.File,
+	baseOverlay map[string][]byte,
 ) (analysis.Result, *source.File, error) {
-	packageResult, err := runUncachedPackageAnalysis(
-		ctx,
-		registry,
-		task,
-		map[string][]byte{formatted.Path(): formatted.Bytes()},
-	)
+	overlay := make(map[string][]byte, len(baseOverlay) + 1)
+	for path, input := range baseOverlay {
+		overlay[path] = bytes.Clone(input)
+	}
+	overlay[formatted.Path()] = formatted.Bytes()
+	packageResult, err := runUncachedPackageAnalysis(ctx, registry, task, overlay)
 	if err != nil {
 		return analysis.Result{}, nil, err
 	}

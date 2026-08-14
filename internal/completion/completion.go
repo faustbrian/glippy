@@ -114,7 +114,7 @@ _glippy_completion() {
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		lint)
-			COMPREPLY=( $(compgen -W "-A -W -D -F --allow --warn --deny --forbid --fix --fix-suggestions --fix-unsafe --only --except --new-from= --generate-baseline= --reporter --reporter=text --reporter=json --reporter=github --reporter=sarif --config" -- "$current") )
+			COMPREPLY=( $(compgen -W "-A -W -D -F --allow --warn --deny --forbid --fix --fix-suggestions --fix-unsafe --diff --only --except --new-from= --generate-baseline= --reporter --reporter=text --reporter=json --reporter=github --reporter=sarif --config" -- "$current") )
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		check)
@@ -201,6 +201,7 @@ _glippy() {
 				'--fix[apply safe fixes]' \
 				'--fix-suggestions[apply suggestion fixes]' \
 				'--fix-unsafe[apply unsafe fixes]' \
+				'--diff[preview validated fixes without writing]' \
 				'--only=[run only exact rule IDs]:rule IDs:('` +
 		strings.Join(ruleIDs, " ") +
 		`')' \
@@ -329,6 +330,7 @@ complete -c glippy -n '__fish_seen_subcommand_from lint check' -s F -l forbid -r
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix -d 'Apply safe fixes'
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix-suggestions -d 'Apply suggestion fixes'
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix-unsafe -d 'Apply unsafe fixes'
+complete -c glippy -n '__fish_seen_subcommand_from lint' -l diff -d 'Preview validated fixes without writing'
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l only -r -a '` +
 			strings.Join(ruleIDs, " ") +
 			`' -d 'Run only exact rule IDs'

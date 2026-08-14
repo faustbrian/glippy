@@ -19,6 +19,7 @@ and no v0.2 tag or release is authorized before maintainer review.
 | `glippy lint --except=<rules> [paths...]` | Exclude exact rule IDs after project policy | No |
 | `glippy lint --new-from=<git-ref> [paths...]` | Report diagnostics on changed lines | No |
 | `glippy lint --fix [paths...]` | Apply safe fixes | Yes |
+| `glippy lint --fix --diff [paths...]` | Preview validated safe fixes as unified differences | No |
 | `glippy lint --generate-baseline=<path> [paths...]` | Write a deterministic adoption baseline | Baseline only |
 | `glippy check [paths...]` | Check formatting and lint diagnostics together | No |
 | `glippy check -D warnings [paths...]` | Check with command-line warning denial | No |
@@ -144,6 +145,29 @@ reasons, expiry, unused directives, and formatter ownership.
 | `--fix` | Safe only |
 | `--fix-suggestions` | Suggestion only |
 | `--fix-unsafe` | Unsafe only |
+
+Add `--diff` to one or more fix-class flags to preview the complete validated,
+formatter-normalized result without writing:
+
+```sh
+glippy lint --fix --diff ./...
+glippy lint --fix-suggestions --diff ./...
+glippy lint --fix --fix-suggestions --diff ./...
+```
+
+Preview uses the same selection, stale-source, conflict, parsing, formatting,
+changed-line ownership, and post-fix analysis boundaries as replacement. Typed
+package previews accumulate accepted candidate bytes in an in-memory overlay,
+so every later file is reselected and validated against earlier previewed
+changes. Changed files are emitted as deterministic three-context unified
+diffs from `<path>.orig` to `<path>` in canonical path order. Rejected fixes
+retain their ordinary text diagnostics. Unchanged files are silent. Exit 1
+means validated changes would occur; conflicts and failures retain their
+ordinary exit categories.
+
+`--diff` requires at least one fix-class flag, accepts only the text reporter,
+and cannot be combined with baseline generation. It never replaces source,
+changes permissions, or updates modification times.
 
 The flags are independently composable. Enabling unsafe fixes does not enable
 safe or suggestion fixes. Glippy refuses ambiguous alternatives, stale source,
