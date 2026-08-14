@@ -71,8 +71,10 @@ glippy fmt --check [paths...]
 glippy fmt --diff [paths...]
 glippy lint [paths...]
 glippy lint --fix [paths...]
+glippy lint --new-from=<git-ref> [paths...]
 glippy lint --generate-baseline=<path> [paths...]
 glippy check [paths...]
+glippy check --new-from=<git-ref> [paths...]
 glippy explain <rule>
 glippy version
 glippy completion <bash|zsh|fish>
@@ -81,7 +83,9 @@ glippy completion <bash|zsh|fish>
 `glippy check ./...` is the non-mutating combined CI entry point. Safe fixes are
 selected with `lint --fix`; suggestion and unsafe classes require their own
 explicit flags. Existing findings can be captured without weakening new-code
-policy through a [deterministic lint baseline](docs/baselines.md). See the
+policy through a [deterministic lint baseline](docs/baselines.md), or hidden
+without a baseline during incremental adoption with
+`--new-from=origin/main`. See the
 [command reference](docs/command-reference.md) for
 inputs, reporters, exit categories, and write behavior.
 

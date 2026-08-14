@@ -158,6 +158,9 @@ Lint summaries always contain `files`, `diagnostics`, `suppressed`,
 `unused_suppressions`, and `complete`. Typed runs add
 `package_diagnostics` and `source_problems` when nonzero. Fix runs add
 `fixed_files`, `applied_fixes`, and `rejected_fixes` when nonzero.
+Changed-code runs add `preexisting_diagnostics` when full analysis found
+diagnostics outside the lines selected by `--new-from`; those diagnostics are
+not emitted and do not affect the outcome.
 
 Each lint file has `path`, `source_digest`, and `status`. Fix results may add
 `result_digest`.
@@ -336,7 +339,11 @@ typed prerequisite channels. Its summary replaces lint fix counts with
 }
 ```
 
-`format_status` is `unchanged` or `different`. Formatting and analysis are
+`format_status` is `unchanged`, `different`, or `preexisting`. The last value
+is used only with `--new-from` when canonical formatting differs but the full
+transformation touches a line outside changed-code ownership. Such a file
+increments optional `preexisting_formatting_differences`, not
+`formatting_differences`, and does not create a finding. Formatting and analysis are
 bound to the same source path and digest; a mismatch is an internal error, not
 a report Glippy silently combines.
 

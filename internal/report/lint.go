@@ -19,6 +19,7 @@ import (
 type LintSummary struct {
 	Files int `json:"files"`
 	Diagnostics int `json:"diagnostics"`
+	PreexistingDiagnostics int `json:"preexisting_diagnostics,omitempty"`
 	Suppressed int `json:"suppressed"`
 	Baselined int `json:"baselined"`
 	BaselineProblems int `json:"baseline_problems"`
@@ -274,6 +275,7 @@ func NewLintResult(
 			)
 		}
 		result.Summary.Diagnostics += len(analyzed.Diagnostics)
+		result.Summary.PreexistingDiagnostics += len(analyzed.PreexistingDiagnostics)
 		result.Summary.Suppressed += len(analyzed.Suppressed)
 		result.Summary.Baselined += len(analyzed.Baselined)
 		result.Summary.BaselineProblems += len(analyzed.BaselineProblems)

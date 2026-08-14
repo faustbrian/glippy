@@ -9,16 +9,18 @@ import (
 	"strings"
 
 	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/changed"
 	glippyformat "github.com/faustbrian/glippy/internal/format"
 	glippyreport "github.com/faustbrian/glippy/internal/report"
 	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const checkUsage = "glippy: expected 'check [--reporter=text|json] [--config=<path>] [path...]'\n"
+const checkUsage = "glippy: expected 'check [--new-from=<git-ref>] [--reporter=text|json] [--config=<path>] [path...]'\n"
 
 type checkInvocation struct {
 	configPath string
+	newFrom string
 	paths []string
 	reporter glippyreport.Format
 }
@@ -27,6 +29,7 @@ type checkExecution struct {
 	file *source.File
 	analysis analysis.Result
 	formatChanged bool
+	formatPreexisting bool
 }
 
 func parseCheckInvocation(arguments []string) (checkInvocation, bool) {
@@ -38,6 +41,17 @@ func parseCheckInvocation(arguments []string) (checkInvocation, bool) {
 	for index := 1; index < len(arguments); index++ {
 		argument := arguments[index]
 		switch {
+		case strings.HasPrefix(argument, "--new-from=") && result.newFrom == "":
+			result.newFrom = strings.TrimPrefix(argument, "--new-from=")
+			if result.newFrom == "" {
+				return checkInvocation{}, false
+			}
+		case argument == "--new-from" &&
+			result.newFrom == "" &&
+			index + 1 < len(arguments) &&
+			!strings.HasPrefix(arguments[index + 1], "--"):
+			index++
+			result.newFrom = arguments[index]
 		case strings.HasPrefix(argument, "--reporter=") && !reporterSet:
 			reporter, valid := parseReporter(
 				strings.TrimPrefix(argument, "--reporter="),
@@ -99,6 +113,30 @@ func requestsCheckJSONReporter(arguments []string) bool {
 	return false
 }
 
+func classifyChangedFormat(
+	scope *changed.Scope,
+	file *source.File,
+	formatted []byte,
+) (bool, bool, error) {
+	if file == nil {
+		return false, false, errors.New("format classification requires a source file")
+	}
+	if bytes.Equal(file.Bytes(), formatted) {
+		return false, false, nil
+	}
+	if scope == nil {
+		return true, false, nil
+	}
+	owned, err := scope.OwnsTransformation(file, formatted)
+	if err != nil {
+		return false, false, err
+	}
+	if owned {
+		return true, false, nil
+	}
+	return false, true, nil
+}
+
 func runCombinedCheck(
 	ctx context.Context,
 	invocation checkInvocation,
@@ -142,11 +180,16 @@ func runCombinedCheck(
 		ctx,
 		lintInvocation{
 			configPath: invocation.configPath,
+			newFrom: invocation.newFrom,
 			paths: invocation.paths,
 			reporter: invocation.reporter,
 		},
 		registry,
 	)
+	if err != nil {
+		return reportCombinedCheck(invocation, stdout, stderr, exitCode, false, nil, err)
+	}
+	changedScope, exitCode, err := prepareChangedScope(ctx, invocation.newFrom, plans)
 	if err != nil {
 		return reportCombinedCheck(invocation, stdout, stderr, exitCode, false, nil, err)
 	}
@@ -162,6 +205,7 @@ func runCombinedCheck(
 			stderr,
 			registry,
 			packageTask,
+			changedScope,
 		)
 	}
 	tasks, exitCode, err := prepareLintTasksFromPlans(
@@ -222,6 +266,22 @@ func runCombinedCheck(
 				fmt.Errorf("format %q: %w", task.file.Path, err),
 			)
 		}
+		formatChanged, formatPreexisting, err := classifyChangedFormat(
+			changedScope,
+			file,
+			formatted,
+		)
+		if err != nil {
+			return reportCombinedCheck(
+				invocation,
+				stdout,
+				stderr,
+				ExitInvalidInvocation,
+				false,
+				executions,
+				err,
+			)
+		}
 		analyzed, err := analysis.Run(ctx, file, registry, task.options.analysis)
 		if err != nil {
 			return reportCombinedCheck(
@@ -239,7 +299,8 @@ func runCombinedCheck(
 			checkExecution{
 				file: file,
 				analysis: analyzed,
-				formatChanged: !bytes.Equal(input, formatted),
+				formatChanged: formatChanged,
+				formatPreexisting: formatPreexisting,
 			},
 		)
 	}
@@ -266,6 +327,22 @@ func runCombinedCheck(
 	}
 	for index := range executions {
 		executions[index].analysis = baselineResults[index]
+		if err := filterChangedResult(
+			changedScope,
+			executions[index].file,
+			&executions[index].analysis,
+		);
+			err != nil {
+			return reportCombinedCheck(
+				invocation,
+				stdout,
+				stderr,
+				ExitInvalidInvocation,
+				false,
+				executions,
+				err,
+			)
+		}
 	}
 	if invocation.reporter == glippyreport.JSON {
 		exitCode = ExitSuccess
@@ -343,6 +420,7 @@ func runCombinedPackageCheck(
 	stdout, stderr io.Writer,
 	registry *rules.Registry,
 	task lintPackageTask,
+	changedScope *changed.Scope,
 ) int {
 	result, err := runPackageAnalysis(ctx, registry, task)
 	if err != nil {
@@ -363,6 +441,18 @@ func runCombinedPackageCheck(
 			stdout,
 			stderr,
 			lintBaselineErrorExitCode(err),
+			false,
+			result,
+			nil,
+			err,
+		)
+	}
+	if err := filterChangedPackageResult(changedScope, &result); err != nil {
+		return reportCombinedPackageCheck(
+			invocation,
+			stdout,
+			stderr,
+			ExitInvalidInvocation,
 			false,
 			result,
 			nil,
@@ -413,12 +503,30 @@ func runCombinedPackageCheck(
 				fmt.Errorf("format %q: %w", file.Path(), err),
 			)
 		}
+		formatChanged, formatPreexisting, err := classifyChangedFormat(
+			changedScope,
+			file,
+			formatted,
+		)
+		if err != nil {
+			return reportCombinedPackageCheck(
+				invocation,
+				stdout,
+				stderr,
+				ExitInvalidInvocation,
+				false,
+				packageCheckResult(result, executions),
+				executions,
+				err,
+			)
+		}
 		executions = append(
 			executions,
 			checkExecution{
 				file: file,
 				analysis: analyzed,
-				formatChanged: !bytes.Equal(file.Bytes(), formatted),
+				formatChanged: formatChanged,
+				formatPreexisting: formatPreexisting,
 			},
 		)
 	}
@@ -479,6 +587,7 @@ func reportCombinedPackageCheck(
 				Path: execution.file.Path(),
 				Digest: execution.file.Digest(),
 				Different: execution.formatChanged,
+				Preexisting: execution.formatPreexisting,
 			}
 		}
 		errs := []glippyreport.Error{}
@@ -605,6 +714,7 @@ func reportCombinedCheck(
 			Path: execution.file.Path(),
 			Digest: execution.file.Digest(),
 			Different: execution.formatChanged,
+			Preexisting: execution.formatPreexisting,
 		}
 	}
 	errs := []glippyreport.Error{}

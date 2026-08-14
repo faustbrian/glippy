@@ -14,6 +14,7 @@ import (
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/baseline"
 	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/changed"
 	"github.com/faustbrian/glippy/internal/config"
 	"github.com/faustbrian/glippy/internal/discovery"
 	"github.com/faustbrian/glippy/internal/filesystem"
@@ -25,7 +26,7 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const lintUsage = "glippy: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--generate-baseline=<path>] [--reporter=text|json] [--config=<path>] [path...]'\n"
+const lintUsage = "glippy: expected 'lint [--fix] [--fix-suggestions] [--fix-unsafe] [--new-from=<git-ref>] [--generate-baseline=<path>] [--reporter=text|json] [--config=<path>] [path...]'\n"
 
 type lintInvocation struct {
 	configPath string
@@ -33,6 +34,7 @@ type lintInvocation struct {
 	fixSuggestions bool
 	fixUnsafe bool
 	generateBaseline string
+	newFrom string
 	paths []string
 	reporter glippyreport.Format
 }
@@ -120,6 +122,17 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 			result.fixSuggestions = true
 		case argument == "--fix-unsafe" && !result.fixUnsafe:
 			result.fixUnsafe = true
+		case strings.HasPrefix(argument, "--new-from=") && result.newFrom == "":
+			result.newFrom = strings.TrimPrefix(argument, "--new-from=")
+			if result.newFrom == "" {
+				return lintInvocation{}, false
+			}
+		case argument == "--new-from" &&
+			result.newFrom == "" &&
+			index + 1 < len(arguments) &&
+			!strings.HasPrefix(arguments[index + 1], "--"):
+			index++
+			result.newFrom = arguments[index]
 		case strings.HasPrefix(argument, "--generate-baseline=") &&
 			result.generateBaseline == "":
 			result.generateBaseline = strings.TrimPrefix(
@@ -182,7 +195,9 @@ func parseLintInvocation(arguments []string) (lintInvocation, bool) {
 		result.paths = []string{"."}
 	}
 	if result.generateBaseline != "" &&
-		(result.fixEnabled() || result.reporter != glippyreport.Text) {
+		(result.fixEnabled() ||
+			result.reporter != glippyreport.Text ||
+			result.newFrom != "") {
 		return lintInvocation{}, false
 	}
 	return result, true
@@ -198,6 +213,74 @@ func (invocation lintInvocation) selectionOptions() fixengine.SelectionOptions {
 		AllowSuggestion: invocation.fixSuggestions,
 		AllowUnsafe: invocation.fixUnsafe,
 	}
+}
+
+func prepareChangedScope(
+	ctx context.Context,
+	base string,
+	plans []lintInputPlan,
+) (*changed.Scope, int, error) {
+	if base == "" {
+		return nil, ExitSuccess, nil
+	}
+	if len(plans) == 0 {
+		return nil, ExitInternalError, errors.New(
+			"changed-code planning produced no inputs",
+		)
+	}
+	scope, err := changed.Resolve(ctx, plans[0].anchor, base)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, ExitCanceled, err
+		}
+		return nil, ExitInvalidInvocation, err
+	}
+	return scope, ExitSuccess, nil
+}
+
+func filterChangedResult(scope *changed.Scope, file *source.File, result *analysis.Result) error {
+	if scope == nil {
+		return nil
+	}
+	if file == nil || result == nil {
+		return errors.New("changed-code filtering requires a source and analysis result")
+	}
+	if !scope.Contains(file.Path()) {
+		return fmt.Errorf(
+			"changed-code source %q is outside Git root %q",
+			file.Path(),
+			scope.Root(),
+		)
+	}
+	visible, preexisting, err := scope.FilterDiagnostics(file, result.Diagnostics)
+	if err != nil {
+		return err
+	}
+	result.Diagnostics = visible
+	result.PreexistingDiagnostics = append(result.PreexistingDiagnostics, preexisting...)
+	return nil
+}
+
+func filterChangedPackageResult(scope *changed.Scope, result *analysis.PackageResult) error {
+	if scope == nil {
+		return nil
+	}
+	if result == nil {
+		return errors.New("changed-code filtering requires a package result")
+	}
+	for index := range result.Files {
+		file, found := result.Sources.Lookup(result.Files[index].Path)
+		if !found {
+			return fmt.Errorf(
+				"changed-code source %q is missing",
+				result.Files[index].Path,
+			)
+		}
+		if err := filterChangedResult(scope, file, &result.Files[index]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func requestsLintJSONReporter(arguments []string) bool {
@@ -248,12 +331,24 @@ func runLintCheck(
 	if err != nil {
 		return reportLintFailure(invocation, stdout, stderr, exitCode, nil, err)
 	}
+	changedScope, exitCode, err := prepareChangedScope(ctx, invocation.newFrom, plans)
+	if err != nil {
+		return reportLintFailure(invocation, stdout, stderr, exitCode, nil, err)
+	}
 	packageTask, packageMode, exitCode, err := prepareLintPackageTask(plans)
 	if err != nil {
 		return reportLintFailure(invocation, stdout, stderr, exitCode, nil, err)
 	}
 	if packageMode {
-		return runLintPackageCheck(ctx, invocation, stdout, stderr, registry, packageTask)
+		return runLintPackageCheck(
+			ctx,
+			invocation,
+			stdout,
+			stderr,
+			registry,
+			packageTask,
+			changedScope,
+		)
 	}
 	tasks, exitCode, err := prepareLintTasksFromPlans(
 		ctx,
@@ -325,6 +420,17 @@ func runLintCheck(
 		)
 	}
 	for index := range inputs {
+		if err := filterChangedResult(changedScope, inputs[index].File, &results[index]);
+			err != nil {
+			return reportLintFailure(
+				invocation,
+				stdout,
+				stderr,
+				ExitInvalidInvocation,
+				results,
+				err,
+			)
+		}
 		inputs[index].Result = results[index]
 	}
 	if err := ctx.Err(); err != nil {
@@ -559,6 +665,7 @@ func runLintPackageCheck(
 	stdout, stderr io.Writer,
 	registry *rules.Registry,
 	task lintPackageTask,
+	changedScope *changed.Scope,
 ) int {
 	result, err := runPackageAnalysis(ctx, registry, task)
 	if err != nil {
@@ -577,6 +684,16 @@ func runLintPackageCheck(
 			stdout,
 			stderr,
 			lintBaselineErrorExitCode(err),
+			result,
+			err,
+		)
+	}
+	if err := filterChangedPackageResult(changedScope, &result); err != nil {
+		return reportLintPackageFailure(
+			invocation,
+			stdout,
+			stderr,
+			ExitInvalidInvocation,
 			result,
 			err,
 		)
@@ -1093,6 +1210,10 @@ func runLintFix(
 	if err != nil {
 		return reportLintFixFailure(invocation, stdout, stderr, exitCode, nil, err)
 	}
+	changedScope, exitCode, err := prepareChangedScope(ctx, invocation.newFrom, plans)
+	if err != nil {
+		return reportLintFixFailure(invocation, stdout, stderr, exitCode, nil, err)
+	}
 	packageTask, packageMode, exitCode, err := prepareLintPackageTask(plans)
 	if err != nil {
 		return reportLintFixFailure(invocation, stdout, stderr, exitCode, nil, err)
@@ -1104,6 +1225,7 @@ func runLintFix(
 			packageTask,
 			registry,
 			invocation.selectionOptions(),
+			changedScope,
 		)
 	} else {
 		var tasks []lintTask
@@ -1119,6 +1241,7 @@ func runLintFix(
 				tasks,
 				registry,
 				invocation.selectionOptions(),
+				changedScope,
 			)
 		}
 	}
@@ -1144,6 +1267,7 @@ func runLintFix(
 				registry,
 				execution,
 				invocation.selectionOptions(),
+				changedScope,
 			)
 			if err != nil {
 				return reportLintFixFailure(
@@ -1165,6 +1289,20 @@ func runLintFix(
 			Format: execution.task.options.format,
 		}
 		options.Validate = func(formatted *source.File) error {
+			if changedScope != nil {
+				owned, err := changedScope.OwnsTransformation(
+					execution.file,
+					formatted.Bytes(),
+				)
+				if err != nil {
+					return err
+				}
+				if !owned {
+					return errors.New(
+						"formatted fix changes lines outside --new-from ownership",
+					)
+				}
+			}
 			var analyzed analysis.Result
 			var analyzedFile *source.File
 			var err error
@@ -1262,6 +1400,27 @@ func runLintFix(
 			)
 		}
 	}
+	finalChangedScope, exitCode, err := prepareChangedScope(ctx, invocation.newFrom, plans)
+	if err != nil {
+		return reportLintFixFailure(invocation, stdout, stderr, exitCode, executions, err)
+	}
+	for index := range executions {
+		if err := filterChangedResult(
+			finalChangedScope,
+			executions[index].resultFile,
+			&executions[index].result,
+		);
+			err != nil {
+			return reportLintFixFailure(
+				invocation,
+				stdout,
+				stderr,
+				ExitInvalidInvocation,
+				executions,
+				err,
+			)
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return reportLintFixFailure(
 			invocation,
@@ -1316,6 +1475,7 @@ func prepareLintPackageFixExecutions(
 	task lintPackageTask,
 	registry *rules.Registry,
 	selectionOptions fixengine.SelectionOptions,
+	changedScope *changed.Scope,
 ) ([]lintFixExecution, int, error) {
 	packageResult, err := runUncachedPackageAnalysis(ctx, registry, task, nil)
 	if err != nil {
@@ -1326,6 +1486,9 @@ func prepareLintPackageFixExecutions(
 	}
 	if err := validateLintPackagePrerequisites(packageResult); err != nil {
 		return nil, ExitSourceError, err
+	}
+	if err := filterChangedPackageResult(changedScope, &packageResult); err != nil {
+		return nil, ExitInvalidInvocation, err
 	}
 	executions := make([]lintFixExecution, 0, len(packageResult.Files))
 	for _, result := range packageResult.Files {
@@ -1384,6 +1547,7 @@ func refreshLintPackageFixExecution(
 	registry *rules.Registry,
 	execution *lintFixExecution,
 	selectionOptions fixengine.SelectionOptions,
+	changedScope *changed.Scope,
 ) (int, error) {
 	packageResult, err := runUncachedPackageAnalysis(ctx, registry, *execution.packageTask, nil)
 	if err != nil {
@@ -1395,6 +1559,9 @@ func refreshLintPackageFixExecution(
 	}
 	if err := validateLintPackagePrerequisites(packageResult); err != nil {
 		return ExitSourceError, err
+	}
+	if err := filterChangedPackageResult(changedScope, &packageResult); err != nil {
+		return ExitInvalidInvocation, err
 	}
 	for _, result := range packageResult.Files {
 		if result.Path != execution.file.Path() {
@@ -1639,6 +1806,7 @@ func prepareLintFixExecutions(
 	tasks []lintTask,
 	registry *rules.Registry,
 	selectionOptions fixengine.SelectionOptions,
+	changedScope *changed.Scope,
 ) ([]lintFixExecution, int, error) {
 	executions := make([]lintFixExecution, 0, len(tasks))
 	for _, task := range tasks {
@@ -1700,7 +1868,18 @@ func prepareLintFixExecutions(
 	}
 	for index := range executions {
 		executions[index].result = results[index]
-		selections, err := fixengine.Select(results[index].Diagnostics, selectionOptions)
+		if err := filterChangedResult(
+			changedScope,
+			executions[index].file,
+			&executions[index].result,
+		);
+			err != nil {
+			return executions, ExitInvalidInvocation, err
+		}
+		selections, err := fixengine.Select(
+			executions[index].result.Diagnostics,
+			selectionOptions,
+		)
 		if err != nil {
 			return executions, ExitInternalError, err
 		}

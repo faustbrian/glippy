@@ -23,8 +23,10 @@ glippy fmt --check [paths...]
 glippy fmt --diff [paths...]
 glippy lint [paths...]
 glippy lint --fix [paths...]
+glippy lint --new-from=<git-ref> [paths...]
 glippy lint --generate-baseline=<path> [paths...]
 glippy check [paths...]
+glippy check --new-from=<git-ref> [paths...]
 glippy explain <rule>
 glippy version
 glippy completion <bash|zsh|fish>
@@ -137,6 +139,28 @@ non-portable output paths, all fix flags, and JSON reporting. It writes only
 the baseline, never source, and MUST use the shared rooted atomic writer. The
 [baseline reference](../baselines.md) defines identity, stale, expiry, and
 machine-reporting behavior.
+
+`lint` and `check` MAY select `--new-from=<git-ref>`. The driver MUST resolve
+the containing Git repository and all common ancestors of the named ref and
+`HEAD`, sort multiple merge bases by full object identity, and use the first as
+the deterministic comparison base. It MUST analyze complete selected files and
+packages before filtering. Only diagnostics whose physical byte range
+intersects a current changed line are visible; other diagnostics MUST be
+counted separately as pre-existing and MUST NOT affect the exit status. Added
+and untracked files are wholly changed. Modified renames MUST preserve
+line-level ownership when Git recognizes the rename, while pure renames MUST
+introduce no changed-line diagnostics. Deleted paths have no current findings.
+
+Changed-code fixes MUST expose a fix only when every edit line is owned. Before
+replacement, the driver MUST compare the complete formatter-normalized result
+with the analyzed source and reject the transaction if any changed source line
+is not owned. `--new-from` MUST NOT combine with baseline generation. Every
+selected source MUST remain inside the resolved repository. Missing refs,
+repositories, merge bases, or out-of-repository inputs are invalid
+invocations. Git execution MUST observe cancellation, MUST NOT enable external
+diff drivers or text conversion, MUST NOT execute repository-configured
+content filters, MUST ignore inherited repository-selection overrides and
+global or system Git configuration, and MUST NOT require network access.
 
 `lint` never writes source unless a fix flag is present. Baseline generation
 writes only its explicitly named baseline document. Ordinary `--fix` applies safe

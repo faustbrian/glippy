@@ -86,6 +86,25 @@ needs machine diagnostics, replace the final command with:
 Preserve the command's exit status when uploading the report. A JSON document
 with `complete: false` is not a successful partial check.
 
+## Incremental Pull-request Adoption
+
+Repositories with existing findings can initially fetch full history and gate
+only code introduced by a pull request:
+
+```yaml
+- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+  with:
+    fetch-depth: 0
+    persist-credentials: false
+- run: glippy check --new-from=origin/main ./...
+```
+
+The named remote ref must exist locally. Glippy resolves its merge base with
+`HEAD`, analyzes complete packages, counts but hides pre-existing diagnostics,
+and treats formatting as actionable only when the complete transformation is
+owned by changed lines. Move to the unfiltered `glippy check ./...` gate once
+the repository is clean enough to enforce all findings.
+
 ## Versioned Git Hook
 
 Keep the hook in the repository rather than copying unrelated versions into

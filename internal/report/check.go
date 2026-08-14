@@ -13,7 +13,9 @@ import (
 type CheckSummary struct {
 	Files int `json:"files"`
 	FormattingDifferences int `json:"formatting_differences"`
+	PreexistingFormattingDifferences int `json:"preexisting_formatting_differences,omitempty"`
 	Diagnostics int `json:"diagnostics"`
+	PreexistingDiagnostics int `json:"preexisting_diagnostics,omitempty"`
 	Suppressed int `json:"suppressed"`
 	Baselined int `json:"baselined"`
 	BaselineProblems int `json:"baseline_problems"`
@@ -29,6 +31,7 @@ type CheckFormatStatus string
 const (
 	CheckFormatUnchanged CheckFormatStatus = "unchanged"
 	CheckFormatDifferent CheckFormatStatus = "different"
+	CheckFormatPreexisting CheckFormatStatus = "preexisting"
 )
 
 type CheckFile struct {
@@ -42,6 +45,7 @@ type CheckFormatOutcome struct {
 	Path string
 	Digest source.Digest
 	Different bool
+	Preexisting bool
 }
 
 type CheckResult struct {
@@ -124,6 +128,7 @@ func newCheckResult(lintResult LintResult, formats []CheckFormatOutcome) (CheckR
 		Summary: CheckSummary{
 			Files: lintResult.Summary.Files,
 			Diagnostics: lintResult.Summary.Diagnostics,
+			PreexistingDiagnostics: lintResult.Summary.PreexistingDiagnostics,
 			Suppressed: lintResult.Summary.Suppressed,
 			Baselined: lintResult.Summary.Baselined,
 			BaselineProblems: lintResult.Summary.BaselineProblems,
@@ -160,9 +165,18 @@ func newCheckResult(lintResult LintResult, formats []CheckFormatOutcome) (CheckR
 			)
 		}
 		status := CheckFormatUnchanged
+		if format.Different && format.Preexisting {
+			return CheckResult{}, fmt.Errorf(
+				"check format outcome %q is both changed and pre-existing",
+				format.Path,
+			)
+		}
 		if format.Different {
 			status = CheckFormatDifferent
 			result.Summary.FormattingDifferences++
+		} else if format.Preexisting {
+			status = CheckFormatPreexisting
+			result.Summary.PreexistingFormattingDifferences++
 		}
 		result.Files[index] = CheckFile{
 			Path: format.Path,

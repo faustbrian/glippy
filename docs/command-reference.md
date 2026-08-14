@@ -14,9 +14,11 @@ and no v0.2 tag or release is authorized before maintainer review.
 | `glippy fmt --diff [paths...]` | Print unified formatting differences | No |
 | `glippy fmt --write [paths...]` | Validate and replace changed files | Yes |
 | `glippy lint [paths...]` | Report enabled lint diagnostics | No |
+| `glippy lint --new-from=<git-ref> [paths...]` | Report diagnostics on changed lines | No |
 | `glippy lint --fix [paths...]` | Apply safe fixes | Yes |
 | `glippy lint --generate-baseline=<path> [paths...]` | Write a deterministic adoption baseline | Baseline only |
 | `glippy check [paths...]` | Check formatting and lint diagnostics together | No |
+| `glippy check --new-from=<git-ref> [paths...]` | Check changed-line formatting and diagnostics | No |
 | `glippy explain <rule>` | Print canonical rule documentation | No |
 | `glippy version` | Print the resolved Glippy version | No |
 | `glippy completion <shell>` | Generate Bash, Zsh, or Fish completion | No |
@@ -148,6 +150,25 @@ baseline relative to one project root. It analyzes visible diagnostics before
 baseline application and cannot be combined with fix flags or the JSON
 reporter. See the [lint baseline reference](baselines.md).
 
+### Changed-code adoption
+
+`--new-from=<git-ref>` resolves the deterministic merge base shared by the
+named ref and `HEAD`, analyzes the complete selected files and packages, and
+reports only diagnostics intersecting lines changed from that merge base.
+Modified renames retain line ownership; pure renames introduce no diagnostics.
+Untracked files are wholly changed. JSON summary fields distinguish visible
+diagnostics from `preexisting_diagnostics` hidden by this filter.
+
+Fix modes remain available. A fix is offered only when every edit is on owned
+lines, and the complete formatter-normalized result is rejected if it changes
+any pre-existing line. `--new-from` cannot be combined with baseline
+generation. The command invokes the local `git` executable without network
+access, external diff drivers, text conversions, pagers, or optional Git
+locks. Inherited Git repository overrides are removed, global and system Git
+configuration is ignored, and repository-configured clean, smudge, or process
+filters are neutralized so analyzing an untrusted checkout cannot execute a
+filter command. The selected paths must belong to the resolved repository.
+
 ## Combined Check
 
 ```sh
@@ -163,6 +184,11 @@ has a complete result, while JSON reports completeness explicitly.
 
 `check` accepts `--config=<path>` and `--reporter=text|json` and defaults to the
 current directory.
+
+With `--new-from`, formatting differences are actionable only when the full
+formatter transformation is owned by changed lines. A difference touching an
+unchanged line is reported in JSON as `format_status: "preexisting"` and does
+not change the exit status. Lint diagnostics use the same changed-line filter.
 
 ## Rule Documentation
 

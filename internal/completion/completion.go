@@ -84,11 +84,11 @@ _glippy_completion() {
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		lint)
-			COMPREPLY=( $(compgen -W "--fix --fix-suggestions --fix-unsafe --generate-baseline= --reporter --reporter=text --reporter=json --config" -- "$current") )
+			COMPREPLY=( $(compgen -W "--fix --fix-suggestions --fix-unsafe --new-from= --generate-baseline= --reporter --reporter=text --reporter=json --config" -- "$current") )
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		check)
-			COMPREPLY=( $(compgen -W "--reporter --reporter=text --reporter=json --config" -- "$current") )
+			COMPREPLY=( $(compgen -W "--new-from= --reporter --reporter=text --reporter=json --config" -- "$current") )
 			COMPREPLY+=( $(compgen -f -- "$current") )
 			;;
 		explain)
@@ -132,6 +132,7 @@ _glippy() {
 				'--fix[apply safe fixes]' \
 				'--fix-suggestions[apply suggestion fixes]' \
 				'--fix-unsafe[apply unsafe fixes]' \
+				'--new-from=[report findings introduced since a Git ref]:git ref' \
 				'--generate-baseline=[write lint baseline]:baseline path:_files' \
 				'--reporter=[select reporter]:reporter:(text json)' \
 				'--config=[use an explicit configuration]:configuration file:_files' \
@@ -139,6 +140,7 @@ _glippy() {
 			;;
 		check)
 			_arguments \
+				'--new-from=[report findings introduced since a Git ref]:git ref' \
 				'--reporter=[select reporter]:reporter:(text json)' \
 				'--config=[use an explicit configuration]:configuration file:_files' \
 				'*:path:_files'
@@ -182,6 +184,7 @@ complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix -d 'Apply safe f
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix-suggestions -d 'Apply suggestion fixes'
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l fix-unsafe -d 'Apply unsafe fixes'
 complete -c glippy -n '__fish_seen_subcommand_from lint' -l generate-baseline -r -F -d 'Write lint baseline'
+complete -c glippy -n '__fish_seen_subcommand_from lint check' -l new-from -r -d 'Report findings introduced since a Git ref'
 
 `,
 	)

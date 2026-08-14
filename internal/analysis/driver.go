@@ -31,6 +31,7 @@ type Result struct {
 	Requirement rules.Requirement
 	Selection []rules.Selection
 	Diagnostics []rules.Diagnostic
+	PreexistingDiagnostics []rules.Diagnostic
 	Baselined []rules.Diagnostic
 	BaselineProblems []baseline.Problem
 	Suppressed []suppressions.SuppressedDiagnostic
