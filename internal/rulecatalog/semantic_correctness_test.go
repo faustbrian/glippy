@@ -87,7 +87,12 @@ func defects(items []int, numerator, denominator int, parsed *url.URL, lock *syn
 	}
 	for _, ruleID := range ruleIDs {
 		if got[ruleID] != 1 {
-			t.Fatalf("%s diagnostic count = %d; result = %#v", ruleID, got[ruleID], result)
+			t.Fatalf(
+				"%s diagnostic count = %d; result = %#v",
+				ruleID,
+				got[ruleID],
+				result,
+			)
 		}
 	}
 	if len(got) != len(ruleIDs) {
@@ -235,7 +240,12 @@ func compare() bool {
 	}
 	for _, ruleID := range ruleIDs {
 		if got[ruleID] != 1 {
-			t.Fatalf("%s diagnostic count = %d; result = %#v", ruleID, got[ruleID], result)
+			t.Fatalf(
+				"%s diagnostic count = %d; result = %#v",
+				ruleID,
+				got[ruleID],
+				result,
+			)
 		}
 	}
 }
@@ -253,14 +263,11 @@ func defects(parsed *url.URL, pointer *int) {
 	delete(parsed.Query(), "key")
 }
 `
-	ruleIDs := []string{
-		"impossible-interface-nil-comparison",
-		"ineffective-url-query-mutation",
-	}
+	ruleIDs := []string{"impossible-interface-nil-comparison", "ineffective-url-query-mutation"}
 	result := runSemanticCorrectnessRules(t, input, ruleIDs)
 	want := map[string]int{
 		"impossible-interface-nil-comparison": 1,
-		"ineffective-url-query-mutation":      2,
+		"ineffective-url-query-mutation": 2,
 	}
 	got := make(map[string]int)
 	for _, file := range result.Files {
@@ -270,7 +277,13 @@ func defects(parsed *url.URL, pointer *int) {
 	}
 	for ruleID, count := range want {
 		if got[ruleID] != count {
-			t.Fatalf("%s diagnostic count = %d, want %d; result = %#v", ruleID, got[ruleID], count, result)
+			t.Fatalf(
+				"%s diagnostic count = %d, want %d; result = %#v",
+				ruleID,
+				got[ruleID],
+				count,
+				result,
+			)
 		}
 	}
 }
@@ -357,44 +370,44 @@ func TestSemanticCorrectnessPackReportsExactRanges(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		id    string
+		id string
 		input string
-		want  string
+		want string
 	}{
 		{
-			id:    "ignored-append-result",
+			id: "ignored-append-result",
 			input: "package sample\nfunc run(items []int) { _ = append(items, 1) }\n",
-			want:  "append(items, 1)",
+			want: "append(items, 1)",
 		},
 		{
-			id:    "nil-map-write",
+			id: "nil-map-write",
 			input: "package sample\nfunc run() { var entries map[string]int; entries[\"key\"] = 1 }\n",
-			want:  "entries[\"key\"]",
+			want: "entries[\"key\"]",
 		},
 		{
-			id:    "ineffective-value-receiver-assignment",
+			id: "ineffective-value-receiver-assignment",
 			input: "package sample\ntype counter struct{ value int }; func (counter counter) run() { counter.value = 1 }\n",
-			want:  "counter.value",
+			want: "counter.value",
 		},
 		{
-			id:    "nan-comparison",
+			id: "nan-comparison",
 			input: "package sample\nimport \"math\"\nfunc run(value float64) { _ = value == math.NaN() }\n",
-			want:  "value == math.NaN()",
+			want: "value == math.NaN()",
 		},
 		{
-			id:    "integer-division-before-conversion",
+			id: "integer-division-before-conversion",
 			input: "package sample\nfunc run(left, right int) { _ = float64(left / right) }\n",
-			want:  "float64(left / right)",
+			want: "float64(left / right)",
 		},
 		{
-			id:    "ineffective-url-query-mutation",
+			id: "ineffective-url-query-mutation",
 			input: "package sample\nimport \"net/url\"\nfunc run(parsed *url.URL) { parsed.Query().Set(\"key\", \"value\") }\n",
-			want:  "parsed.Query().Set(\"key\", \"value\")",
+			want: "parsed.Query().Set(\"key\", \"value\")",
 		},
 		{
-			id:    "deferred-lock",
+			id: "deferred-lock",
 			input: "package sample\nimport \"sync\"\nfunc run(lock *sync.Mutex) { defer lock.Lock() }\n",
-			want:  "lock.Lock()",
+			want: "lock.Lock()",
 		},
 		{
 			id: "defer-before-error-check",
@@ -403,26 +416,40 @@ func TestSemanticCorrectnessPackReportsExactRanges(t *testing.T) {
 			want: "resource.Close()",
 		},
 		{
-			id:    "infinite-recursion",
+			id: "infinite-recursion",
 			input: "package sample\nfunc recurse/**/() { recurse() }\n",
-			want:  "recurse()",
+			want: "recurse()",
 		},
 		{
-			id:    "impossible-interface-nil-comparison",
+			id: "impossible-interface-nil-comparison",
 			input: "package sample\nfunc run() { _ = any(42) == nil }\n",
-			want:  "any(42) == nil",
+			want: "any(42) == nil",
 		},
 	}
 	for _, test := range tests {
 		test := test
-		t.Run(test.id, func(t *testing.T) {
-			t.Parallel()
-			result := runSemanticCorrectnessRules(t, test.input, []string{test.id})
-			assertRuleRanges(t, test.input, result, test.id, test.id, []string{test.want})
-			if len(result.Files[0].Diagnostics[0].Fixes) != 0 {
-				t.Fatalf("%s unexpectedly offered a fix", test.id)
-			}
-		})
+		t.Run(
+			test.id,
+			func(t *testing.T) {
+				t.Parallel()
+				result := runSemanticCorrectnessRules(
+					t,
+					test.input,
+					[]string{test.id},
+				)
+				assertRuleRanges(
+					t,
+					test.input,
+					result,
+					test.id,
+					test.id,
+					[]string{test.want},
+				)
+				if len(result.Files[0].Diagnostics[0].Fixes) != 0 {
+					t.Fatalf("%s unexpectedly offered a fix", test.id)
+				}
+			},
+		)
 	}
 }
 
@@ -430,7 +457,11 @@ func TestSemanticCorrectnessPackHonorsSharedPolicies(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeFixture(t, filepath.Join(root, "go.mod"), "module example.com/semanticpolicy\n\ngo 1.26.0\n")
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/semanticpolicy\n\ngo 1.26.0\n",
+	)
 	suppressionHeader := ""
 	for _, ruleID := range semanticCorrectnessRuleIDs() {
 		suppressionHeader += "//glippy:ignore-file " + ruleID + " -- policy fixture\n"
@@ -438,9 +469,13 @@ func TestSemanticCorrectnessPackHonorsSharedPolicies(t *testing.T) {
 	suppressedPath := filepath.Join(root, "suppressed.go")
 	generatedPath := filepath.Join(root, "generated", "generated.go")
 	invalidPath := filepath.Join(root, "invalid", "invalid.go")
-	writeFixture(t, suppressedPath, suppressionHeader+semanticDefectFixture)
-	writeFixture(t, generatedPath, "// Code generated by fixture. DO NOT EDIT.\n"+semanticDefectFixture)
-	writeFixture(t, invalidPath, semanticDefectFixture+"\nvar invalid string = 1\n")
+	writeFixture(t, suppressedPath, suppressionHeader + semanticDefectFixture)
+	writeFixture(
+		t,
+		generatedPath,
+		"// Code generated by fixture. DO NOT EDIT.\n" + semanticDefectFixture,
+	)
+	writeFixture(t, invalidPath, semanticDefectFixture + "\nvar invalid string = 1\n")
 
 	registry, err := rulecatalog.NewRegistry()
 	if err != nil {
@@ -454,13 +489,13 @@ func TestSemanticCorrectnessPackHonorsSharedPolicies(t *testing.T) {
 		context.Background(),
 		registry,
 		analysis.RunOptions{
-			Presets:         []rules.Preset{},
-			Overrides:       overrides,
+			Presets: []rules.Preset{},
+			Overrides: overrides,
 			SourceGoVersion: "go1.26",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"./..."},
+			Dir: root,
+			Patterns: []string{"./..."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)
@@ -493,22 +528,26 @@ func TestSemanticCorrectnessPackHonorsSharedPolicies(t *testing.T) {
 		}
 	}
 
-	selection, err := registry.ResolveOptions(rules.ResolveOptions{
-		Presets:         []rules.Preset{},
-		Overrides:       overrides,
-		SourceGoVersion: "go1.24",
-	})
+	selection, err := registry.ResolveOptions(
+		rules.ResolveOptions{
+			Presets: []rules.Preset{},
+			Overrides: overrides,
+			SourceGoVersion: "go1.24",
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(selection) != 0 {
 		t.Fatalf("pre-minimum semantic selection = %#v", selection)
 	}
-	selection, err = registry.ResolveOptions(rules.ResolveOptions{
-		Presets:         []rules.Preset{},
-		Overrides:       overrides,
-		SourceGoVersion: "go1.25",
-	})
+	selection, err = registry.ResolveOptions(
+		rules.ResolveOptions{
+			Presets: []rules.Preset{},
+			Overrides: overrides,
+			SourceGoVersion: "go1.25",
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,7 +558,11 @@ func TestSemanticCorrectnessPackHonorsSharedPolicies(t *testing.T) {
 
 func BenchmarkSemanticCorrectnessPackPackageAnalysis(b *testing.B) {
 	root := b.TempDir()
-	writeFixture(b, filepath.Join(root, "go.mod"), "module example.com/semanticbenchmark\n\ngo 1.26.0\n")
+	writeFixture(
+		b,
+		filepath.Join(root, "go.mod"),
+		"module example.com/semanticbenchmark\n\ngo 1.26.0\n",
+	)
 	writeFixture(b, filepath.Join(root, "sample.go"), semanticDefectFixture)
 	registry, err := rulecatalog.NewRegistry()
 	if err != nil {
@@ -533,13 +576,13 @@ func BenchmarkSemanticCorrectnessPackPackageAnalysis(b *testing.B) {
 		b,
 		registry,
 		analysis.RunOptions{
-			Presets:         []rules.Preset{},
-			Overrides:       overrides,
+			Presets: []rules.Preset{},
+			Overrides: overrides,
 			SourceGoVersion: "go1.26",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"."},
+			Dir: root,
+			Patterns: []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 		len(overrides),
@@ -586,13 +629,13 @@ func runSemanticCorrectnessRules(
 		context.Background(),
 		registry,
 		analysis.RunOptions{
-			Presets:         []rules.Preset{},
-			Overrides:       overrides,
+			Presets: []rules.Preset{},
+			Overrides: overrides,
 			SourceGoVersion: "go1.26",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"."},
+			Dir: root,
+			Patterns: []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)

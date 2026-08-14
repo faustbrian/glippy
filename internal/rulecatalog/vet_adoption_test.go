@@ -19,7 +19,13 @@ func TestInvalidBuildConstraintReportsMisplacedConstraint(t *testing.T) {
 
 	input := "package sample\n\n//go:build linux\n\nfunc run() {}\n"
 	result := runAdoptionSyntaxRule(t, "invalid-build-constraint", input)
-	assertSingleSyntaxDiagnostic(t, result, input, "invalid-build-constraint", "//go:build linux")
+	assertSingleSyntaxDiagnostic(
+		t,
+		result,
+		input,
+		"invalid-build-constraint",
+		"//go:build linux",
+	)
 }
 
 func TestInvalidDirectiveReportsInvalidGoDebugPackage(t *testing.T) {
@@ -96,12 +102,7 @@ func run(buffer *bytes.Buffer) {
 		"go1.25",
 		map[string]string{"sample.go": input},
 	)
-	diagnostic := assertSingleRuleDiagnostic(
-		t,
-		result,
-		"standard-library-version",
-		"Peek",
-	)
+	diagnostic := assertSingleRuleDiagnostic(t, result, "standard-library-version", "Peek")
 	if !strings.Contains(diagnostic.Message, "requires go1.26 or later") {
 		t.Fatalf("standard library version message = %q", diagnostic.Message)
 	}
@@ -112,15 +113,15 @@ func TestAdoptionVetRulesExcludeNearbyValidCode(t *testing.T) {
 
 	syntaxCases := []struct {
 		ruleID string
-		input  string
+		input string
 	}{
 		{
 			ruleID: "invalid-build-constraint",
-			input:  "//go:build linux\n\npackage sample\n\nfunc run() {}\n",
+			input: "//go:build linux\n\npackage sample\n\nfunc run() {}\n",
 		},
 		{
 			ruleID: "invalid-directive",
-			input:  "//go:debug panicnil=1\npackage main\n\nfunc main() {}\n",
+			input: "//go:debug panicnil=1\npackage main\n\nfunc main() {}\n",
 		},
 	}
 	for _, test := range syntaxCases {
@@ -132,24 +133,24 @@ func TestAdoptionVetRulesExcludeNearbyValidCode(t *testing.T) {
 
 	packageCases := []struct {
 		ruleID string
-		name   string
-		input  string
+		name string
+		input string
 	}{
 		{
 			ruleID: "invalid-test-signature",
-			name:   "sample_test.go",
-			input:  "package sample\n\nimport \"testing\"\n\nfunc TestValue(t *testing.T) {}\n",
+			name: "sample_test.go",
+			input: "package sample\n\nimport \"testing\"\n\nfunc TestValue(t *testing.T) {}\n",
 		},
 		{
 			ruleID: "unbuffered-signal-channel",
-			name:   "sample.go",
+			name: "sample.go",
 			input: "package sample\n\nimport (\"os\"; \"os/signal\")\n" +
 				"func run() { signals := make(chan os.Signal, 1); signal.Notify(signals, os.Interrupt) }\n",
 		},
 		{
 			ruleID: "standard-library-version",
-			name:   "sample.go",
-			input:  "package sample\n\nimport \"bytes\"\n\nfunc run(value []byte) { _ = bytes.Clone(value) }\n",
+			name: "sample.go",
+			input: "package sample\n\nimport \"bytes\"\n\nfunc run(value []byte) { _ = bytes.Clone(value) }\n",
 		},
 	}
 	for _, test := range packageCases {
@@ -173,17 +174,47 @@ func TestAdoptionVetPackMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	tests := []struct {
-		id              string
-		presets         []rules.Preset
-		requirement     rules.Requirement
+		id string
+		presets []rules.Preset
+		requirement rules.Requirement
 		runDespiteError bool
-		fix             string
+		fix string
 	}{
-		{"invalid-build-constraint", []rules.Preset{rules.PresetCorrectness}, rules.RequireSyntax, false, ""},
-		{"invalid-directive", []rules.Preset{rules.PresetCorrectness}, rules.RequireSyntax, false, ""},
-		{"invalid-test-signature", []rules.Preset{rules.PresetCorrectness}, rules.RequireTypes, false, ""},
-		{"unbuffered-signal-channel", []rules.Preset{rules.PresetCorrectness}, rules.RequireTypes, false, "buffer-signal-channel"},
-		{"standard-library-version", []rules.Preset{rules.PresetCorrectness, rules.PresetMigration}, rules.RequireTypes, true, ""},
+		{
+			"invalid-build-constraint",
+			[]rules.Preset{rules.PresetCorrectness},
+			rules.RequireSyntax,
+			false,
+			"",
+		},
+		{
+			"invalid-directive",
+			[]rules.Preset{rules.PresetCorrectness},
+			rules.RequireSyntax,
+			false,
+			"",
+		},
+		{
+			"invalid-test-signature",
+			[]rules.Preset{rules.PresetCorrectness},
+			rules.RequireTypes,
+			false,
+			"",
+		},
+		{
+			"unbuffered-signal-channel",
+			[]rules.Preset{rules.PresetCorrectness},
+			rules.RequireTypes,
+			false,
+			"buffer-signal-channel",
+		},
+		{
+			"standard-library-version",
+			[]rules.Preset{rules.PresetCorrectness, rules.PresetMigration},
+			rules.RequireTypes,
+			true,
+			"",
+		},
 	}
 	for _, test := range tests {
 		metadata, found := registry.Metadata(test.id)
@@ -192,7 +223,10 @@ func TestAdoptionVetPackMetadata(t *testing.T) {
 			!reflect.DeepEqual(metadata.Presets, test.presets) ||
 			metadata.MinimumGoVersion != "1.25" ||
 			metadata.Requirement != test.requirement ||
-			!reflect.DeepEqual(metadata.NodeInterests, []rules.NodeKind{rules.NodeFile}) ||
+			!reflect.DeepEqual(
+				metadata.NodeInterests,
+				[]rules.NodeKind{rules.NodeFile},
+			) ||
 			metadata.RunOnGenerated ||
 			metadata.RunDespiteTypeErrors != test.runDespiteError {
 			t.Fatalf("%s metadata = %#v, found = %v", test.id, metadata, found)
@@ -222,7 +256,9 @@ func runAdoptionVetRule(
 	writeFixture(
 		t,
 		filepath.Join(root, "go.mod"),
-		"module example.com/vetadoption\n\ngo "+strings.TrimPrefix(goVersion, "go")+".0\n",
+		"module example.com/vetadoption\n\ngo " +
+			strings.TrimPrefix(goVersion, "go") +
+			".0\n",
 	)
 	for name, content := range files {
 		writeFixture(t, filepath.Join(root, name), content)
@@ -236,15 +272,13 @@ func runAdoptionVetRule(
 		registry,
 		analysis.RunOptions{
 			Presets: []rules.Preset{},
-			Overrides: map[string]rules.Severity{
-				ruleID: rules.SeverityWarn,
-			},
+			Overrides: map[string]rules.Severity{ruleID: rules.SeverityWarn},
 			SourceGoVersion: goVersion,
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"."},
-			Tests:      true,
+			Dir: root,
+			Patterns: []string{"."},
+			Tests: true,
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)
@@ -269,8 +303,8 @@ func runAdoptionSyntaxRule(t *testing.T, ruleID, input string) analysis.Result {
 		file,
 		registry,
 		analysis.RunOptions{
-			Presets:         []rules.Preset{},
-			Overrides:       map[string]rules.Severity{ruleID: rules.SeverityWarn},
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{ruleID: rules.SeverityWarn},
 			SourceGoVersion: "go1.25",
 		},
 	)
@@ -328,7 +362,8 @@ func assertSingleRuleDiagnostic(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(content[diagnostic.Range.Start:diagnostic.Range.End]); !strings.Contains(got, wantText) {
+	if got := string(content[diagnostic.Range.Start:diagnostic.Range.End]);
+		!strings.Contains(got, wantText) {
 		t.Fatalf("%s diagnostic range text = %q, want containing %q", ruleID, got, wantText)
 	}
 	return diagnostic

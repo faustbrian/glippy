@@ -10,29 +10,61 @@ import (
 )
 
 type ignoredAppendResultRule struct{}
+
 type nilMapWriteRule struct{}
+
 type ineffectiveValueReceiverAssignmentRule struct{}
+
 type nanComparisonRule struct{}
+
 type integerDivisionBeforeConversionRule struct{}
+
 type ineffectiveURLQueryMutationRule struct{}
+
 type deferredLockRule struct{}
+
 type deferBeforeErrorCheckRule struct{}
+
 type infiniteRecursionRule struct{}
+
 type impossibleInterfaceNilComparisonRule struct{}
 
-func NewIgnoredAppendResultRule() Rule { return ignoredAppendResultRule{} }
-func NewNilMapWriteRule() Rule         { return nilMapWriteRule{} }
+func NewIgnoredAppendResultRule() Rule {
+	return ignoredAppendResultRule{}
+}
+
+func NewNilMapWriteRule() Rule {
+	return nilMapWriteRule{}
+}
+
 func NewIneffectiveValueReceiverAssignmentRule() Rule {
 	return ineffectiveValueReceiverAssignmentRule{}
 }
-func NewNaNComparisonRule() Rule { return nanComparisonRule{} }
+
+func NewNaNComparisonRule() Rule {
+	return nanComparisonRule{}
+}
+
 func NewIntegerDivisionBeforeConversionRule() Rule {
 	return integerDivisionBeforeConversionRule{}
 }
-func NewIneffectiveURLQueryMutationRule() Rule { return ineffectiveURLQueryMutationRule{} }
-func NewDeferredLockRule() Rule                { return deferredLockRule{} }
-func NewDeferBeforeErrorCheckRule() Rule       { return deferBeforeErrorCheckRule{} }
-func NewInfiniteRecursionRule() Rule           { return infiniteRecursionRule{} }
+
+func NewIneffectiveURLQueryMutationRule() Rule {
+	return ineffectiveURLQueryMutationRule{}
+}
+
+func NewDeferredLockRule() Rule {
+	return deferredLockRule{}
+}
+
+func NewDeferBeforeErrorCheckRule() Rule {
+	return deferBeforeErrorCheckRule{}
+}
+
+func NewInfiniteRecursionRule() Rule {
+	return infiniteRecursionRule{}
+}
+
 func NewImpossibleInterfaceNilComparisonRule() Rule {
 	return impossibleInterfaceNilComparisonRule{}
 }
@@ -57,7 +89,9 @@ func (ignoredAppendResultRule) Metadata() Metadata {
 func (ignoredAppendResultRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
 	statement, ok := node.(*ast.AssignStmt)
 	if !ok || ctx == nil || ctx.Info() == nil {
-		return nil, fmt.Errorf("ignored-append-result requires an assignment and type information")
+		return nil, fmt.Errorf(
+			"ignored-append-result requires an assignment and type information",
+		)
 	}
 	if len(statement.Lhs) != 1 || len(statement.Rhs) != 1 {
 		return nil, nil
@@ -79,12 +113,14 @@ func (ignoredAppendResultRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Fin
 	if err != nil {
 		return nil, err
 	}
-	return []Finding{{
-		MessageKey: "ignored-append-result",
-		Message:    "append result is discarded, so the updated slice header is lost",
-		Range:      range_,
-		Help:       "assign the result back to the destination slice",
-	}}, nil
+	return []Finding{
+		{
+			MessageKey: "ignored-append-result",
+			Message: "append result is discarded, so the updated slice header is lost",
+			Range: range_,
+			Help: "assign the result back to the destination slice",
+		},
+	}, nil
 }
 
 func (nilMapWriteRule) Metadata() Metadata {
@@ -161,12 +197,15 @@ func nilMapWritesInBlock(
 				if err != nil {
 					return nil, err
 				}
-				findings = append(findings, Finding{
-					MessageKey: "nil-map-write",
-					Message:    "assignment to this nil map will panic",
-					Range:      range_,
-					Help:       "initialize the map with make or a map literal before writing entries",
-				})
+				findings = append(
+					findings,
+					Finding{
+						MessageKey: "nil-map-write",
+						Message: "assignment to this nil map will panic",
+						Range: range_,
+						Help: "initialize the map with make or a map literal before writing entries",
+					},
+				)
 			}
 			for index, target := range statement.Lhs {
 				identifier, _ := ast.Unparen(target).(*ast.Ident)
@@ -239,23 +278,26 @@ func invalidateNilMapFactsForStatement(
 			nilMaps[variable] = false
 		}
 	}
-	ast.Inspect(statement, func(node ast.Node) bool {
-		switch node := node.(type) {
-		case *ast.AssignStmt:
-			for _, target := range node.Lhs {
-				invalidate(target)
+	ast.Inspect(
+		statement,
+		func(node ast.Node) bool {
+			switch node := node.(type) {
+			case *ast.AssignStmt:
+				for _, target := range node.Lhs {
+					invalidate(target)
+				}
+			case *ast.RangeStmt:
+				invalidate(node.Key)
+				invalidate(node.Value)
+			case *ast.UnaryExpr:
+				if node.Op != token.AND {
+					return true
+				}
+				invalidate(node.X)
 			}
-		case *ast.RangeStmt:
-			invalidate(node.Key)
-			invalidate(node.Value)
-		case *ast.UnaryExpr:
-			if node.Op != token.AND {
-				return true
-			}
-			invalidate(node.X)
-		}
-		return true
-	})
+			return true
+		},
+	)
 }
 
 func mergeNilMapStates(target, left, right map[*types.Var]bool) {
@@ -298,13 +340,20 @@ func (ineffectiveValueReceiverAssignmentRule) Metadata() Metadata {
 	return metadata
 }
 
-func (ineffectiveValueReceiverAssignmentRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
+func (ineffectiveValueReceiverAssignmentRule) RunTypes(
+	ctx *TypesContext,
+	node ast.Node,
+) ([]Finding, error) {
 	function, ok := node.(*ast.FuncDecl)
 	if !ok || ctx == nil || ctx.Info() == nil {
-		return nil, fmt.Errorf("ineffective-value-receiver-assignment requires a function and type information")
+		return nil, fmt.Errorf(
+			"ineffective-value-receiver-assignment requires a function and type information",
+		)
 	}
-	if function.Recv == nil || len(function.Recv.List) != 1 ||
-		len(function.Recv.List[0].Names) != 1 || function.Body == nil {
+	if function.Recv == nil ||
+		len(function.Recv.List) != 1 ||
+		len(function.Recv.List[0].Names) != 1 ||
+		function.Body == nil {
 		return nil, nil
 	}
 	if function.Type.Results != nil && len(function.Type.Results.List) != 0 {
@@ -320,46 +369,59 @@ func (ineffectiveValueReceiverAssignmentRule) RunTypes(ctx *TypesContext, node a
 		receiver,
 	)
 	mutationTargets := make([]ast.Expr, 0)
-	ast.Inspect(function.Body, func(node ast.Node) bool {
-		if _, nested := node.(*ast.FuncLit); nested {
-			return false
-		}
-		assignment, assignmentFound := node.(*ast.AssignStmt)
-		increment, incrementFound := node.(*ast.IncDecStmt)
-		var candidateTargets []ast.Expr
-		if assignmentFound {
-			candidateTargets = assignment.Lhs
-		} else if incrementFound {
-			candidateTargets = []ast.Expr{increment.X}
-		} else {
-			return true
-		}
-		for _, target := range candidateTargets {
-			selector, _ := ast.Unparen(target).(*ast.SelectorExpr)
-			identifier, _ := ast.Unparen(selectorExpression(selector)).(*ast.Ident)
-			selection := ctx.Info().Selections[selector]
-			if identifier == nil || ctx.Info().ObjectOf(identifier) != receiver ||
-				selection == nil || selection.Kind() != types.FieldVal || len(selection.Index()) != 1 ||
-				selection.Indirect() || receiverCaptured || receiverAddressed ||
-				receiverReferencedAtOrAfter(receiverUses, target.End()) {
-				continue
+	ast.Inspect(
+		function.Body,
+		func(node ast.Node) bool {
+			if _, nested := node.(*ast.FuncLit); nested {
+				return false
 			}
-			mutationTargets = append(mutationTargets, target)
-		}
-		return false
-	})
+			assignment, assignmentFound := node.(*ast.AssignStmt)
+			increment, incrementFound := node.(*ast.IncDecStmt)
+			var candidateTargets []ast.Expr
+			if assignmentFound {
+				candidateTargets = assignment.Lhs
+			} else if incrementFound {
+				candidateTargets = []ast.Expr{increment.X}
+			} else {
+				return true
+			}
+			for _, target := range candidateTargets {
+				selector, _ := ast.Unparen(target).(*ast.SelectorExpr)
+				identifier, _ := ast.Unparen(
+					selectorExpression(selector),
+				).(*ast.Ident)
+				selection := ctx.Info().Selections[selector]
+				if identifier == nil ||
+					ctx.Info().ObjectOf(identifier) != receiver ||
+					selection == nil ||
+					selection.Kind() != types.FieldVal ||
+					len(selection.Index()) != 1 ||
+					selection.Indirect() ||
+					receiverCaptured ||
+					receiverAddressed ||
+					receiverReferencedAtOrAfter(receiverUses, target.End()) {
+					continue
+				}
+				mutationTargets = append(mutationTargets, target)
+			}
+			return false
+		},
+	)
 	findings := make([]Finding, 0, len(mutationTargets))
 	for _, target := range mutationTargets {
 		range_, err := ctx.Range(target)
 		if err != nil {
 			return nil, err
 		}
-		findings = append(findings, Finding{
-			MessageKey: "ineffective-value-receiver-assignment",
-			Message:    "assignment mutates only the method's value-receiver copy",
-			Range:      range_,
-			Help:       "use a pointer receiver when the mutation must persist",
-		})
+		findings = append(
+			findings,
+			Finding{
+				MessageKey: "ineffective-value-receiver-assignment",
+				Message: "assignment mutates only the method's value-receiver copy",
+				Range: range_,
+				Help: "use a pointer receiver when the mutation must persist",
+			},
+		)
 	}
 	return findings, nil
 }
@@ -379,46 +441,65 @@ func receiverUsePositions(
 	positions := make([]token.Pos, 0)
 	captured := false
 	addressed := false
-	ast.Inspect(body, func(node ast.Node) bool {
-		if node == nil {
-			return false
-		}
-		if literal, ok := node.(*ast.FuncLit); ok && objectReferenced(info, literal.Body, receiver) {
-			captured = true
-			return false
-		}
-		if unary, ok := node.(*ast.UnaryExpr); ok && unary.Op == token.AND &&
-			objectReferenced(info, unary.X, receiver) {
-			addressed = true
-		}
-		identifier, ok := node.(*ast.Ident)
-		if ok && info.ObjectOf(identifier) == receiver {
-			positions = append(positions, identifier.Pos())
-		}
-		return true
-	})
-	sort.Slice(positions, func(left, right int) bool { return positions[left] < positions[right] })
+	ast.Inspect(
+		body,
+		func(node ast.Node) bool {
+			if node == nil {
+				return false
+			}
+			if literal, ok := node.(*ast.FuncLit);
+				ok && objectReferenced(info, literal.Body, receiver) {
+				captured = true
+				return false
+			}
+			if unary, ok := node.(*ast.UnaryExpr);
+				ok &&
+					unary.Op == token.AND &&
+					objectReferenced(info, unary.X, receiver) {
+				addressed = true
+			}
+			identifier, ok := node.(*ast.Ident)
+			if ok && info.ObjectOf(identifier) == receiver {
+				positions = append(positions, identifier.Pos())
+			}
+			return true
+		},
+	)
+	sort.Slice(
+		positions,
+		func(left, right int) bool {
+			return positions[left] < positions[right]
+		},
+	)
 	return positions, captured, addressed
 }
 
 func receiverReferencedAtOrAfter(positions []token.Pos, position token.Pos) bool {
-	index := sort.Search(len(positions), func(index int) bool { return positions[index] >= position })
+	index := sort.Search(
+		len(positions),
+		func(index int) bool {
+			return positions[index] >= position
+		},
+	)
 	return index < len(positions)
 }
 
 func objectReferenced(info *types.Info, node ast.Node, object types.Object) bool {
 	referenced := false
-	ast.Inspect(node, func(node ast.Node) bool {
-		if referenced || node == nil {
-			return false
-		}
-		identifier, ok := node.(*ast.Ident)
-		if ok && info.ObjectOf(identifier) == object {
-			referenced = true
-			return false
-		}
-		return true
-	})
+	ast.Inspect(
+		node,
+		func(node ast.Node) bool {
+			if referenced || node == nil {
+				return false
+			}
+			identifier, ok := node.(*ast.Ident)
+			if ok && info.ObjectOf(identifier) == object {
+				referenced = true
+				return false
+			}
+			return true
+		},
+	)
 	return referenced
 }
 
@@ -437,22 +518,27 @@ func (nanComparisonRule) Metadata() Metadata {
 func (nanComparisonRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
 	comparison, ok := node.(*ast.BinaryExpr)
 	if !ok || ctx == nil || ctx.Info() == nil {
-		return nil, fmt.Errorf("nan-comparison requires a binary expression and type information")
+		return nil, fmt.Errorf(
+			"nan-comparison requires a binary expression and type information",
+		)
 	}
 	if comparison.Op != token.EQL && comparison.Op != token.NEQ ||
-		(!isMathNaNCall(ctx.Info(), comparison.X) && !isMathNaNCall(ctx.Info(), comparison.Y)) {
+		(!isMathNaNCall(ctx.Info(), comparison.X) &&
+			!isMathNaNCall(ctx.Info(), comparison.Y)) {
 		return nil, nil
 	}
 	range_, err := ctx.Range(comparison)
 	if err != nil {
 		return nil, err
 	}
-	return []Finding{{
-		MessageKey: "nan-comparison",
-		Message:    "NaN comparison has a constant result",
-		Range:      range_,
-		Help:       "use math.IsNaN to test for NaN",
-	}}, nil
+	return []Finding{
+		{
+			MessageKey: "nan-comparison",
+			Message: "NaN comparison has a constant result",
+			Range: range_,
+			Help: "use math.IsNaN to test for NaN",
+		},
+	}, nil
 }
 
 func isMathNaNCall(info *types.Info, expression ast.Expr) bool {
@@ -466,8 +552,10 @@ func isMathNaNCall(info *types.Info, expression ast.Expr) bool {
 		return false
 	}
 	function, _ := info.ObjectOf(identifier).(*types.Func)
-	return function != nil && function.Pkg() != nil &&
-		function.Pkg().Path() == "math" && function.Name() == "NaN"
+	return function != nil &&
+		function.Pkg() != nil &&
+		function.Pkg().Path() == "math" &&
+		function.Name() == "NaN"
 }
 
 func selectorIdent(selector *ast.SelectorExpr) *ast.Ident {
@@ -495,17 +583,24 @@ func (integerDivisionBeforeConversionRule) Metadata() Metadata {
 	return metadata
 }
 
-func (integerDivisionBeforeConversionRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
+func (integerDivisionBeforeConversionRule) RunTypes(
+	ctx *TypesContext,
+	node ast.Node,
+) ([]Finding, error) {
 	call, ok := node.(*ast.CallExpr)
 	if !ok || ctx == nil || ctx.Info() == nil {
-		return nil, fmt.Errorf("integer-division-before-conversion requires a call and type information")
+		return nil, fmt.Errorf(
+			"integer-division-before-conversion requires a call and type information",
+		)
 	}
-	if len(call.Args) != 1 || !ctx.Info().Types[call.Fun].IsType() ||
+	if len(call.Args) != 1 ||
+		!ctx.Info().Types[call.Fun].IsType() ||
 		!isFloatType(ctx.Info().TypeOf(call)) {
 		return nil, nil
 	}
 	division, _ := ast.Unparen(call.Args[0]).(*ast.BinaryExpr)
-	if division == nil || division.Op != token.QUO ||
+	if division == nil ||
+		division.Op != token.QUO ||
 		!isIntegerBasicType(ctx.Info().TypeOf(division.X)) ||
 		!isIntegerBasicType(ctx.Info().TypeOf(division.Y)) ||
 		exactConstantIntegerDivision(ctx.Info(), division) {
@@ -515,12 +610,14 @@ func (integerDivisionBeforeConversionRule) RunTypes(ctx *TypesContext, node ast.
 	if err != nil {
 		return nil, err
 	}
-	return []Finding{{
-		MessageKey: "integer-division-before-conversion",
-		Message:    "integer division truncates before this floating-point conversion",
-		Range:      range_,
-		Help:       "convert an operand before division when a fractional result is intended",
-	}}, nil
+	return []Finding{
+		{
+			MessageKey: "integer-division-before-conversion",
+			Message: "integer division truncates before this floating-point conversion",
+			Range: range_,
+			Help: "convert an operand before division when a fractional result is intended",
+		},
+	}, nil
 }
 
 func exactConstantIntegerDivision(info *types.Info, division *ast.BinaryExpr) bool {
@@ -529,8 +626,11 @@ func exactConstantIntegerDivision(info *types.Info, division *ast.BinaryExpr) bo
 	}
 	left := info.Types[division.X].Value
 	right := info.Types[division.Y].Value
-	if left == nil || right == nil || constant.Sign(right) == 0 ||
-		left.Kind() != constant.Int || right.Kind() != constant.Int {
+	if left == nil ||
+		right == nil ||
+		constant.Sign(right) == 0 ||
+		left.Kind() != constant.Int ||
+		right.Kind() != constant.Int {
 		return false
 	}
 	return constant.Sign(constant.BinaryOp(left, token.REM, right)) == 0
@@ -538,12 +638,12 @@ func exactConstantIntegerDivision(info *types.Info, division *ast.BinaryExpr) bo
 
 func isIntegerBasicType(type_ types.Type) bool {
 	basic, _ := types.Unalias(type_).Underlying().(*types.Basic)
-	return basic != nil && basic.Info()&types.IsInteger != 0
+	return basic != nil && basic.Info() & types.IsInteger != 0
 }
 
 func isFloatType(type_ types.Type) bool {
 	basic, _ := types.Unalias(type_).Underlying().(*types.Basic)
-	return basic != nil && basic.Info()&types.IsFloat != 0
+	return basic != nil && basic.Info() & types.IsFloat != 0
 }
 
 func (ineffectiveURLQueryMutationRule) Metadata() Metadata {
@@ -565,9 +665,14 @@ func (ineffectiveURLQueryMutationRule) Metadata() Metadata {
 	return metadata
 }
 
-func (ineffectiveURLQueryMutationRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
+func (ineffectiveURLQueryMutationRule) RunTypes(
+	ctx *TypesContext,
+	node ast.Node,
+) ([]Finding, error) {
 	if ctx == nil || ctx.Info() == nil {
-		return nil, fmt.Errorf("ineffective-url-query-mutation requires a mutation and type information")
+		return nil, fmt.Errorf(
+			"ineffective-url-query-mutation requires a mutation and type information",
+		)
 	}
 	mutation := temporaryQueryMutation(ctx.Info(), node)
 	if mutation == nil {
@@ -577,12 +682,14 @@ func (ineffectiveURLQueryMutationRule) RunTypes(ctx *TypesContext, node ast.Node
 	if err != nil {
 		return nil, err
 	}
-	return []Finding{{
-		MessageKey: "ineffective-url-query-mutation",
-		Message:    "mutation affects only the temporary result of URL.Query",
-		Range:      range_,
-		Help:       "store the query values and assign query.Encode() to URL.RawQuery",
-	}}, nil
+	return []Finding{
+		{
+			MessageKey: "ineffective-url-query-mutation",
+			Message: "mutation affects only the temporary result of URL.Query",
+			Range: range_,
+			Help: "store the query values and assign query.Encode() to URL.RawQuery",
+		},
+	}, nil
 }
 
 func temporaryQueryMutation(info *types.Info, node ast.Node) ast.Node {
@@ -611,7 +718,10 @@ func temporaryQueryMutation(info *types.Info, node ast.Node) ast.Node {
 
 func isURLQueryMethodMutation(info *types.Info, mutation *ast.CallExpr) bool {
 	selector, _ := ast.Unparen(callFun(mutation)).(*ast.SelectorExpr)
-	if selector == nil || (selector.Sel.Name != "Set" && selector.Sel.Name != "Add" && selector.Sel.Name != "Del") {
+	if selector == nil ||
+		(selector.Sel.Name != "Set" &&
+			selector.Sel.Name != "Add" &&
+			selector.Sel.Name != "Del") {
 		return false
 	}
 	return isURLQueryCall(info, selector.X)
@@ -620,7 +730,9 @@ func isURLQueryMethodMutation(info *types.Info, mutation *ast.CallExpr) bool {
 func isURLQueryBuiltinMutation(info *types.Info, mutation *ast.CallExpr) bool {
 	identifier, _ := ast.Unparen(mutation.Fun).(*ast.Ident)
 	builtin, _ := info.ObjectOf(identifier).(*types.Builtin)
-	if builtin == nil || (builtin.Name() != "delete" && builtin.Name() != "clear") || len(mutation.Args) == 0 {
+	if builtin == nil ||
+		(builtin.Name() != "delete" && builtin.Name() != "clear") ||
+		len(mutation.Args) == 0 {
 		return false
 	}
 	return isURLQueryCall(info, mutation.Args[0])
@@ -631,8 +743,10 @@ func isURLQueryCall(info *types.Info, expression ast.Expr) bool {
 	querySelector, _ := ast.Unparen(callFun(query)).(*ast.SelectorExpr)
 	selection := info.Selections[querySelector]
 	function, _ := selectionObject(selection).(*types.Func)
-	return function != nil && function.Pkg() != nil &&
-		function.Pkg().Path() == "net/url" && function.Name() == "Query"
+	return function != nil &&
+		function.Pkg() != nil &&
+		function.Pkg().Path() == "net/url" &&
+		function.Name() == "Query"
 }
 
 func selectionObject(selection *types.Selection) types.Object {
@@ -657,12 +771,16 @@ func (deferredLockRule) Metadata() Metadata {
 func (deferredLockRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
 	statement, ok := node.(*ast.DeferStmt)
 	if !ok || ctx == nil || ctx.Info() == nil {
-		return nil, fmt.Errorf("deferred-lock requires a defer statement and type information")
+		return nil, fmt.Errorf(
+			"deferred-lock requires a defer statement and type information",
+		)
 	}
 	selector, _ := ast.Unparen(statement.Call.Fun).(*ast.SelectorExpr)
 	selection := ctx.Info().Selections[selector]
 	function, _ := selectionObject(selection).(*types.Func)
-	if function == nil || function.Pkg() == nil || function.Pkg().Path() != "sync" ||
+	if function == nil ||
+		function.Pkg() == nil ||
+		function.Pkg().Path() != "sync" ||
 		(function.Name() != "Lock" && function.Name() != "RLock") {
 		return nil, nil
 	}
@@ -670,12 +788,14 @@ func (deferredLockRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, e
 	if err != nil {
 		return nil, err
 	}
-	return []Finding{{
-		MessageKey: "deferred-lock",
-		Message:    "locking is deferred; the function will return while holding the lock",
-		Range:      range_,
-		Help:       "lock immediately and defer the corresponding unlock",
-	}}, nil
+	return []Finding{
+		{
+			MessageKey: "deferred-lock",
+			Message: "locking is deferred; the function will return while holding the lock",
+			Range: range_,
+			Help: "lock immediately and defer the corresponding unlock",
+		},
+	}, nil
 }
 
 func (deferBeforeErrorCheckRule) Metadata() Metadata {
@@ -698,7 +818,9 @@ func (deferBeforeErrorCheckRule) Metadata() Metadata {
 func (deferBeforeErrorCheckRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
 	block, ok := node.(*ast.BlockStmt)
 	if !ok || ctx == nil || ctx.Info() == nil {
-		return nil, fmt.Errorf("defer-before-error-check requires a block and type information")
+		return nil, fmt.Errorf(
+			"defer-before-error-check requires a block and type information",
+		)
 	}
 	findings := make([]Finding, 0)
 	for index, raw := range block.List {
@@ -708,41 +830,54 @@ func (deferBeforeErrorCheckRule) RunTypes(ctx *TypesContext, node ast.Node) ([]F
 		}
 		call, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
 		tuple, _ := ctx.Info().TypeOf(call).(*types.Tuple)
-		if call == nil || tuple == nil || tuple.Len() != len(assignment.Lhs) ||
-			tuple.Len() < 2 || !isErrorType(tuple.At(tuple.Len()-1).Type()) {
+		if call == nil ||
+			tuple == nil ||
+			tuple.Len() != len(assignment.Lhs) ||
+			tuple.Len() < 2 ||
+			!isErrorType(tuple.At(tuple.Len() - 1).Type()) {
 			continue
 		}
 		resourceIdent, _ := ast.Unparen(assignment.Lhs[0]).(*ast.Ident)
-		errorIdent, _ := ast.Unparen(assignment.Lhs[tuple.Len()-1]).(*ast.Ident)
+		errorIdent, _ := ast.Unparen(assignment.Lhs[tuple.Len() - 1]).(*ast.Ident)
 		resource := assignedObject(ctx.Info(), assignment, resourceIdent)
 		errorObject := assignedObject(ctx.Info(), assignment, errorIdent)
 		if resource == nil || errorObject == nil || !typeHasCloseMethod(resource.Type()) {
 			continue
 		}
 		var deferred *ast.DeferStmt
-		for _, following := range block.List[index+1:] {
+		for _, following := range block.List[index + 1:] {
 			if statementAssignsObject(ctx.Info(), following, resource) ||
 				statementAssignsObject(ctx.Info(), following, errorObject) {
 				break
 			}
-			if branch, isIf := following.(*ast.IfStmt); isIf &&
-				expressionComparesObjectNotEqualNil(ctx.Info(), branch.Cond, errorObject) {
+			if branch, isIf := following.(*ast.IfStmt);
+				isIf &&
+					expressionComparesObjectNotEqualNil(
+						ctx.Info(),
+						branch.Cond,
+						errorObject,
+					) {
 				if deferred != nil {
 					range_, err := ctx.Range(deferred.Call)
 					if err != nil {
 						return nil, err
 					}
-					findings = append(findings, Finding{
-						MessageKey: "defer-before-error-check",
-						Message:    "cleanup is deferred before the acquisition error is checked",
-						Range:      range_,
-						Help:       "check the error before using or deferring cleanup of the resource",
-					})
+					findings = append(
+						findings,
+						Finding{
+							MessageKey: "defer-before-error-check",
+							Message: "cleanup is deferred before the acquisition error is checked",
+							Range: range_,
+							Help: "check the error before using or deferring cleanup of the resource",
+						},
+					)
 				}
 				break
 			}
 			candidate, _ := following.(*ast.DeferStmt)
-			if candidate != nil && deferredCloseReceiverObject(ctx.Info(), candidate.Call) == resource {
+			if candidate != nil &&
+				deferredCloseReceiverObject(ctx.Info(), candidate.Call) ==
+					resource {
 				deferred = candidate
 			}
 		}
@@ -752,30 +887,37 @@ func (deferBeforeErrorCheckRule) RunTypes(ctx *TypesContext, node ast.Node) ([]F
 
 func statementAssignsObject(info *types.Info, statement ast.Stmt, object types.Object) bool {
 	assigned := false
-	ast.Inspect(statement, func(node ast.Node) bool {
-		if assigned || node == nil {
-			return false
-		}
-		if _, nested := node.(*ast.FuncLit); nested {
-			return false
-		}
-		assignment, ok := node.(*ast.AssignStmt)
-		if !ok {
-			return true
-		}
-		for _, target := range assignment.Lhs {
-			identifier, _ := ast.Unparen(target).(*ast.Ident)
-			if identifier != nil && info.ObjectOf(identifier) == object {
-				assigned = true
+	ast.Inspect(
+		statement,
+		func(node ast.Node) bool {
+			if assigned || node == nil {
 				return false
 			}
-		}
-		return false
-	})
+			if _, nested := node.(*ast.FuncLit); nested {
+				return false
+			}
+			assignment, ok := node.(*ast.AssignStmt)
+			if !ok {
+				return true
+			}
+			for _, target := range assignment.Lhs {
+				identifier, _ := ast.Unparen(target).(*ast.Ident)
+				if identifier != nil && info.ObjectOf(identifier) == object {
+					assigned = true
+					return false
+				}
+			}
+			return false
+		},
+	)
 	return assigned
 }
 
-func assignedObject(info *types.Info, assignment *ast.AssignStmt, identifier *ast.Ident) types.Object {
+func assignedObject(
+	info *types.Info,
+	assignment *ast.AssignStmt,
+	identifier *ast.Ident,
+) types.Object {
 	if info == nil || assignment == nil || identifier == nil {
 		return nil
 	}
@@ -798,7 +940,11 @@ func typeHasCloseMethod(type_ types.Type) bool {
 	return signature != nil && signature.Params().Len() == 0
 }
 
-func expressionComparesObjectNotEqualNil(info *types.Info, expression ast.Expr, object types.Object) bool {
+func expressionComparesObjectNotEqualNil(
+	info *types.Info,
+	expression ast.Expr,
+	object types.Object,
+) bool {
 	comparison, _ := ast.Unparen(expression).(*ast.BinaryExpr)
 	if comparison == nil || comparison.Op != token.NEQ {
 		return false
@@ -807,9 +953,14 @@ func expressionComparesObjectNotEqualNil(info *types.Info, expression ast.Expr, 
 		objectAndNil(info, comparison.Y, comparison.X, object)
 }
 
-func objectAndNil(info *types.Info, objectExpression, nilExpression ast.Expr, object types.Object) bool {
+func objectAndNil(
+	info *types.Info,
+	objectExpression, nilExpression ast.Expr,
+	object types.Object,
+) bool {
 	identifier, _ := ast.Unparen(objectExpression).(*ast.Ident)
-	return identifier != nil && info.ObjectOf(identifier) == object &&
+	return identifier != nil &&
+		info.ObjectOf(identifier) == object &&
 		isNilExpression(info, nilExpression)
 }
 
@@ -851,7 +1002,9 @@ func (infiniteRecursionRule) Metadata() Metadata {
 func (infiniteRecursionRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
 	function, ok := node.(*ast.FuncDecl)
 	if !ok || ctx == nil || ctx.Info() == nil {
-		return nil, fmt.Errorf("infinite-recursion requires a function and type information")
+		return nil, fmt.Errorf(
+			"infinite-recursion requires a function and type information",
+		)
 	}
 	if function.Body == nil || len(function.Body.List) != 1 {
 		return nil, nil
@@ -864,12 +1017,14 @@ func (infiniteRecursionRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Findi
 	if err != nil {
 		return nil, err
 	}
-	return []Finding{{
-		MessageKey: "infinite-recursion",
-		Message:    "this function can only recurse and has no terminating path",
-		Range:      range_,
-		Help:       "add a terminating path or call the intended function",
-	}}, nil
+	return []Finding{
+		{
+			MessageKey: "infinite-recursion",
+			Message: "this function can only recurse and has no terminating path",
+			Range: range_,
+			Help: "add a terminating path or call the intended function",
+		},
+	}, nil
 }
 
 func soleRecursiveCall(statement ast.Stmt) *ast.CallExpr {
@@ -919,17 +1074,26 @@ func (impossibleInterfaceNilComparisonRule) Metadata() Metadata {
 	return metadata
 }
 
-func (impossibleInterfaceNilComparisonRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
+func (impossibleInterfaceNilComparisonRule) RunTypes(
+	ctx *TypesContext,
+	node ast.Node,
+) ([]Finding, error) {
 	comparison, ok := node.(*ast.BinaryExpr)
 	if !ok || ctx == nil || ctx.Info() == nil {
-		return nil, fmt.Errorf("impossible-interface-nil-comparison requires a comparison and type information")
+		return nil, fmt.Errorf(
+			"impossible-interface-nil-comparison requires a comparison and type information",
+		)
 	}
 	if comparison.Op != token.EQL && comparison.Op != token.NEQ {
 		return nil, nil
 	}
 	conversion := interfaceConversionComparedToNil(ctx.Info(), comparison.X, comparison.Y)
 	if conversion == nil {
-		conversion = interfaceConversionComparedToNil(ctx.Info(), comparison.Y, comparison.X)
+		conversion = interfaceConversionComparedToNil(
+			ctx.Info(),
+			comparison.Y,
+			comparison.X,
+		)
 	}
 	if conversion == nil {
 		return nil, nil
@@ -938,12 +1102,14 @@ func (impossibleInterfaceNilComparisonRule) RunTypes(ctx *TypesContext, node ast
 	if err != nil {
 		return nil, err
 	}
-	return []Finding{{
-		MessageKey: "impossible-interface-nil-comparison",
-		Message:    "interface conversion of this concrete value cannot be nil",
-		Range:      range_,
-		Help:       "compare the concrete value directly or remove the constant condition",
-	}}, nil
+	return []Finding{
+		{
+			MessageKey: "impossible-interface-nil-comparison",
+			Message: "interface conversion of this concrete value cannot be nil",
+			Range: range_,
+			Help: "compare the concrete value directly or remove the constant condition",
+		},
+	}, nil
 }
 
 func interfaceConversionComparedToNil(info *types.Info, value, nil_ ast.Expr) *ast.CallExpr {
@@ -989,20 +1155,26 @@ func semanticMetadata(
 		categories = append(categories, CategorySuspicious)
 	}
 	return Metadata{
-		ID:               id,
-		Summary:          summary,
-		Documentation:    documentation,
-		DefaultSeverity:  SeverityWarn,
-		Presets:          []Preset{preset},
+		ID: id,
+		Summary: summary,
+		Documentation: documentation,
+		DefaultSeverity: SeverityWarn,
+		Presets: []Preset{preset},
 		MinimumGoVersion: "1.25",
-		Requirement:      RequireTypes,
-		NodeInterests:    []NodeKind{interest},
-		Categories:       categories,
+		Requirement: RequireTypes,
+		NodeInterests: []NodeKind{interest},
+		Categories: categories,
 		KnownLimitations: []string{
 			"The rule reports only the directly proven syntax and type pattern documented above.",
 			"Generated files and packages with type errors are excluded.",
 		},
-		Examples: []Example{{Title: "Preserve the intended behavior", Incorrect: incorrect, Correct: correct}},
+		Examples: []Example{
+			{
+				Title: "Preserve the intended behavior",
+				Incorrect: incorrect,
+				Correct: correct,
+			},
+		},
 	}
 }
 
