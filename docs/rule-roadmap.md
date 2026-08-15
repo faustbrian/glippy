@@ -57,6 +57,13 @@ return-site defect without waiting for a caller to compare the result to nil.
 Keeping it opt-in preserves syntax-only default scheduling until default SSA
 cost and source-error behavior are explicitly adopted.
 
+The lifecycle track now admits `sql-transaction-not-completed` as a default
+correctness CFG rule for direct `database/sql` transactions. After a
+conventional successful acquisition guard, every normally returning path must
+call the exact transaction Commit or Rollback method or conservatively transfer
+ownership. Reassignment loses the original obligation; wrapper constructors and
+arbitrary finalizers remain outside the initial contract.
+
 ## Investigation Queue
 
 The queue contains defect classes to investigate, not accepted rule IDs.
@@ -65,16 +72,17 @@ another existing default tool already owns the problem well enough.
 
 | Order | Defect class | Cheapest plausible tier | Admission question |
 | ---: | --- | --- | --- |
-| 1 | Standard-library argument roles and state contracts | types | Can typed object identity prove a misuse without guessing caller intent, as it does for the admitted `errors-is-arguments` and `context-key` rules? |
-| 2 | Ineffective or misleading control transfer beyond the current terminal-break cases | syntax, then CFG only if needed | Is the transfer observably ineffective, and can Glippy distinguish the intended enclosing construct without path-sensitive speculation? |
-| 3 | Resource cleanup inside repeated execution | CFG | Can reachability prove that cleanup is deferred indefinitely or skipped, while excluding deliberate process and goroutine termination? |
-| 4 | Impossible nil and state transitions across calls | SSA plus admitted facts | Do interprocedural facts materially improve precision over the current intraprocedural `nilness` boundary? |
-| 5 | Response, stream, and closer lifecycle misuse | types plus CFG or SSA | Can ownership and escape boundaries identify a real leak or use-after-close defect without treating every transfer as local ownership? |
-| 6 | Repeated, subsumed, or contradictory conditions | syntax or types | Can the comparison remain side-effect-safe and avoid pretending syntactic similarity proves semantic equivalence? |
-| 7 | Structurally credible allocation or concurrency costs | types, CFG, or SSA | Is there a reproducible cost mechanism and an opt-in performance contract rather than a generic micro-optimization preference? |
-| 8 | Explicit Go-version and API migrations | syntax or types | Is there a configured target version, a canonical replacement, and a migration-specific safety classification? |
+| 1 | Shared obligation and effect summaries | CFG plus facts | Can one bounded model express completion, transfer, and no-return effects for transactions, closers, cancellation, locks, and streams without inventing per-rule ownership semantics? |
+| 2 | Standard-library argument roles and state contracts | types | Can typed object identity prove a misuse without guessing caller intent, as it does for the admitted `errors-is-arguments` and `context-key` rules? |
+| 3 | Ineffective or misleading control transfer beyond the current terminal-break cases | syntax, then CFG only if needed | Is the transfer observably ineffective, and can Glippy distinguish the intended enclosing construct without path-sensitive speculation? |
+| 4 | Resource cleanup inside repeated execution | CFG | Can reachability prove that cleanup is deferred indefinitely or skipped, while excluding deliberate process and goroutine termination? |
+| 5 | Impossible nil and state transitions across calls | SSA plus admitted facts | Do interprocedural facts materially improve precision over the current intraprocedural `nilness` boundary? |
+| 6 | Response, stream, and closer lifecycle misuse | types plus CFG or SSA | Can ownership and escape boundaries identify a real leak or use-after-close defect without treating every transfer as local ownership? |
+| 7 | Repeated, subsumed, or contradictory conditions | syntax or types | Can the comparison remain side-effect-safe and avoid pretending syntactic similarity proves semantic equivalence? |
+| 8 | Structurally credible allocation or concurrency costs | types, CFG, or SSA | Is there a reproducible cost mechanism and an opt-in performance contract rather than a generic micro-optimization preference? |
+| 9 | Explicit Go-version and API migrations | syntax or types | Is there a configured target version, a canonical replacement, and a migration-specific safety classification? |
 
-The first five tracks focus on correctness and suspicious behavior. The last
+The first six tracks focus on correctness and suspicious behavior. The last
 three remain opt-in unless release evidence justifies a compatibility-reviewed
 preset change.
 

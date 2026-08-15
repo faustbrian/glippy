@@ -75,6 +75,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewTooManyLinesRule(),
 		rules.NewTooManyParametersRule(),
 		rules.NewTooManyResultsRule(),
+		rules.NewSQLTransactionNotCompletedRule(),
 		rules.NewUncheckedRowsErrorRule(),
 		rules.NewUncheckedScannerErrorRule(),
 	)

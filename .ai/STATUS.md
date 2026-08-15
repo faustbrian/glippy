@@ -1366,3 +1366,15 @@ product fix path proves successful formatted application and second-run
 idempotency while another `fmt` use remains; when the call is the final use,
 typed validation rejects the resulting unused import and leaves the file
 unchanged. The broader Clippy-comparability goal remains active.
+
+The next lifecycle batch admits `sql-transaction-not-completed` as a default
+correctness control-flow rule for direct standard-library SQL transactions.
+After a conventional acquisition error guard, every normally returning path
+must call the exact Commit or Rollback method or conservatively transfer
+ownership; partial cleanup and reassignment report. Focused fixtures cover DB
+and Conn acquisitions, branches, defers, method values, asynchronous and
+wrapper transfers, source policies, and exact ranges. A 100-function package
+probe averaged 76.0 ms, and exact-rule dogfood remained clean across Glippy,
+prompts, migrations, capability, Vuja scoring, and Tarvero. The reusable
+obligation/effect model and broader lifecycle pack remain open, so the active
+Clippy-comparability goal continues.

@@ -167,6 +167,13 @@ every normally returning path after a direct `database/sql.Rows.Next` or
 `bufio.Scanner.Scan` loop to observe the matching terminal error. Discarded
 results and checks against a reassigned iterator do not satisfy the contract.
 
+The default correctness catalog checks direct `database/sql` transaction
+lifecycles. After a conventional successful `DB.Begin`, `DB.BeginTx`, or
+`Conn.BeginTx` guard, `sql-transaction-not-completed` requires every normally
+returning path to commit, roll back, or transfer ownership of the transaction.
+Conditional cleanup and reassignment cannot silently discharge another open
+path.
+
 The restriction catalog includes `blank-error-discard`, Glippy's Go analogue
 to Clippy's `let_underscore_must_use`. Projects can enable it by exact rule ID
 to require every explicit blank-identifier error discard to be handled or

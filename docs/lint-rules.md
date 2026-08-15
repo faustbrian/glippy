@@ -69,6 +69,7 @@ not stable release promises.
 - [regexp-compile-in-loop](#regexp-compile-in-loop)
 - [resource-not-closed](#resource-not-closed)
 - [self-assignment](#self-assignment)
+- [sql-transaction-not-completed](#sql-transaction-not-completed)
 - [standard-library-version](#standard-library-version)
 - [standard-method-signature](#standard-method-signature)
 - [string-range-rune-conversion](#string-range-rune-conversion)
@@ -3017,6 +3018,64 @@ value = value
 
 ```go
 value = replacement
+```
+
+## sql-transaction-not-completed
+
+detects database transactions left without commit or rollback
+
+database/sql requires every successful transaction to end with Tx.Commit or Tx.Rollback. A locally
+owned transaction that reaches a normal return without either call can retain a connection, locks,
+and transaction state. This rule follows direct DB.Begin, DB.BeginTx, and Conn.BeginTx results
+through the shared control-flow graph after a conventional acquisition-error guard.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The initial contract recognizes direct database/sql DB.Begin, DB.BeginTx, and Conn.BeginTx
+  assignments followed immediately by an err != nil guard whose body returns.
+- Passing, returning, sending, storing, or capturing the transaction counts as an ownership
+  transfer; the rule does not inspect the receiving code.
+- Only standard Tx.Commit and Tx.Rollback calls or an explicit ownership transfer discharge the
+  obligation; wrapper finalizers are not inferred.
+- Generated files and packages with type errors are excluded.
+
+### Example: Rollback an uncommitted transaction
+
+**Incorrect**
+
+```go
+tx, err := db.Begin()
+if err != nil { return err }
+_, err = tx.Exec(query)
+return err
+```
+
+**Correct**
+
+```go
+tx, err := db.Begin()
+if err != nil { return err }
+defer tx.Rollback()
+_, err = tx.Exec(query)
+return err
 ```
 
 ## standard-library-version

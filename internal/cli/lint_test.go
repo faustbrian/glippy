@@ -6967,6 +6967,7 @@ func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 				"oversized-shift = \"off\"\n" +
 				"printf-arguments = \"off\"\n" +
 				"self-assignment = \"off\"\n" +
+				"sql-transaction-not-completed = \"off\"\n" +
 				"standard-library-version = \"off\"\n" +
 				"standard-method-signature = \"off\"\n" +
 				"testing-goroutine-call = \"off\"\n" +
