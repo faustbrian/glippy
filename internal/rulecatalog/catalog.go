@@ -51,6 +51,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewMixedReceiverTypeRule(),
 		rules.NewNeedlessBlankIdentifierRule(),
 		rules.NewNilContextRule(),
+		rules.NewNonSliceSortRule(),
 		rules.NewOverwrittenErrorRule(),
 		rules.NewShadowedErrorRule(),
 		rules.NewRedundantClosureRule(),

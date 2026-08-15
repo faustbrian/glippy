@@ -1497,3 +1497,14 @@ the zero-base panic and silently omitted hash inputs. Five one-iteration
 ms and about 2.82 MB for binary data, on Darwin arm64. Non-mutating exact-rule
 dogfood remained clean on Glippy and `pkg/prompts`. The active
 Clippy-comparability goal continues.
+
+The next standard-library correctness rule admits `non-slice-sort` for exact
+`sort.Slice`, `sort.SliceStable`, and `sort.SliceIsSorted` calls. Statically
+non-slice first arguments report because the reflection-backed API panics;
+slices, interfaces, type parameters, indirect calls, and local lookalikes
+remain conservative. A current `softlandia/cpd` occurrence proves the
+pointer-to-pointer panic shape. Five one-iteration 100-finding probes measured
+an 81.4 ms median with about 3.50 MB allocated on Darwin arm64. Non-mutating
+exact-rule dogfood remained clean on Glippy and `pkg/prompts`, while the
+disposable supported-version cpd clone reported the reviewed line. The active
+Clippy-comparability goal continues.

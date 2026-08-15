@@ -1,0 +1,290 @@
+package rulecatalog_test
+
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/rulecatalog"
+	"github.com/faustbrian/glippy/internal/rules"
+)
+
+func TestNonSliceSortReportsStaticallyNonSliceArguments(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import order "sort"
+
+type namedSlice []int
+
+func inspect() {
+	var array [2]int
+	var pointer *namedSlice
+	var mapping map[int]int
+	var record struct{ Value int }
+	var function func()
+	order.Slice(array, func(i, j int) bool { return i < j })
+	order.SliceStable(pointer, func(i, j int) bool { return i < j })
+	_ = order.SliceIsSorted(mapping, func(i, j int) bool { return i < j })
+	order.Slice(record, func(i, j int) bool { return i < j })
+	order.Slice(function, func(i, j int) bool { return i < j })
+	order.Slice(nil, func(i, j int) bool { return i < j })
+}
+`
+	result := runStandardLibraryArgumentRule(t, input, "non-slice-sort")
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 6 {
+		t.Fatalf("non-slice-sort result = %#v", result)
+	}
+	want := []string{"array", "pointer", "mapping", "record", "function", "nil"}
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		if diagnostic.RuleID != "non-slice-sort" ||
+			diagnostic.MessageKey != "non-slice-argument" ||
+			diagnostic.Message != "sort requires a slice argument" ||
+			diagnostic.Range.Start < 0 ||
+			diagnostic.Range.End > len(input) ||
+			input[diagnostic.Range.Start:diagnostic.Range.End] != want[index] ||
+			len(diagnostic.Fixes) != 0 {
+			t.Fatalf("diagnostic[%d] = %#v", index, diagnostic)
+		}
+	}
+}
+
+func TestNonSliceSortKeepsRuntimeUnknownAndSliceArgumentsConservative(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import order "sort"
+
+type namedSlice []int
+type sliceAlias = []int
+type localSorter struct{}
+
+func (localSorter) Slice(any, func(int, int) bool) {}
+
+func Slice(any, func(int, int) bool) {}
+
+func inspect(
+	values []int,
+	named namedSlice,
+	alias sliceAlias,
+	dynamic any,
+	local localSorter,
+) {
+	less := func(i, j int) bool { return i < j }
+	order.Slice(values, less)
+	order.SliceStable(named, less)
+	_ = order.SliceIsSorted(alias, less)
+	order.Slice(dynamic, less)
+	local.Slice(1, less)
+	Slice(1, less)
+	function := order.Slice
+	function(1, less)
+}
+
+func generic[T any](value T) {
+	order.Slice(value, func(i, j int) bool { return i < j })
+}
+
+func sliceGeneric[T ~[]int](value T) {
+	order.Slice(value, func(i, j int) bool { return i < j })
+}
+`
+	result := runStandardLibraryArgumentRule(t, input, "non-slice-sort")
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 0 {
+		t.Fatalf("non-slice-sort conservative result = %#v", result)
+	}
+}
+
+func TestNonSliceSortRecognizesDotImportedFunctions(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import . "sort"
+
+func inspect() {
+	Slice(1, func(i, j int) bool { return i < j })
+}
+`
+	result := runStandardLibraryArgumentRule(t, input, "non-slice-sort")
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("dot-imported non-slice-sort result = %#v", result)
+	}
+	diagnostic := result.Files[0].Diagnostics[0]
+	if diagnostic.Range.Start < 0 ||
+		diagnostic.Range.End > len(input) ||
+		input[diagnostic.Range.Start:diagnostic.Range.End] != "1" {
+		t.Fatalf("dot-imported non-slice-sort diagnostic = %#v", diagnostic)
+	}
+}
+
+func TestNonSliceSortMetadataAndGoVersion(t *testing.T) {
+	t.Parallel()
+
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, found := registry.Metadata("non-slice-sort")
+	if !found ||
+		metadata.DefaultSeverity != rules.SeverityWarn ||
+		!reflect.DeepEqual(metadata.Presets, []rules.Preset{rules.PresetCorrectness}) ||
+		metadata.MinimumGoVersion != "1.25" ||
+		metadata.Requirement != rules.RequireTypes ||
+		!reflect.DeepEqual(metadata.NodeInterests, []rules.NodeKind{rules.NodeCallExpr}) ||
+		metadata.RunOnGenerated ||
+		metadata.RunDespiteTypeErrors ||
+		len(metadata.Fixes) != 0 {
+		t.Fatalf("non-slice-sort metadata = %#v, found = %v", metadata, found)
+	}
+	older, err := registry.ResolveOptions(
+		rules.ResolveOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"non-slice-sort": rules.SeverityWarn},
+			SourceGoVersion: "go1.24",
+		},
+	)
+	if err != nil || len(older) != 0 {
+		t.Fatalf("go1.24 non-slice-sort selection = %#v, %v", older, err)
+	}
+}
+
+func TestNonSliceSortHonorsSharedSourcePolicies(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/non-slice-sort-policy\n\ngo 1.25.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "suppressed.go"),
+		`package sample
+import "sort"
+func suppressed(values *[]int) {
+	//glippy:ignore non-slice-sort -- compatibility fixture
+	sort.Slice(values, func(i, j int) bool { return i < j })
+}
+`,
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "generated.go"),
+		`// Code generated by fixture. DO NOT EDIT.
+package sample
+import "sort"
+func generated(values *[]int) {
+	sort.Slice(values, func(i, j int) bool { return i < j })
+}
+`,
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "invalid", "invalid.go"),
+		`package invalid
+import "sort"
+func invalid(values *[]int) {
+	var text string = 1
+	_ = text
+	sort.Slice(values, func(i, j int) bool { return i < j })
+}
+`,
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"non-slice-sort": rules.SeverityWarn},
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"./..."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 3 || len(result.LoadDiagnostics) == 0 {
+		t.Fatalf("non-slice-sort policy result = %#v", result)
+	}
+	for _, file := range result.Files {
+		switch filepath.Base(file.Path) {
+		case "suppressed.go":
+			if len(file.Diagnostics) != 0 ||
+				len(file.Suppressed) != 1 ||
+				file.Suppressed[0].Diagnostic.RuleID != "non-slice-sort" {
+				t.Fatalf("suppressed result = %#v", file)
+			}
+		case "generated.go", "invalid.go":
+			if len(file.Diagnostics) != 0 || len(file.Suppressed) != 0 {
+				t.Fatalf("excluded result = %#v", file)
+			}
+		default:
+			t.Fatalf("unexpected policy path %q", file.Path)
+		}
+	}
+}
+
+func BenchmarkNonSliceSort(b *testing.B) {
+	root := b.TempDir()
+	writeFixture(
+		b,
+		filepath.Join(root, "go.mod"),
+		"module example.com/non-slice-sort-benchmark\n\ngo 1.25.0\n",
+	)
+	var input strings.Builder
+	input.WriteString("package sample\nimport \"sort\"\n")
+	for index := range 100 {
+		fmt.Fprintf(
+			&input,
+			"func inspect%d(values *[]int) { sort.Slice(values, func(i, j int) bool { return i < j }) }\n",
+			index,
+		)
+	}
+	writeFixture(b, filepath.Join(root, "sample.go"), input.String())
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		result, runErr := analysis.RunPackages(
+			context.Background(),
+			registry,
+			analysis.RunOptions{
+				Presets: []rules.Preset{},
+				Overrides: map[string]rules.Severity{
+					"non-slice-sort": rules.SeverityWarn,
+				},
+				SourceGoVersion: "go1.25",
+			},
+			analysis.PackageLoadOptions{
+				Dir: root,
+				Patterns: []string{"."},
+				ModuleMode: analysis.ModuleReadonly,
+			},
+		)
+		if runErr != nil {
+			b.Fatal(runErr)
+		}
+		if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 100 {
+			b.Fatalf("non-slice-sort benchmark result = %#v", result)
+		}
+	}
+}

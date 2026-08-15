@@ -121,6 +121,12 @@ shapes. Dynamic values, indirect calls, top-level interfaces, generated files,
 and ill-typed packages remain conservative, and neither rule guesses an
 intended representation.
 
+The same track now admits `non-slice-sort` for exact `sort.Slice`,
+`sort.SliceStable`, and `sort.SliceIsSorted` calls. Statically non-slice values
+panic despite the APIs' `any` parameter, while slices and runtime-unknown
+interface or type-parameter values remain conservative. No fix guesses whether
+the caller intended a dereference, copy, or different data shape.
+
 ## Investigation Queue
 
 The queue contains defect classes to investigate, not accepted rule IDs.

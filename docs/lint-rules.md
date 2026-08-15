@@ -66,6 +66,7 @@ not stable release promises.
 - [nil-function-comparison](#nil-function-comparison)
 - [nil-map-write](#nil-map-write)
 - [nilness](#nilness)
+- [non-slice-sort](#non-slice-sort)
 - [oversized-shift](#oversized-shift)
 - [overwritten-error](#overwritten-error)
 - [printf-arguments](#printf-arguments)
@@ -2875,6 +2876,54 @@ if channel == nil { use(channel) }
 ```go
 channel := make(chan int)
 use(channel)
+```
+
+## non-slice-sort
+
+detects non-slice values passed to sort slice APIs
+
+sort.Slice, sort.SliceStable, and sort.SliceIsSorted accept any value at compile time but panic when
+its dynamic value is not a slice. Statically non-slice arguments can therefore be rejected before
+execution.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct calls to sort.Slice, sort.SliceStable, and sort.SliceIsSorted are recognized; function
+  values remain conservative.
+- Interface and type-parameter arguments remain conservative because their runtime value may be a
+  slice.
+- Generated files and packages with type errors are excluded.
+
+### Example: Pass the slice rather than its pointer
+
+**Incorrect**
+
+```go
+sort.Slice(&values, less)
+```
+
+**Correct**
+
+```go
+sort.Slice(values, less)
 ```
 
 ## oversized-shift
