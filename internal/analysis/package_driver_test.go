@@ -611,6 +611,113 @@ func TestRunPackagesCachesNativeTypedTiersAcrossIndependentLoads(t *testing.T) {
 	}
 }
 
+func TestRunPackagesStatisticsExplainTiersDependenciesEffectsAndCache(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/statistics\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "dependency", "dependency.go"),
+		"package dependency\nfunc Stop() {}\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "statistics.go"),
+		"package statistics\nimport \"example.com/statistics/dependency\"\nfunc run() { dependency.Stop() }\n",
+	)
+	dependencyMetadata := packageMetadata("dependency-statistics-rule")
+	dependencyMetadata.RequiresDependencySyntax = true
+	effectMetadata := controlFlowMetadata("effect-statistics-rule")
+	effectMetadata.RequiresEffectFacts = true
+	registry, err := rules.NewRegistry(
+		packageRule{
+			metadata: dependencyMetadata,
+			run: func(*rules.PackageContext) ([]rules.PackageFinding, error) {
+				return nil, nil
+			},
+		},
+		controlFlowRule{
+			metadata: effectMetadata,
+			run: func(*rules.ControlFlowContext) ([]rules.Finding, error) {
+				return nil, nil
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := cache.Open(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
+	loadOptions := packageAnalyzerCacheLoadOptions(root)
+	coldStatistics := analysis.NewStatistics()
+	runOptions := analysis.RunOptions{
+		Preset: rules.PresetCorrectness,
+		Cache: packageAnalyzerCacheOptions(store),
+		Statistics: coldStatistics,
+	}
+	if _, err := analysis.RunPackages(context.Background(), registry, runOptions, loadOptions);
+		err != nil {
+		t.Fatal(err)
+	}
+	cold := coldStatistics.Snapshot()
+	if !reflect.DeepEqual(
+		cold.DependencySyntaxReasons,
+		[]string{"dependency-statistics-rule"},
+	) ||
+		!reflect.DeepEqual(cold.EffectFactReasons, []string{"effect-statistics-rule"}) ||
+		cold.MaximumRequirement != rules.RequireControlFlow ||
+		cold.PackageLoads.Calls != 1 ||
+		cold.Packages == 0 ||
+		cold.Files == 0 ||
+		len(cold.Tiers) != 2 ||
+		cold.Tiers[0].Requirement != rules.RequireTypes ||
+		!reflect.DeepEqual(
+			cold.Tiers[0].Reasons,
+			[]string{"dependency-statistics-rule", "effect-statistics-rule"},
+		) ||
+		cold.Tiers[1].Requirement != rules.RequireControlFlow ||
+		!reflect.DeepEqual(cold.Tiers[1].Reasons, []string{"effect-statistics-rule"}) ||
+		cold.Cache.Lookups != 1 ||
+		cold.Cache.Misses != 1 ||
+		cold.Cache.Writes != 1 ||
+		len(cold.Rules) != 2 ||
+		cold.Rules[0].ID != "dependency-statistics-rule" ||
+		cold.Rules[0].Metric.Calls == 0 ||
+		cold.Rules[1].ID != "effect-statistics-rule" ||
+		cold.Rules[1].Metric.Calls == 0 {
+		t.Fatalf("cold statistics = %#v", cold)
+	}
+
+	warmStatistics := analysis.NewStatistics()
+	runOptions.Statistics = warmStatistics
+	if _, err := analysis.RunPackages(context.Background(), registry, runOptions, loadOptions);
+		err != nil {
+		t.Fatal(err)
+	}
+	warm := warmStatistics.Snapshot()
+	if warm.Cache.Lookups != 1 ||
+		warm.Cache.Hits != 1 ||
+		warm.Cache.Misses != 0 ||
+		warm.Cache.Writes != 0 ||
+		len(warm.Rules) != 0 {
+		t.Fatalf("warm statistics = %#v", warm)
+	}
+}
+
 func TestRunPackagesRejectsCachedNativeDiagnosticAfterGeneratedPolicyChanges(t *testing.T) {
 	root := t.TempDir()
 	writeTypesFixture(

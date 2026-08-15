@@ -8,7 +8,8 @@ discovery filters, lint selection flags, and the exact rule IDs available to
 upgrading Glippy so newly admitted rules and CLI options become available.
 Formatter reporter completion offers `text` and `json`; lint and combined-check
 reporter completion additionally offers source-free human `short`, `github`,
-and `sarif`.
+and `sarif`. Lint and combined-check statistics completion offers the optional
+`text` and `json` formats without enabling statistics for ordinary invocations.
 
 Generation writes only to standard output. It does not inspect a project,
 configuration, source file, package graph, or network resource.

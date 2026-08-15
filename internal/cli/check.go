@@ -16,7 +16,7 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const checkUsage = "glippy: expected 'check [-A|--allow <rules-or-groups>] [-W|--warn <rules-or-groups>] [-D|--deny <rules-or-groups>] [-F|--forbid <rules-or-groups>] [--new-from=<git-ref>] [--reporter=text|short|json|github|sarif] [--config=<path>] [path...]'\n"
+const checkUsage = "glippy: expected 'check [-A|--allow <rules-or-groups>] [-W|--warn <rules-or-groups>] [-D|--deny <rules-or-groups>] [-F|--forbid <rules-or-groups>] [--new-from=<git-ref>] [--reporter=text|short|json|github|sarif] [--stats[=text|json]] [--config=<path>] [path...]'\n"
 
 type checkInvocation struct {
 	configPath string
@@ -24,6 +24,7 @@ type checkInvocation struct {
 	lintLevels []rules.LintLevelDirective
 	paths []string
 	reporter glippyreport.Format
+	statistics lintStatisticsFormat
 }
 
 type checkExecution struct {
@@ -39,6 +40,7 @@ func parseCheckInvocation(arguments []string) (checkInvocation, bool) {
 	}
 	result := checkInvocation{reporter: glippyreport.Text}
 	reporterSet := false
+	statisticsSet := false
 	for index := 1; index < len(arguments); index++ {
 		argument := arguments[index]
 		if directive, consumed, matched, valid := parseLintLevelDirective(arguments, index);
@@ -51,6 +53,16 @@ func parseCheckInvocation(arguments []string) (checkInvocation, bool) {
 			continue
 		}
 		switch {
+		case argument == "--stats" && !statisticsSet:
+			result.statistics = lintStatisticsText
+			statisticsSet = true
+		case strings.HasPrefix(argument, "--stats=") && !statisticsSet:
+			value := lintStatisticsFormat(strings.TrimPrefix(argument, "--stats="))
+			if value != lintStatisticsText && value != lintStatisticsJSON {
+				return checkInvocation{}, false
+			}
+			result.statistics = value
+			statisticsSet = true
 		case strings.HasPrefix(argument, "--new-from=") && result.newFrom == "":
 			result.newFrom = strings.TrimPrefix(argument, "--new-from=")
 			if result.newFrom == "" {
@@ -193,7 +205,12 @@ func runCombinedCheck(
 	if err != nil {
 		return reportCombinedCheck(invocation, stdout, stderr, exitCode, false, nil, err)
 	}
+	var statistics *analysis.Statistics
+	if invocation.statistics != lintStatisticsNone {
+		statistics = analysis.NewStatistics()
+	}
 	if packageMode {
+		packageTask.options.analysis.Statistics = statistics
 		return runCombinedPackageCheck(
 			ctx,
 			invocation,
@@ -215,6 +232,9 @@ func runCombinedCheck(
 	)
 	if err != nil {
 		return reportCombinedCheck(invocation, stdout, stderr, exitCode, false, nil, err)
+	}
+	for index := range tasks {
+		tasks[index].options.analysis.Statistics = statistics
 	}
 	executions := make([]checkExecution, 0, len(tasks))
 	for _, task := range tasks {
@@ -352,7 +372,7 @@ func runCombinedCheck(
 				exitCode = ExitFindings
 			}
 		}
-		return reportCombinedCheck(
+		reported := reportCombinedCheck(
 			invocation,
 			stdout,
 			stderr,
@@ -360,6 +380,17 @@ func runCombinedCheck(
 			true,
 			executions,
 			nil,
+		)
+		if reported != exitCode {
+			return reported
+		}
+		return reportLintStatistics(
+			stderr,
+			invocation.statistics,
+			"check",
+			statistics,
+			checkAnalysisResults(executions),
+			exitCode,
 		)
 	}
 	if isIntegrationReporter(invocation.reporter) {
@@ -383,7 +414,7 @@ func runCombinedCheck(
 				exitCode = ExitFindings
 			}
 		}
-		return reportIntegrationOutput(
+		reported := reportIntegrationOutput(
 			"check",
 			invocation.reporter,
 			stdout,
@@ -394,6 +425,17 @@ func runCombinedCheck(
 				Formats: formats,
 				Registry: registry,
 			},
+		)
+		if reported != exitCode {
+			return reported
+		}
+		return reportLintStatistics(
+			stderr,
+			invocation.statistics,
+			"check",
+			statistics,
+			checkAnalysisResults(executions),
+			exitCode,
 		)
 	}
 	var output bytes.Buffer
@@ -445,7 +487,22 @@ func runCombinedCheck(
 			)
 		}
 	}
-	return exitCode
+	return reportLintStatistics(
+		stderr,
+		invocation.statistics,
+		"check",
+		statistics,
+		checkAnalysisResults(executions),
+		exitCode,
+	)
+}
+
+func checkAnalysisResults(executions []checkExecution) []analysis.Result {
+	results := make([]analysis.Result, len(executions))
+	for index, execution := range executions {
+		results[index] = execution.analysis
+	}
+	return results
 }
 
 func runCombinedPackageCheck(
@@ -590,7 +647,7 @@ func runCombinedPackageCheck(
 			exitCode = moreSevereExitCode(exitCode, ExitFindings)
 		}
 	}
-	return reportCombinedPackageCheck(
+	reported := reportCombinedPackageCheck(
 		invocation,
 		registry,
 		stdout,
@@ -600,6 +657,17 @@ func runCombinedPackageCheck(
 		result,
 		executions,
 		nil,
+	)
+	if reported != exitCode {
+		return reported
+	}
+	return reportLintStatistics(
+		stderr,
+		invocation.statistics,
+		"check",
+		task.options.analysis.Statistics,
+		result.Files,
+		exitCode,
 	)
 }
 

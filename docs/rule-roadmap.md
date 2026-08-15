@@ -159,6 +159,12 @@ Resource completion, ownership transfer, cancellation ownership, returned
 nil/error relationships, workspace modules, and third-party packages remain
 in the priority-one investigation rather than being inferred from names.
 
+Opt-in `lint/check --stats` now exposes package-loading versus analysis cost,
+per-tier and per-rule process-local measurements, cache outcomes, final finding
+dispositions, and the rule reasons for dependency syntax and effect facts. This
+is the measurement surface for evaluating later fact-schema and catalog growth;
+ordinary diagnostics retain their deterministic output without timing fields.
+
 The first six tracks focus on correctness and suspicious behavior. The last
 three remain opt-in unless release evidence justifies a compatibility-reviewed
 preset change.

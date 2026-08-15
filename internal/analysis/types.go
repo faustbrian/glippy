@@ -70,6 +70,9 @@ func RunTypes(
 	if len(dispatch) == 0 && len(packageRules) == 0 {
 		return []rules.Diagnostic{}, nil
 	}
+	statistics := statisticsFromContext(ctx)
+	tierStarted := beginStatisticsMeasurement(statistics)
+	defer statistics.recordTier(rules.RequireTypes, tierStarted)
 	packages_, err := canonicalPackages(loaded.Packages)
 	if err != nil {
 		return nil, err
@@ -136,7 +139,13 @@ func RunTypes(
 						)
 						ruleContexts[active.metadata.ID] = ruleContext
 					}
+					ruleStarted := beginStatisticsMeasurement(statistics)
 					findings, err := active.rule.RunTypes(ruleContext, node)
+					statistics.recordRule(
+						active.metadata.ID,
+						active.metadata.Requirement,
+						ruleStarted,
+					)
 					if contextErr := ctx.Err(); contextErr != nil {
 						runErr = contextErr
 						return false
@@ -368,7 +377,11 @@ func runNativePackageRules(
 				dependencies,
 				active.options,
 			)
+			ruleStarted := beginStatisticsMeasurement(statisticsFromContext(ctx))
 			findings, err := active.rule.RunPackage(ruleContext)
+			statisticsFromContext(
+				ctx,
+			).recordRule(active.metadata.ID, active.metadata.Requirement, ruleStarted)
 			if contextErr := ctx.Err(); contextErr != nil {
 				return nil, contextErr
 			}

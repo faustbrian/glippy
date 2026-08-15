@@ -82,6 +82,7 @@ func runNativePackageAnalysis(
 	}
 
 	key, cacheable := nativePackageCacheKey(loaded, loadOptions, cachePlan)
+	statistics := statisticsFromContext(ctx)
 	invalidHit := false
 	if cacheable {
 		encoded, found, err := cachePlan.options.Store.Get(ctx, key)
@@ -97,9 +98,13 @@ func runNativePackageAnalysis(
 				encoded,
 			)
 			if restoreErr == nil {
+				statistics.recordCacheLookup(true, false)
 				return diagnostics, nil
 			}
 			invalidHit = true
+			statistics.recordCacheLookup(false, true)
+		} else {
+			statistics.recordCacheLookup(false, false)
 		}
 	}
 
@@ -139,6 +144,8 @@ func runNativePackageAnalysis(
 			if !invalidHit || !errors.Is(err, cache.ErrConflict) {
 				return nil, fmt.Errorf("write native analysis cache: %w", err)
 			}
+		} else {
+			statistics.recordCacheWrite()
 		}
 	}
 	return diagnostics, nil

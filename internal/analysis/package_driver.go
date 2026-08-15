@@ -37,6 +37,7 @@ func RunPackages(
 	if err := ctx.Err(); err != nil {
 		return PackageResult{}, err
 	}
+	ctx = withStatistics(ctx, options.Statistics)
 	resolution, err := options.RuleResolution()
 	if err != nil {
 		return PackageResult{}, fmt.Errorf("resolve package analysis rules: %w", err)
@@ -45,6 +46,7 @@ func RunPackages(
 	if err != nil {
 		return PackageResult{}, fmt.Errorf("resolve package analysis rules: %w", err)
 	}
+	options.Statistics.recordPlan(registry, selection)
 	result := PackageResult{
 		Requirement: rules.MaximumRequirement(selection),
 		Selection: slices.Clone(selection),
@@ -103,10 +105,13 @@ func RunPackages(
 	if err != nil {
 		return result, err
 	}
+	statistics := statisticsFromContext(ctx)
+	loadStarted := beginStatisticsMeasurement(statistics)
 	loaded, err := LoadPackages(ctx, loadOptions)
 	if err != nil {
 		return result, err
 	}
+	statistics.recordPackageLoad(loadStarted, loaded)
 	result.LoadDiagnostics = slices.Clone(loaded.Diagnostics)
 	result.SourceProblems = loaded.Sources.Problems()
 	result.Sources = loaded.Sources

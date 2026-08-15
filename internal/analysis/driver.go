@@ -30,6 +30,7 @@ type RunOptions struct {
 	RequireSuppressionReason bool
 	SuppressionExpiryCutoff string
 	Cache *PackageCacheOptions
+	Statistics *Statistics
 }
 
 // Result is one reporter-ready syntax analysis result over one source version.
@@ -66,6 +67,7 @@ func Run(
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
+	ctx = withStatistics(ctx, options.Statistics)
 	resolution, err := options.RuleResolutionForPath(file.Path())
 	if err != nil {
 		return Result{}, fmt.Errorf("resolve analysis rules: %w", err)
@@ -74,6 +76,8 @@ func Run(
 	if err != nil {
 		return Result{}, fmt.Errorf("resolve analysis rules: %w", err)
 	}
+	options.Statistics.recordPlan(registry, selection)
+	options.Statistics.recordSourceFile(file.Path())
 	result := Result{
 		Path: file.Path(),
 		Digest: file.Digest(),

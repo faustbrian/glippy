@@ -3870,7 +3870,11 @@ func TestRunLintCheckReportsSourceFailureAndCancellationInJSON(t *testing.T) {
 	var stderr bytes.Buffer
 	exitCode := runLintCheck(
 		context.Background(),
-		lintInvocation{paths: []string{path}, reporter: glippyreport.JSON},
+		lintInvocation{
+			paths: []string{path},
+			reporter: glippyreport.JSON,
+			statistics: lintStatisticsJSON,
+		},
 		&stdout,
 		&stderr,
 		registry,
@@ -3901,7 +3905,11 @@ func TestRunLintCheckReportsSourceFailureAndCancellationInJSON(t *testing.T) {
 	stderr.Reset()
 	exitCode = runLintCheck(
 		ctx,
-		lintInvocation{paths: []string{path}, reporter: glippyreport.JSON},
+		lintInvocation{
+			paths: []string{path},
+			reporter: glippyreport.JSON,
+			statistics: lintStatisticsJSON,
+		},
 		&stdout,
 		&stderr,
 		registry,
@@ -6973,4 +6981,139 @@ func syntaxOnlyProductRuleOverrides(t *testing.T) string {
 		overrides.WriteString(" = \"off\"\n")
 	}
 	return overrides.String()
+}
+
+func TestRunLintStatsJSONKeepsDiagnosticsAndStatisticsSeparate(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/stats\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sample.go")
+	if err := os.WriteFile(
+		path,
+		[]byte(
+			`package sample
+func choose(value bool) int {
+	if value {
+		return 1
+	} else {
+		return 1
+	}
+}
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{
+			"lint",
+			"--only=identical-branches",
+			"--reporter=json",
+			"--stats=json",
+			path,
+		},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings {
+		t.Fatalf(
+			"Run(lint --stats=json) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	var diagnostics glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &diagnostics); err != nil {
+		t.Fatalf("decode diagnostic JSON %q: %v", stdout.String(), err)
+	}
+	if diagnostics.SchemaVersion != 1 ||
+		diagnostics.Command != "lint" ||
+		len(diagnostics.Diagnostics) != 1 ||
+		diagnostics.Diagnostics[0].RuleID != "identical-branches" {
+		t.Fatalf("diagnostic JSON = %#v", diagnostics)
+	}
+	var statistics map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &statistics); err != nil {
+		t.Fatalf("decode stats JSON %q: %v", stderr.String(), err)
+	}
+	if statistics["schema_version"] != float64(1) ||
+		statistics["command"] != "lint" ||
+		statistics["maximum_tier"] != "syntax" ||
+		statistics["files"] != float64(1) {
+		t.Fatalf("stats JSON = %#v", statistics)
+	}
+	rules_, ok := statistics["rules"].([]any)
+	if !ok || len(rules_) != 1 {
+		t.Fatalf("stats rules = %#v", statistics["rules"])
+	}
+	rule, ok := rules_[0].(map[string]any)
+	if !ok ||
+		rule["id"] != "identical-branches" ||
+		rule["tier"] != "syntax" ||
+		rule["findings"] != float64(1) ||
+		rule["calls"].(float64) == 0 {
+		t.Fatalf("stats rule = %#v", rules_[0])
+	}
+	phases, ok := statistics["phases"].([]any)
+	if !ok || len(phases) != 2 {
+		t.Fatalf("stats phases = %#v", statistics["phases"])
+	}
+	dependencySyntax, ok := statistics["dependency_syntax"].(map[string]any)
+	if !ok {
+		t.Fatalf("dependency syntax stats = %#v", statistics["dependency_syntax"])
+	}
+	reasons, ok := dependencySyntax["reasons"].([]any)
+	if !ok || len(reasons) != 0 {
+		t.Fatalf("dependency syntax reasons = %#v", dependencySyntax["reasons"])
+	}
+}
+
+func TestRunLintStatsRejectsMutatingAndAmbiguousModes(t *testing.T) {
+	t.Parallel()
+
+	for _, arguments := range
+		[][]string{
+			{"lint", "--stats", "--fix", "source.go"},
+			{"lint", "--stats=json", "--diff", "--fix", "source.go"},
+			{"lint", "--stats", "--generate-baseline=baseline.json", "source.go"},
+			{"lint", "--stats", "--stats=json", "source.go"},
+			{"lint", "--stats=xml", "source.go"},
+		} {
+		arguments := arguments
+		t.Run(
+			strings.Join(arguments[1:], "_"),
+			func(t *testing.T) {
+				t.Parallel()
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				exitCode := Run(arguments, strings.NewReader(""), &stdout, &stderr)
+				if exitCode != ExitInvalidInvocation ||
+					stdout.Len() != 0 ||
+					stderr.String() != lintUsage {
+					t.Fatalf(
+						"Run(%q) = exit %d, stdout %q, stderr %q",
+						arguments,
+						exitCode,
+						stdout.String(),
+						stderr.String(),
+					)
+				}
+			},
+		)
+	}
 }

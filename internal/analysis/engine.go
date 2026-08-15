@@ -144,6 +144,9 @@ func RunSyntax(
 	if len(dispatch) == 0 && len(fileRules) == 0 {
 		return []rules.Diagnostic{}, nil
 	}
+	statistics := statisticsFromContext(ctx)
+	tierStarted := beginStatisticsMeasurement(statistics)
+	defer statistics.recordTier(rules.RequireSyntax, tierStarted)
 
 	diagnostics := make([]rules.Diagnostic, 0)
 	if len(dispatch) > 0 {
@@ -168,9 +171,17 @@ func RunSyntax(
 							return true
 						}
 						for _, active := range dispatch[kind] {
+							ruleStarted := beginStatisticsMeasurement(
+								statistics,
+							)
 							findings, err := active.rule.RunSyntax(
 								active.context,
 								node,
+							)
+							statistics.recordRule(
+								active.metadata.ID,
+								active.metadata.Requirement,
+								ruleStarted,
 							)
 							if contextErr := ctx.Err();
 								contextErr != nil {
@@ -221,7 +232,9 @@ func RunSyntax(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		ruleStarted := beginStatisticsMeasurement(statistics)
 		findings, err := active.rule.RunSyntaxFile(active.context)
+		statistics.recordRule(active.metadata.ID, active.metadata.Requirement, ruleStarted)
 		if contextErr := ctx.Err(); contextErr != nil {
 			return nil, contextErr
 		}

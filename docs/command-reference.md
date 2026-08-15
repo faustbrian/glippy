@@ -21,9 +21,11 @@ and no v0.2 tag or release is authorized before maintainer review.
 | `glippy lint --fix [paths...]` | Apply safe fixes | Yes |
 | `glippy lint --fix --diff [paths...]` | Preview validated safe fixes as unified differences | No |
 | `glippy lint --generate-baseline=<path> [paths...]` | Write a deterministic adoption baseline | Baseline only |
+| `glippy lint --stats[=text\|json] [paths...]` | Report opt-in rule and analysis cost statistics | No |
 | `glippy check [paths...]` | Check formatting and lint diagnostics together | No |
 | `glippy check -D warnings [paths...]` | Check with command-line warning denial | No |
 | `glippy check --new-from=<git-ref> [paths...]` | Check changed-line formatting and diagnostics | No |
+| `glippy check --stats[=text\|json] [paths...]` | Check while reporting opt-in analysis statistics | No |
 | `glippy lsp [flags]` | Serve live diagnostics, formatting, and validated code actions over stdio | No |
 | `glippy init [directory]` | Create a starter `.glippy.toml` without overwriting | Configuration only |
 | `glippy config check [path]` | Validate discovered or explicit configuration | No |
@@ -202,6 +204,37 @@ workflow-command annotations; SARIF emits SARIF 2.1.0. Machine reporters omit
 source snippets and replacement text.
 See the [machine output reference](machine-output.md) for field, range,
 completeness, ordering, and fix-provenance semantics.
+
+### Execution statistics
+
+`glippy lint --stats` and `glippy check --stats` append a human statistics
+report to standard error after a complete analysis. `--stats=json` emits the
+schema-version-1 statistics document instead. The selected diagnostic reporter
+continues to own standard output, including when both documents use JSON:
+
+```sh
+glippy lint --reporter=json --stats=json ./... \
+	> diagnostics.json 2> statistics.json
+```
+
+Statistics include package-loading and analysis cost, process-local
+allocations, selected tiers and their rule reasons, rule callback cost and
+finding dispositions, cache hits, misses, semantic invalidations and writes,
+and the exact rules that required dependency syntax or effect facts. Timings
+and allocation counts are observations rather than deterministic values; the
+schema, ordering, identities, and counts derived from the analyzed result are
+deterministic for the same inputs.
+
+Allocation counts exclude the Go command and other package-loading
+subprocesses. Cache invalidations count entries found under the current key but
+rejected by semantic validation; ordinary key changes are misses. Failed or
+canceled incomplete runs do not emit a statistics document.
+
+Stats are non-mutating and may be combined with diagnostic reporters,
+lint-level directives, `--only`, `--except`, baselines, suppressions, and
+`--new-from`. Lint stats cannot be combined with fix flags, fix previews, or
+baseline generation because those modes perform repeated or writing analysis
+whose costs would need a separate transaction profile.
 
 ### Command-line lint levels
 

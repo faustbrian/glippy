@@ -83,6 +83,9 @@ func runPackageAnalyzers(
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	statistics := statisticsFromContext(ctx)
+	tierStarted := beginStatisticsMeasurement(statistics)
+	defer statistics.recordTier(rules.RequireTypes, tierStarted)
 	if loaded.Requirement < rules.RequireTypes {
 		return nil, fmt.Errorf("package analyzer execution requires a typed package load")
 	}
@@ -106,6 +109,7 @@ func runPackageAnalyzers(
 	diagnostics := make([]rules.Diagnostic, 0)
 	for _, analyzer := range active {
 		if analyzer.rule.usesFacts() {
+			ruleStarted := beginStatisticsMeasurement(statistics)
 			produced, err := analyzer.rule.runPackageFactGraph(
 				ctx,
 				loaded,
@@ -114,6 +118,11 @@ func runPackageAnalyzers(
 				owners,
 				analyzer.metadata,
 				analyzer.severity,
+			)
+			statistics.recordRule(
+				analyzer.metadata.ID,
+				analyzer.metadata.Requirement,
+				ruleStarted,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", analyzer.metadata.ID, err)
@@ -140,6 +149,7 @@ func runPackageAnalyzers(
 			) {
 				continue
 			}
+			ruleStarted := beginStatisticsMeasurement(statistics)
 			produced, err := analyzer.rule.runPackage(
 				ctx,
 				pkg,
@@ -147,6 +157,11 @@ func runPackageAnalyzers(
 				owners,
 				analyzer.severity,
 				nil,
+			)
+			statistics.recordRule(
+				analyzer.metadata.ID,
+				analyzer.metadata.Requirement,
+				ruleStarted,
 			)
 			if contextErr := ctx.Err(); contextErr != nil {
 				return nil, contextErr

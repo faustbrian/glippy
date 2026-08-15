@@ -3175,6 +3175,70 @@ func TestRunCheckReportsDifferencesWithoutMutation(t *testing.T) {
 	}
 }
 
+func TestRunCombinedCheckStatsJSONKeepsFindingsAndStatisticsSeparate(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/checkstats\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".glippy.toml"),
+		[]byte(
+			"version = 1\n[lint.rules]\n" +
+				"identical-branches = \"warn\"\n" +
+				syntaxOnlyProductRuleOverrides(t),
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sample.go")
+	if err := os.WriteFile(
+		path,
+		[]byte(
+			"package sample\nfunc choose(value bool) int {\n\tif value {\n\t\treturn 1\n\t} else {\n\t\treturn 1\n\t}\n}\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"check", "--reporter=short", "--stats=json", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings {
+		t.Fatalf(
+			"Run(check --stats=json) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	if !strings.Contains(stdout.String(), "warn[identical-branches]") {
+		t.Fatalf("check output = %q", stdout.String())
+	}
+	var statistics map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &statistics); err != nil {
+		t.Fatalf("decode check stats JSON %q: %v", stderr.String(), err)
+	}
+	if statistics["schema_version"] != float64(1) || statistics["command"] != "check" {
+		t.Fatalf("check stats JSON = %#v", statistics)
+	}
+}
+
 func TestRunDiffReportsUnifiedDifferenceWithoutMutation(t *testing.T) {
 	t.Parallel()
 

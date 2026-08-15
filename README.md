@@ -85,8 +85,10 @@ glippy lint --generate-baseline=<path> [paths...]
 glippy lint --reporter=github [paths...]
 glippy lint --reporter=sarif [paths...]
 glippy lint --reporter=short [paths...]
+glippy lint --stats[=text|json] [paths...]
 glippy check [paths...]
 glippy check --new-from=<git-ref> [paths...]
+glippy check --stats[=text|json] [paths...]
 glippy lsp [--fix-suggestions] [--fix-unsafe]
 glippy init [directory]
 glippy config check [path]
@@ -116,6 +118,14 @@ Default human diagnostics render bounded physical-source frames with precise
 primary underlines, related locations, notes, help, and fix safety. Use
 `--reporter=short` for the source-free `path:line:column` form in logs. Machine
 reporters remain source-free and never include replacement text.
+
+`lint` and combined `check` also provide opt-in execution statistics through
+`--stats` or `--stats=json`. Diagnostics keep their selected standard-output
+format, while statistics use standard error so machine consumers can capture
+the two versioned documents independently. Statistics explain tier and
+dependency loading, per-rule findings and cost, suppression and baseline
+counts, and persistent-cache outcomes. They are intentionally absent from
+ordinary runs.
 
 `glippy lsp` provides full-buffer synchronization, live syntax or typed
 diagnostics, document formatting, version-bound individual fixes, and a

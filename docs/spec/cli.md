@@ -30,8 +30,10 @@ glippy lint --only=<rules> [paths...]
 glippy lint --except=<rules> [paths...]
 glippy lint --new-from=<git-ref> [paths...]
 glippy lint --generate-baseline=<path> [paths...]
+glippy lint --stats[=text|json] [paths...]
 glippy check [paths...]
 glippy check --new-from=<git-ref> [paths...]
+glippy check --stats[=text|json] [paths...]
 glippy lsp [--fix-suggestions] [--fix-unsafe] [--config=<path>]
 glippy init [directory]
 glippy config check [path]
@@ -226,6 +228,30 @@ failure. Invalid configuration, filesystem failures, cancellation, and
 reporting failures retain their common exit categories. JSON and SARIF remain
 valid and incomplete for invalid invocations and failures; GitHub renders a
 tool-error annotation.
+
+Complete non-writing `lint` and combined `check` runs MAY request opt-in
+execution statistics with `--stats` or `--stats=text`; `--stats=json` MUST
+select the versioned machine document. Diagnostics MUST retain their selected
+standard-output reporter, and statistics MUST be written separately to
+standard error only after diagnostic output succeeds. Ordinary invocations
+MUST NOT collect or emit statistics. Failed, canceled, or otherwise incomplete
+runs MUST NOT emit a statistics document.
+
+Statistics MUST expose package-loading and in-process analysis cost, selected
+tiers and their exact rule reasons, per-rule callback cost, final finding,
+suppression, and baseline counts, cache outcomes, and the rules that required
+dependency syntax or effect facts. Schema structure, tier names, rule order,
+reason order, and result-derived counts MUST be deterministic. Durations and
+process-local allocation measurements are observational values and MUST remain
+outside ordinary diagnostic schemas. Allocation claims MUST exclude Go-tool
+subprocesses. Cache invalidation MUST mean a current-key value was found but
+failed semantic validation; a changed key remains a miss.
+
+Lint statistics MUST reject fix flags, fix previews, and baseline generation.
+They MAY combine with diagnostic reporters, lint-level directives, selective
+rule filters, configured baselines and suppressions, and changed-code
+filtering. Combined-check statistics MUST include the same lint analysis
+contract without weakening check's non-mutation guarantee.
 
 `lint --generate-baseline=<path>` MUST analyze normally visible diagnostics
 before baseline application and write one deterministic strict JSON document

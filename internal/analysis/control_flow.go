@@ -49,6 +49,9 @@ func RunControlFlow(
 	if loaded.Requirement < rules.RequireControlFlow {
 		return nil, fmt.Errorf("control-flow analysis requires a CFG-tier package load")
 	}
+	statistics := statisticsFromContext(ctx)
+	tierStarted := beginStatisticsMeasurement(statistics)
+	defer statistics.recordTier(rules.RequireControlFlow, tierStarted)
 	packages_, err := canonicalPackages(loaded.Packages)
 	if err != nil {
 		return nil, err
@@ -100,7 +103,13 @@ func RunControlFlow(
 					function.body,
 					graph,
 				)
+				ruleStarted := beginStatisticsMeasurement(statistics)
 				findings, err := active.rule.RunControlFlow(ruleContext)
+				statistics.recordRule(
+					active.metadata.ID,
+					active.metadata.Requirement,
+					ruleStarted,
+				)
 				if contextErr := ctx.Err(); contextErr != nil {
 					return nil, contextErr
 				}

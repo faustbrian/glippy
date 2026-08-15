@@ -77,6 +77,7 @@ func (r *packageAnalyzerRule) runPackageFactGraph(
 	results := make(map[*packages.Package][]rules.Diagnostic)
 	cacheKeys := make(map[*packages.Package]cache.Key)
 	baseCacheKey, cacheable := r.packageCacheBaseKey(loaded, loadOptions, cachePlan)
+	statistics := statisticsFromContext(ctx)
 	var execute func(*packages.Package) error
 	execute = func(pkg *packages.Package) error {
 		if err := ctx.Err(); err != nil {
@@ -141,12 +142,16 @@ func (r *packageAnalyzerRule) runPackageFactGraph(
 					encoded,
 				)
 				if restoreErr == nil {
+					statistics.recordCacheLookup(true, false)
 					results[pkg] = cached
 					cacheKeys[pkg] = key
 					state[pkg] = 2
 					return nil
 				}
 				invalidHit = true
+				statistics.recordCacheLookup(false, true)
+			} else {
+				statistics.recordCacheLookup(false, false)
 			}
 		}
 		produced, err := r.runPackage(ctx, pkg, files, owners, severity, facts)
@@ -166,6 +171,7 @@ func (r *packageAnalyzerRule) runPackageFactGraph(
 						)
 					}
 				} else {
+					statistics.recordCacheWrite()
 					cacheKeys[pkg] = key
 				}
 			}

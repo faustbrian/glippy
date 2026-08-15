@@ -296,6 +296,35 @@ shared coordinator, formatter, and syntax driver again before atomic
 replacement. Suggestion-only and unsafe diagnostics MUST remain visible and
 unchanged under ordinary `--fix`.
 
+## Execution Statistics
+
+Statistics collection MUST be opt-in and run-owned. One collector MAY aggregate
+multiple syntax files or one typed package invocation, but it MUST NOT become a
+global mutable registry or change diagnostic scheduling. Disabled collection
+MUST avoid timing and process-memory sampling on rule callbacks.
+
+An enabled collector MUST measure package loading separately from in-process
+analysis tiers. Syntax, types, CFG, and SSA callbacks MUST be attributed to
+their canonical rule IDs and declared tiers; shared traversal and
+representation-building overhead remains attributed to the enclosing tier
+rather than invented as rule work. A cache hit MUST avoid claiming callbacks
+that did not execute. Rule and reason views MUST retain selected zero-callback
+rules so a warm result still explains why a representation or cache entry was
+requested.
+
+The collector MUST report persistent native and analyzer-fact cache lookups,
+hits, misses, semantic invalidations, and successful writes. Store-level
+corruption that degrades to recomputation is a miss because the store does not
+expose corrupt bytes to analysis. A semantic invalidation is a verified payload
+returned for the current key and then rejected by current rule, source, or
+diagnostic validation.
+
+Timing and allocation sampling MAY add profiling overhead and MUST NOT be used
+to alter scheduling or cache identities. Allocation deltas describe the Glippy
+process only; package-loader subprocess allocation is outside the claim.
+Versioned reporting and CLI stream ownership are defined by the CLI and machine
+output contracts.
+
 ## Diagnostics
 
 A diagnostic MUST contain rule ID, resolved severity, stable message key and

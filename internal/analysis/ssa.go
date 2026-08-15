@@ -48,6 +48,9 @@ func RunSSA(
 	if loaded.Requirement < rules.RequireSSA {
 		return nil, fmt.Errorf("SSA analysis requires an SSA-tier package load")
 	}
+	statistics := statisticsFromContext(ctx)
+	tierStarted := beginStatisticsMeasurement(statistics)
+	defer statistics.recordTier(rules.RequireSSA, tierStarted)
 	packages_, err := canonicalPackages(loaded.Packages)
 	if err != nil {
 		return nil, err
@@ -134,7 +137,13 @@ func RunSSA(
 					function,
 					sourceFunction.function,
 				)
+				ruleStarted := beginStatisticsMeasurement(statistics)
 				findings, err := active.rule.RunSSA(ruleContext)
+				statistics.recordRule(
+					active.metadata.ID,
+					active.metadata.Requirement,
+					ruleStarted,
+				)
 				if contextErr := ctx.Err(); contextErr != nil {
 					return nil, contextErr
 				}

@@ -12,12 +12,47 @@ glippy lint --reporter=json ./...
 glippy lint --fix --reporter=json ./...
 glippy check --reporter=json ./...
 glippy explain duplicate-condition --json
+glippy lint --reporter=json --stats=json ./...
 ```
 
 JSON is unavailable when standard output belongs to formatted source or a
 unified diff. Consumers must use the schema version and symbolic outcome
 category instead of parsing human output or inferring meaning from an exit code
 alone.
+
+## Execution Statistics
+
+`lint --stats=json` and `check --stats=json` write a separate
+schema-version-1 document to standard error after a complete run. The selected
+diagnostic report remains on standard output and does not gain timing fields.
+This keeps nondeterministic measurements out of ordinary diagnostic contracts
+and permits independent capture when diagnostics also use JSON.
+
+The statistics document contains:
+
+- `command`, `outcome`, `complete`, `maximum_tier`, analyzed-file,
+  loaded-source, and package counts;
+- a process-local `total` metric;
+- ordered `package-loading` and `analysis` phases;
+- ordered tiers with the exact rule IDs that required each representation;
+- ordered per-rule callback cost plus findings, visible diagnostics,
+  pre-existing findings, suppressions, and baselines;
+- cache lookups, hits, misses, semantic invalidations, and writes; and
+- dependency-syntax and effect-fact load decisions with rule reasons.
+
+Every cost metric contains `calls`, `duration_ns`, `allocations`, and
+`allocated_bytes`. Durations and allocations are observations and therefore
+not byte-deterministic. Allocation values cover the Glippy process and exclude
+Go-tool subprocesses used by package loading. Cache invalidation means a value
+was found for the current key but rejected by semantic validation; a changed
+key is an ordinary miss.
+
+Arrays and rule identities are canonical. Disposition counts use the final
+suppression, baseline, and changed-code result. A cache hit can therefore show
+zero rule callbacks while retaining selected rule entries and findings restored
+from the cache. `complete` is always true because incomplete, failed, or
+canceled runs do not emit this separate document. `outcome` retains the same
+symbolic category and numeric exit code as the diagnostic report.
 
 Lint and combined check additionally accept CI-native reporters:
 
