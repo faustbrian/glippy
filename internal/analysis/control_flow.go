@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"go/ast"
-	"go/types"
 	"slices"
 	"sort"
 
 	"github.com/faustbrian/glippy/internal/rules"
-	"golang.org/x/tools/go/cfg"
 )
 
 type activeControlFlowRule struct {
@@ -59,6 +57,7 @@ func RunControlFlow(
 	if err != nil {
 		return nil, err
 	}
+	noReturns := newNoReturnAnalysis(ctx, packages_)
 
 	diagnostics := make([]rules.Diagnostic, 0)
 	for _, work := range files {
@@ -90,7 +89,7 @@ func RunControlFlow(
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			graph := cfg.New(function.body, mayReturn(pkg.TypesInfo))
+			graph := noReturns.graphFor(function.function, function.body, pkg.TypesInfo)
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
@@ -250,20 +249,4 @@ func functionBodies(file *ast.File) []functionBody {
 		},
 	)
 	return functions
-}
-
-func mayReturn(info *types.Info) func(*ast.CallExpr) bool {
-	panicObject := types.Universe.Lookup("panic")
-	return func(call *ast.CallExpr) bool {
-		function := call.Fun
-		for {
-			parenthesized, ok := function.(*ast.ParenExpr)
-			if !ok {
-				break
-			}
-			function = parenthesized.X
-		}
-		identifier, ok := function.(*ast.Ident)
-		return !ok || info.Uses[identifier] != panicObject
-	}
 }

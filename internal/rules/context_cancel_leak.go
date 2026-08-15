@@ -36,7 +36,7 @@ func (contextCancelLeakRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"As in the standard lostcancel analyzer, any reference to the cancellation variable counts as a use; the rule does not prove that the referenced function is eventually called.",
 			"Cancellation transferred through helpers, fields, or containers is outside the intraprocedural ownership model.",
-			"The shared CFG recognizes built-in panic as non-returning; imported and project-local no-return functions are not inferred through transitive analyzer facts.",
+			"The shared CFG propagates no-return behavior through statically called functions in the loaded package; imported helpers without source or analyzer facts remain conservatively returning.",
 		},
 		Examples: []Example{
 			{

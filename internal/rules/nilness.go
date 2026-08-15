@@ -24,7 +24,7 @@ func (nilnessRule) Metadata() Metadata {
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"Control-flow joins may lose nilness facts, so the rule intentionally misses some defects rather than guessing.",
-			"The shared SSA program does not yet import interprocedural no-return facts, so findings that depend on a callee terminating may be missed.",
+			"The shared SSA program propagates no-return behavior through statically called functions in the loaded package; imported helpers without source or analyzer facts remain conservatively returning.",
 			"Functions marked with //go:cgo_unsafe_args are excluded because their runtime behavior is not represented faithfully in SSA.",
 			"Generated files and packages with type errors are excluded.",
 		},

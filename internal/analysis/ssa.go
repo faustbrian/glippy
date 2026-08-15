@@ -64,6 +64,12 @@ func RunSSA(
 		return nil, err
 	}
 	program, ssaPackages := ssautil.Packages(ssaInputs, ssaMode(activeRules))
+	noReturns := newNoReturnAnalysis(ctx, ssaInputs)
+	noReturns.buildAll()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	program.SetNoReturn(noReturns.predicate())
 	program.Build()
 	if err := ctx.Err(); err != nil {
 		return nil, err

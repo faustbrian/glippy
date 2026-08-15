@@ -31,7 +31,7 @@ func (uncheckedScannerErrorRule) Metadata() Metadata {
 			"The initial contract recognizes direct identifier-backed bufio.Scanner.Scan and Scanner.Err calls; aliases stored in fields, containers, or other variables are not tracked.",
 			"A direct assignment to the scanner variable invalidates later checks against a replacement value; writes through range targets and indirect aliases are not modeled.",
 			"Passing Scanner.Err to another call counts as observing the result; the rule does not inspect the callee's behavior.",
-			"The shared CFG recognizes predeclared panic as non-returning; imported and project-local termination helpers are treated as returning.",
+			"The shared CFG propagates no-return behavior through statically called functions in the loaded package; imported helpers without source or analyzer facts remain conservatively returning.",
 			"Generated files and packages with type errors are excluded.",
 		},
 		Examples: []Example{

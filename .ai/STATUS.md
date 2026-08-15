@@ -1413,3 +1413,15 @@ dogfood support admission. No fix is offered because declaration reuse,
 renaming, and explicit propagation are not generally equivalent. Additional
 interprocedural error and lifecycle facts remain open, so the active
 Clippy-comparability goal continues.
+
+The shared CFG and SSA foundation now propagates no-return behavior through
+statically called named functions and methods in the loaded package. Named CFGs
+are built on demand and reused across rules; SSA receives the same predicate
+before program construction. This removes a false context-cancel leak path
+through a local panic wrapper and lets nilness diagnose a condition whose
+contrary path terminates through that wrapper. Dynamic calls, unresolved
+recursive cycles, and imported helpers without source or analyzer facts remain
+conservatively returning. A 100-function chain probe has a 38.3-microsecond
+median with about 52.6 KiB allocated per run on Darwin arm64. Cross-package
+effect facts remain the next foundation boundary, so the active
+Clippy-comparability goal continues.

@@ -420,8 +420,8 @@ None.
   use; the rule does not prove that the referenced function is eventually called.
 - Cancellation transferred through helpers, fields, or containers is outside the intraprocedural
   ownership model.
-- The shared CFG recognizes built-in panic as non-returning; imported and project-local no-return
-  functions are not inferred through transitive analyzer facts.
+- The shared CFG propagates no-return behavior through statically called functions in the loaded
+  package; imported helpers without source or analyzer facts remain conservatively returning.
 
 ### Example: Retain and call the cancellation function
 
@@ -2539,8 +2539,8 @@ None.
 
 - Control-flow joins may lose nilness facts, so the rule intentionally misses some defects rather
   than guessing.
-- The shared SSA program does not yet import interprocedural no-return facts, so findings that
-  depend on a callee terminating may be missed.
+- The shared SSA program propagates no-return behavior through statically called functions in the
+  loaded package; imported helpers without source or analyzer facts remain conservatively returning.
 - Functions marked with //go:cgo_unsafe_args are excluded because their runtime behavior is not
   represented faithfully in SSA.
 - Generated files and packages with type errors are excluded.
@@ -4036,8 +4036,8 @@ None.
   writes through range targets and indirect aliases are not modeled.
 - Passing Rows.Err to another call counts as observing the result; the rule does not inspect the
   callee's behavior.
-- The shared CFG recognizes predeclared panic as non-returning; imported and project-local
-  termination helpers are treated as returning.
+- The shared CFG propagates no-return behavior through statically called functions in the loaded
+  package; imported helpers without source or analyzer facts remain conservatively returning.
 - Generated files and packages with type errors are excluded.
 
 ### Example: Check the terminal iteration error
@@ -4092,8 +4092,8 @@ None.
   writes through range targets and indirect aliases are not modeled.
 - Passing Scanner.Err to another call counts as observing the result; the rule does not inspect the
   callee's behavior.
-- The shared CFG recognizes predeclared panic as non-returning; imported and project-local
-  termination helpers are treated as returning.
+- The shared CFG propagates no-return behavior through statically called functions in the loaded
+  package; imported helpers without source or analyzer facts remain conservatively returning.
 - Generated files and packages with type errors are excluded.
 
 ### Example: Check the terminal scanner error

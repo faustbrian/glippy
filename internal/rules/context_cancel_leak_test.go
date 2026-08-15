@@ -51,6 +51,18 @@ func captured(parent context.Context) context.Context {
 	return child
 }
 
+func stopNow() { panic("stop") }
+
+func terminated(parent context.Context, stop bool) context.Context {
+	child, cancel := context.WithCancel(parent)
+	if stop {
+		stopNow()
+	} else {
+		cancel()
+	}
+	return child
+}
+
 func deadline() time.Time { return time.Time{} }
 `
 	result := runContextCancelLeak(t, "sample", input)

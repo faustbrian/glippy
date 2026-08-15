@@ -3,7 +3,9 @@ package analysis_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go/ast"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -353,6 +355,176 @@ func target() {}
 	}
 }
 
+func TestRunControlFlowUsesPackageNoReturnSummaries(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "project.go"),
+		`package project
+
+func caller() {
+	wrapper()
+	target()
+}
+
+func wrapper() { stop() }
+func stop() { panic("stop") }
+
+func direct() {
+	(stop)()
+	target()
+}
+
+func dynamic(callback func()) {
+	callback()
+	target()
+}
+
+type stopper struct{}
+
+func (stopper) stop() { panic("stop") }
+
+func method() {
+	(stopper{}).stop()
+	target()
+}
+
+func recursiveA() {
+	recursiveB()
+	target()
+}
+
+func recursiveB() { recursiveA() }
+
+func target() {}
+`,
+	)
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireControlFlow,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reachability := make(map[string]bool)
+	rule := controlFlowRule{
+		metadata: controlFlowMetadata("package-no-return"),
+		run: func(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+			declaration, ok := ctx.Function().(*ast.FuncDecl)
+			if !ok {
+				return nil, nil
+			}
+			for _, block := range ctx.Graph().Blocks {
+				if !block.Live {
+					continue
+				}
+				for _, node := range block.Nodes {
+					statement, ok := node.(*ast.ExprStmt)
+					if !ok {
+						continue
+					}
+					call, ok := statement.X.(*ast.CallExpr)
+					if !ok {
+						continue
+					}
+					identifier, named := call.Fun.(*ast.Ident)
+					if named && identifier.Name == "target" {
+						reachability[declaration.Name.Name] = true
+					}
+				}
+			}
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunControlFlow(context.Background(), loaded, registry, selection);
+		err != nil {
+		t.Fatal(err)
+	}
+	if reachability["caller"] ||
+		reachability["direct"] ||
+		reachability["method"] ||
+		!reachability["dynamic"] ||
+		!reachability["recursiveA"] {
+		t.Fatalf("target reachability = %#v", reachability)
+	}
+}
+
+func TestRunControlFlowCancelsPackageNoReturnConstruction(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "project.go"),
+		`package project
+
+func caller() { stop1() }
+func stop1() { stop2() }
+func stop2() { stop3() }
+func stop3() { panic("stop") }
+`,
+	)
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireControlFlow,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ruleExecuted := false
+	rule := controlFlowRule{
+		metadata: controlFlowMetadata("cancel-package-no-return"),
+		run: func(*rules.ControlFlowContext) ([]rules.Finding, error) {
+			ruleExecuted = true
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := newCancelAfterChecks(11)
+	if _, err := analysis.RunControlFlow(ctx, loaded, registry, selection);
+		!errors.Is(err, context.Canceled) {
+		t.Fatalf("RunControlFlow error = %v, want context cancellation", err)
+	}
+	if ruleExecuted {
+		t.Fatal("control-flow rule executed after no-return construction was canceled")
+	}
+}
+
 func TestRunControlFlowPreservesCancellationAfterRuleExecution(t *testing.T) {
 	t.Parallel()
 
@@ -568,6 +740,67 @@ func TestRunControlFlowAnalyzesEachPhysicalFunctionOnceAcrossTestVariants(t *tes
 	}
 }
 
+func BenchmarkRunControlFlowWithPackageNoReturnChain(b *testing.B) {
+	root := b.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/project\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		b.Fatal(err)
+	}
+	var input strings.Builder
+	input.WriteString("package project\nfunc stop0() { panic(\"stop\") }\n")
+	for index := 1; index < 100; index++ {
+		fmt.Fprintf(&input, "func stop%d() { stop%d() }\n", index, index - 1)
+	}
+	input.WriteString("func caller() { stop99(); println(\"unreachable\") }\n")
+	if err := os.WriteFile(filepath.Join(root, "project.go"), []byte(input.String()), 0o600);
+		err != nil {
+		b.Fatal(err)
+	}
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireControlFlow,
+		},
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(
+		controlFlowRule{
+			metadata: controlFlowMetadata("package-no-return-benchmark"),
+			run: func(*rules.ControlFlowContext) ([]rules.Finding, error) {
+				return nil, nil
+			},
+		},
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if _, err := analysis.RunControlFlow(
+			context.Background(),
+			loaded,
+			registry,
+			selection,
+		);
+			err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func functionKind(node ast.Node) string {
 	switch node.(type) {
 	case *ast.FuncDecl:
@@ -577,6 +810,26 @@ func functionKind(node ast.Node) string {
 	default:
 		return "unknown"
 	}
+}
+
+type cancelAfterChecks struct {
+	context.Context
+	cancel context.CancelFunc
+	checks int
+	cancelAt int
+}
+
+func newCancelAfterChecks(cancelAt int) *cancelAfterChecks {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &cancelAfterChecks{Context: ctx, cancel: cancel, cancelAt: cancelAt}
+}
+
+func (ctx *cancelAfterChecks) Err() error {
+	ctx.checks++
+	if ctx.checks >= ctx.cancelAt {
+		ctx.cancel()
+	}
+	return ctx.Context.Err()
 }
 
 func controlFlowMetadata(id string) rules.Metadata {

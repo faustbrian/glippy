@@ -209,19 +209,17 @@ func inspect(pointer *int) {
 	}
 }
 
-func TestNilnessDoesNotGuessInterproceduralNoReturn(t *testing.T) {
+func TestNilnessUsesPackageNoReturnSummaries(t *testing.T) {
 	t.Parallel()
 
-	root, _ := writeNilnessModule(
-		t,
-		`package sample
+	input := `package sample
 func stop() { panic("stop") }
 func inspect(pointer *int) {
 	if pointer != nil { stop() }
 	if pointer != nil { println(pointer) }
 }
-`,
-	)
+`
+	root, _ := writeNilnessModule(t, input)
 	registry, err := rules.NewDefaultRegistry()
 	if err != nil {
 		t.Fatal(err)
@@ -235,7 +233,16 @@ func inspect(pointer *int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 0 {
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("interprocedural no-return result = %#v", result.Files)
+	}
+	secondCondition := strings.LastIndex(input, "pointer != nil")
+	diagnostic := result.Files[0].Diagnostics[0]
+	if secondCondition < 0 ||
+		diagnostic.RuleID != "nilness" ||
+		diagnostic.MessageKey != "cond" ||
+		diagnostic.Range.Start != secondCondition + len("pointer ") ||
+		diagnostic.Range.End != diagnostic.Range.Start + len("!=") {
 		t.Fatalf("interprocedural no-return result = %#v", result.Files)
 	}
 }

@@ -50,7 +50,9 @@ inside formatting, and layout policy is not duplicated as lint noise.
   suspicious, performance, complexity, style, and pedantic groups are
   composable opt-ins, while restriction rules remain individually selected.
 - **Demand-driven analysis:** syntax-only work does not construct types, CFG,
-  or SSA; deeper representations are shared within one package run.
+  or SSA; deeper representations are shared within one package run. CFG and
+  SSA consumers share demand-driven no-return summaries for static calls in
+  the loaded package.
 - **Safe source changes:** fixes carry source identity and safety class;
   conflicts, stale ranges, and failed validation cannot silently write source.
 - **One product, separate engines:** formatting, diagnostics, fix coordination,
