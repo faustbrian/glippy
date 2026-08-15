@@ -132,7 +132,9 @@ The IP comparison track now admits `net-ip-bytes-equal` for exact
 equivalent 4-byte and 16-byte IPv4 representations as different addresses,
 while `net.IP.Equal` accounts for both representations. Ordinary byte slices,
 distinct named wrappers, indirect calls, and local lookalikes remain excluded,
-and no fix silently changes equality semantics or guesses import ownership.
+and the behavior-changing replacement is suggestion-only. The transaction
+preserves operand source and removes a qualified `bytes` import only when the
+accepted edit makes its final use unused.
 
 ## Investigation Queue
 
@@ -205,8 +207,10 @@ It replaces the matched boolean expression with the exact length-comparison
 source and withholds edits that would discard comments. The shared coordinator
 formats, reanalyzes, validates, and writes the complete result idempotently.
 It also includes the `use-format-operand` suggestion for `unnecessary-format`.
-That edit retains the constant operand's exact source and comments, while final
-typed validation refuses a replacement that would leave `fmt` unused.
+That edit retains the constant operand's exact source and comments, while the
+coordinator removes a qualified `fmt` import only when the accepted edit makes
+its final use unused. The `use-net-ip-equal` suggestion exercises the same
+transaction with receiver precedence and fix-owned `bytes` cleanup.
 
 ## Explicit Deferrals
 

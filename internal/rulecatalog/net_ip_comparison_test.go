@@ -11,6 +11,7 @@ import (
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/rulecatalog"
 	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 func TestNetIPBytesEqualReportsSemanticIPComparisons(t *testing.T) {
@@ -32,6 +33,11 @@ func sameAddress(first, second net.IP) bool {
 		t.Fatalf("net-ip-bytes-equal result = %#v", result)
 	}
 	diagnostic := result.Files[0].Diagnostics[0]
+	callStart := strings.Index(input, "byteutil.Equal(first, second)")
+	callRange := source.Range{
+		Start: callStart,
+		End: callStart + len("byteutil.Equal(first, second)"),
+	}
 	if diagnostic.RuleID != "net-ip-bytes-equal" ||
 		diagnostic.MessageKey != "representation-sensitive-comparison" ||
 		diagnostic.Message !=
@@ -40,7 +46,13 @@ func sameAddress(first, second net.IP) bool {
 		diagnostic.Range.End > len(input) ||
 		input[diagnostic.Range.Start:diagnostic.Range.End] !=
 			"byteutil.Equal(first, second)" ||
-		len(diagnostic.Fixes) != 0 {
+		len(diagnostic.Fixes) != 1 ||
+		diagnostic.Fixes[0].Name != "use-net-ip-equal" ||
+		diagnostic.Fixes[0].Safety != rules.FixSuggestion ||
+		!reflect.DeepEqual(
+			diagnostic.Fixes[0].Edits,
+			[]rules.Edit{{Range: callRange, NewText: "first.Equal(second)"}},
+		) {
 		t.Fatalf("net-ip-bytes-equal diagnostic = %#v", diagnostic)
 	}
 }
@@ -64,6 +76,68 @@ func sameAddress(first, second address) bool {
 	result := runStandardLibraryArgumentRule(t, input, "net-ip-bytes-equal")
 	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
 		t.Fatalf("aliased net-ip-bytes-equal result = %#v", result)
+	}
+}
+
+func TestNetIPBytesEqualSuggestionPreservesOperandsAndReceiverPrecedence(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"bytes"
+	"net"
+)
+
+func identity(value net.IP) net.IP { return value }
+
+func compare(pointer *net.IP, second net.IP) {
+	_ = bytes.Equal(*pointer, second)
+	_ = bytes.Equal(identity(/* receiver */ *pointer), identity(/* argument */ second))
+	_ = bytes.Equal(net.IP{127, 0, 0, 1}, second)
+}
+`
+	result := runStandardLibraryArgumentRule(t, input, "net-ip-bytes-equal")
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 3 {
+		t.Fatalf("net-ip-bytes-equal suggestion result = %#v", result)
+	}
+	want := []string{
+		"(*pointer).Equal(second)",
+		"identity(/* receiver */ *pointer).Equal(identity(/* argument */ second))",
+		"(net.IP{127, 0, 0, 1}).Equal(second)",
+	}
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		if len(diagnostic.Fixes) != 1 ||
+			len(diagnostic.Fixes[0].Edits) != 1 ||
+			diagnostic.Fixes[0].Edits[0].NewText != want[index] {
+			t.Fatalf("net-ip-bytes-equal suggestion[%d] = %#v", index, diagnostic)
+		}
+	}
+}
+
+func TestNetIPBytesEqualWithholdsSuggestionWhenRemovedTriviaContainsComments(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"bytes"
+	"net"
+)
+
+func compare(first, second net.IP) bool {
+	return bytes.Equal /* preserve comparison rationale */ (first, second)
+}
+`
+	result := runStandardLibraryArgumentRule(t, input, "net-ip-bytes-equal")
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("commented net-ip-bytes-equal result = %#v", result)
+	}
+	if len(result.Files[0].Diagnostics[0].Fixes) != 0 {
+		t.Fatalf(
+			"commented net-ip-bytes-equal diagnostic = %#v",
+			result.Files[0].Diagnostics[0],
+		)
 	}
 }
 
@@ -123,7 +197,16 @@ func TestNetIPBytesEqualMetadataAndGoVersion(t *testing.T) {
 		!reflect.DeepEqual(metadata.NodeInterests, []rules.NodeKind{rules.NodeCallExpr}) ||
 		metadata.RunOnGenerated ||
 		metadata.RunDespiteTypeErrors ||
-		len(metadata.Fixes) != 0 {
+		!reflect.DeepEqual(
+			metadata.Fixes,
+			[]rules.FixMetadata{
+				{
+					Name: "use-net-ip-equal",
+					Description: "compare addresses with net.IP.Equal",
+					Safety: rules.FixSuggestion,
+				},
+			},
+		) {
 		t.Fatalf("net-ip-bytes-equal metadata = %#v, found = %v", metadata, found)
 	}
 	older, err := registry.ResolveOptions(

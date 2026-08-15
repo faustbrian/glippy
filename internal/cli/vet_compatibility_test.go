@@ -261,6 +261,98 @@ func TestRunAppliesUnambiguousVetCompatibilitySuggestions(t *testing.T) {
 	}
 }
 
+func TestRunAppliesNetIPComparisonSuggestionAndRemovesBytesImport(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "sample.go")
+	writeCLIFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/netipfix\n\ngo 1.25.0\n",
+	)
+	writeCLIFixture(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = []\n[lint.rules]\nnet-ip-bytes-equal = \"warn\"\n",
+	)
+	writeCLIFixture(
+		t,
+		path,
+		"package sample\n\nimport (\n\t\"bytes\"\n\t\"net\"\n)\n\nfunc same(first, second net.IP) bool {\n\treturn bytes.Equal(first, second)\n}\n",
+	)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"lint", "--fix-suggestions", "--reporter=json", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	fixed, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitSuccess ||
+		stderr.Len() != 0 ||
+		len(result.AppliedFixes) != 1 ||
+		result.AppliedFixes[0].RuleID != "net-ip-bytes-equal" ||
+		result.AppliedFixes[0].FixName != "use-net-ip-equal" ||
+		len(result.RejectedFixes) != 0 ||
+		len(result.ImportChanges) != 1 ||
+		result.ImportChanges[0].Action != "remove" ||
+		result.ImportChanges[0].ImportPath != "bytes" ||
+		result.ImportChanges[0].ImportName != "bytes" ||
+		bytes.Contains(fixed, []byte(`"bytes"`)) ||
+		bytes.Contains(fixed, []byte("bytes.Equal")) ||
+		!bytes.Contains(fixed, []byte("return first.Equal(second)")) {
+		t.Fatalf(
+			"net.IP suggestion = exit %d, stdout %q, stderr %q, source %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			fixed,
+		)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run(
+		[]string{"lint", "--fix-suggestions", "--reporter=json", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var repeated glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &repeated); err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitSuccess ||
+		stderr.Len() != 0 ||
+		len(repeated.Diagnostics) != 0 ||
+		len(repeated.AppliedFixes) != 0 ||
+		len(repeated.RejectedFixes) != 0 ||
+		len(repeated.ImportChanges) != 0 ||
+		!bytes.Equal(second, fixed) {
+		t.Fatalf(
+			"repeated net.IP suggestion = exit %d, stdout %q, stderr %q, source %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			second,
+		)
+	}
+}
+
 func writeCLIFixture(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {

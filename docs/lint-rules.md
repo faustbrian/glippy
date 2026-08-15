@@ -2792,7 +2792,7 @@ only the underlying bytes, while net.IP.Equal accounts for both valid representa
 
 ### Fixes
 
-None.
+- `use-net-ip-equal` (`suggestion`): compare addresses with net.IP.Equal
 
 ### Configuration
 
@@ -2804,6 +2804,7 @@ None.
   function values remain conservative.
 - Named byte-slice wrappers and interface values are excluded because net.IP semantics are not
   proven.
+- The suggestion is withheld when replacing the call would remove a comment.
 - Generated files and packages with type errors are excluded.
 
 ### Example: Compare IP addresses semantically

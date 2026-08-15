@@ -6,6 +6,8 @@ import (
 	"go/types"
 )
 
+const useNetIPEqualFix = "use-net-ip-equal"
+
 type netIPBytesEqualRule struct{}
 
 // NewNetIPBytesEqualRule constructs the net.IP comparison rule for product
@@ -25,9 +27,17 @@ func (netIPBytesEqualRule) Metadata() Metadata {
 		Requirement: RequireTypes,
 		NodeInterests: []NodeKind{NodeCallExpr},
 		Categories: []Category{CategoryCorrectness},
+		Fixes: []FixMetadata{
+			{
+				Name: useNetIPEqualFix,
+				Description: "compare addresses with net.IP.Equal",
+				Safety: FixSuggestion,
+			},
+		},
 		KnownLimitations: []string{
 			"Only direct bytes.Equal calls whose two arguments have the exact net.IP type are recognized; function values remain conservative.",
 			"Named byte-slice wrappers and interface values are excluded because net.IP semantics are not proven.",
+			"The suggestion is withheld when replacing the call would remove a comment.",
 			"Generated files and packages with type errors are excluded.",
 		},
 		Examples: []Example{
@@ -61,14 +71,62 @@ func (netIPBytesEqualRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding
 	if err != nil {
 		return nil, err
 	}
-	return []Finding{
+	finding := Finding{
+		MessageKey: "representation-sensitive-comparison",
+		Message: "bytes.Equal does not account for equivalent net.IP representations",
+		Range: range_,
+		Help: "use net.IP.Equal to compare IP addresses",
+	}
+	firstRange, err := ctx.Range(call.Args[0])
+	if err != nil {
+		return nil, err
+	}
+	secondRange, err := ctx.Range(call.Args[1])
+	if err != nil {
+		return nil, err
+	}
+	if commentsOutsideRetainedRanges(ctx.File().Comments(), range_, firstRange, secondRange) {
+		return []Finding{finding}, nil
+	}
+	firstSource, found := ctx.File().Slice(firstRange)
+	if !found {
+		return nil, fmt.Errorf("net.IP equality receiver has an invalid source range")
+	}
+	secondSource, found := ctx.File().Slice(secondRange)
+	if !found {
+		return nil, fmt.Errorf("net.IP equality argument has an invalid source range")
+	}
+	finding.Fixes = []Fix{
 		{
-			MessageKey: "representation-sensitive-comparison",
-			Message: "bytes.Equal does not account for equivalent net.IP representations",
-			Range: range_,
-			Help: "use net.IP.Equal to compare IP addresses",
+			Name: useNetIPEqualFix,
+			Safety: FixSuggestion,
+			Edits: []Edit{
+				{
+					Range: range_,
+					NewText: netIPReceiverSource(call.Args[0], firstSource) +
+						".Equal(" +
+						secondSource +
+						")",
+				},
+			},
 		},
-	}, nil
+	}
+	return []Finding{finding}, nil
+}
+
+func netIPReceiverSource(expression ast.Expr, text string) string {
+	switch ast.Unparen(expression).(type) {
+	case *ast.Ident,
+		*ast.SelectorExpr,
+		*ast.IndexExpr,
+		*ast.IndexListExpr,
+		*ast.SliceExpr,
+		*ast.TypeAssertExpr,
+		*ast.CallExpr:
+		return text
+	default:
+		return "(" + text + ")"
+	}
 }
 
 func isExactNetIP(type_ types.Type) bool {
