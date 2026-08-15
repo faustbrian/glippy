@@ -321,6 +321,51 @@ func run(t *testing.T, value, format string) {
 		"omit-formatting",
 		want,
 	)
+	for index, replacement := range []string{`"literal"`, "constant"} {
+		diagnostic := result.Files[0].Diagnostics[index]
+		if len(diagnostic.Fixes) != 1 ||
+			diagnostic.Fixes[0].Name != "use-format-operand" ||
+			diagnostic.Fixes[0].Safety != rules.FixSuggestion ||
+			len(diagnostic.Fixes[0].Edits) != 1 ||
+			diagnostic.Fixes[0].Edits[0].NewText != replacement {
+			t.Fatalf("unnecessary-format diagnostic[%d] = %#v", index, diagnostic)
+		}
+	}
+}
+
+func TestUnnecessaryFormatPreservesRetainedCommentsAndWithholdsLossyFixes(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "fmt"
+
+func run() {
+	_ = fmt.Sprintf(/* explanation */ "outside")
+	_ = fmt.Sprintf((/* retained */ "inside"))
+}
+`
+	result := runOnePedanticRule(t, "unnecessary-format", input)
+	assertPedanticSimplificationRanges(
+		t,
+		input,
+		result,
+		"unnecessary-format",
+		"omit-formatting",
+		[]string{
+			`fmt.Sprintf(/* explanation */ "outside")`,
+			`fmt.Sprintf((/* retained */ "inside"))`,
+		},
+	)
+	diagnostics := result.Files[0].Diagnostics
+	if len(diagnostics[0].Fixes) != 0 {
+		t.Fatalf("outside-comment diagnostic fixes = %#v", diagnostics[0].Fixes)
+	}
+	if len(diagnostics[1].Fixes) != 1 ||
+		len(diagnostics[1].Fixes[0].Edits) != 1 ||
+		diagnostics[1].Fixes[0].Edits[0].NewText != `(/* retained */ "inside")` {
+		t.Fatalf("retained-comment diagnostic = %#v", diagnostics[1])
+	}
 }
 
 func TestInefficientStringComparisonReportsMatchingCaseNormalization(t *testing.T) {
@@ -405,7 +450,16 @@ func TestPedanticSimplificationMetadata(t *testing.T) {
 			},
 		},
 		"buffer-string-conversion": {[]rules.NodeKind{rules.NodeFile}, nil},
-		"unnecessary-format": {[]rules.NodeKind{rules.NodeCallExpr}, nil},
+		"unnecessary-format": {
+			[]rules.NodeKind{rules.NodeCallExpr},
+			[]rules.FixMetadata{
+				{
+					Name: "use-format-operand",
+					Description: "replace fmt.Sprintf with its constant format operand",
+					Safety: rules.FixSuggestion,
+				},
+			},
+		},
 		"inefficient-string-comparison": {[]rules.NodeKind{rules.NodeBinaryExpr}, nil},
 	}
 	for id, expected := range want {

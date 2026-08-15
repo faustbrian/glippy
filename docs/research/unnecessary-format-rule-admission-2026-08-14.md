@@ -16,8 +16,13 @@ through a failing noise regression, to `fmt.Sprintf` returning an unchanged
 constant string. Dynamic formats, percent escapes, extra arguments, logging,
 testing, errors, printing, and scanning are excluded.
 
-No fix is offered because replacing the last fmt use also requires coordinated
-import ownership, which this single-expression rule does not claim.
+The `use-format-operand` suggestion replaces the complete call with the exact
+source bytes of its constant operand. It is suggestion-only because a typed
+string constant can preserve its defined type when used directly, while
+`fmt.Sprintf` always produces an ordinary string. The rule withholds the edit
+when replacement would remove a comment. It does not organize imports: when
+the call is the final `fmt` use, complete-file typed validation rejects the edit
+and preserves the original source.
 
 ## Admission Evidence
 
@@ -28,6 +33,12 @@ pass. A one-iteration typed package probe measured `104,708,042 ns/op`,
 including loading. The narrowed rule produced no diagnostics in non-mutating
 Glippy or `pkg/prompts` dogfood at
 `f0067b6dbf812c770ec663249e9abc3f2c41d1bc`.
+
+The 2026-08-15 fixability revisit proves literal and named-constant
+replacements, retained parenthesized comments, lossy-comment refusal,
+successful complete-file application while another `fmt` use remains,
+validation refusal when the edit leaves `fmt` unused, and repeated fixed-point
+behavior.
 
 ## Revisit Trigger
 

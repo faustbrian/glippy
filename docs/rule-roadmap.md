@@ -113,6 +113,9 @@ The fixability track now includes `remove-redundant-nil-check` as a safe fix.
 It replaces the matched boolean expression with the exact length-comparison
 source and withholds edits that would discard comments. The shared coordinator
 formats, reanalyzes, validates, and writes the complete result idempotently.
+It also includes the `use-format-operand` suggestion for `unnecessary-format`.
+That edit retains the constant operand's exact source and comments, while final
+typed validation refuses a replacement that would leave `fmt` unused.
 
 ## Explicit Deferrals
 

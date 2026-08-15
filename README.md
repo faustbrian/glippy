@@ -152,7 +152,8 @@ blank-error-discard = "warn"
 The v0.2 pedantic catalog includes bounded Go-native simplifications for blank
 identifiers, direct closures, nil-and-length checks, time helpers, buffer
 conversions, constant formatting, and case-normalized comparisons. Five narrow
-transformations are available only through `lint --fix-suggestions` and still
+transformations plus the constant-format operand replacement are available only
+through `lint --fix-suggestions` and still
 pass conflict, formatting, parse, typed-validation, and atomic-write gates.
 
 The opt-in complexity catalog measures structural nesting, logical function

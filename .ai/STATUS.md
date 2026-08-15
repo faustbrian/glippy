@@ -1357,3 +1357,12 @@ the product `lint --fix` path prove metadata, exact edits, complete-file
 formatting, validated writes, and second-run idempotency. Additional credible
 fixes remain open. Non-mutating exact-rule lint and fix preview remain clean on
 Glippy and `pkg/prompts`, so the active Clippy-comparability goal continues.
+
+The next fixability batch adds `use-format-operand` as a suggestion-only fix for
+`unnecessary-format`. It replaces only a proven no-directive `fmt.Sprintf`
+call with the constant operand's exact source, withholds edits that would remove
+comments, and preserves comments within a retained parenthesized operand. The
+product fix path proves successful formatted application and second-run
+idempotency while another `fmt` use remains; when the call is the final use,
+typed validation rejects the resulting unused import and leaves the file
+unchanged. The broader Clippy-comparability goal remains active.

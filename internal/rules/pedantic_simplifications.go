@@ -14,6 +14,7 @@ import (
 const (
 	removeBlankIdentifierFix = "remove-blank-identifier"
 	removeRedundantNilCheckFix = "remove-redundant-nil-check"
+	useFormatOperandFix = "use-format-operand"
 	useTimeSinceFix = "use-time-since"
 	useTimeUntilFix = "use-time-until"
 )
@@ -917,10 +918,18 @@ func (unnecessaryFormatRule) Metadata() Metadata {
 		Requirement: RequireTypes,
 		NodeInterests: []NodeKind{NodeCallExpr},
 		Categories: []Category{CategoryPerformance, CategoryStyle},
+		Fixes: []FixMetadata{
+			{
+				Name: useFormatOperandFix,
+				Description: "replace fmt.Sprintf with its constant format operand",
+				Safety: FixSuggestion,
+			},
+		},
 		KnownLimitations: []string{
 			"Only the exact standard fmt.Sprintf call is recognized through go/types; logging, testing, error, print, and scan APIs are excluded to keep pedantic noise bounded.",
 			"Calls with arguments, dynamic formats, and percent escapes are excluded.",
-			"No fix is offered because removing the final fmt use can require a separate import edit.",
+			"The suggestion is withheld when replacing the call would remove a comment.",
+			"If replacing the call leaves fmt unused, final validation rejects the edit because import organization is outside this rule's ownership.",
 		},
 		Examples: []Example{
 			{
@@ -953,14 +962,31 @@ func (unnecessaryFormatRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Findi
 	if err != nil {
 		return nil, err
 	}
-	return []Finding{
+	finding := Finding{
+		MessageKey: "omit-formatting",
+		Message: "formatting call has no formatting directives",
+		Range: range_,
+		Help: "use the constant format operand directly",
+	}
+	operandRange, err := ctx.Range(call.Args[0])
+	if err != nil {
+		return nil, err
+	}
+	if commentsOutsideRetainedRange(ctx.File().Comments(), range_, operandRange) {
+		return []Finding{finding}, nil
+	}
+	replacement, found := ctx.File().Slice(operandRange)
+	if !found {
+		return nil, fmt.Errorf("unnecessary format has an invalid operand range")
+	}
+	finding.Fixes = []Fix{
 		{
-			MessageKey: "omit-formatting",
-			Message: "formatting call has no formatting directives",
-			Range: range_,
-			Help: "use the literal directly",
+			Name: useFormatOperandFix,
+			Safety: FixSuggestion,
+			Edits: []Edit{{Range: range_, NewText: replacement}},
 		},
-	}, nil
+	}
+	return []Finding{finding}, nil
 }
 
 func (inefficientStringComparisonRule) Metadata() Metadata {

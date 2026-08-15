@@ -4006,7 +4006,7 @@ complete result string.
 
 ### Fixes
 
-None.
+- `use-format-operand` (`suggestion`): replace fmt.Sprintf with its constant format operand
 
 ### Configuration
 
@@ -4017,7 +4017,9 @@ None.
 - Only the exact standard fmt.Sprintf call is recognized through go/types; logging, testing, error,
   print, and scan APIs are excluded to keep pedantic noise bounded.
 - Calls with arguments, dynamic formats, and percent escapes are excluded.
-- No fix is offered because removing the final fmt use can require a separate import edit.
+- The suggestion is withheld when replacing the call would remove a comment.
+- If replacing the call leaves fmt unused, final validation rejects the edit because import
+  organization is outside this rule's ownership.
 
 ### Example: Use a literal directly
 
