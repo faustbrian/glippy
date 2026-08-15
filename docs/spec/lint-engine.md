@@ -74,12 +74,13 @@ mutate those shared values.
 
 The CFG runner MUST construct `golang.org/x/tools/go/cfg` graphs only when at
 least one enabled CFG rule is eligible for the function's file and package. It
-MUST treat only a call resolved by `go/types` to the predeclared `panic` as
-non-returning. It MUST conservatively treat `os.Exit`, `log.Fatal`, shadowed
-`panic` identifiers, and every other call as potentially returning until a
-separate interprocedural no-return contract exists. This first CFG tier does
-not model short-circuit expression edges or abnormal panic flow and MUST NOT be
-presented as SSA-equivalent.
+MUST treat calls resolved by `go/types` to the predeclared `panic`, proven
+package-local no-return functions, and the documented exact standard-library
+terminal set as non-returning. It MUST conservatively treat shadowed `panic`
+identifiers, dynamic calls, interface dispatch, and imported helpers outside
+that set as potentially returning until a separate interprocedural fact
+contract exists. This CFG tier does not model short-circuit expression edges or
+complete abnormal panic flow and MUST NOT be presented as SSA-equivalent.
 
 The upstream CFG block slice has defined entry ownership but otherwise
 undefined order. A rule MUST NOT select or order diagnostics from raw block

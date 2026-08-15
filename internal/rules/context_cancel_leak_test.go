@@ -131,6 +131,33 @@ func lookalike(parent context.Context) context.Context {
 	}
 }
 
+func TestContextCancelLeakUsesAuthoritativeNoReturnFunctions(t *testing.T) {
+	t.Parallel()
+
+	result := runContextCancelLeak(
+		t,
+		"sample",
+		`package sample
+
+import (
+	"context"
+	"os"
+)
+
+func terminated(parent context.Context, stop bool) {
+	_, cancel := context.WithCancel(parent)
+	if stop {
+		os.Exit(1)
+	}
+	cancel()
+}
+`,
+	)
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 0 {
+		t.Fatalf("context-cancel-leak no-return result = %#v", result)
+	}
+}
+
 func TestContextCancelLeakDocumentsControlFlowPolicyWithoutAFix(t *testing.T) {
 	t.Parallel()
 

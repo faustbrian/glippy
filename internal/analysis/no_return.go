@@ -95,6 +95,9 @@ func (a *noReturnAnalysis) graphFor(
 }
 
 func (a *noReturnAnalysis) noReturn(function *types.Func) bool {
+	if isAuthoritativeNoReturn(function) {
+		return true
+	}
 	definition := a.definitions[function]
 	if definition == nil {
 		return false
@@ -111,8 +114,38 @@ func (a *noReturnAnalysis) predicate() func(*types.Func) bool {
 		}
 	}
 	return func(function *types.Func) bool {
-		return noReturns[function]
+		return noReturns[function] || isAuthoritativeNoReturn(function)
 	}
+}
+
+func isAuthoritativeNoReturn(function *types.Func) bool {
+	if function == nil || function.Pkg() == nil {
+		return false
+	}
+	signature, _ := function.Type().(*types.Signature)
+	receiver := signature != nil && signature.Recv() != nil
+	switch function.Pkg().Path() {
+	case "os":
+		return !receiver && function.Name() == "Exit"
+	case "runtime":
+		return !receiver && function.Name() == "Goexit"
+	case "syscall":
+		return !receiver && function.Name() == "Exit"
+	case "log":
+		switch function.Name() {
+		case "Fatal", "Fatalf", "Fatalln", "Panic", "Panicf", "Panicln":
+			return true
+		}
+	case "testing":
+		if !receiver {
+			return false
+		}
+		switch function.Name() {
+		case "FailNow", "Fatal", "Fatalf", "SkipNow", "Skip", "Skipf":
+			return true
+		}
+	}
+	return false
 }
 
 func (a *noReturnAnalysis) build(definition *noReturnDefinition) {

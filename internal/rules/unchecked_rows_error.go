@@ -31,7 +31,7 @@ func (uncheckedRowsErrorRule) Metadata() Metadata {
 			"The initial contract recognizes direct identifier-backed database/sql.Rows.Next and Rows.Err calls; aliases stored in fields, containers, or other variables are not tracked.",
 			"A direct assignment to the rows variable invalidates later checks against a replacement value; writes through range targets and indirect aliases are not modeled.",
 			"Passing Rows.Err to another call counts as observing the result; the rule does not inspect the callee's behavior.",
-			"The shared CFG propagates no-return behavior through statically called functions in the loaded package; imported helpers without source or analyzer facts remain conservatively returning.",
+			"The shared CFG propagates package-local no-return behavior and recognizes exact standard-library terminal calls from os, runtime, syscall, log, and testing; other imported helpers without source or analyzer facts remain conservatively returning.",
 			"Generated files and packages with type errors are excluded.",
 		},
 		Examples: []Example{

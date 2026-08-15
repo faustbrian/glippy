@@ -76,9 +76,10 @@ CFG paths as open, completed, transferred, or lost. Both SQL transactions and
 local `Close() error` resources use it; `resource-not-closed` therefore reports
 partial cleanup and reassignment instead of accepting one close anywhere in a
 function. Shared CFG and SSA construction now propagates no-return behavior
-through statically called functions and methods in the loaded package. Imported
-completion, transfer, and no-return facts remain a separate evidence-gated
-expansion.
+through statically called functions and methods in the loaded package and exact
+terminal APIs from `os`, `runtime`, `syscall`, `log`, and `testing`. Imported
+project and third-party completion, transfer, and no-return facts remain a
+separate evidence-gated expansion.
 
 The response lifecycle track now also admits
 `http-response-body-not-closed`. It follows exact `net/http` package and Client

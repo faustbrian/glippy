@@ -468,6 +468,157 @@ func target() {}
 	}
 }
 
+func TestRunControlFlowUsesAuthoritativeNoReturnFunctions(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "project.go"),
+		`package project
+
+import (
+	"log"
+	stdos "os"
+	"runtime"
+	"syscall"
+	"testing"
+)
+
+func osExit() { stdos.Exit(1); target() }
+func runtimeGoexit() { runtime.Goexit(); target() }
+func syscallExit() { syscall.Exit(1); target() }
+func logFatal() { log.Fatal("stop"); target() }
+func logFatalf() { log.Fatalf("%s", "stop"); target() }
+func logFatalln() { log.Fatalln("stop"); target() }
+func logPanic() { log.Panic("stop"); target() }
+func logPanicf() { log.Panicf("%s", "stop"); target() }
+func logPanicln() { log.Panicln("stop"); target() }
+func loggerFatal(logger *log.Logger) { logger.Fatal("stop"); target() }
+func loggerFatalf(logger *log.Logger) { logger.Fatalf("%s", "stop"); target() }
+func loggerFatalln(logger *log.Logger) { logger.Fatalln("stop"); target() }
+func loggerPanic(logger *log.Logger) { logger.Panic("stop"); target() }
+func loggerPanicf(logger *log.Logger) { logger.Panicf("%s", "stop"); target() }
+func loggerPanicln(logger *log.Logger) { logger.Panicln("stop"); target() }
+func testFailNow(t *testing.T) { t.FailNow(); target() }
+func testFatal(t *testing.T) { t.Fatal("stop"); target() }
+func testFatalf(t *testing.T) { t.Fatalf("%s", "stop"); target() }
+func testSkipNow(t *testing.T) { t.SkipNow(); target() }
+func testSkip(t *testing.T) { t.Skip("stop"); target() }
+func testSkipf(t *testing.T) { t.Skipf("%s", "stop"); target() }
+
+func launched() { go runtime.Goexit(); target() }
+func deferred() { defer stdos.Exit(1); target() }
+func dynamic(exit func(int)) { exit(1); target() }
+func lookalike() { Exit(1); target() }
+func logPrint() { log.Print("continue"); target() }
+func testError(t *testing.T) { t.Error("continue"); target() }
+
+func Exit(int) {}
+func target() {}
+`,
+	)
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireControlFlow,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paths := loaded.Sources.Paths(); len(paths) != 1 {
+		t.Fatalf("authoritative no-return retained dependency syntax: %q", paths)
+	}
+	reachability := make(map[string]bool)
+	rule := controlFlowRule{
+		metadata: controlFlowMetadata("authoritative-no-return"),
+		run: func(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+			declaration, ok := ctx.Function().(*ast.FuncDecl)
+			if !ok {
+				return nil, nil
+			}
+			for _, block := range ctx.Graph().Blocks {
+				if !block.Live {
+					continue
+				}
+				for _, node := range block.Nodes {
+					statement, ok := node.(*ast.ExprStmt)
+					if !ok {
+						continue
+					}
+					call, ok := statement.X.(*ast.CallExpr)
+					if !ok {
+						continue
+					}
+					identifier, named := call.Fun.(*ast.Ident)
+					if named && identifier.Name == "target" {
+						reachability[declaration.Name.Name] = true
+					}
+				}
+			}
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunControlFlow(context.Background(), loaded, registry, selection);
+		err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range
+		[]string{
+			"osExit",
+			"runtimeGoexit",
+			"syscallExit",
+			"logFatal",
+			"logFatalf",
+			"logFatalln",
+			"logPanic",
+			"logPanicf",
+			"logPanicln",
+			"loggerFatal",
+			"loggerFatalf",
+			"loggerFatalln",
+			"loggerPanic",
+			"loggerPanicf",
+			"loggerPanicln",
+			"testFailNow",
+			"testFatal",
+			"testFatalf",
+			"testSkipNow",
+			"testSkip",
+			"testSkipf",
+		} {
+		if reachability[name] {
+			t.Fatalf("target remains reachable after %s: %#v", name, reachability)
+		}
+	}
+	for _, name := range
+		[]string{"launched", "deferred", "dynamic", "lookalike", "logPrint", "testError"} {
+		if !reachability[name] {
+			t.Fatalf(
+				"target is unexpectedly unreachable after %s: %#v",
+				name,
+				reachability,
+			)
+		}
+	}
+}
+
 func TestRunControlFlowCancelsPackageNoReturnConstruction(t *testing.T) {
 	t.Parallel()
 
@@ -774,6 +925,66 @@ func BenchmarkRunControlFlowWithPackageNoReturnChain(b *testing.B) {
 	registry, err := rules.NewRegistry(
 		controlFlowRule{
 			metadata: controlFlowMetadata("package-no-return-benchmark"),
+			run: func(*rules.ControlFlowContext) ([]rules.Finding, error) {
+				return nil, nil
+			},
+		},
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if _, err := analysis.RunControlFlow(
+			context.Background(),
+			loaded,
+			registry,
+			selection,
+		);
+			err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkRunControlFlowWithAuthoritativeNoReturnCalls(b *testing.B) {
+	root := b.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/project\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		b.Fatal(err)
+	}
+	var input strings.Builder
+	input.WriteString("package project\nimport \"os\"\nfunc target() {}\n")
+	for index := range 100 {
+		fmt.Fprintf(&input, "func stop%d() { os.Exit(1); target() }\n", index)
+	}
+	if err := os.WriteFile(filepath.Join(root, "project.go"), []byte(input.String()), 0o600);
+		err != nil {
+		b.Fatal(err)
+	}
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireControlFlow,
+		},
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(
+		controlFlowRule{
+			metadata: controlFlowMetadata("authoritative-no-return-benchmark"),
 			run: func(*rules.ControlFlowContext) ([]rules.Finding, error) {
 				return nil, nil
 			},

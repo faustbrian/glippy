@@ -99,13 +99,15 @@ with all eligible rules in rule-ID order. Reporter-visible diagnostics are
 sorted after execution, and rule admission rejects observable behavior that
 depends on the upstream graph's otherwise undefined block-slice order.
 
-The first no-return policy recognizes only calls whose type information
-resolves their identifier to the predeclared `panic`. It treats shadowed
-identifiers and calls such as `os.Exit` and `log.Fatal` as returning. This is
-deliberately less precise than the interprocedural facts in the upstream
-`ctrlflow` analyzer. The graph also does not claim short-circuit expression
-edges or complete abnormal panic flow; rules needing those contracts require
-SSA or a later reviewed control-flow extension.
+The shared no-return policy recognizes calls whose type information resolves
+to the predeclared `panic`, a proven named function or method in the loaded
+package set, or the documented exact standard-library terminal set. It treats
+shadowed identifiers, dynamic and interface calls, and other imported helpers
+as returning. This remains deliberately narrower than the complete
+interprocedural fact graph in the upstream `ctrlflow` analyzer and avoids
+loading dependency syntax speculatively. The graph also does not claim
+short-circuit expression edges or complete abnormal panic flow; rules needing
+those contracts require SSA or a later reviewed control-flow extension.
 
 Native SSA-tier rules do not declare node interests or run on ill-typed
 packages. The SSA runner filters the selected roots to well-typed packages

@@ -1436,3 +1436,15 @@ fix transaction idempotently. Exact-rule dogfood found five useful manual
 min/max candidates in Glippy and one in `pkg/prompts`, with no findings from the
 other two rules. Cross-package effect facts and additional evidence-backed
 catalog growth remain open, so the active Clippy-comparability goal continues.
+
+The shared CFG and SSA no-return predicate now recognizes exact terminal APIs
+from `os`, `runtime`, `syscall`, `log`, and `testing` without loading dependency
+syntax. Exact package and function identity makes recognition independent of
+import aliases while excluding local lookalikes, dynamic calls, interface
+dispatch, goroutine launches, deferred calls, and nearby nonterminal APIs. This
+removes an `os.Exit` false path from `context-cancel-leak` and gives `nilness`
+the same impossible continuation.
+Five 100-iteration probes over 100 direct terminal calls measured a
+47.5-microsecond median with about 52.9 KiB and 1,051 allocations per run on
+Darwin arm64. General project and third-party effect facts remain open, so the
+active Clippy-comparability goal continues.

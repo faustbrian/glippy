@@ -247,6 +247,44 @@ func inspect(pointer *int) {
 	}
 }
 
+func TestNilnessUsesAuthoritativeNoReturnFunctions(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+import "os"
+func inspect(pointer *int) {
+	if pointer != nil { os.Exit(1) }
+	if pointer != nil { println(pointer) }
+}
+`
+	root, _ := writeNilnessModule(t, input)
+	registry, err := rules.NewDefaultRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetSuspicious},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("authoritative no-return result = %#v", result.Files)
+	}
+	secondCondition := strings.LastIndex(input, "pointer != nil")
+	diagnostic := result.Files[0].Diagnostics[0]
+	if secondCondition < 0 ||
+		diagnostic.RuleID != "nilness" ||
+		diagnostic.MessageKey != "cond" ||
+		diagnostic.Range.Start != secondCondition + len("pointer ") ||
+		diagnostic.Range.End != diagnostic.Range.Start + len("!=") {
+		t.Fatalf("authoritative no-return result = %#v", result.Files)
+	}
+}
+
 func TestDefaultRegistryDocumentsNilnessWithoutAFix(t *testing.T) {
 	t.Parallel()
 
