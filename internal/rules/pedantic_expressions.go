@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/token"
 	"go/types"
 )
 
@@ -50,6 +51,7 @@ func (unnecessaryConversionRule) Metadata() Metadata {
 			"Only conversions whose source and target types are identical under go/types are reported.",
 			"Conversions between distinct defined types and underlying types remain visible because they establish a real type boundary.",
 			"Compile-time constant conversions remain visible because they can document an intentional type boundary.",
+			"Expressions whose type depends on the conversion context, including untyped non-constant shifts and comparisons converted to a defined boolean type, remain visible because removing the conversion can change their default type.",
 			"The suggestion retains grouping for non-primary operands and is withheld when conversion-delimiter comments would be lost.",
 		},
 		Examples: []Example{
@@ -78,6 +80,8 @@ func (unnecessaryConversionRule) RunTypes(ctx *TypesContext, node ast.Node) ([]F
 	if target == nil ||
 		source == nil ||
 		ctx.Info().Types[call.Args[0]].Value != nil ||
+		!expressionHasIndependentType(ctx.Info(), call.Args[0]) ||
+		!conversionPreservesDefaultType(target, call.Args[0]) ||
 		!types.Identical(target, source) {
 		return nil, nil
 	}
@@ -127,6 +131,74 @@ func (unnecessaryConversionRule) RunTypes(ctx *TypesContext, node ast.Node) ([]F
 		},
 	}
 	return []Finding{finding}, nil
+}
+
+func conversionPreservesDefaultType(target types.Type, expression ast.Expr) bool {
+	binary, _ := ast.Unparen(expression).(*ast.BinaryExpr)
+	if binary == nil || !isComparisonOperator(binary.Op) {
+		return true
+	}
+	return types.Identical(target, types.Typ[types.Bool])
+}
+
+func isComparisonOperator(operator token.Token) bool {
+	switch operator {
+	case token.EQL, token.NEQ, token.LSS, token.LEQ, token.GTR, token.GEQ:
+		return true
+	default:
+		return false
+	}
+}
+
+func expressionHasIndependentType(info *types.Info, expression ast.Expr) bool {
+	if info == nil || expression == nil {
+		return false
+	}
+	expression = ast.Unparen(expression)
+	if info.Types[expression].Value != nil {
+		return false
+	}
+	switch expression := expression.(type) {
+	case *ast.Ident:
+		object := info.ObjectOf(expression)
+		if object == nil {
+			return false
+		}
+		_, constant := object.(*types.Const)
+		return !constant
+	case *ast.BinaryExpr:
+		if expression.Op == token.SHL || expression.Op == token.SHR {
+			return expressionHasIndependentType(info, expression.X)
+		}
+		return expressionHasIndependentType(info, expression.X) ||
+			expressionHasIndependentType(info, expression.Y)
+	case *ast.UnaryExpr:
+		return expressionHasIndependentType(info, expression.X)
+	case *ast.CallExpr:
+		return callHasIndependentResultType(info, expression)
+	case *ast.SelectorExpr,
+		*ast.IndexExpr,
+		*ast.IndexListExpr,
+		*ast.SliceExpr,
+		*ast.TypeAssertExpr,
+		*ast.StarExpr,
+		*ast.CompositeLit,
+		*ast.FuncLit:
+		return true
+	default:
+		return false
+	}
+}
+
+func callHasIndependentResultType(info *types.Info, call *ast.CallExpr) bool {
+	if call == nil {
+		return false
+	}
+	if info.Types[call.Fun].IsType() {
+		return true
+	}
+	signature, _ := types.Unalias(info.TypeOf(call.Fun)).(*types.Signature)
+	return signature != nil && signature.TypeParams().Len() == 0
 }
 
 func (unnecessarySprintfRule) Metadata() Metadata {

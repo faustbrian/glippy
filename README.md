@@ -6,7 +6,9 @@ deterministic width-aware layout decisions. Its linter keeps correctness-focused
 defaults, pays only for the analysis tiers enabled rules require, and routes
 all source changes through an explicit conflict-safe transaction.
 
-Glippy v0.3 is under development and is not tagged or published. The existing
+Glippy v0.4 is under development and is not tagged or published. The current
+catalog contains 101 rules, including 18 rules with safe or suggestion fixes.
+The existing
 v0.1.0 release remains Gox under `github.com/faustbrian/gox`; its module tags,
 binary, archives, and attestations are immutable historical identities. The
 maintainer accepted the documented Glippy ecosystem-collision risk for v0.2;
@@ -181,7 +183,7 @@ lines, parameter count, and result count with bounded per-rule thresholds.
 Test files are excluded by default, and these advisory API or decomposition
 findings never enter the correctness preset or offer automatic fixes.
 
-The v0.3 suspicious catalog also checks stream iteration through the shared
+The suspicious catalog also checks stream iteration through the shared
 control-flow tier. `unchecked-rows-error` and `unchecked-scanner-error` require
 every normally returning path after a direct `database/sql.Rows.Next` or
 `bufio.Scanner.Scan` loop to observe the matching terminal error. Discarded
@@ -278,6 +280,9 @@ precise scope.
 - [Lint rule catalog](docs/lint-rules.md)
 - [Go vet compatibility](docs/go-vet-compatibility.md)
 - [Rule roadmap](docs/rule-roadmap.md)
+- [v0.4 exit audit](docs/research/v0.4-exit-audit-2026-08-15.md)
+- [v0.4 ecosystem dogfood](docs/research/v0.4-diverse-ecosystem-dogfood-2026-08-15.md)
+- [v0.4 fixability sweep](docs/research/v0.4-catalog-fixability-sweep-2026-08-15.md)
 - [Suppression reference](docs/suppressions.md)
 - [Lint engine and suppressions](docs/spec/lint-engine.md)
 - [Fix safety model](docs/spec/fix-safety.md)

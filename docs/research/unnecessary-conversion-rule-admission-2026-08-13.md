@@ -29,6 +29,14 @@ types, ordinary calls, and all compile-time constants are excluded. Constants
 remain explicit because a conversion can establish their intended type even
 when contextual type information later makes the result look identical.
 
+The operand must also have an independently established type. Context-dependent
+untyped shift expressions such as `methodTyp(2 << n)` are excluded because
+removing the conversion would default the expression to `int`. Comparisons
+converted to a defined boolean type are excluded for the same reason: removing
+`types.Bool(left == right)` would produce predeclared `bool`, not the original
+defined type. Typed shifts and conversions to predeclared `bool` remain
+eligible.
+
 Generated and ill-typed packages are excluded. The minimum source version is Go
 1.25. Exact suppressions and baselines use `unnecessary-conversion` and
 `identity-conversion`.
@@ -54,7 +62,15 @@ Non-mutating pedantic dogfood produced no findings for this rule in Glippy or
 `go-libraries/pkg/prompts` at
 `6ed3a06a4e1aba412d2a6b91454774234f30a464`.
 
+The v0.4 diverse-corpus pass initially exposed both contextual-typing classes:
+chi used a conversion to type an untyped nonconstant shift, and Caddy used a
+defined boolean conversion. Focused regressions exclude both while retaining
+nearby independently typed conversions. The final fzf suggestion rehearsal
+applied 15 fixes across seven files, Caddy applied two fixes across two files,
+and both were idempotent on a second run.
+
 ## Revisit Trigger
 
-Revisit constant handling only with a source-level proof that removing an
-explicit conversion does not erase useful API intent.
+Revisit constant or contextual-typing handling only with a source-level proof
+that removing an explicit conversion preserves both the independently inferred
+type and useful API intent.

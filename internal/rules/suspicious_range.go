@@ -3,6 +3,7 @@ package rules
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
 )
 
@@ -28,7 +29,7 @@ func (suspiciousRangeRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"The rule reports assignments and increments rooted in the exact range value object and ignores nested function literals.",
 			"Paths that cross a pointer, slice, map, interface, or channel are excluded because mutation can reach shared state.",
-			"Direct reassignment or later storage of the range variable is not reported because it can be intentional local computation followed by write-back.",
+			"A mutation followed by any later use of the range value is not reported because it can be intentional local computation, projection, or write-back.",
 		},
 		Examples: []Example{
 			{
@@ -56,9 +57,6 @@ func (suspiciousRangeRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding
 	if object == nil || !copiedAggregateType(object.Type()) {
 		return nil, nil
 	}
-	if rangeValueIsStored(ctx.Info(), loop.Body, object) {
-		return nil, nil
-	}
 	findings := make([]Finding, 0)
 	var rangeErr error
 	ast.Inspect(
@@ -74,16 +72,22 @@ func (suspiciousRangeRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding
 				return false
 			}
 			var targets []ast.Expr
+			var mutationEnd token.Pos
 			switch statement := current.(type) {
 			case *ast.AssignStmt:
 				targets = statement.Lhs
+				mutationEnd = statement.End()
 			case *ast.IncDecStmt:
 				targets = []ast.Expr{statement.X}
+				mutationEnd = statement.End()
 			default:
 				return true
 			}
 			for _, target := range targets {
 				if !mutationStaysOnRangeCopy(ctx.Info(), target, object) {
+					continue
+				}
+				if rangeValueUsedAfter(ctx.Info(), loop.Body, object, mutationEnd) {
 					continue
 				}
 				range_, err := ctx.Range(target)
@@ -107,32 +111,21 @@ func (suspiciousRangeRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding
 	return findings, rangeErr
 }
 
-func rangeValueIsStored(info *types.Info, body *ast.BlockStmt, object types.Object) bool {
-	stored := false
-	ast.Inspect(
-		body,
-		func(node ast.Node) bool {
-			if stored {
-				return false
-			}
-			if _, nested := node.(*ast.FuncLit); nested {
-				return false
-			}
-			assignment, ok := node.(*ast.AssignStmt)
-			if !ok {
-				return true
-			}
-			for _, expression := range assignment.Rhs {
-				identifier, _ := ast.Unparen(expression).(*ast.Ident)
-				if identifier != nil && info.ObjectOf(identifier) == object {
-					stored = true
-					return false
-				}
-			}
+func rangeValueUsedAfter(
+	info *types.Info,
+	body *ast.BlockStmt,
+	object types.Object,
+	position token.Pos,
+) bool {
+	if info == nil || body == nil || object == nil || !position.IsValid() {
+		return false
+	}
+	for identifier, used := range info.Uses {
+		if used == object && identifier.Pos() > position && identifier.Pos() < body.End() {
 			return true
-		},
-	)
-	return stored
+		}
+	}
+	return false
 }
 
 func copiedAggregateType(type_ types.Type) bool {

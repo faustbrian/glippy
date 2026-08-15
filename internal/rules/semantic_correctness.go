@@ -164,6 +164,7 @@ func nilMapWritesInBlock(
 	for _, statement := range block.List {
 		switch statement := statement.(type) {
 		case *ast.DeclStmt:
+			invalidateNilMapFactsForStatement(ctx.Info(), statement, nilMaps)
 			declaration, _ := statement.Decl.(*ast.GenDecl)
 			if declaration == nil || declaration.Tok != token.VAR {
 				continue
@@ -183,6 +184,7 @@ func nilMapWritesInBlock(
 				}
 			}
 		case *ast.AssignStmt:
+			invalidateNilMapFactsForStatement(ctx.Info(), statement, nilMaps)
 			for _, target := range statement.Lhs {
 				index, _ := ast.Unparen(target).(*ast.IndexExpr)
 				if index == nil {
@@ -757,45 +759,89 @@ func selectionObject(selection *types.Selection) types.Object {
 }
 
 func (deferredLockRule) Metadata() Metadata {
-	return semanticMetadata(
+	metadata := semanticMetadata(
 		"deferred-lock",
-		"detects Lock calls deferred where Unlock is likely intended",
-		"Deferring Mutex.Lock or RWMutex.Lock delays lock acquisition until the function returns and then returns while holding the lock. This is almost always a transposition of an immediate Lock followed by a deferred Unlock.",
+		"detects a deferred Lock immediately after locking",
+		"Calling Mutex.Lock or RWMutex.RLock and immediately deferring the same lock operation on the same receiver is highly likely to be a transposition of the corresponding deferred unlock.",
 		PresetCorrectness,
-		NodeDeferStmt,
-		"defer lock.Lock()",
+		NodeBlockStmt,
+		"lock.Lock()\ndefer lock.Lock()",
 		"lock.Lock()\ndefer lock.Unlock()",
 	)
+	metadata.KnownLimitations = []string{
+		"Only adjacent calls on the same simple identifier or selector receiver are reported; standalone deferred locks may intentionally restore a caller-owned lock before return.",
+		"Generated files and packages with type errors are excluded.",
+	}
+	return metadata
 }
 
 func (deferredLockRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
-	statement, ok := node.(*ast.DeferStmt)
+	block, ok := node.(*ast.BlockStmt)
 	if !ok || ctx == nil || ctx.Info() == nil {
-		return nil, fmt.Errorf(
-			"deferred-lock requires a defer statement and type information",
+		return nil, fmt.Errorf("deferred-lock requires a block and type information")
+	}
+	findings := make([]Finding, 0)
+	for index := 1; index < len(block.List); index++ {
+		previous, _ := block.List[index - 1].(*ast.ExprStmt)
+		deferred, _ := block.List[index].(*ast.DeferStmt)
+		previousCall, _ := ast.Unparen(expressionStatement(previous)).(*ast.CallExpr)
+		if previousCall == nil || deferred == nil {
+			continue
+		}
+		previousReceiver, previousName, previousOK := syncLockCall(ctx.Info(), previousCall)
+		deferredReceiver, deferredName, deferredOK := syncLockCall(
+			ctx.Info(),
+			deferred.Call,
+		)
+		if !previousOK ||
+			!deferredOK ||
+			previousName != deferredName ||
+			!sameSimpleExpression(ctx.Info(), previousReceiver, deferredReceiver) {
+			continue
+		}
+		range_, err := ctx.Range(deferred.Call)
+		if err != nil {
+			return nil, err
+		}
+		unlock := "Unlock"
+		if deferredName == "RLock" {
+			unlock = "RUnlock"
+		}
+		findings = append(
+			findings,
+			Finding{
+				MessageKey: "deferred-lock",
+				Message: "the same lock operation is deferred immediately after locking",
+				Range: range_,
+				Help: "defer " + unlock + " on the same receiver instead",
+			},
 		)
 	}
-	selector, _ := ast.Unparen(statement.Call.Fun).(*ast.SelectorExpr)
-	selection := ctx.Info().Selections[selector]
+	return findings, nil
+}
+
+func expressionStatement(statement *ast.ExprStmt) ast.Expr {
+	if statement == nil {
+		return nil
+	}
+	return statement.X
+}
+
+func syncLockCall(info *types.Info, call *ast.CallExpr) (ast.Expr, string, bool) {
+	if info == nil || call == nil || len(call.Args) != 0 {
+		return nil, "", false
+	}
+	selector, _ := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	selection := info.Selections[selector]
 	function, _ := selectionObject(selection).(*types.Func)
-	if function == nil ||
+	if selector == nil ||
+		function == nil ||
 		function.Pkg() == nil ||
 		function.Pkg().Path() != "sync" ||
 		(function.Name() != "Lock" && function.Name() != "RLock") {
-		return nil, nil
+		return nil, "", false
 	}
-	range_, err := ctx.Range(statement.Call)
-	if err != nil {
-		return nil, err
-	}
-	return []Finding{
-		{
-			MessageKey: "deferred-lock",
-			Message: "locking is deferred; the function will return while holding the lock",
-			Range: range_,
-			Help: "lock immediately and defer the corresponding unlock",
-		},
-	}, nil
+	return selector.X, function.Name(), true
 }
 
 func (deferBeforeErrorCheckRule) Metadata() Metadata {

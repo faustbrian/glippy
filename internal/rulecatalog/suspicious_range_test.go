@@ -56,6 +56,24 @@ func goodWriteBack(values []item) {
 		values[index] = value
 	}
 }
+
+func goodAppend(values []item) []item {
+	var copied []item
+	for _, value := range values {
+		value.enabled = true
+		copied = append(copied, value)
+	}
+	return copied
+}
+
+func goodProjection(values []item) []bool {
+	var enabled []bool
+	for _, value := range values {
+		value.enabled = true
+		enabled = append(enabled, value.enabled)
+	}
+	return enabled
+}
 `
 	root := t.TempDir()
 	writeFixture(

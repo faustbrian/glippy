@@ -97,12 +97,20 @@ replacement, and possible replacement into one success state.
 
 Before the first CLI replacement, every selected source MUST load, parse, pass
 generated-file policy, and resolve through a non-symlink path inside its
-authorized root. After coordination and formatting, syntax-only fixes MUST run
+authorized root. For package-aware fixing, a generated file with no selected
+fix MAY remain in the read-only package input, but a generated file with any
+selected fix MUST cause complete prevalidation to fail before the first write.
+Generated source MUST NOT become writable merely because another file in its
+package has an eligible fix. After coordination and formatting, syntax-only fixes MUST run
 the same enabled syntax analysis against the final source. Typed, CFG, and SSA
 fixes MUST run a fresh cache-independent package analysis with the candidate
 bound through an exact-path overlay, recover the target file and result from
 that load, and reject package diagnostics, source-model problems, or identity
-mismatches. A validation failure rejects every otherwise accepted fix in that
+mismatches. After each successful package-aware write or preview, the driver
+MAY refresh all remaining file selections with one package analysis. It MUST
+reselect against the current package state before applying each changed file
+and MUST NOT reuse stale diagnostics merely to avoid package loading. A
+validation failure rejects every otherwise accepted fix in that
 file and preserves the original bytes. A failure of the analysis engine itself
 retains its tool-failure or cancellation category; it MUST NOT be represented
 only as an actionable lint finding. Typed fixing MUST perform one final fresh

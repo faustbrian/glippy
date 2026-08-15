@@ -74,11 +74,6 @@ func (inconsistentReceiverNameRule) RunPackage(ctx *PackageContext) ([]PackageFi
 		if canonical == "" || len(counts) < 2 {
 			continue
 		}
-		reference := methods[first[canonical]]
-		referenceRange, rangeErr := reference.file.Range(reference.name)
-		if rangeErr != nil {
-			return nil, rangeErr
-		}
 		for _, method := range methods {
 			if method.name == nil ||
 				method.name.Name == "_" ||
@@ -88,6 +83,26 @@ func (inconsistentReceiverNameRule) RunPackage(ctx *PackageContext) ([]PackageFi
 			range_, rangeErr := method.file.Range(method.name)
 			if rangeErr != nil {
 				return nil, rangeErr
+			}
+			related := make([]Related, 0, 1)
+			for _, candidate := range methods {
+				if candidate.name == nil ||
+					candidate.name.Name != canonical ||
+					!samePackageFile(candidate.file, method.file) {
+					continue
+				}
+				referenceRange, referenceErr := candidate.file.Range(candidate.name)
+				if referenceErr != nil {
+					return nil, referenceErr
+				}
+				related = append(
+					related,
+					Related{
+						Range: referenceRange,
+						Message: "canonical receiver name",
+					},
+				)
+				break
 			}
 			findings = append(
 				findings,
@@ -101,12 +116,7 @@ func (inconsistentReceiverNameRule) RunPackage(ctx *PackageContext) ([]PackageFi
 							canonical,
 						),
 						Range: range_,
-						Related: []Related{
-							{
-								Range: referenceRange,
-								Message: "canonical receiver name",
-							},
-						},
+						Related: related,
 						Help: "use one receiver name consistently across the type's methods",
 					},
 				},
@@ -162,17 +172,6 @@ func (mixedReceiverTypeRule) RunPackage(ctx *PackageContext) ([]PackageFinding, 
 		if pointerCount == valueCount {
 			canonicalPointer = methods[0].pointer
 		}
-		var reference receiverMethod
-		for _, method := range methods {
-			if method.pointer == canonicalPointer {
-				reference = method
-				break
-			}
-		}
-		referenceRange, rangeErr := reference.file.Range(reference.typeExpression)
-		if rangeErr != nil {
-			return nil, rangeErr
-		}
 		for _, method := range methods {
 			if method.pointer == canonicalPointer {
 				continue
@@ -180,6 +179,27 @@ func (mixedReceiverTypeRule) RunPackage(ctx *PackageContext) ([]PackageFinding, 
 			range_, rangeErr := method.file.Range(method.typeExpression)
 			if rangeErr != nil {
 				return nil, rangeErr
+			}
+			related := make([]Related, 0, 1)
+			for _, candidate := range methods {
+				if candidate.pointer != canonicalPointer ||
+					!samePackageFile(candidate.file, method.file) {
+					continue
+				}
+				referenceRange, referenceErr := candidate.file.Range(
+					candidate.typeExpression,
+				)
+				if referenceErr != nil {
+					return nil, referenceErr
+				}
+				related = append(
+					related,
+					Related{
+						Range: referenceRange,
+						Message: "canonical receiver form",
+					},
+				)
+				break
 			}
 			canonical := "value"
 			if canonicalPointer {
@@ -196,12 +216,7 @@ func (mixedReceiverTypeRule) RunPackage(ctx *PackageContext) ([]PackageFinding, 
 							canonical,
 						),
 						Range: range_,
-						Related: []Related{
-							{
-								Range: referenceRange,
-								Message: "canonical receiver form",
-							},
-						},
+						Related: related,
 						Help: "use one receiver form unless the method-set difference is intentional",
 					},
 				},
@@ -209,6 +224,14 @@ func (mixedReceiverTypeRule) RunPackage(ctx *PackageContext) ([]PackageFinding, 
 		}
 	}
 	return findings, nil
+}
+
+func samePackageFile(first, second PackageFile) bool {
+	firstSource := first.Source()
+	secondSource := second.Source()
+	return firstSource != nil &&
+		secondSource != nil &&
+		firstSource.Path() == secondSource.Path()
 }
 
 func receiverMethods(ctx *PackageContext) (map[*types.TypeName][]receiverMethod, error) {

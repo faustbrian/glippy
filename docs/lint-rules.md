@@ -757,17 +757,16 @@ for _, path := range paths { process(path) }
 
 ## deferred-lock
 
-detects Lock calls deferred where Unlock is likely intended
+detects a deferred Lock immediately after locking
 
-Deferring Mutex.Lock or RWMutex.Lock delays lock acquisition until the function returns and then
-returns while holding the lock. This is almost always a transposition of an immediate Lock followed
-by a deferred Unlock.
+Calling Mutex.Lock or RWMutex.RLock and immediately deferring the same lock operation on the same
+receiver is highly likely to be a transposition of the corresponding deferred unlock.
 
 - Default severity: `warn`
 - Presets: `correctness`
 - Minimum Go: `1.25`
 - Analysis tier: types
-- Node interests: `defer-stmt`
+- Node interests: `block-stmt`
 - Dependency syntax: not required
 - Effect facts: not required
 - Generated files: excluded
@@ -784,7 +783,8 @@ None.
 
 ### Known limitations
 
-- The rule reports only the directly proven syntax and type pattern documented above.
+- Only adjacent calls on the same simple identifier or selector receiver are reported; standalone
+  deferred locks may intentionally restore a caller-owned lock before return.
 - Generated files and packages with type errors are excluded.
 
 ### Example: Preserve the intended behavior
@@ -792,6 +792,7 @@ None.
 **Incorrect**
 
 ```go
+lock.Lock()
 defer lock.Lock()
 ```
 
@@ -4006,8 +4007,8 @@ None.
   nested function literals.
 - Paths that cross a pointer, slice, map, interface, or channel are excluded because mutation can
   reach shared state.
-- Direct reassignment or later storage of the range variable is not reported because it can be
-  intentional local computation followed by write-back.
+- A mutation followed by any later use of the range value is not reported because it can be
+  intentional local computation, projection, or write-back.
 
 ### Example: Mutate a slice element through its index
 
@@ -4750,6 +4751,9 @@ None.
   establish a real type boundary.
 - Compile-time constant conversions remain visible because they can document an intentional type
   boundary.
+- Expressions whose type depends on the conversion context, including untyped non-constant shifts
+  and comparisons converted to a defined boolean type, remain visible because removing the
+  conversion can change their default type.
 - The suggestion retains grouping for non-primary operands and is withheld when conversion-delimiter
   comments would be lost.
 

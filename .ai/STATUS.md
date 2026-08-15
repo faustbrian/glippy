@@ -1579,3 +1579,20 @@ deterministic `add` and `remove` operations. The `unsafe-host-port` suggestion
 proves the cross-file case by adding `net` to the diagnosed formatting file,
 removing its final `fmt` import, completing typed reanalysis, and remaining
 idempotent on a second run.
+
+The v0.4 interprocedural-precision and fix-maturity audit is complete. The
+current 101-rule catalog has three safe fixes, 15 suggestion fixes, and an
+explicit no-fix disposition for every other rule. Package-aware fixing now
+keeps unchanged generated package files as read-only inputs, refuses a selected
+generated target before any write, and refreshes all remaining selections in
+one package analysis after each successful change. Context-dependent untyped
+shifts and defined-boolean conversions no longer receive invalid
+`unnecessary-conversion` suggestions. Six pinned repositories cover CLI, HTTP,
+database, concurrent-server, library, generated, and cgo workloads; default
+correctness is clean, reviewed lifecycle findings add value beyond vet and
+Staticcheck, and 82 applied fix rehearsals are idempotent. Eight additional
+NATS suggestions fail closed at the formatter's existing comment-ownership
+boundary. The recorded Apple M4 Max budget is 40 seconds cold, 12 seconds warm,
+and 8 GiB RSS for this exact corpus; observed 5-7.65 GB large-repository peaks
+remain an explicit memory-reduction priority. This closes the v0.4 development
+milestone without tagging, publishing, or claiming release readiness.

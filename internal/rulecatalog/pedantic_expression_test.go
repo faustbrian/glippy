@@ -36,6 +36,54 @@ func run(text string, name Name, bytes []byte, number int) {
 	assertRuleRanges(t, input, result, "unnecessary-conversion", "identity-conversion", want)
 }
 
+func TestUnnecessaryConversionPreservesContextuallyTypedShifts(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+type methodTyp uint
+
+func run(n uint, typed methodTyp) {
+	contextual := methodTyp(2 << n)
+	identity := methodTyp(typed << n)
+	_, _ = contextual, identity
+}
+`
+	result := runOnePedanticRule(t, "unnecessary-conversion", input)
+	assertRuleRanges(
+		t,
+		input,
+		result,
+		"unnecessary-conversion",
+		"identity-conversion",
+		[]string{"methodTyp(typed << n)"},
+	)
+}
+
+func TestUnnecessaryConversionPreservesContextuallyTypedComparisons(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+type Flag bool
+
+func run(left, right int) {
+	contextual := Flag(left == right)
+	identity := bool(left == right)
+	_, _ = contextual, identity
+}
+`
+	result := runOnePedanticRule(t, "unnecessary-conversion", input)
+	assertRuleRanges(
+		t,
+		input,
+		result,
+		"unnecessary-conversion",
+		"identity-conversion",
+		[]string{"bool(left == right)"},
+	)
+}
+
 func TestUnnecessarySprintfReportsDirectStringRepresentations(t *testing.T) {
 	t.Parallel()
 

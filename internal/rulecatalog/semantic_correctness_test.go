@@ -37,6 +37,7 @@ func defects(items []int, numerator, denominator int, parsed *url.URL, lock *syn
 	_ = value == math.NaN()
 	_ = float64(numerator / denominator)
 	parsed.Query().Set("key", "value")
+	lock.Lock()
 	defer lock.Lock()
 	_ = any(42) == nil
 }
@@ -66,6 +67,7 @@ func defects(items []int, numerator, denominator int, parsed *url.URL, lock *syn
 	_ = value == math.NaN()
 	_ = float64(numerator / denominator)
 	parsed.Query().Set("key", "value")
+	lock.Lock()
 	defer lock.Lock()
 }
 `
@@ -199,6 +201,61 @@ func valid(items []int, numerator, denominator int, parsed *url.URL, lock *sync.
 	result := runSemanticCorrectnessRules(t, input, ruleIDs)
 	if countPackageDiagnostics(result) != 0 {
 		t.Fatalf("valid semantic correctness result = %#v", result)
+	}
+}
+
+func TestNilMapWriteForgetsNilnessWhenTheMapAddressEscapes(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+func initialize(entries *map[string]int) error {
+	*entries = make(map[string]int)
+	return nil
+}
+
+func valid() error {
+	var throughCall map[string]int
+	err := initialize(&throughCall)
+	if err != nil {
+		return err
+	}
+	throughCall["key"] = 1
+
+	var throughPointer map[string]int
+	pointer := &throughPointer
+	*pointer = make(map[string]int)
+	throughPointer["key"] = 1
+
+	var throughDeclaration map[string]int
+	var declaredPointer = &throughDeclaration
+	*declaredPointer = make(map[string]int)
+	throughDeclaration["key"] = 1
+	return nil
+}
+`
+	result := runSemanticCorrectnessRules(t, input, []string{"nil-map-write"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("escaped nil-map result = %#v", result)
+	}
+}
+
+func TestDeferredLockAllowsIntentionalUnlockAndDeferredRelock(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func temporarilyUnlock(lock *sync.Mutex) {
+	lock.Unlock()
+	defer lock.Lock()
+	println("work without the lock")
+}
+`
+	result := runSemanticCorrectnessRules(t, input, []string{"deferred-lock"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("intentional deferred relock result = %#v", result)
 	}
 }
 
@@ -406,7 +463,7 @@ func TestSemanticCorrectnessPackReportsExactRanges(t *testing.T) {
 		},
 		{
 			id: "deferred-lock",
-			input: "package sample\nimport \"sync\"\nfunc run(lock *sync.Mutex) { defer lock.Lock() }\n",
+			input: "package sample\nimport \"sync\"\nfunc run(lock *sync.Mutex) { (lock).Lock(); defer lock.Lock() }\n",
 			want: "lock.Lock()",
 		},
 		{

@@ -80,6 +80,14 @@ use that proves the diagnostic. Hostile same-line groups, ambiguous package
 names, and local selector collisions remain conservative validation rejections.
 JSON consumers can distinguish the expression fix from derived import changes.
 
+Package-aware fixing retains generated files as read-only compilation inputs
+when no selected edit targets them. A generated target still rejects complete
+prevalidation before any write. After a successful write or preview, one fresh
+package analysis refreshes all remaining selections; each later changed file
+is still reselected from current package state. This avoids package reloads for
+every unchanged file without weakening stale-diagnostic or generated-file
+policy.
+
 ## Revisit Trigger
 
 Revisit local-binding precision when real fixes are withheld by unrelated

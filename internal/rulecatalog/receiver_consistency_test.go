@@ -86,6 +86,57 @@ func (stable *Stable) Second() {}
 	)
 }
 
+func TestReceiverConsistencyOmitsCrossFileRelatedRanges(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/receiverfiles\n\ngo 1.25.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "canonical.go"),
+		"package sample\ntype State struct{}\nfunc (s *State) First() {}\nfunc (s *State) Second() {}\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "minority.go"),
+		"package sample\nfunc (state State) Third() {}\n",
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ruleID := range []string{"inconsistent-receiver-name", "mixed-receiver-type"} {
+		result, runErr := analysis.RunPackages(
+			context.Background(),
+			registry,
+			analysis.RunOptions{
+				Presets: []rules.Preset{},
+				Overrides: map[string]rules.Severity{ruleID: rules.SeverityWarn},
+				SourceGoVersion: "go1.25",
+			},
+			analysis.PackageLoadOptions{
+				Dir: root,
+				Patterns: []string{"."},
+				ModuleMode: analysis.ModuleReadonly,
+			},
+		)
+		if runErr != nil {
+			t.Fatalf("%s cross-file analysis: %v", ruleID, runErr)
+		}
+		if countPackageDiagnostics(result) != 1 {
+			t.Fatalf("%s cross-file result = %#v", ruleID, result)
+		}
+		diagnostic := result.Files[1].Diagnostics[0]
+		if diagnostic.RuleID != ruleID || len(diagnostic.Related) != 0 {
+			t.Fatalf("%s cross-file diagnostic = %#v", ruleID, diagnostic)
+		}
+	}
+}
+
 func TestReceiverConsistencyMetadata(t *testing.T) {
 	t.Parallel()
 

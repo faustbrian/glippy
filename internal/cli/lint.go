@@ -17,8 +17,8 @@ import (
 	"github.com/faustbrian/glippy/internal/cache"
 	"github.com/faustbrian/glippy/internal/changed"
 	"github.com/faustbrian/glippy/internal/config"
-	"github.com/faustbrian/glippy/internal/discovery"
 	glippydiff "github.com/faustbrian/glippy/internal/diff"
+	"github.com/faustbrian/glippy/internal/discovery"
 	"github.com/faustbrian/glippy/internal/filesystem"
 	fixengine "github.com/faustbrian/glippy/internal/fix"
 	glippyformat "github.com/faustbrian/glippy/internal/format"
@@ -1546,6 +1546,7 @@ func runLintFix(
 		return reportLintFixFailure(invocation, stdout, stderr, exitCode, executions, err)
 	}
 
+	packageSelectionsStale := false
 	for index := range executions {
 		if err := ctx.Err(); err != nil {
 			return reportLintFixFailure(
@@ -1558,11 +1559,11 @@ func runLintFix(
 			)
 		}
 		execution := &executions[index]
-		if execution.packageTask != nil {
-			exitCode, err := refreshLintPackageFixExecution(
+		if execution.packageTask != nil && packageSelectionsStale {
+			exitCode, err := refreshLintPackageFixExecutions(
 				ctx,
 				registry,
-				execution,
+				executions[index:],
 				invocation.selectionOptions(),
 				changedScope,
 				packageOverlay,
@@ -1577,6 +1578,7 @@ func runLintFix(
 					err,
 				)
 			}
+			packageSelectionsStale = false
 		}
 		postResult := execution.result
 		postFile := execution.file
@@ -1707,6 +1709,10 @@ func runLintFix(
 					transaction.Result.Bytes,
 				),
 			)
+			packageSelectionsStale = execution.packageTask != nil
+		} else if transaction.Status == fixengine.WriteCompleted &&
+			execution.packageTask != nil {
+			packageSelectionsStale = true
 		}
 	}
 	if packageMode {
@@ -1941,7 +1947,11 @@ func prepareLintPackageFixExecutions(
 				result.Path,
 			)
 		}
-		if file.Metadata().Generated {
+		selections, err := fixengine.Select(result.Diagnostics, selectionOptions)
+		if err != nil {
+			return executions, ExitInternalError, err
+		}
+		if file.Metadata().Generated && len(selections) > 0 {
 			return executions, ExitFilesystemError, fmt.Errorf(
 				"refusing to fix generated file %q",
 				file.Path(),
@@ -1950,10 +1960,6 @@ func prepareLintPackageFixExecutions(
 		snapshot, exitCode, err := prepareLintPackageSnapshot(ctx, task.root, file)
 		if err != nil {
 			return executions, exitCode, err
-		}
-		selections, err := fixengine.Select(result.Diagnostics, selectionOptions)
-		if err != nil {
-			return executions, ExitInternalError, err
 		}
 		packageTask := task
 		executions = append(
@@ -1981,33 +1987,51 @@ func prepareLintPackageFixExecutions(
 	return executions, ExitSuccess, nil
 }
 
-func refreshLintPackageFixExecution(
+func refreshLintPackageFixExecutions(
 	ctx context.Context,
 	registry *rules.Registry,
-	execution *lintFixExecution,
+	executions []lintFixExecution,
 	selectionOptions fixengine.SelectionOptions,
 	changedScope *changed.Scope,
 	overlay map[string][]byte,
 ) (int, error) {
+	if len(executions) == 0 || executions[0].packageTask == nil {
+		return ExitInternalError, errors.New(
+			"typed fix refresh requires pending package executions",
+		)
+	}
 	packageResult, err := runUncachedPackageAnalysis(
 		ctx,
 		registry,
-		*execution.packageTask,
+		*executions[0].packageTask,
 		overlay,
 	)
 	if err != nil {
 		return packageAnalysisErrorExitCode(err), err
 	}
-	if err := applyConfiguredPackageBaseline(*execution.packageTask, &packageResult, registry);
+	if err := applyConfiguredPackageBaseline(
+		*executions[0].packageTask,
+		&packageResult,
+		registry,
+	);
 		err != nil {
 		return lintBaselineErrorExitCode(err), err
 	}
 	if err := validateLintPackagePrerequisites(packageResult); err != nil {
 		return ExitSourceError, err
 	}
+	results := make(map[string]analysis.Result, len(packageResult.Files))
 	for _, result := range packageResult.Files {
-		if result.Path != execution.file.Path() {
-			continue
+		results[result.Path] = result
+	}
+	for index := range executions {
+		execution := &executions[index]
+		result, found := results[execution.file.Path()]
+		if !found {
+			return ExitSourceError, newLintPackageValidationError(
+				"typed lint result %q is missing during fix planning",
+				execution.file.Path(),
+			)
 		}
 		file, found := packageResult.Sources.Lookup(result.Path)
 		if !found {
@@ -2016,14 +2040,18 @@ func refreshLintPackageFixExecution(
 				result.Path,
 			)
 		}
-		if file.Metadata().Generated {
+		if err := filterChangedResult(changedScope, file, &result); err != nil {
+			return ExitInvalidInvocation, err
+		}
+		selections, err := fixengine.Select(result.Diagnostics, selectionOptions)
+		if err != nil {
+			return ExitInternalError, err
+		}
+		if file.Metadata().Generated && len(selections) > 0 {
 			return ExitFilesystemError, fmt.Errorf(
 				"refusing to fix generated file %q",
 				file.Path(),
 			)
-		}
-		if err := filterChangedResult(changedScope, file, &result); err != nil {
-			return ExitInvalidInvocation, err
 		}
 		snapshot, exitCode, err := prepareLintPackageSnapshot(
 			ctx,
@@ -2032,10 +2060,6 @@ func refreshLintPackageFixExecution(
 		)
 		if err != nil {
 			return exitCode, err
-		}
-		selections, err := fixengine.Select(result.Diagnostics, selectionOptions)
-		if err != nil {
-			return ExitInternalError, err
 		}
 		execution.file = file
 		execution.resultFile = file
@@ -2047,12 +2071,8 @@ func refreshLintPackageFixExecution(
 			SourceDigest: file.Digest(),
 			Status: glippyreport.LintFilePending,
 		}
-		return ExitSuccess, nil
 	}
-	return ExitSourceError, newLintPackageValidationError(
-		"typed lint result %q is missing during fix planning",
-		execution.file.Path(),
-	)
+	return ExitSuccess, nil
 }
 
 func refreshFinalLintPackageResults(
