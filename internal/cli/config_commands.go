@@ -188,7 +188,9 @@ func runConfig(
 		}
 		return report(stderr, exitCode, "glippy config %s: %v\n", invocation.action, err)
 	}
-	resolved, err := resolveConfiguredRules(loaded, language.Language, registry)
+	executionConfiguration := loaded
+	executionConfiguration.Lint = loaded.LintForExecution()
+	_, err = resolveConfiguredRules(executionConfiguration, language.Language, registry)
 	if err != nil {
 		return report(
 			stderr,
@@ -214,13 +216,28 @@ func runConfig(
 		}
 		return ExitSuccess
 	}
-	output, err := renderEffectiveConfiguration(
+	effective, matches, relativePath, err := effectiveConfigurationForInput(
 		invocation.path,
 		selection,
 		loaded,
+	)
+	if err != nil {
+		return report(stderr, ExitInvalidInvocation, "glippy config show: %v\n", err)
+	}
+	resolved, err := resolveConfiguredRules(effective, language.Language, registry)
+	if err != nil {
+		return report(stderr, ExitInvalidInvocation, "glippy config show: %v\n", err)
+	}
+	output, err := renderEffectiveConfiguration(
+		invocation.path,
+		selection,
+		effective,
 		language,
 		resolved,
 		registry,
+		len(loaded.Lint.Overrides),
+		matches,
+		relativePath,
 	)
 	if err != nil {
 		return report(stderr, ExitInternalError, "glippy config show: %v\n", err)
@@ -280,6 +297,9 @@ func renderEffectiveConfiguration(
 	language goversion.Selection,
 	resolved []rules.Selection,
 	registry *rules.Registry,
+	configuredOverrides int,
+	matchedOverrides []int,
+	relativePath string,
 ) ([]byte, error) {
 	var output bytes.Buffer
 	root := selection.Root
@@ -315,6 +335,13 @@ func renderEffectiveConfiguration(
 	}
 	fmt.Fprintf(&output, "presets: %s\n", strings.Join(presets, ","))
 	fmt.Fprintf(&output, "warnings-as-errors: %t\n", loaded.Lint.WarningsAsErrors)
+	fmt.Fprintf(
+		&output,
+		"path overrides: configured=%d matched=%s path=%s\n",
+		configuredOverrides,
+		formatOverrideMatches(matchedOverrides),
+		relativePath,
+	)
 	maximumRequirement := rules.RequireLexical
 	generatedEligible := 0
 	typeErrorEligible := 0
@@ -335,7 +362,7 @@ func renderEffectiveConfiguration(
 			"rule %s: %s (%s)\n",
 			selected.ID,
 			selected.Severity,
-			ruleEnablementReason(selected.ID, metadata, loaded),
+			ruleEnablementReason(selected.ID, metadata, loaded, matchedOverrides),
 		)
 		for _, option := range metadata.Options {
 			value, found := configuredOptionValue(selected.Options, option)
@@ -416,8 +443,28 @@ func configurationOrigin(selection config.Selection) string {
 	return "discovered"
 }
 
-func ruleEnablementReason(id string, metadata rules.Metadata, loaded config.Config) string {
+func ruleEnablementReason(
+	id string,
+	metadata rules.Metadata,
+	loaded config.Config,
+	matchedOverrides []int,
+) string {
 	reasons := make([]string, 0, len(loaded.Lint.Presets) + 1)
+	for index := len(matchedOverrides) - 1; index >= 0; index-- {
+		number := matchedOverrides[index]
+		if number <= 0 || number > len(loaded.Lint.Overrides) {
+			continue
+		}
+		severity, explicit := loaded.Lint.Overrides[number - 1].Rules[id]
+		if !explicit {
+			continue
+		}
+		reasons = append(reasons, fmt.Sprintf("path override %d", number))
+		if loaded.Lint.WarningsAsErrors && severity == rules.SeverityWarn {
+			reasons = append(reasons, "warnings-as-errors")
+		}
+		return strings.Join(reasons, "; ")
+	}
 	if severity, explicit := loaded.Lint.Rules[id]; explicit {
 		reasons = append(reasons, "explicit override")
 		if loaded.Lint.WarningsAsErrors && severity == rules.SeverityWarn {
@@ -438,6 +485,68 @@ func ruleEnablementReason(id string, metadata rules.Metadata, loaded config.Conf
 		reasons = append(reasons, "warnings-as-errors")
 	}
 	return strings.Join(reasons, "; ")
+}
+
+func effectiveConfigurationForInput(
+	inputPath string,
+	selection config.Selection,
+	loaded config.Config,
+) (config.Config, []int, string, error) {
+	absoluteInput, err := filepath.Abs(inputPath)
+	if err != nil {
+		return config.Config{}, nil, "", fmt.Errorf(
+			"resolve input path %q: %w",
+			inputPath,
+			err,
+		)
+	}
+	root := selection.Root
+	if root == "" && selection.Path != "" {
+		root = filepath.Dir(selection.Path)
+	}
+	if root == "" {
+		root = filepath.Dir(absoluteInput)
+	}
+	relative, err := filepath.Rel(root, absoluteInput)
+	if err != nil ||
+		relative == ".." ||
+		strings.HasPrefix(relative, ".." + string(filepath.Separator)) {
+		return config.Config{}, nil, "", fmt.Errorf(
+			"input path %q is outside path-override root %q",
+			inputPath,
+			root,
+		)
+	}
+	portable := filepath.ToSlash(relative)
+	info, err := os.Stat(absoluteInput)
+	if err != nil {
+		return config.Config{}, nil, "", fmt.Errorf(
+			"inspect input path %q: %w",
+			inputPath,
+			err,
+		)
+	}
+	if info.IsDir() || len(loaded.Lint.Overrides) == 0 {
+		return loaded, nil, portable, nil
+	}
+	lint, matches, err := loaded.LintForPath(portable)
+	if err != nil {
+		return config.Config{}, nil, "", err
+	}
+	effective := loaded
+	effective.Lint = lint
+	return effective, matches, portable, nil
+}
+
+func formatOverrideMatches(matches []int) string {
+	if len(matches) == 0 {
+		return "none"
+	}
+	values := make([]string, len(matches))
+	for index, match := range matches {
+		values[index] = fmt.Sprintf("%d", match)
+	}
+	return strings.Join(values, ",")
 }
 
 func configuredOptionValue(set rules.OptionSet, metadata rules.OptionMetadata) (string, bool) {

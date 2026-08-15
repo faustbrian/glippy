@@ -52,6 +52,16 @@ lowering is an invalid invocation. The `warnings` target never enables a rule
 that is off. Restriction and migration retain their existing exact-ID and
 target-gated boundaries.
 
+Schema version 1 also accepts ordered `[[lint.overrides]]` entries containing
+project-relative glob paths and exact rule severities. Path sets within one
+entry are order-independent; entries apply in declaration order and later
+matching entries replace earlier severities for the same rule. Only severity
+is path-scoped: rule options, presets, suppressions, baselines, build inputs,
+formatting, and cache lifecycle remain project-wide. The scheduler executes
+the union of rules that any path can enable, then filters and reseverities each
+physical file before suppression, baseline, reporting, or fix selection.
+Configuration identity retains entry order and normalized patterns.
+
 ## Alternatives
 
 - Keep one preset and require per-rule overrides: rejected because it repeats
@@ -64,6 +74,12 @@ target-gated boundaries.
 - Permit the complete restriction group: rejected in line with Clippy's own
   guidance because many restriction rules are intentionally contradictory or
   organization-specific.
+- Discover and merge nested configuration files: rejected because ordered
+  typed path policy handles tests, fixtures, and subtrees without creating a
+  filesystem inheritance and cycle contract.
+- Path-scope rule options and presets: rejected because changing analyzer
+  behavior within one typed package would either duplicate expensive package
+  analysis or make package-wide rule contracts ambiguous.
 
 ## Consequences
 
@@ -81,8 +97,14 @@ digest, but its resolved rule IDs, severities, and options remain cache-key
 inputs and determine the analysis result consumed by every reporter and fix
 path.
 
+Repositories can express targeted exceptions and stricter subtrees in one
+auditable file. Package-aware rules may execute for files where their result is
+later filtered when another path in the same run enables them; this bounded
+extra work preserves one shared package load and deterministic results.
+
 ## Revisit Trigger
 
 Revisit when migration rules have an explicit target contract, a stable preset
-needs removal or renaming, or dogfood shows that group union creates ambiguous
-severity or cost behavior.
+needs removal or renaming, dogfood shows that group union creates ambiguous
+severity or cost behavior, or a proven use case requires path-scoped options
+or nested configuration despite the package-analysis cost.

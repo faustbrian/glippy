@@ -133,7 +133,23 @@ Projects compose additional groups with `lint.presets`, escalate every
 resolved warning with `lint.warnings-as-errors`, and retain final per-rule
 control through `lint.rules`. The legacy singular `lint.preset` remains
 accepted for v0.1 configuration compatibility but cannot be combined with
-`lint.presets`. Use
+`lint.presets`. Ordered `[[lint.overrides]]` entries apply exact rule
+severities to matching project-relative paths before command-line lint levels:
+
+```toml
+[[lint.overrides]]
+paths = ["**/*_test.go", "testdata/**"]
+
+[lint.overrides.rules]
+discarded-error = "off"
+blank-error-discard = "warn"
+```
+
+`*`, `?`, and character classes match within one path segment; a complete
+`**` segment matches zero or more segments. Paths use `/` on every supported
+platform. Later matching entries replace earlier severities for the same rule.
+Unknown rules, invalid globs, absolute or parent-traversing patterns, duplicate
+patterns, empty path sets, and empty rule sets fail configuration loading. Use
 `glippy explain <rule>` to inspect a rule's prerequisites, configuration, fix
 safety, examples, and known limitations. The
 [suppression reference](suppressions.md) defines exact-rule waivers, scopes,
@@ -204,8 +220,9 @@ A target is an exact rule ID, one of `correctness`, `suspicious`,
 `restriction` must use exact rule IDs, and `migration` remains unavailable
 without an explicit migration target.
 
-Directives apply in command-line order after configured presets and per-rule
-overrides. `--only` determines the eligible rule set first, lint-level
+Directives apply in command-line order after configured presets, global
+per-rule overrides, and matching path overrides. `--only` determines the
+eligible rule set first, lint-level
 directives update that set, `--except` remains an absolute exclusion, and
 configured warning escalation runs last. `warnings` changes only rules that
 are warnings at that point and never enables disabled rules. Lowering a rule

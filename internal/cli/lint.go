@@ -1057,7 +1057,7 @@ func prepareLintInputPlans(
 		if err != nil {
 			return nil, sourceVersionErrorExitCode(err), err
 		}
-		optionsKey := selection.Path + "\x00" + language.Language
+		optionsKey := lintOptionsKey(selection, language.Language)
 		resolved, found := optionsByConfiguration[optionsKey]
 		if !found {
 			options, exitCode, err := lintOptionsForSelection(
@@ -1252,9 +1252,10 @@ func prepareLintTasksFromPlans(
 		if err := ctx.Err(); err != nil {
 			return nil, ExitCanceled, err
 		}
-		optionsByConfiguration[plan.selection.Path +
-			"\x00" +
-			plan.options.sourceGoVersion] = plan.options
+		optionsByConfiguration[lintOptionsKey(
+			plan.selection,
+			plan.options.sourceGoVersion,
+		)] = plan.options
 		files, err := discovery.GoFiles(
 			ctx,
 			[]string{plan.anchor},
@@ -1288,7 +1289,7 @@ func prepareLintTasksFromPlans(
 		if err != nil {
 			return nil, sourceVersionErrorExitCode(err), err
 		}
-		optionsKey := selection.Path + "\x00" + language.Language
+		optionsKey := lintOptionsKey(selection, language.Language)
 		options, exists := optionsByConfiguration[optionsKey]
 		if !exists {
 			var exitCode int
@@ -1313,6 +1314,10 @@ func prepareLintTasksFromPlans(
 	return tasks, ExitSuccess, nil
 }
 
+func lintOptionsKey(selection config.Selection, sourceGoVersion string) string {
+	return selection.Root + "\x00" + selection.Path + "\x00" + sourceGoVersion
+}
+
 func lintOptionsForSelection(
 	selection config.Selection,
 	sourceGoVersion string,
@@ -1331,6 +1336,10 @@ func lintOptionsForSelection(
 	if err != nil {
 		return lintTaskOptions{}, configurationErrorExitCode(err), err
 	}
+	pathRoot := selection.Root
+	if pathRoot == "" && selection.Path != "" {
+		pathRoot = filepath.Dir(selection.Path)
+	}
 	return lintTaskOptions{
 		analysis: analysis.RunOptions{
 			SourceGoVersion: sourceGoVersion,
@@ -1338,6 +1347,8 @@ func lintOptionsForSelection(
 			WarningsAsErrors: loaded.Lint.WarningsAsErrors,
 			Overrides: loaded.Lint.Rules,
 			RuleOptions: loaded.Lint.RuleOptions,
+			PathRoot: pathRoot,
+			PathOverrides: loaded.Lint.Overrides,
 			LintLevels: cloneLintLevelDirectives(lintLevels),
 			Only: slices.Clone(only),
 			Except: slices.Clone(except),

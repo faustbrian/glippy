@@ -168,6 +168,15 @@ func RunPackages(
 		}
 		diagnostics = append(diagnostics, nativeByPath[file.Path()]...)
 		delete(nativeByPath, file.Path())
+		fileResolution, err := options.RuleResolutionForPath(file.Path())
+		if err != nil {
+			return result, fmt.Errorf("resolve package file policy: %w", err)
+		}
+		fileSelection, err := registry.ResolveOptions(fileResolution)
+		if err != nil {
+			return result, fmt.Errorf("resolve package file policy: %w", err)
+		}
+		diagnostics = selectFileDiagnostics(diagnostics, fileSelection)
 		diagnostics = OrderDiagnostics(diagnostics)
 
 		index, problems := suppressions.Parse(
@@ -184,8 +193,8 @@ func RunPackages(
 			Result{
 				Path: file.Path(),
 				Digest: file.Digest(),
-				Requirement: result.Requirement,
-				Selection: slices.Clone(selection),
+				Requirement: rules.MaximumRequirement(fileSelection),
+				Selection: slices.Clone(fileSelection),
 				Diagnostics: application.Diagnostics,
 				Suppressed: application.Suppressed,
 				UnusedSuppressions: application.Unused,
@@ -199,6 +208,26 @@ func RunPackages(
 		)
 	}
 	return result, nil
+}
+
+func selectFileDiagnostics(
+	diagnostics []rules.Diagnostic,
+	selection []rules.Selection,
+) []rules.Diagnostic {
+	severities := make(map[string]rules.Severity, len(selection))
+	for _, selected := range selection {
+		severities[selected.ID] = selected.Severity
+	}
+	result := make([]rules.Diagnostic, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		severity, selected := severities[diagnostic.RuleID]
+		if !selected {
+			continue
+		}
+		diagnostic.Severity = severity
+		result = append(result, diagnostic)
+	}
+	return result
 }
 
 func nativePackageRulesNeedDependencies(

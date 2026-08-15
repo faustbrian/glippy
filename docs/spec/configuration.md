@@ -121,6 +121,39 @@ require destructive edits. Each run MUST bind one immutable option snapshot,
 including resolved defaults, to every callback for that rule across syntax,
 types, CFG, and SSA execution.
 
+`lint.overrides` MUST be an ordered array of path-scoped exact rule-severity
+overrides. Every entry MUST contain a non-empty `paths` array and non-empty
+`rules` table:
+
+```toml
+[[lint.overrides]]
+paths = ["**/*_test.go", "testdata/**"]
+
+[lint.overrides.rules]
+discarded-error = "off"
+blank-error-discard = "warn"
+```
+
+Patterns MUST be normalized, project-relative `/`-separated globs. `*`, `?`,
+and character classes match within one segment; a complete `**` segment
+matches zero or more segments. Empty segments, `.`, `..`, absolute paths,
+backslashes, invalid character classes, and duplicate patterns in one entry
+MUST fail. Pattern order within one entry is irrelevant and MUST be
+canonicalized; override entry order is significant. Every matching entry MUST
+apply in declaration order, and a later entry MUST replace an earlier severity
+for the same exact rule ID. Unknown rules, invalid severities, empty entries,
+and unknown fields MUST fail configuration loading.
+
+Path overrides control rule severity only. Rule options, presets, warning
+escalation, suppressions, baselines, build selection, formatter policy, and
+cache policy remain project-wide. A path override MAY enable a rule that is
+globally off. The scheduler MUST plan the union of every potentially enabled
+rule so a path-only typed, CFG, or SSA rule receives its required shared
+representation. After analysis, each physical file MUST retain only its exact
+resolved rules and severities before suppressions, baselines, reporters, or
+fix selection consume diagnostics. The ordered override policy MUST contribute
+to configuration and cache identity.
+
 `lint.suppressions.require-reason` MUST be a boolean and MUST default to
 `false`. When it is `true`, every direct suppression and range start MUST carry
 a non-empty reason after `--`; a missing or empty reason MUST produce a finding,
@@ -184,8 +217,14 @@ Schema version 1 does not provide implicit parent merging or nested
 configuration.
 
 An explicit `--config` selects exactly that file and disables discovery.
-Precedence is built-in defaults, selected configuration, matching typed path
-override when introduced, then explicit command-line options. Environment
+Precedence is built-in defaults, selected configuration, matching ordered path
+overrides, then explicit command-line lint levels and warning escalation.
+`--except` remains an absolute exclusion and a command-line `forbid` cannot be
+lowered. Override paths remain relative to each input's discovered project
+root even when one explicit configuration is reused across multiple roots. If
+an explicit configuration is used without any project boundary, its directory
+is the override root and outside inputs fail instead of receiving guessed path
+ownership. Environment
 variables MUST NOT silently override formatter or lint policy. Build tags,
 GOOS, GOARCH, and cgo selection come from `[analysis]`; toolchain and
 module/workspace state remain explicit analysis inputs and cache keys.

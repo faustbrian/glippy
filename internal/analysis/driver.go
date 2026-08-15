@@ -3,9 +3,12 @@ package analysis
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/faustbrian/glippy/internal/baseline"
+	"github.com/faustbrian/glippy/internal/config"
 	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
 	"github.com/faustbrian/glippy/internal/suppressions"
@@ -19,6 +22,8 @@ type RunOptions struct {
 	WarningsAsErrors bool
 	Overrides map[string]rules.Severity
 	RuleOptions map[string]rules.OptionSet
+	PathRoot string
+	PathOverrides []config.LintOverride
 	LintLevels []rules.LintLevelDirective
 	Only []string
 	Except []string
@@ -61,7 +66,7 @@ func Run(
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	resolution, err := options.RuleResolution()
+	resolution, err := options.RuleResolutionForPath(file.Path())
 	if err != nil {
 		return Result{}, fmt.Errorf("resolve analysis rules: %w", err)
 	}
@@ -113,8 +118,36 @@ func Run(
 
 // RuleResolution returns the canonical registry selection bound to this run.
 func (options RunOptions) RuleResolution() (rules.ResolveOptions, error) {
+	policy, err := options.lintPolicy()
+	if err != nil {
+		return rules.ResolveOptions{}, err
+	}
+	return options.ruleResolution(policy.LintForExecution()), nil
+}
+
+// RuleResolutionForPath resolves the exact policy for one physical source file.
+func (options RunOptions) RuleResolutionForPath(sourcePath string) (rules.ResolveOptions, error) {
+	policy, err := options.lintPolicy()
+	if err != nil {
+		return rules.ResolveOptions{}, err
+	}
+	if len(options.PathOverrides) == 0 {
+		return options.ruleResolution(policy.Lint), nil
+	}
+	relative, err := projectRelativeAnalysisPath(options.PathRoot, sourcePath)
+	if err != nil {
+		return rules.ResolveOptions{}, err
+	}
+	resolved, _, err := policy.LintForPath(relative)
+	if err != nil {
+		return rules.ResolveOptions{}, err
+	}
+	return options.ruleResolution(resolved), nil
+}
+
+func (options RunOptions) lintPolicy() (config.Config, error) {
 	if options.Presets != nil && options.Preset != "" {
-		return rules.ResolveOptions{}, fmt.Errorf(
+		return config.Config{}, fmt.Errorf(
 			"singular and plural preset policy cannot both be configured",
 		)
 	}
@@ -122,16 +155,98 @@ func (options RunOptions) RuleResolution() (rules.ResolveOptions, error) {
 	if presets == nil {
 		presets = []rules.Preset{options.Preset}
 	}
+	return config.Config{
+		Lint: config.Lint{
+			Presets: slices.Clone(presets),
+			WarningsAsErrors: options.WarningsAsErrors,
+			Rules: cloneSeverityOverrides(options.Overrides),
+			RuleOptions: cloneRuleOptions(options.RuleOptions),
+			Overrides: clonePathOverrides(options.PathOverrides),
+		},
+	}, nil
+}
+
+func (options RunOptions) ruleResolution(policy config.Lint) rules.ResolveOptions {
 	return rules.ResolveOptions{
-		Presets: presets,
-		Overrides: options.Overrides,
-		RuleOptions: options.RuleOptions,
+		Presets: slices.Clone(policy.Presets),
+		Overrides: cloneSeverityOverrides(policy.Rules),
+		RuleOptions: cloneRuleOptions(policy.RuleOptions),
 		SourceGoVersion: options.SourceGoVersion,
-		WarningsAsErrors: options.WarningsAsErrors,
+		WarningsAsErrors: policy.WarningsAsErrors,
 		LintLevels: cloneLintLevelDirectives(options.LintLevels),
 		Only: slices.Clone(options.Only),
 		Except: slices.Clone(options.Except),
-	}, nil
+	}
+}
+
+func projectRelativeAnalysisPath(root, sourcePath string) (string, error) {
+	if root == "" {
+		return "", fmt.Errorf("path-scoped lint policy requires a project root")
+	}
+	absoluteRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve path-scoped lint root %q: %w", root, err)
+	}
+	absoluteSource := sourcePath
+	if filepath.IsAbs(sourcePath) {
+		absoluteSource, err = filepath.Abs(sourcePath)
+		if err != nil {
+			return "", fmt.Errorf(
+				"resolve path-scoped lint source %q: %w",
+				sourcePath,
+				err,
+			)
+		}
+	} else {
+		absoluteSource = filepath.Join(absoluteRoot, sourcePath)
+	}
+	relative, err := filepath.Rel(absoluteRoot, absoluteSource)
+	if err != nil ||
+		relative == ".." ||
+		strings.HasPrefix(relative, ".." + string(filepath.Separator)) {
+		return "", fmt.Errorf(
+			"path-scoped lint source %q is outside project root %q",
+			sourcePath,
+			root,
+		)
+	}
+	return filepath.ToSlash(relative), nil
+}
+
+func cloneSeverityOverrides(values map[string]rules.Severity) map[string]rules.Severity {
+	if values == nil {
+		return nil
+	}
+	result := make(map[string]rules.Severity, len(values))
+	for id, severity := range values {
+		result[id] = severity
+	}
+	return result
+}
+
+func cloneRuleOptions(values map[string]rules.OptionSet) map[string]rules.OptionSet {
+	if values == nil {
+		return nil
+	}
+	result := make(map[string]rules.OptionSet, len(values))
+	for id, options := range values {
+		result[id] = options
+	}
+	return result
+}
+
+func clonePathOverrides(values []config.LintOverride) []config.LintOverride {
+	if values == nil {
+		return nil
+	}
+	result := make([]config.LintOverride, len(values))
+	for index, override := range values {
+		result[index] = config.LintOverride{
+			Paths: slices.Clone(override.Paths),
+			Rules: cloneSeverityOverrides(override.Rules),
+		}
+	}
+	return result
 }
 
 func cloneLintLevelDirectives(directives []rules.LintLevelDirective) []rules.LintLevelDirective {

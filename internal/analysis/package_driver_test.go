@@ -14,9 +14,88 @@ import (
 
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/config"
 	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
 )
+
+func TestRunPackagesFiltersAndReseversDiagnosticsByPathPolicy(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	productionPath := filepath.Join(root, "project.go")
+	testPath := filepath.Join(root, "project_test.go")
+	writeTypesFixture(t, productionPath, "package project\nfunc production() {}\n")
+	writeTypesFixture(t, testPath, "package project\nfunc testHelper() {}\n")
+	rule := typesRule{
+		metadata: typesMetadata("file-rule", rules.NodeFile),
+		run: func(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
+			range_, rangeErr := ctx.Range(node.(*ast.File).Name)
+			if rangeErr != nil {
+				return nil, rangeErr
+			}
+			return []rules.Finding{
+				{
+					MessageKey: "file",
+					Message: "file requires review",
+					Range: range_,
+				},
+			}, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"file-rule": rules.SeverityWarn},
+			PathRoot: root,
+			PathOverrides: []config.LintOverride{
+				{
+					Paths: []string{"project.go"},
+					Rules: map[string]config.Severity{
+						"file-rule": config.SeverityError,
+					},
+				},
+				{
+					Paths: []string{"**/*_test.go"},
+					Rules: map[string]config.Severity{
+						"file-rule": config.SeverityOff,
+					},
+				},
+			},
+		},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}, Tests: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byPath := make(map[string]analysis.Result, len(result.Files))
+	for _, file := range result.Files {
+		byPath[file.Path] = file
+	}
+	production := byPath[productionPath]
+	if len(production.Diagnostics) != 1 ||
+		production.Diagnostics[0].Severity != rules.SeverityError ||
+		len(production.Selection) != 1 ||
+		production.Selection[0].Severity != rules.SeverityError {
+		t.Fatalf("production result = %#v", production)
+	}
+	test := byPath[testPath]
+	if len(test.Diagnostics) != 0 || len(test.Selection) != 0 {
+		t.Fatalf("test result = %#v, want path-disabled rule", test)
+	}
+}
 
 func TestRunPackagesRejectsOversizedOverlayBeforeCloningOrCachePlanning(t *testing.T) {
 	if testing.Short() {

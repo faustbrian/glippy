@@ -277,6 +277,60 @@ func TestRunConfigCheckRejectsIncompleteEnabledRulePolicy(t *testing.T) {
 	}
 }
 
+func TestRunConfigCheckValidatesRulesEnabledOnlyByPathPolicy(t *testing.T) {
+	t.Parallel()
+
+	registry := requiredPolicyRegistry(t, "1.25")
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/project\n\ngo 1.25.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, config.Filename),
+		[]byte(
+			`version = 1
+[lint]
+presets = []
+
+[[lint.overrides]]
+paths = ["**/*_test.go"]
+
+[lint.overrides.rules]
+required-policy = "warn"
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runConfig(
+		context.Background(),
+		[]string{"config", "check", root},
+		&stdout,
+		&stderr,
+		registry,
+	)
+	if exitCode != ExitInvalidInvocation ||
+		stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), `missing required option "policy"`) {
+		t.Fatalf(
+			"runConfig(path-only required policy) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
 func requiredPolicyRegistry(t *testing.T, minimumGoVersion string) *rules.Registry {
 	t.Helper()
 	registry, err := rules.NewRegistry(
@@ -473,6 +527,67 @@ func TestRunConfigShowReportsBuiltInDefaults(t *testing.T) {
 			stdout.String(),
 			stderr.String(),
 		)
+	}
+}
+
+func TestRunConfigShowExplainsPathScopedRulePolicy(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/pathpolicy\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "internal", "client_test.go")
+	if err := os.Mkdir(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("package internal\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, config.Filename),
+		[]byte(
+			`version = 1
+[lint]
+presets = []
+
+[[lint.overrides]]
+paths = ["**/*_test.go"]
+
+[lint.overrides.rules]
+duplicate-condition = "error"
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"config", "show", path}, failingReader{}, &stdout, &stderr)
+	if exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(config show path policy) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	for _, expected := range
+		[]string{
+			"path overrides: configured=1 matched=1 path=internal/client_test.go",
+			"rule duplicate-condition: error (path override 1)",
+		} {
+		if !strings.Contains(stdout.String(), expected) {
+			t.Fatalf("config show missing %q:\n%s", expected, stdout.String())
+		}
 	}
 }
 

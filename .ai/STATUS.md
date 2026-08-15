@@ -1313,3 +1313,16 @@ red-green renderer and CLI evidence, the complete test and race suites, vet,
 build, tidy-diff, non-mutating combined check, and a 100-diagnostic rendering
 benchmark pass. Additional defect rules and path-scoped policy remain open, so
 the broader Clippy-comparability goal remains active.
+
+Ordered path-scoped lint policy is now implemented through strict
+`[[lint.overrides]]` entries. Portable project-relative globs can enable,
+disable, warn, or error exact rules for tests and subtrees; later matching
+entries win before command-line lint levels and warning escalation. Syntax and
+package-aware analysis share the same contract: scheduling uses the union of
+potentially enabled tiers, while each physical file is filtered and assigned
+its exact severities before suppressions, baselines, reporters, or fixes.
+Configuration
+identity retains ordered policy, explicit multi-root configurations keep
+independent roots, and `config show` reports the selected path and matching
+override declarations. Additional error-flow correctness rules remain open, so
+the broader Clippy-comparability goal remains active.

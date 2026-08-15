@@ -18,6 +18,7 @@ import (
 
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/config"
 	"github.com/faustbrian/glippy/internal/filesystem"
 	fixengine "github.com/faustbrian/glippy/internal/fix"
 	glippyreport "github.com/faustbrian/glippy/internal/report"
@@ -3629,6 +3630,225 @@ func TestPrepareLintTasksBindsOneConfigurationSnapshotToEverySelectedFile(t *tes
 				got,
 			)
 		}
+	}
+}
+
+func TestRunLintAppliesPathScopedRulesAcrossDiscoveredFiles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/pathpolicy\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	productionPath := filepath.Join(root, "sample.go")
+	testPath := filepath.Join(root, "sample_test.go")
+	for _, path := range []string{productionPath, testPath} {
+		if err := os.WriteFile(
+			path,
+			[]byte("package sample\nfunc run(){ target() }\n"),
+			0o600,
+		);
+			err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, config.Filename),
+		[]byte(
+			`version = 1
+[lint]
+presets = []
+
+[[lint.overrides]]
+paths = ["**/*_test.go"]
+
+[lint.overrides.rules]
+call-rule = "error"
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{paths: []string{root}, reporter: glippyreport.JSON},
+		&stdout,
+		&stderr,
+		newCLISyntaxRegistry(t),
+	)
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(path policy) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	var result glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Diagnostics) != 1 ||
+		result.Diagnostics[0].Path != testPath ||
+		result.Diagnostics[0].RuleID != "call-rule" ||
+		result.Diagnostics[0].Severity != rules.SeverityError {
+		t.Fatalf("path-scoped diagnostics = %#v", result.Diagnostics)
+	}
+}
+
+func TestPrepareLintTasksKeepsExplicitPathPolicyRootsIndependent(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	configurationPath := filepath.Join(parent, "policy.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte(
+			`version = 1
+[[lint.overrides]]
+paths = ["**/*_test.go"]
+[lint.overrides.rules]
+call-rule = "off"
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	paths := make([]string, 0, 2)
+	roots := make([]string, 0, 2)
+	for _, name := range []string{"first", "second"} {
+		root := filepath.Join(parent, name)
+		if err := os.Mkdir(root, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(root, "go.mod"),
+			[]byte("module example.com/" + name + "\n\ngo 1.26.0\n"),
+			0o600,
+		);
+			err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(root, "sample.go")
+		if err := os.WriteFile(path, []byte("package sample\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, path)
+		roots = append(roots, root)
+	}
+
+	tasks, exitCode, err := prepareLintTasks(
+		context.Background(),
+		lintInvocation{configPath: configurationPath, paths: paths},
+		newCLISyntaxRegistry(t),
+	)
+	if err != nil || exitCode != ExitSuccess || len(tasks) != 2 {
+		t.Fatalf(
+			"prepareLintTasks() = %d tasks, exit %d, error %v",
+			len(tasks),
+			exitCode,
+			err,
+		)
+	}
+	for index, task := range tasks {
+		if task.options.analysis.PathRoot != roots[index] {
+			t.Fatalf(
+				"task %q path root = %q, want %q",
+				task.file.Path,
+				task.options.analysis.PathRoot,
+				roots[index],
+			)
+		}
+	}
+}
+
+func TestRunLintSchedulesRuleTierEnabledOnlyByPathPolicy(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/pathtier\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	productionPath := filepath.Join(root, "sample.go")
+	if err := os.WriteFile(
+		productionPath,
+		[]byte("package sample\nfunc production() {}\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	testPath := filepath.Join(root, "sample_test.go")
+	if err := os.WriteFile(
+		testPath,
+		[]byte("package sample\nfunc helper(){ value := 1; value = value }\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, config.Filename),
+		[]byte(
+			`version = 1
+[lint]
+presets = []
+
+[[lint.overrides]]
+paths = ["**/*_test.go"]
+
+[lint.overrides.rules]
+self-assignment = "error"
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"lint", "--reporter=json", root},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings || stderr.Len() != 0 {
+		t.Fatalf(
+			"Run(path-only typed rule) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	var result glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Diagnostics) != 1 ||
+		result.Diagnostics[0].Path != testPath ||
+		result.Diagnostics[0].RuleID != "self-assignment" ||
+		result.Diagnostics[0].Severity != rules.SeverityError {
+		t.Fatalf("path-only typed diagnostics = %#v", result.Diagnostics)
 	}
 }
 

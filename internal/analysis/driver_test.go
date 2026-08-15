@@ -3,15 +3,140 @@ package analysis_test
 import (
 	"context"
 	"go/ast"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/config"
 	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
 	"github.com/faustbrian/glippy/internal/suppressions"
 )
+
+func TestRunAppliesPathScopedRulePolicyBeforeCommandLineLevels(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	file, err := source.Load(
+		filepath.Join(root, "internal", "client_test.go"),
+		[]byte("package sample\nfunc run(){ target() }\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule := syntaxRule{
+		metadata: analysisMetadata("call-rule", rules.NodeCallExpr, false),
+		run: func(ctx *rules.Context, node ast.Node) ([]rules.Finding, error) {
+			range_, rangeErr := ctx.Range(node)
+			if rangeErr != nil {
+				return nil, rangeErr
+			}
+			return []rules.Finding{
+				{
+					MessageKey: "call",
+					Message: "call requires review",
+					Range: range_,
+				},
+			}, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := analysis.RunOptions{
+		Presets: []rules.Preset{},
+		Overrides: map[string]rules.Severity{"call-rule": rules.SeverityOff},
+		WarningsAsErrors: true,
+		PathRoot: root,
+		PathOverrides: []config.LintOverride{
+			{
+				Paths: []string{"**/*_test.go"},
+				Rules: map[string]config.Severity{"call-rule": config.SeverityWarn},
+			},
+		},
+	}
+
+	result, err := analysis.Run(context.Background(), file, registry, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Diagnostics) != 1 ||
+		result.Diagnostics[0].Severity != rules.SeverityError ||
+		len(result.Selection) != 1 ||
+		result.Selection[0].Severity != rules.SeverityError {
+		t.Fatalf("Run(path override) = %#v", result)
+	}
+
+	options.LintLevels = []rules.LintLevelDirective{
+		{Level: rules.LintAllow, Targets: []string{"call-rule"}},
+	}
+	result, err = analysis.Run(context.Background(), file, registry, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Diagnostics) != 0 || len(result.Selection) != 0 {
+		t.Fatalf("Run(command-line allow) = %#v, want no selected rule", result)
+	}
+}
+
+func TestRunResolvesRelativeSourcePathsAgainstPathPolicyRoot(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load(
+		filepath.Join("internal", "client_test.go"),
+		[]byte("package sample\nfunc run(){ target() }\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule := syntaxRule{
+		metadata: analysisMetadata("call-rule", rules.NodeCallExpr, false),
+		run: func(ctx *rules.Context, node ast.Node) ([]rules.Finding, error) {
+			range_, rangeErr := ctx.Range(node)
+			if rangeErr != nil {
+				return nil, rangeErr
+			}
+			return []rules.Finding{
+				{
+					MessageKey: "call",
+					Message: "call requires review",
+					Range: range_,
+				},
+			}, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := analysis.Run(
+		context.Background(),
+		file,
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			PathRoot: t.TempDir(),
+			PathOverrides: []config.LintOverride{
+				{
+					Paths: []string{"internal/**"},
+					Rules: map[string]config.Severity{
+						"call-rule": config.SeverityWarn,
+					},
+				},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Diagnostics) != 1 {
+		t.Fatalf("Run(relative path policy) diagnostics = %#v", result.Diagnostics)
+	}
+}
 
 func TestRunResolvesSyntaxRulesAndAppliesSuppressions(t *testing.T) {
 	t.Parallel()

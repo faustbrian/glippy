@@ -126,7 +126,9 @@ remain hidden unless their corresponding LSP flags are supplied.
 existing path. `glippy config check` validates discovered or explicit policy,
 while `glippy config show` explains the resolved language, presets, rule
 severities and reasons, analysis tier, file policies, baseline, suppressions,
-and cache settings.
+and cache settings. Ordered `[[lint.overrides]]` entries can adjust exact rule
+severities for project-relative glob paths such as tests, fixtures, generated
+adapters, or migration trees without introducing nested configuration files.
 
 Use `glippy rules` to discover the compiled catalog by preset, fix
 availability, or exact analysis tier. `lint --only` and `lint --except` apply
@@ -137,6 +139,15 @@ exact rule IDs, selectable groups, or the currently enabled `warnings` set.
 Later directives override earlier ones, except that a forbidden rule cannot be
 lowered. `explain --json` exposes the same canonical metadata through a
 schema-versioned machine contract.
+
+```toml
+[[lint.overrides]]
+paths = ["**/*_test.go", "testdata/**"]
+
+[lint.overrides.rules]
+discarded-error = "off"
+blank-error-discard = "warn"
+```
 
 The v0.2 pedantic catalog includes bounded Go-native simplifications for blank
 identifiers, direct closures, nil-and-length checks, time helpers, buffer

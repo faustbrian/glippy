@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go/build"
 	"os"
+	"path"
 	"runtime"
 	"slices"
 	"sort"
@@ -93,8 +94,16 @@ type Lint struct {
 	WarningsAsErrors bool
 	Rules map[string]Severity
 	RuleOptions map[string]rules.OptionSet
+	Overrides []LintOverride
 	Suppressions Suppressions
 	Baseline Baseline
+}
+
+// LintOverride applies exact rule severities to matching project-relative paths.
+// Overrides retain declaration order because later matches replace earlier ones.
+type LintOverride struct {
+	Paths []string
+	Rules map[string]Severity
 }
 
 // Baseline contains deterministic progressive-adoption policy.
@@ -171,8 +180,14 @@ type lintConfig struct {
 	WarningsAsErrors *bool `toml:"warnings-as-errors"`
 	Rules map[string]string `toml:"rules"`
 	RuleOptions map[string]map[string]any `toml:"rule-options"`
+	Overrides []lintOverrideConfig `toml:"overrides"`
 	Suppressions suppressionConfig `toml:"suppressions"`
 	Baseline baselineConfig `toml:"baseline"`
+}
+
+type lintOverrideConfig struct {
+	Paths []string `toml:"paths"`
+	Rules map[string]string `toml:"rules"`
 }
 
 type baselineConfig struct {
@@ -450,6 +465,77 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 		}
 		result.Lint.Rules[rule] = severity
 	}
+	for index, override := range decoded.Lint.Overrides {
+		number := index + 1
+		if len(override.Paths) == 0 {
+			return Config{}, semanticError(
+				path,
+				"lint override %d requires at least one path pattern",
+				number,
+			)
+		}
+		if len(override.Rules) == 0 {
+			return Config{}, semanticError(
+				path,
+				"lint override %d requires at least one rule",
+				number,
+			)
+		}
+		patterns := append([]string(nil), override.Paths...)
+		for _, pattern := range patterns {
+			if err := validateLintPathPattern(pattern); err != nil {
+				return Config{}, semanticError(
+					path,
+					"lint override %d path pattern %q %s",
+					number,
+					pattern,
+					err,
+				)
+			}
+		}
+		sort.Strings(patterns)
+		for patternIndex := 1; patternIndex < len(patterns); patternIndex++ {
+			if patterns[patternIndex] == patterns[patternIndex - 1] {
+				return Config{}, semanticError(
+					path,
+					"lint override %d contains duplicate path pattern %q",
+					number,
+					patterns[patternIndex],
+				)
+			}
+		}
+		overrideRuleIDs := make([]string, 0, len(override.Rules))
+		for rule := range override.Rules {
+			overrideRuleIDs = append(overrideRuleIDs, rule)
+		}
+		sort.Strings(overrideRuleIDs)
+		resolvedRules := make(map[string]Severity, len(overrideRuleIDs))
+		for _, rule := range overrideRuleIDs {
+			if _, found := knownRules[rule]; !found {
+				return Config{}, semanticError(
+					path,
+					"unknown lint rule %q in lint override %d",
+					rule,
+					number,
+				)
+			}
+			severity := Severity(override.Rules[rule])
+			if !validSeverity(severity) {
+				return Config{}, semanticError(
+					path,
+					"invalid severity %q for lint rule %q in lint override %d",
+					severity,
+					rule,
+					number,
+				)
+			}
+			resolvedRules[rule] = severity
+		}
+		result.Lint.Overrides = append(
+			result.Lint.Overrides,
+			LintOverride{Paths: patterns, Rules: resolvedRules},
+		)
+	}
 	optionRuleIDs := make([]string, 0, len(decoded.Lint.RuleOptions))
 	for rule := range decoded.Lint.RuleOptions {
 		optionRuleIDs = append(optionRuleIDs, rule)
@@ -510,6 +596,144 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 		result.Lint.RuleOptions[rule] = rules.NewOptionSet(values)
 	}
 	return result, nil
+}
+
+// LintForPath returns an independent lint policy after ordered path overrides.
+// Match indexes are one-based so they correspond to configuration declarations.
+func (c Config) LintForPath(projectRelativePath string) (Lint, []int, error) {
+	if err := validateProjectRelativePath(projectRelativePath); err != nil {
+		return Lint{}, nil, fmt.Errorf("resolve lint path %q: %w", projectRelativePath, err)
+	}
+	resolved := cloneLint(c.Lint)
+	matches := make([]int, 0, len(c.Lint.Overrides))
+	for index, override := range c.Lint.Overrides {
+		matched := false
+		for _, pattern := range override.Paths {
+			if matchLintPathPattern(pattern, projectRelativePath) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		matches = append(matches, index + 1)
+		for ruleID, severity := range override.Rules {
+			resolved.Rules[ruleID] = severity
+		}
+	}
+	return resolved, matches, nil
+}
+
+// LintForExecution enables every rule that can be selected by a path override.
+// Per-path filtering restores the exact severity after shared analysis runs.
+func (c Config) LintForExecution() Lint {
+	resolved := cloneLint(c.Lint)
+	for _, override := range c.Lint.Overrides {
+		for ruleID, severity := range override.Rules {
+			if severity == SeverityOff {
+				continue
+			}
+			current := resolved.Rules[ruleID]
+			if current == SeverityError || current == severity {
+				continue
+			}
+			resolved.Rules[ruleID] = severity
+		}
+	}
+	return resolved
+}
+
+func cloneLint(value Lint) Lint {
+	result := value
+	result.Presets = slices.Clone(value.Presets)
+	result.Rules = make(map[string]Severity, len(value.Rules))
+	for id, severity := range value.Rules {
+		result.Rules[id] = severity
+	}
+	result.RuleOptions = make(map[string]rules.OptionSet, len(value.RuleOptions))
+	for id, options := range value.RuleOptions {
+		result.RuleOptions[id] = options
+	}
+	result.Overrides = make([]LintOverride, len(value.Overrides))
+	for index, override := range value.Overrides {
+		result.Overrides[index] = LintOverride{
+			Paths: slices.Clone(override.Paths),
+			Rules: make(map[string]Severity, len(override.Rules)),
+		}
+		for id, severity := range override.Rules {
+			result.Overrides[index].Rules[id] = severity
+		}
+	}
+	return result
+}
+
+func validateLintPathPattern(pattern string) error {
+	if pattern == "" || strings.HasPrefix(pattern, "/") || strings.Contains(pattern, "\\") {
+		return fmt.Errorf("must be project-relative")
+	}
+	segments := strings.Split(pattern, "/")
+	for _, segment := range segments {
+		if segment == "" || segment == "." || segment == ".." {
+			return fmt.Errorf("must be project-relative")
+		}
+		if segment == "**" {
+			continue
+		}
+		if _, err := path.Match(segment, ""); err != nil {
+			return fmt.Errorf("is invalid: %v", err)
+		}
+	}
+	return nil
+}
+
+func validateProjectRelativePath(value string) error {
+	if value == "" || strings.HasPrefix(value, "/") || strings.Contains(value, "\\") {
+		return fmt.Errorf("path must be project-relative and use forward slashes")
+	}
+	segments := strings.Split(value, "/")
+	for _, segment := range segments {
+		if segment == "" || segment == "." || segment == ".." {
+			return fmt.Errorf("path must be normalized and remain inside the project")
+		}
+	}
+	return nil
+}
+
+func matchLintPathPattern(pattern, projectRelativePath string) bool {
+	patternSegments := strings.Split(pattern, "/")
+	pathSegments := strings.Split(projectRelativePath, "/")
+	type state struct {
+		pattern, path int
+	}
+	memo := make(map[state]bool)
+	known := make(map[state]bool)
+	var match func(int, int) bool
+	match = func(patternIndex, pathIndex int) bool {
+		current := state{pattern: patternIndex, path: pathIndex}
+		if known[current] {
+			return memo[current]
+		}
+		known[current] = true
+		if patternIndex == len(patternSegments) {
+			memo[current] = pathIndex == len(pathSegments)
+			return memo[current]
+		}
+		segment := patternSegments[patternIndex]
+		if segment == "**" {
+			memo[current] = match(patternIndex + 1, pathIndex) ||
+				(pathIndex < len(pathSegments) &&
+					match(patternIndex, pathIndex + 1))
+			return memo[current]
+		}
+		if pathIndex >= len(pathSegments) {
+			return false
+		}
+		matched, _ := path.Match(segment, pathSegments[pathIndex])
+		memo[current] = matched && match(patternIndex + 1, pathIndex + 1)
+		return memo[current]
+	}
+	return match(0, 0)
 }
 
 func validBuildTag(tag string) bool {

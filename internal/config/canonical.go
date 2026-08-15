@@ -44,6 +44,25 @@ func (c Config) CanonicalBytes() []byte {
 		encoded = appendCanonicalString(encoded, ruleID)
 		encoded = appendCanonicalString(encoded, string(c.Lint.Rules[ruleID]))
 	}
+	encoded = binary.AppendUvarint(encoded, uint64(len(c.Lint.Overrides)))
+	for _, override := range c.Lint.Overrides {
+		patterns := append([]string(nil), override.Paths...)
+		sort.Strings(patterns)
+		encoded = binary.AppendUvarint(encoded, uint64(len(patterns)))
+		for _, pattern := range patterns {
+			encoded = appendCanonicalString(encoded, pattern)
+		}
+		overrideRuleIDs := make([]string, 0, len(override.Rules))
+		for ruleID := range override.Rules {
+			overrideRuleIDs = append(overrideRuleIDs, ruleID)
+		}
+		sort.Strings(overrideRuleIDs)
+		encoded = binary.AppendUvarint(encoded, uint64(len(overrideRuleIDs)))
+		for _, ruleID := range overrideRuleIDs {
+			encoded = appendCanonicalString(encoded, ruleID)
+			encoded = appendCanonicalString(encoded, string(override.Rules[ruleID]))
+		}
+	}
 
 	optionRuleIDs := make([]string, 0, len(c.Lint.RuleOptions))
 	for ruleID := range c.Lint.RuleOptions {
