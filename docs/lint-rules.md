@@ -409,9 +409,10 @@ detects context cancellation functions that may not run
 
 The cancellation function returned by context.WithCancel, context.WithTimeout, or
 context.WithDeadline releases resources owned by the derived context. Discarding it or returning
-along a path that never uses it can retain timers, children, and references longer than intended.
-Glippy implements the standard lostcancel contract over its shared control-flow tier and consumes
-versioned no-return summaries for imported helpers in the selected modules.
+along a path that never invokes or transfers it can retain timers, children, and references longer
+than intended. Glippy implements the standard lostcancel contract over its shared control-flow tier
+and consumes versioned no-return and parameter-effect summaries for imported helpers in the selected
+modules.
 
 - Default severity: `warn`
 - Presets: `correctness`
@@ -434,10 +435,11 @@ None.
 
 ### Known limitations
 
-- As in the standard lostcancel analyzer, any reference to the cancellation variable counts as a
-  use; the rule does not prove that the referenced function is eventually called.
-- Cancellation transferred through helpers, fields, or containers is outside the intraprocedural
-  ownership model.
+- A statically resolved same-module helper that provably borrows the cancellation function does not
+  discharge the obligation; guaranteed invocation or ownership transfer must cover every normally
+  returning helper path.
+- Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules
+  retain the conservative use-or-transfer behavior when no summary is available.
 - The shared CFG propagates no-return behavior through the selected package and same-module imported
   helpers. Third-party helpers outside the selected modules remain conservatively returning unless
   they match an exact standard-library terminal API.
@@ -1303,7 +1305,8 @@ detects HTTP response bodies not closed on every normal return
 A successful net/http client request returns a response whose Body must be closed. A locally owned
 response that reaches a normal return without closing or conservatively transferring its body can
 leak connections and prevent transport reuse. This rule follows direct package and Client request
-helpers through the shared control-flow graph after a conventional acquisition-error guard.
+helpers through the shared control-flow graph after a conventional acquisition-error guard and
+consumes versioned same-module helper effects.
 
 - Default severity: `warn`
 - Presets: `suspicious`
@@ -1332,8 +1335,10 @@ None.
 - Returning, passing, sending, storing, or capturing the response transfers ownership. A body
   argument transfers ownership only when the destination parameter itself has Close() error; passing
   Body as an io.Reader does not discharge the obligation.
-- The rule is intraprocedural and does not infer cleanup performed by arbitrary helper functions,
-  response wrappers, or middleware.
+- A statically resolved same-module helper that provably borrows Body leaves the obligation open;
+  guaranteed closure or transfer must cover every normally returning helper path.
+- Dynamic calls, interface dispatch, recursion, response wrappers, middleware, and helpers outside
+  selected modules retain the conservative transfer behavior when no summary is available.
 - Generated files and packages with type errors are excluded.
 
 ### Example: Close a successful HTTP response body
@@ -3548,7 +3553,8 @@ detects locally owned closers that are neither closed nor transferred
 A call result with a conventional Close method usually owns a file, connection, compressor, or
 similar resource. A locally owned result that reaches a normal return without being closed or
 transferred can retain descriptors, connections, buffers, or other external state until process
-termination or garbage collection.
+termination or garbage collection. Versioned parameter-effect summaries distinguish proven
+same-module helper borrowing from guaranteed closure or ownership transfer.
 
 - Default severity: `warn`
 - Presets: `suspicious`
@@ -3571,9 +3577,10 @@ None.
 
 ### Known limitations
 
-- The initial contract treats a direct argument, return, send, composite-literal insertion, closure
-  capture, or assignment to another variable as an ownership transfer and does not analyze the
-  callee.
+- A statically resolved same-module helper that provably borrows the resource leaves the obligation
+  open; guaranteed closure or transfer must cover every normally returning helper path.
+- Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules
+  retain the conservative ownership-transfer behavior when no summary is available.
 - Pipes returned by os/exec.Cmd are owned by Cmd.Start and Cmd.Wait under the standard-library
   contract and are not treated as caller-owned closers.
 - Cleanup and ownership transfer must cover every normally returning path after a conventional
@@ -3714,7 +3721,8 @@ detects database transactions left without commit or rollback
 database/sql requires every successful transaction to end with Tx.Commit or Tx.Rollback. A locally
 owned transaction that reaches a normal return without either call can retain a connection, locks,
 and transaction state. This rule follows direct DB.Begin, DB.BeginTx, and Conn.BeginTx results
-through the shared control-flow graph after a conventional acquisition-error guard.
+through the shared control-flow graph after a conventional acquisition-error guard and consumes
+versioned same-module helper effects.
 
 - Default severity: `warn`
 - Presets: `correctness`
@@ -3739,10 +3747,11 @@ None.
 
 - The initial contract recognizes direct database/sql DB.Begin, DB.BeginTx, and Conn.BeginTx
   assignments followed immediately by an err != nil guard whose body returns.
-- Passing, returning, sending, storing, or capturing the transaction counts as an ownership
-  transfer; the rule does not inspect the receiving code.
-- Only standard Tx.Commit and Tx.Rollback calls or an explicit ownership transfer discharge the
-  obligation; wrapper finalizers are not inferred.
+- A statically resolved same-module helper that provably borrows the transaction leaves the
+  obligation open; guaranteed Commit, Rollback, or transfer must cover every normally returning
+  helper path.
+- Dynamic calls, interface dispatch, recursion, wrapper finalizers, and helpers outside selected
+  modules retain the conservative ownership-transfer behavior when no summary is available.
 - Generated files and packages with type errors are excluded.
 
 ### Example: Rollback an uncommitted transaction

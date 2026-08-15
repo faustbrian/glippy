@@ -4,6 +4,8 @@ import (
 	"go/token"
 	"go/types"
 	"testing"
+
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 func TestNativeEffectFactsUseStableCrossLoadFunctionIdentity(t *testing.T) {
@@ -31,6 +33,14 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	second := newNativeEffectFacts()
 	second.noReturns["a"] = struct{}{}
 	second.noReturns["z"] = struct{}{}
+	first.parameters["function"] = map[int]rules.ParameterEffectSummary{
+		1: {Known: true, Always: true, Kinds: rules.ParameterEffectTransfer},
+		0: {Known: true},
+	}
+	second.parameters["function"] = map[int]rules.ParameterEffectSummary{
+		0: {Known: true},
+		1: {Known: true, Always: true, Kinds: rules.ParameterEffectTransfer},
+	}
 	changed := newNativeEffectFacts()
 	changed.noReturns["a"] = struct{}{}
 	if first.digest() != second.digest() {
@@ -38,6 +48,36 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	}
 	if first.digest() == changed.digest() {
 		t.Fatal("effect fact digest ignored a summary change")
+	}
+	changed = cloneNativeEffectFacts(first)
+	changed.parameters["function"][1] = rules.ParameterEffectSummary{
+		Known: true,
+		Always: true,
+		Kinds: rules.ParameterEffectClose,
+	}
+	if first.digest() == changed.digest() {
+		t.Fatal("effect fact digest ignored a parameter effect change")
+	}
+}
+
+func TestNativeParameterEffectsUseStableCrossLoadFunctionIdentity(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestFunction("example.com/project/resource", "Consume")
+	second := effectTestFunction("example.com/project/resource", "Consume")
+	facts := newNativeEffectFacts()
+	facts.parameters[stableFunctionIdentity(first)] = map[int]rules.ParameterEffectSummary{
+		0: {Known: true, Always: true, Kinds: rules.ParameterEffectClose},
+	}
+	if summary := facts.ParameterEffect(second, 0);
+		!summary.GuaranteesAny(rules.ParameterEffectClose) {
+		t.Fatalf(
+			"parameter effect did not survive an independent type identity: %#v",
+			summary,
+		)
+	}
+	if summary := facts.ParameterEffect(second, 1); summary.Known {
+		t.Fatalf("parameter effect matched another parameter: %#v", summary)
 	}
 }
 

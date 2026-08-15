@@ -1541,3 +1541,15 @@ or simultaneously offered and withheld names; analyzer and native cache entry
 version 2 preserves and revalidates the records. Text, schema-version-1 JSON,
 and LSP diagnostic data expose the same name, `comments` reason, and message.
 All existing native comment-withholding sites participate in the contract.
+
+Effect schema version 2 now exports conservative per-parameter summaries for
+same-module helpers alongside no-return facts. The resource, HTTP response-body,
+SQL transaction, and context-cancellation lifecycle rules distinguish proven
+borrowing from guaranteed completion, invocation, or ownership transfer across
+every normally returning helper path. Conditional effects, unknown calls,
+unsupported aliasing, and recursion remain conservative; stable identities and
+the `native-effects-v2` digest make independent loads and dependency cache
+invalidation deterministic. A 100-call cold package probe measured an 833.4 ms
+median with about 5.84 MB and 58,789 allocations on Darwin arm64. Exact-rule
+dogfood remained clean on Glippy and `go-libraries/pkg/prompts`. Returned
+nil/error-state facts remain the next cross-package semantic-effect boundary.

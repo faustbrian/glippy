@@ -160,24 +160,30 @@ func noncanonicalGuard(db *sql.DB) error {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 5 {
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 6 {
 		t.Fatalf("sql-transaction-not-completed result = %#v", result)
 	}
-	searchFrom := 0
-	needles := []string{
-		"tx, err := db.Begin()",
-		"tx, err := db.Begin()",
-		"tx, err := db.Begin()",
-		"tx, err := db.Begin()",
-		"tx, err := conn.BeginTx(ctx, nil)",
+	expected := []struct {
+		function string
+		acquisition string
+	}{
+		{function: "func missing(", acquisition: "tx, err := db.Begin()"},
+		{function: "func partial(", acquisition: "tx, err := db.Begin()"},
+		{function: "func conditionalDefer(", acquisition: "tx, err := db.Begin()"},
+		{function: "func overwritten(", acquisition: "tx, err := db.Begin()"},
+		{function: "func missingConn(", acquisition: "tx, err := conn.BeginTx(ctx, nil)"},
+		{function: "func passed(", acquisition: "tx, err := db.Begin()"},
 	}
 	for index, diagnostic := range result.Files[0].Diagnostics {
-		needle := needles[index]
-		relative := strings.Index(input[searchFrom:], needle)
+		functionStart := strings.Index(input, expected[index].function)
+		if functionStart < 0 {
+			t.Fatalf("missing function %d", index)
+		}
+		relative := strings.Index(input[functionStart:], expected[index].acquisition)
 		if relative < 0 {
 			t.Fatalf("missing acquisition %d", index)
 		}
-		start := searchFrom + relative
+		start := functionStart + relative
 		if diagnostic.RuleID != "sql-transaction-not-completed" ||
 			diagnostic.Range.Start != start ||
 			diagnostic.Range.End != start + len("tx") ||
@@ -185,7 +191,6 @@ func noncanonicalGuard(db *sql.DB) error {
 			len(diagnostic.Fixes) != 0 {
 			t.Fatalf("diagnostic %d = %#v", index, diagnostic)
 		}
-		searchFrom = start + len(needle)
 	}
 }
 

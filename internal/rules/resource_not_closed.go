@@ -29,7 +29,7 @@ func (resourceNotClosedRule) Metadata() Metadata {
 	return Metadata{
 		ID: "resource-not-closed",
 		Summary: "detects locally owned closers that are neither closed nor transferred",
-		Documentation: "A call result with a conventional Close method usually owns a file, connection, compressor, or similar resource. A locally owned result that reaches a normal return without being closed or transferred can retain descriptors, connections, buffers, or other external state until process termination or garbage collection.",
+		Documentation: "A call result with a conventional Close method usually owns a file, connection, compressor, or similar resource. A locally owned result that reaches a normal return without being closed or transferred can retain descriptors, connections, buffers, or other external state until process termination or garbage collection. Versioned parameter-effect summaries distinguish proven same-module helper borrowing from guaranteed closure or ownership transfer.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
@@ -37,7 +37,8 @@ func (resourceNotClosedRule) Metadata() Metadata {
 		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySafety, CategorySuspicious},
 		KnownLimitations: []string{
-			"The initial contract treats a direct argument, return, send, composite-literal insertion, closure capture, or assignment to another variable as an ownership transfer and does not analyze the callee.",
+			"A statically resolved same-module helper that provably borrows the resource leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
+			"Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules retain the conservative ownership-transfer behavior when no summary is available.",
 			"Pipes returned by os/exec.Cmd are owned by Cmd.Start and Cmd.Wait under the standard-library contract and are not treated as caller-owned closers.",
 			"Cleanup and ownership transfer must cover every normally returning path after a conventional acquisition guard when one is present.",
 			"Only call results whose static type has Close() error are considered resources; zero-result Close methods are too broad for the initial ownership contract.",
@@ -76,6 +77,8 @@ func (resourceNotClosedRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding,
 								candidate.object,
 							)
 						},
+						ctx.ParameterEffect,
+						ParameterEffectClose | ParameterEffectTransfer,
 					)
 				},
 			) {

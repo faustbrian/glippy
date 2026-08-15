@@ -28,7 +28,7 @@ func (httpResponseBodyNotClosedRule) Metadata() Metadata {
 	return Metadata{
 		ID: "http-response-body-not-closed",
 		Summary: "detects HTTP response bodies not closed on every normal return",
-		Documentation: "A successful net/http client request returns a response whose Body must be closed. A locally owned response that reaches a normal return without closing or conservatively transferring its body can leak connections and prevent transport reuse. This rule follows direct package and Client request helpers through the shared control-flow graph after a conventional acquisition-error guard.",
+		Documentation: "A successful net/http client request returns a response whose Body must be closed. A locally owned response that reaches a normal return without closing or conservatively transferring its body can leak connections and prevent transport reuse. This rule follows direct package and Client request helpers through the shared control-flow graph after a conventional acquisition-error guard and consumes versioned same-module helper effects.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
@@ -38,7 +38,8 @@ func (httpResponseBodyNotClosedRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"The initial contract recognizes direct net/http Get, Head, Post, and PostForm functions plus Client.Do, Get, Head, Post, and PostForm methods followed immediately by an err != nil guard whose body returns.",
 			"Returning, passing, sending, storing, or capturing the response transfers ownership. A body argument transfers ownership only when the destination parameter itself has Close() error; passing Body as an io.Reader does not discharge the obligation.",
-			"The rule is intraprocedural and does not infer cleanup performed by arbitrary helper functions, response wrappers, or middleware.",
+			"A statically resolved same-module helper that provably borrows Body leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
+			"Dynamic calls, interface dispatch, recursion, response wrappers, middleware, and helpers outside selected modules retain the conservative transfer behavior when no summary is available.",
 			"Generated files and packages with type errors are excluded.",
 		},
 		Examples: []Example{
@@ -69,11 +70,7 @@ func (httpResponseBodyNotClosedRule) RunControlFlow(ctx *ControlFlowContext) ([]
 		if !obligationReachesOpenReturn(
 			candidate.start,
 			func(node ast.Node) obligationEffect {
-				return httpResponseObligationEffect(
-					ctx.Info(),
-					node,
-					candidate.object,
-				)
+				return httpResponseObligationEffect(ctx, node, candidate.object)
 			},
 		) {
 			continue
@@ -219,17 +216,18 @@ func httpResponseAcquisitionCall(info *types.Info, call *ast.CallExpr) bool {
 }
 
 func httpResponseObligationEffect(
-	info *types.Info,
+	ctx *ControlFlowContext,
 	node ast.Node,
 	response types.Object,
 ) obligationEffect {
+	info := ctx.Info()
 	if nodeContainsResponseBodyClose(info, node, response) {
 		return obligationCompleted
 	}
-	if nodeTransfersResponseBody(info, node, response) {
+	if nodeTransfersResponseBody(ctx, node, response) {
 		return obligationTransferred
 	}
-	return objectObligationEffect(info, node, response, nil)
+	return objectObligationEffect(info, node, response, nil, nil, 0)
 }
 
 func nodeContainsResponseBodyClose(info *types.Info, node ast.Node, response types.Object) bool {
@@ -269,7 +267,8 @@ func responseBodyCloseCall(info *types.Info, call *ast.CallExpr, response types.
 		directResponseBody(info, selector.X, response)
 }
 
-func nodeTransfersResponseBody(info *types.Info, node ast.Node, response types.Object) bool {
+func nodeTransfersResponseBody(ctx *ControlFlowContext, node ast.Node, response types.Object) bool {
+	info := ctx.Info()
 	transferred := false
 	ast.PreorderStack(
 		node,
@@ -286,7 +285,7 @@ func nodeTransfersResponseBody(info *types.Info, node ast.Node, response types.O
 			}
 			switch current := current.(type) {
 			case *ast.CallExpr:
-				if callTransfersResponseBody(info, current, response) {
+				if callTransfersResponseBody(ctx, current, response) {
 					transferred = true
 					return false
 				}
@@ -332,13 +331,25 @@ func nodeTransfersResponseBody(info *types.Info, node ast.Node, response types.O
 	return transferred
 }
 
-func callTransfersResponseBody(info *types.Info, call *ast.CallExpr, response types.Object) bool {
+func callTransfersResponseBody(
+	ctx *ControlFlowContext,
+	call *ast.CallExpr,
+	response types.Object,
+) bool {
+	info := ctx.Info()
 	signature, _ := types.Unalias(info.TypeOf(call.Fun)).(*types.Signature)
 	if signature == nil || signature.Params() == nil {
 		return false
 	}
 	for index, argument := range call.Args {
 		if !directResponseBody(info, argument, response) {
+			continue
+		}
+		summary := ctx.ParameterEffect(call, index)
+		if summary.Known {
+			if summary.GuaranteesAny(ParameterEffectClose | ParameterEffectTransfer) {
+				return true
+			}
 			continue
 		}
 		parameterIndex := index

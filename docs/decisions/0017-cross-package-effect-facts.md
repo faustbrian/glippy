@@ -26,11 +26,14 @@ in deterministic dependency layers. It derives summaries through independent
 typed loads and identifies functions with stable package-qualified object
 strings rather than process pointers.
 
-Effect schema version 1 contains only a proven no-return bit. A dependency
-summary may consume summaries from deeper same-module dependencies. Dynamic
-calls, interface dispatch, recursion without a terminal proof, ill-typed
-packages, third-party modules, and workspace modules outside the selected
-module paths remain conservatively returning.
+Effect schema version 2 retains the proven no-return bit and adds one summary
+per function parameter. A known parameter summary distinguishes borrowing from
+an effect that every normally returning path reaches: conventional `Close`,
+`database/sql` `Commit` or `Rollback`, cancellation invocation, or ownership
+transfer. A dependency summary may consume summaries from deeper same-module
+dependencies. Dynamic calls, interface dispatch, recursion without a terminal
+proof, unsupported local aliases, ill-typed packages, third-party modules, and
+workspace modules outside the selected module paths remain conservative.
 
 The shared CFG builder and SSA no-return predicate consume the same immutable
 summary set. Effect source is not added to the selected source set, is never a
@@ -39,9 +42,11 @@ is demand-driven by enabled rule metadata and remains serialized. Root and
 effect sources share the configured package, file, and byte limits.
 
 Native cache snapshots bind the effect requirement. Cache keys include a
-digest identified as `native-effects-v1`, derived from the schema version and
-canonically ordered stable no-return identities. A changed summary therefore
-invalidates native diagnostics without making source pointers persistent.
+digest identified as `native-effects-v2`, derived from the schema version,
+canonically ordered stable no-return identities, and ordered parameter-effect
+records including index, known/always state, and effect kinds. A changed
+summary therefore invalidates native diagnostics without making source
+pointers persistent.
 
 ## Alternatives
 
@@ -53,8 +58,11 @@ invalidates native diagnostics without making source pointers persistent.
   do not prove control-flow behavior.
 - Reuse type-object pointers across independent loads: rejected because those
   identities are process- and load-specific.
-- Export resource and return-state effects in schema version 1: deferred until
-  their ownership and alias contracts have focused false-positive evidence.
+- Treat every helper argument as ownership transfer: retained as the fallback
+  only when no safe summary is available because proven borrowing must not hide
+  a local leak.
+- Export returned-state effects in schema version 2: deferred until nil/error
+  relationships have focused path and alias evidence.
 
 ## Consequences
 
@@ -63,15 +71,18 @@ helpers without making unrelated typed rules pay for effect loading. Cold runs
 perform additional module-local package loads; warm native-result caching and
 the bounded source policy constrain that cost.
 
-The first schema does not prove cleanup, transaction completion, cancellation
-transfer, nil/error result relationships, external-module helpers, or
-multi-module workspace effects. Those gaps remain explicit rather than being
-filled with optimistic assumptions.
+The second schema improves the four lifecycle consumers without changing their
+unknown-call safety boundary. It does not prove returned nil/error
+relationships, effects reached only through unsupported aliases,
+external-module helpers, or multi-module workspace effects. Those gaps remain
+explicit rather than being filled with optimistic assumptions.
 
 ## Revisit Trigger
 
-Advance the schema only when a lifecycle or returned-state effect has exact
-positive and close-negative fixtures, stable cross-load identity, deterministic
-cache invalidation, bounded cold and warm cost, and dogfood evidence. Revisit
-module selection when workspace or replacement-module dogfood demonstrates a
-material same-repository false negative.
+Advance the schema again only when a returned-state or additional ownership
+effect has exact positive and close-negative fixtures, stable cross-load
+identity, deterministic cache invalidation, bounded cold and warm cost, and
+dogfood evidence. Revisit aliasing when a repeated real helper pattern can be
+modeled without optimistic ownership claims. Revisit module selection when
+workspace or replacement-module dogfood demonstrates a material same-repository
+false negative.

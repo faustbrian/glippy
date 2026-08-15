@@ -1344,6 +1344,130 @@ func TestRunPackagesInvalidatesNativeCacheWhenDependencySyntaxChanges(t *testing
 	}
 }
 
+func TestRunPackagesInvalidatesNativeCacheWhenParameterEffectsChange(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/effectcache\n\ngo 1.26.0\n",
+	)
+	dependencyPath := filepath.Join(root, "helper", "helper.go")
+	writeTypesFixture(
+		t,
+		dependencyPath,
+		"package helper\n\nimport \"io\"\n\nfunc Apply(io.Closer) {}\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "project.go"),
+		`package project
+
+import (
+	"io"
+	"example.com/effectcache/helper"
+)
+
+func run(closer io.Closer) { helper.Apply(closer) }
+`,
+	)
+
+	metadata := controlFlowMetadata("parameter-effect-cache")
+	metadata.RequiresEffectFacts = true
+	runs := 0
+	registry, err := rules.NewRegistry(
+		controlFlowRule{
+			metadata: metadata,
+			run: func(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+				declaration, ok := ctx.Function().(*ast.FuncDecl)
+				if !ok || declaration.Name.Name != "run" {
+					return nil, nil
+				}
+				runs++
+				var summary rules.ParameterEffectSummary
+				ast.Inspect(
+					declaration.Body,
+					func(node ast.Node) bool {
+						call, ok := node.(*ast.CallExpr)
+						if ok {
+							summary = ctx.ParameterEffect(call, 0)
+						}
+						return true
+					},
+				)
+				if !summary.Known || summary.Always {
+					return nil, nil
+				}
+				range_, err := ctx.Range(declaration.Name)
+				if err != nil {
+					return nil, err
+				}
+				return []rules.Finding{
+					{
+						MessageKey: "borrowed",
+						Message: "helper borrows the parameter",
+						Range: range_,
+					},
+				}, nil
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := filepath.Join(t.TempDir(), "cache")
+	store, err := cache.Open(cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
+	run := func() analysis.PackageResult {
+		t.Helper()
+		result, err := analysis.RunPackages(
+			context.Background(),
+			registry,
+			analysis.RunOptions{
+				Preset: rules.PresetCorrectness,
+				Cache: packageAnalyzerCacheOptions(store),
+			},
+			packageAnalyzerCacheLoadOptions(root),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	first := run()
+	second := run()
+	if runs != 1 ||
+		len(first.Files) != 1 ||
+		len(first.Files[0].Diagnostics) != 1 ||
+		!reflect.DeepEqual(second.Files, first.Files) {
+		t.Fatalf(
+			"warm parameter effect cache runs = %d; results = %#v, %#v",
+			runs,
+			first,
+			second,
+		)
+	}
+	writeTypesFixture(
+		t,
+		dependencyPath,
+		"package helper\n\nimport \"io\"\n\nfunc Apply(closer io.Closer) { _ = closer.Close() }\n",
+	)
+	changed := run()
+	if runs != 2 || len(changed.Files) != 1 || len(changed.Files[0].Diagnostics) != 0 {
+		t.Fatalf("changed parameter effect cache runs = %d; result = %#v", runs, changed)
+	}
+}
+
 func TestRunPackagesRejectsExpiredSuppressions(t *testing.T) {
 	t.Parallel()
 

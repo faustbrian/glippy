@@ -108,6 +108,14 @@ native execution. A valid warm entry MAY bypass native callbacks and CFG or SSA
 construction because the key and payload bind every selected rule and
 loaded-graph input.
 
+An effect-aware native entry MUST include the `native-effects-v2` component.
+Its digest binds the effect schema version, canonically ordered no-return
+identities, and every exported parameter-effect identity, parameter index,
+known/always state, and effect-kind bitset. A dependency change that alters a
+borrow, guaranteed completion, invocation, or ownership transfer MUST therefore
+invalidate the native result even when the root source and registry are
+unchanged.
+
 This proves cold population, independent-load hits, source invalidation,
 corruption-as-recomputation, and transactional restore for the implemented
 fact-bearing adapter and native-tier boundaries. Owned analyzer and native-tier

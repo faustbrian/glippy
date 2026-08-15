@@ -27,7 +27,7 @@ func (contextCancelLeakRule) Metadata() Metadata {
 	return Metadata{
 		ID: "context-cancel-leak",
 		Summary: "detects context cancellation functions that may not run",
-		Documentation: "The cancellation function returned by context.WithCancel, context.WithTimeout, or context.WithDeadline releases resources owned by the derived context. Discarding it or returning along a path that never uses it can retain timers, children, and references longer than intended. Glippy implements the standard lostcancel contract over its shared control-flow tier and consumes versioned no-return summaries for imported helpers in the selected modules.",
+		Documentation: "The cancellation function returned by context.WithCancel, context.WithTimeout, or context.WithDeadline releases resources owned by the derived context. Discarding it or returning along a path that never invokes or transfers it can retain timers, children, and references longer than intended. Glippy implements the standard lostcancel contract over its shared control-flow tier and consumes versioned no-return and parameter-effect summaries for imported helpers in the selected modules.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetCorrectness},
 		MinimumGoVersion: "1.25",
@@ -35,8 +35,8 @@ func (contextCancelLeakRule) Metadata() Metadata {
 		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
-			"As in the standard lostcancel analyzer, any reference to the cancellation variable counts as a use; the rule does not prove that the referenced function is eventually called.",
-			"Cancellation transferred through helpers, fields, or containers is outside the intraprocedural ownership model.",
+			"A statically resolved same-module helper that provably borrows the cancellation function does not discharge the obligation; guaranteed invocation or ownership transfer must cover every normally returning helper path.",
+			"Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules retain the conservative use-or-transfer behavior when no summary is available.",
 			"The shared CFG propagates no-return behavior through the selected package and same-module imported helpers. Third-party helpers outside the selected modules remain conservatively returning unless they match an exact standard-library terminal API.",
 		},
 		Examples: []Example{
@@ -80,7 +80,7 @@ func (contextCancelLeakRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding,
 		) {
 			continue
 		}
-		if contextCancelPath(ctx.Graph(), ctx.Info(), candidate, signature) == nil {
+		if contextCancelPath(ctx, candidate, signature) == nil {
 			continue
 		}
 		range_, err := ctx.Range(candidate.statement)
@@ -281,28 +281,16 @@ func contextCancelIdentifier(statement ast.Node) *ast.Ident {
 }
 
 func contextCancelPath(
-	graph *cfg.CFG,
-	info *types.Info,
+	ctx *ControlFlowContext,
 	candidate contextCancelCandidate,
 	signature *types.Signature,
 ) *ast.ReturnStmt {
+	graph := ctx.Graph()
+	info := ctx.Info()
 	namedResult := tupleContainsVariable(signature.Results(), candidate.variable)
 	uses := func(nodes []ast.Node) bool {
 		for _, node := range nodes {
-			found := false
-			ast.Inspect(
-				node,
-				func(current ast.Node) bool {
-					switch current := current.(type) {
-					case *ast.Ident:
-						found = info.Uses[current] == candidate.variable
-					case *ast.ReturnStmt:
-						found = current.Results == nil && namedResult
-					}
-					return !found
-				},
-			)
-			if found {
+			if contextCancelNodeUses(ctx, info, node, candidate.variable, namedResult) {
 				return true
 			}
 		}
@@ -357,6 +345,61 @@ func contextCancelPath(
 		return nil
 	}
 	return search(definition.Succs)
+}
+
+func contextCancelNodeUses(
+	ctx *ControlFlowContext,
+	info *types.Info,
+	node ast.Node,
+	variable *types.Var,
+	namedResult bool,
+) bool {
+	used := false
+	ast.PreorderStack(
+		node,
+		nil,
+		func(current ast.Node, stack []ast.Node) bool {
+			if used {
+				return false
+			}
+			if returned, ok := current.(*ast.ReturnStmt);
+				ok && returned.Results == nil && namedResult {
+				used = true
+				return false
+			}
+			identifier, ok := current.(*ast.Ident)
+			if !ok || info.Uses[identifier] != variable {
+				return true
+			}
+			for index := len(stack) - 1; index >= 0; index-- {
+				call, ok := stack[index].(*ast.CallExpr)
+				if !ok {
+					continue
+				}
+				if ast.Unparen(call.Fun) == identifier {
+					used = true
+					return false
+				}
+				for argument, expression := range call.Args {
+					if ast.Unparen(expression) != identifier {
+						continue
+					}
+					summary := ctx.ParameterEffect(call, argument)
+					if !summary.Known ||
+						summary.GuaranteesAny(
+							ParameterEffectCancelInvoke |
+								ParameterEffectTransfer,
+						) {
+						used = true
+					}
+					return false
+				}
+			}
+			used = true
+			return false
+		},
+	)
+	return used
 }
 
 func tupleContainsVariable(tuple *types.Tuple, variable *types.Var) bool {

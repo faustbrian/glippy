@@ -111,6 +111,8 @@ func objectObligationEffect(
 	node ast.Node,
 	object types.Object,
 	complete func(*ast.CallExpr) bool,
+	parameterEffect func(*ast.CallExpr, int) ParameterEffectSummary,
+	acceptedEffects ParameterEffectKind,
 ) obligationEffect {
 	effect := obligationOpen
 	ast.PreorderStack(
@@ -132,9 +134,24 @@ func objectObligationEffect(
 					effect = obligationCompleted
 					return false
 				}
-				for _, argument := range current.Args {
-					if directObject(info, argument) == object ||
-						methodValueUsesObject(info, argument, object) {
+				for index, argument := range current.Args {
+					if directObject(info, argument) == object {
+						if parameterEffect != nil {
+							summary := parameterEffect(current, index)
+							if summary.Known {
+								if summary.GuaranteesAny(
+									acceptedEffects,
+								) {
+									effect = obligationCompleted
+									return false
+								}
+								continue
+							}
+						}
+						effect = obligationTransferred
+						return false
+					}
+					if methodValueUsesObject(info, argument, object) {
 						effect = obligationTransferred
 						return false
 					}

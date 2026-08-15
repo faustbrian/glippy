@@ -11,6 +11,7 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 	"golang.org/x/tools/go/cfg"
 	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/types/typeutil"
 )
 
 // Requirement is the most expensive representation a rule requires.
@@ -586,6 +587,40 @@ type ControlFlowContext struct {
 	function ast.Node
 	body *ast.BlockStmt
 	graph *cfg.CFG
+	effects EffectFacts
+}
+
+// ParameterEffectKind identifies a proven terminal ownership effect applied
+// to one function parameter.
+type ParameterEffectKind uint8
+
+const (
+	ParameterEffectClose ParameterEffectKind = 1 << iota
+	ParameterEffectTransactionComplete
+	ParameterEffectCancelInvoke
+	ParameterEffectTransfer
+)
+
+// ParameterEffectSummary describes every normally returning path through one
+// statically resolved function parameter. Known distinguishes a proven borrow
+// from an unavailable or ambiguous summary. Always is true only when every
+// normally returning path reaches one of Kinds before returning.
+type ParameterEffectSummary struct {
+	Known bool
+	Always bool
+	Kinds ParameterEffectKind
+}
+
+// GuaranteesAny reports whether every normally returning path applies only an
+// accepted terminal effect and at least one such effect is present.
+func (s ParameterEffectSummary) GuaranteesAny(accepted ParameterEffectKind) bool {
+	return s.Known && s.Always && s.Kinds != 0 && s.Kinds & ^accepted == 0
+}
+
+// EffectFacts exposes immutable, stable cross-load semantic summaries to
+// control-flow rules without exposing dependency source as lint targets.
+type EffectFacts interface {
+	ParameterEffect(*types.Func, int) ParameterEffectSummary
 }
 
 // SSAContext binds one source function to its shared SSA program, typed
@@ -754,12 +789,14 @@ func NewControlFlowContext(
 	function ast.Node,
 	body *ast.BlockStmt,
 	graph *cfg.CFG,
+	effects EffectFacts,
 ) *ControlFlowContext {
 	return &ControlFlowContext{
 		typesContext: typesContext,
 		function: function,
 		body: body,
 		graph: graph,
+		effects: effects,
 	}
 }
 
@@ -785,6 +822,39 @@ func (c *ControlFlowContext) Graph() *cfg.CFG {
 		return nil
 	}
 	return c.graph
+}
+
+// ParameterEffect returns the conservative summary for one argument of a
+// statically resolved call. Dynamic calls and invalid argument indexes are
+// unknown.
+func (c *ControlFlowContext) ParameterEffect(
+	call *ast.CallExpr,
+	argument int,
+) ParameterEffectSummary {
+	if c == nil ||
+		c.typesContext == nil ||
+		c.effects == nil ||
+		call == nil ||
+		argument < 0 ||
+		argument >= len(call.Args) {
+		return ParameterEffectSummary{}
+	}
+	callee := typeutil.StaticCallee(c.typesContext.info, call)
+	if callee == nil {
+		return ParameterEffectSummary{}
+	}
+	parameter := argument
+	signature, _ := callee.Type().(*types.Signature)
+	if signature == nil || signature.Params() == nil {
+		return ParameterEffectSummary{}
+	}
+	if signature.Variadic() && parameter >= signature.Params().Len() - 1 {
+		parameter = signature.Params().Len() - 1
+	}
+	if parameter < 0 || parameter >= signature.Params().Len() {
+		return ParameterEffectSummary{}
+	}
+	return c.effects.ParameterEffect(callee, parameter)
 }
 
 // IllTyped reports whether package loading encountered type errors.

@@ -61,6 +61,15 @@ func RunControlFlow(
 		return nil, err
 	}
 	noReturns := newNoReturnAnalysis(ctx, packages_, loaded.effectFacts)
+	effects := cloneNativeEffectFacts(loaded.effectFacts)
+	if loaded.effectFacts != nil {
+		parameterEffects := newParameterEffectAnalysis(ctx, packages_, effects, noReturns)
+		parameterEffects.buildAll()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		effects.addParameterEffects(parameterEffects)
+	}
 
 	diagnostics := make([]rules.Diagnostic, 0)
 	for _, work := range files {
@@ -102,6 +111,7 @@ func RunControlFlow(
 					function.function,
 					function.body,
 					graph,
+					effects,
 				)
 				ruleStarted := beginStatisticsMeasurement(statistics)
 				findings, err := active.rule.RunControlFlow(ruleContext)

@@ -75,10 +75,15 @@ mutate those shared values.
 A native CFG-tier or SSA-tier rule MAY declare that it requires semantic
 effect facts. No cheaper tier MAY declare that requirement. When at least one
 enabled native rule requires effects, the scheduler MUST load same-module
-imported packages in deterministic dependency layers, derive versioned stable
-function summaries, and install those summaries in the shared CFG and SSA
-no-return predicate. It MUST NOT retain effect inputs as lint targets or expose
-their independently loaded type objects to rules. Third-party and workspace
+imported packages in deterministic dependency layers and derive versioned
+stable function summaries. It MUST install no-return summaries in the shared
+CFG and SSA predicate and expose immutable parameter effects to CFG rules by
+stable function identity and parameter index. A parameter effect MUST be known
+only when analysis can distinguish a proven borrow from an effect reached on
+every normally returning path. Unknown calls, interface dispatch, unresolved
+recursion, and unsupported aliasing MUST fail closed. The scheduler MUST NOT
+retain effect inputs as lint targets or expose their independently loaded type
+objects to rules. Third-party and workspace
 module effects remain unavailable until their identity and loading contracts
 are separately admitted.
 

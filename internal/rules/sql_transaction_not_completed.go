@@ -26,7 +26,7 @@ func (sqlTransactionNotCompletedRule) Metadata() Metadata {
 	return Metadata{
 		ID: "sql-transaction-not-completed",
 		Summary: "detects database transactions left without commit or rollback",
-		Documentation: "database/sql requires every successful transaction to end with Tx.Commit or Tx.Rollback. A locally owned transaction that reaches a normal return without either call can retain a connection, locks, and transaction state. This rule follows direct DB.Begin, DB.BeginTx, and Conn.BeginTx results through the shared control-flow graph after a conventional acquisition-error guard.",
+		Documentation: "database/sql requires every successful transaction to end with Tx.Commit or Tx.Rollback. A locally owned transaction that reaches a normal return without either call can retain a connection, locks, and transaction state. This rule follows direct DB.Begin, DB.BeginTx, and Conn.BeginTx results through the shared control-flow graph after a conventional acquisition-error guard and consumes versioned same-module helper effects.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetCorrectness},
 		MinimumGoVersion: "1.25",
@@ -35,8 +35,8 @@ func (sqlTransactionNotCompletedRule) Metadata() Metadata {
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"The initial contract recognizes direct database/sql DB.Begin, DB.BeginTx, and Conn.BeginTx assignments followed immediately by an err != nil guard whose body returns.",
-			"Passing, returning, sending, storing, or capturing the transaction counts as an ownership transfer; the rule does not inspect the receiving code.",
-			"Only standard Tx.Commit and Tx.Rollback calls or an explicit ownership transfer discharge the obligation; wrapper finalizers are not inferred.",
+			"A statically resolved same-module helper that provably borrows the transaction leaves the obligation open; guaranteed Commit, Rollback, or transfer must cover every normally returning helper path.",
+			"Dynamic calls, interface dispatch, recursion, wrapper finalizers, and helpers outside selected modules retain the conservative ownership-transfer behavior when no summary is available.",
 			"Generated files and packages with type errors are excluded.",
 		},
 		Examples: []Example{
@@ -64,7 +64,7 @@ func (sqlTransactionNotCompletedRule) RunControlFlow(ctx *ControlFlowContext) ([
 	}
 	findings := make([]Finding, 0)
 	for _, candidate := range sqlTransactionCandidates(ctx.Body(), ctx.Graph(), ctx.Info()) {
-		if !sqlTransactionReturnsOpen(candidate, ctx.Info()) {
+		if !sqlTransactionReturnsOpen(candidate, ctx) {
 			continue
 		}
 		range_, err := ctx.Range(candidate.identifier)
@@ -196,7 +196,8 @@ func sqlBeginCall(info *types.Info, call *ast.CallExpr) bool {
 	}
 }
 
-func sqlTransactionReturnsOpen(candidate sqlTransactionCandidate, info *types.Info) bool {
+func sqlTransactionReturnsOpen(candidate sqlTransactionCandidate, ctx *ControlFlowContext) bool {
+	info := ctx.Info()
 	return obligationReachesOpenReturn(
 		candidate.start,
 		func(node ast.Node) obligationEffect {
@@ -211,6 +212,8 @@ func sqlTransactionReturnsOpen(candidate sqlTransactionCandidate, info *types.In
 						candidate.object,
 					)
 				},
+				ctx.ParameterEffect,
+				ParameterEffectTransactionComplete | ParameterEffectTransfer,
 			)
 		},
 	)

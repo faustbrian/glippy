@@ -10,21 +10,42 @@ import (
 	"strings"
 
 	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/rules"
 	"golang.org/x/tools/go/packages"
 )
 
-const nativeEffectFactSchemaVersion = 1
+const nativeEffectFactSchemaVersion = 2
 
 // nativeEffectFacts contains conservative, versioned semantic summaries whose
-// stable identities survive independent package loads. The first schema
-// exports only proven no-return functions; later effect kinds must advance the
-// schema whenever their encoded meaning changes.
+// stable identities survive independent package loads.
 type nativeEffectFacts struct {
 	noReturns map[string]struct{}
+	parameters map[string]map[int]rules.ParameterEffectSummary
 }
 
 func newNativeEffectFacts() *nativeEffectFacts {
-	return &nativeEffectFacts{noReturns: make(map[string]struct{})}
+	return &nativeEffectFacts{
+		noReturns: make(map[string]struct{}),
+		parameters: make(map[string]map[int]rules.ParameterEffectSummary),
+	}
+}
+
+func cloneNativeEffectFacts(facts *nativeEffectFacts) *nativeEffectFacts {
+	result := newNativeEffectFacts()
+	if facts == nil {
+		return result
+	}
+	for identity := range facts.noReturns {
+		result.noReturns[identity] = struct{}{}
+	}
+	for identity, parameters := range facts.parameters {
+		cloned := make(map[int]rules.ParameterEffectSummary, len(parameters))
+		for index, summary := range parameters {
+			cloned[index] = summary
+		}
+		result.parameters[identity] = cloned
+	}
+	return result
 }
 
 func (f *nativeEffectFacts) noReturn(function *types.Func) bool {
@@ -33,6 +54,19 @@ func (f *nativeEffectFacts) noReturn(function *types.Func) bool {
 	}
 	_, found := f.noReturns[stableFunctionIdentity(function)]
 	return found
+}
+
+// ParameterEffect implements rules.EffectFacts using a stable identity that
+// survives the independent dependency and root package loads.
+func (f *nativeEffectFacts) ParameterEffect(
+	function *types.Func,
+	index int,
+) rules.ParameterEffectSummary {
+	if f == nil || index < 0 {
+		return rules.ParameterEffectSummary{}
+	}
+	parameters := f.parameters[stableFunctionIdentity(function)]
+	return parameters[index]
 }
 
 func (f *nativeEffectFacts) addNoReturns(analysis *noReturnAnalysis) {
@@ -44,6 +78,27 @@ func (f *nativeEffectFacts) addNoReturns(analysis *noReturnAnalysis) {
 			if identity := stableFunctionIdentity(function); identity != "" {
 				f.noReturns[identity] = struct{}{}
 			}
+		}
+	}
+}
+
+func (f *nativeEffectFacts) addParameterEffects(analysis *parameterEffectAnalysis) {
+	if f == nil || analysis == nil {
+		return
+	}
+	for function, definition := range analysis.definitions {
+		identity := stableFunctionIdentity(function)
+		if identity == "" || definition == nil {
+			continue
+		}
+		parameters := make(map[int]rules.ParameterEffectSummary)
+		for index, summary := range definition.summaries {
+			if summary.Known {
+				parameters[index] = summary
+			}
+		}
+		if len(parameters) != 0 {
+			f.parameters[identity] = parameters
 		}
 	}
 }
@@ -62,9 +117,58 @@ func (f *nativeEffectFacts) digest() cache.Digest {
 	}
 	sort.Strings(identities)
 	for _, identity := range identities {
+		_, _ = digest.Write([]byte{0})
 		binary.BigEndian.PutUint64(version[:], uint64(len(identity)))
 		_, _ = digest.Write(version[:])
 		_, _ = digest.Write([]byte(identity))
+	}
+	type parameterRecord struct {
+		identity string
+		index int
+		summary rules.ParameterEffectSummary
+	}
+	parameters := make([]parameterRecord, 0)
+	if f != nil {
+		for identity, summaries := range f.parameters {
+			for index, summary := range summaries {
+				parameters = append(
+					parameters,
+					parameterRecord{
+						identity: identity,
+						index: index,
+						summary: summary,
+					},
+				)
+			}
+		}
+	}
+	sort.Slice(
+		parameters,
+		func(first, second int) bool {
+			if parameters[first].identity != parameters[second].identity {
+				return parameters[first].identity < parameters[second].identity
+			}
+			return parameters[first].index < parameters[second].index
+		},
+	)
+	for _, parameter := range parameters {
+		_, _ = digest.Write([]byte{1})
+		binary.BigEndian.PutUint64(version[:], uint64(len(parameter.identity)))
+		_, _ = digest.Write(version[:])
+		_, _ = digest.Write([]byte(parameter.identity))
+		binary.BigEndian.PutUint64(version[:], uint64(parameter.index))
+		_, _ = digest.Write(version[:])
+		if parameter.summary.Known {
+			_, _ = digest.Write([]byte{1})
+		} else {
+			_, _ = digest.Write([]byte{0})
+		}
+		if parameter.summary.Always {
+			_, _ = digest.Write([]byte{1})
+		} else {
+			_, _ = digest.Write([]byte{0})
+		}
+		_, _ = digest.Write([]byte{byte(parameter.summary.Kinds)})
 	}
 	var result cache.Digest
 	copy(result[:], digest.Sum(nil))
@@ -181,6 +285,12 @@ func loadNativeEffectFacts(
 			return nil, err
 		}
 		facts.addNoReturns(analysis)
+		parameterEffects := newParameterEffectAnalysis(ctx, layers[index], facts, analysis)
+		parameterEffects.buildAll()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		facts.addParameterEffects(parameterEffects)
 	}
 	return facts, nil
 }

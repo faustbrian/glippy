@@ -51,9 +51,9 @@ inside formatting, and layout policy is not duplicated as lint noise.
   composable opt-ins, while restriction rules remain individually selected.
 - **Demand-driven analysis:** syntax-only work does not construct types, CFG,
   or SSA; deeper representations are shared within one package run. CFG and
-  SSA consumers share demand-driven no-return summaries for static calls in
-  the loaded package and exact standard-library terminal APIs without loading
-  dependency syntax speculatively.
+  SSA consumers share demand-driven no-return summaries, while lifecycle rules
+  consume versioned parameter effects for same-module imported helpers, without
+  retaining dependency syntax as lint targets.
 - **Safe source changes:** fixes carry source identity and safety class;
   conflicts, stale ranges, and failed validation cannot silently write source.
 - **One product, separate engines:** formatting, diagnostics, fix coordination,

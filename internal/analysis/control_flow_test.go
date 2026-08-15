@@ -468,6 +468,182 @@ func target() {}
 	}
 }
 
+func TestRunControlFlowExposesPackageParameterEffects(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "project.go"),
+		`package project
+
+type closer interface { Close() error }
+
+func borrow(value closer) {}
+func borrowAll(values ...closer) {}
+func borrowSecond(value closer) { borrowAll(nil, value) }
+func closeFirst(values ...closer) { _ = values[0].Close() }
+func close(value closer) { _ = value.Close() }
+
+func inspect(value closer) {
+	borrow(value)
+	borrowAll(value, value)
+	borrowSecond(value)
+	closeFirst(value, value)
+	close(value)
+}
+`,
+	)
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireControlFlow,
+			LoadEffectFacts: true,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summaries := make(map[string]rules.ParameterEffectSummary)
+	metadata := controlFlowMetadata("package-parameter-effects")
+	metadata.RequiresEffectFacts = true
+	rule := controlFlowRule{
+		metadata: metadata,
+		run: func(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+			declaration, ok := ctx.Function().(*ast.FuncDecl)
+			if !ok || declaration.Name.Name != "inspect" {
+				return nil, nil
+			}
+			ast.Inspect(
+				declaration.Body,
+				func(node ast.Node) bool {
+					call, ok := node.(*ast.CallExpr)
+					if !ok {
+						return true
+					}
+					identifier, _ := call.Fun.(*ast.Ident)
+					if identifier != nil {
+						summaries[identifier.Name] = ctx.ParameterEffect(
+							call,
+							0,
+						)
+						if identifier.Name == "borrowAll" {
+							summaries["borrowAllSecond"] = ctx.ParameterEffect(
+								call,
+								1,
+							)
+						}
+						if identifier.Name == "closeFirst" {
+							summaries["closeFirstSecond"] = ctx.ParameterEffect(
+								call,
+								1,
+							)
+						}
+					}
+					return true
+				},
+			)
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunControlFlow(context.Background(), loaded, registry, selection);
+		err != nil {
+		t.Fatal(err)
+	}
+	if borrow := summaries["borrow"]; !borrow.Known || borrow.Always {
+		t.Fatalf("borrow summary = %#v", borrow)
+	}
+	if close := summaries["close"]; !close.GuaranteesAny(rules.ParameterEffectClose) {
+		t.Fatalf("close summary = %#v", close)
+	}
+	if second := summaries["borrowAllSecond"]; !second.Known || second.Always {
+		t.Fatalf("variadic borrow summary = %#v", second)
+	}
+	if second := summaries["borrowSecond"]; !second.Known || second.Always {
+		t.Fatalf("propagated variadic borrow summary = %#v", second)
+	}
+	if second := summaries["closeFirstSecond"]; second.Known {
+		t.Fatalf("indexed variadic effect summary = %#v", second)
+	}
+}
+
+func TestRunControlFlowDoesNotBuildParameterEffectsWithoutRequirement(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "project.go"),
+		`package project
+
+type closer interface { Close() error }
+
+func close(value closer) { _ = value.Close() }
+func inspect(value closer) { close(value) }
+`,
+	)
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireControlFlow,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var summary rules.ParameterEffectSummary
+	rule := controlFlowRule{
+		metadata: controlFlowMetadata("no-parameter-effects"),
+		run: func(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+			declaration, ok := ctx.Function().(*ast.FuncDecl)
+			if !ok || declaration.Name.Name != "inspect" {
+				return nil, nil
+			}
+			statement, _ := declaration.Body.List[0].(*ast.ExprStmt)
+			call, _ := statement.X.(*ast.CallExpr)
+			summary = ctx.ParameterEffect(call, 0)
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunControlFlow(context.Background(), loaded, registry, selection);
+		err != nil {
+		t.Fatal(err)
+	}
+	if summary.Known {
+		t.Fatalf("parameter effect was built without a declared requirement: %#v", summary)
+	}
+}
+
 func TestRunControlFlowUsesAuthoritativeNoReturnFunctions(t *testing.T) {
 	t.Parallel()
 
