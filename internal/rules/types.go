@@ -158,6 +158,7 @@ type Metadata struct {
 	Requirement Requirement
 	NodeInterests []NodeKind
 	RequiresDependencySyntax bool
+	RequiresEffectFacts bool
 	RunOnGenerated bool
 	RunDespiteTypeErrors bool
 	Categories []Category

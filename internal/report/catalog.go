@@ -61,6 +61,7 @@ func writeRuleMarkdown(output *strings.Builder, metadata rules.Metadata) {
 	fmt.Fprintf(output, "- Analysis tier: %s\n", metadata.Requirement)
 	fmt.Fprintf(output, "- Node interests: %s\n", markdownNodeKindList(metadata.NodeInterests))
 	fmt.Fprintf(output, "- Dependency syntax: %s\n", catalogDependencyPolicy(metadata))
+	fmt.Fprintf(output, "- Effect facts: %s\n", catalogEffectPolicy(metadata))
 	fmt.Fprintf(output, "- Generated files: %s\n", catalogGeneratedPolicy(metadata))
 	fmt.Fprintf(output, "- Type-error packages: %s\n", catalogTypeErrorPolicy(metadata))
 	fmt.Fprintf(output, "- Categories: %s\n", markdownCategoryList(metadata.Categories))
@@ -168,6 +169,13 @@ func markdownCodeList(values []string) string {
 
 func catalogDependencyPolicy(metadata rules.Metadata) string {
 	if metadata.RequiresDependencySyntax {
+		return "required"
+	}
+	return "not required"
+}
+
+func catalogEffectPolicy(metadata rules.Metadata) string {
+	if metadata.RequiresEffectFacts {
 		return "required"
 	}
 	return "not required"

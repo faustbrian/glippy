@@ -101,11 +101,12 @@ depends on the upstream graph's otherwise undefined block-slice order.
 
 The shared no-return policy recognizes calls whose type information resolves
 to the predeclared `panic`, a proven named function or method in the loaded
-package set, or the documented exact standard-library terminal set. It treats
-shadowed identifiers, dynamic and interface calls, and other imported helpers
-as returning. This remains deliberately narrower than the complete
-interprocedural fact graph in the upstream `ctrlflow` analyzer and avoids
-loading dependency syntax speculatively. The graph also does not claim
+package set, a versioned same-module imported function summary requested by an
+enabled effect consumer, or the documented exact standard-library terminal
+set. It treats shadowed identifiers, dynamic and interface calls, and imported
+helpers outside selected modules as returning. Effect inputs use independent
+package loads and stable function identities, so their syntax does not become
+lint targets or enter the shared SSA program. The graph also does not claim
 short-circuit expression edges or complete abnormal panic flow; rules needing
 those contracts require SSA or a later reviewed control-flow extension.
 

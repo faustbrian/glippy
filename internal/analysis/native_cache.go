@@ -32,6 +32,7 @@ type nativeRuleSnapshot struct {
 	Execution string `json:"execution"`
 	NodeInterests []rules.NodeKind `json:"nodeInterests"`
 	RequiresDependencySyntax bool `json:"requiresDependencySyntax"`
+	RequiresEffectFacts bool `json:"requiresEffectFacts"`
 	RunOnGenerated bool `json:"runOnGenerated"`
 	RunDespiteTypeErrors bool `json:"runDespiteTypeErrors"`
 	MinimumGoVersion string `json:"minimumGoVersion"`
@@ -163,7 +164,7 @@ func nativePackageCacheKey(
 			FormatterMode: plan.options.FormatterMode,
 			LoadOptions: loadOptions,
 			Loaded: loaded,
-			Facts: map[string]cache.Digest{},
+			Facts: nativeEffectCacheDigests(loaded.effectFacts),
 		},
 	)
 	if err != nil {
@@ -241,6 +242,7 @@ func nativeRuleSnapshots(
 			Execution: execution,
 			NodeInterests: slices.Clone(metadata.NodeInterests),
 			RequiresDependencySyntax: metadata.RequiresDependencySyntax,
+			RequiresEffectFacts: metadata.RequiresEffectFacts,
 			RunOnGenerated: metadata.RunOnGenerated,
 			RunDespiteTypeErrors: metadata.RunDespiteTypeErrors,
 			MinimumGoVersion: metadata.MinimumGoVersion,
@@ -249,6 +251,13 @@ func nativeRuleSnapshots(
 		}
 	}
 	return snapshots, nil
+}
+
+func nativeEffectCacheDigests(facts *nativeEffectFacts) map[string]cache.Digest {
+	if facts == nil {
+		return map[string]cache.Digest{}
+	}
+	return map[string]cache.Digest{"native-effects-v1": facts.digest()}
 }
 
 func nativeSourceOwners(loaded PackageLoadResult) (map[string]string, error) {

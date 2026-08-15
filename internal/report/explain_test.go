@@ -126,6 +126,40 @@ func TestRenderRuleTextIncludesDependencySyntaxPolicy(t *testing.T) {
 	}
 }
 
+func TestRenderRuleTextIncludesEffectFactPolicy(t *testing.T) {
+	t.Parallel()
+
+	registry, err := rules.NewRegistry(
+		documentedRule{
+			metadata: rules.Metadata{
+				ID: "effect-rule",
+				Summary: "reports an interprocedural defect",
+				Documentation: "Consumes stable imported function effects.",
+				DefaultSeverity: rules.SeverityWarn,
+				Presets: []rules.Preset{rules.PresetCorrectness},
+				MinimumGoVersion: "1.22",
+				Requirement: rules.RequireControlFlow,
+				RequiresEffectFacts: true,
+				Categories: []rules.Category{rules.CategoryCorrectness},
+				Examples: []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, found := report.RenderRuleText(registry, "effect-rule")
+	if !found || !strings.Contains(string(output), "effect facts: required\n") {
+		t.Fatalf("RenderRuleText() = %q, %t", output, found)
+	}
+	encoded, found, err := report.RenderRuleJSON(registry, "effect-rule")
+	if err != nil ||
+		!found ||
+		!strings.Contains(string(encoded), `"requires_effect_facts": true`) {
+		t.Fatalf("RenderRuleJSON() = %q, %t, %v", encoded, found, err)
+	}
+}
+
 type packageDocumentedRule struct {
 	metadata rules.Metadata
 }
@@ -200,6 +234,7 @@ func TestRenderRuleTextUsesCanonicalMetadata(t *testing.T) {
 		"analysis tier: syntax\n" +
 		"node interests: call-expr\n" +
 		"dependency syntax: not required\n" +
+		"effect facts: not required\n" +
 		"generated files: excluded\n" +
 		"type-error packages: not applicable\n" +
 		"categories: correctness\n\n" +
@@ -342,6 +377,7 @@ The first rule exercises every documented metadata section.
 - Analysis tier: types
 - Node interests: none
 - Dependency syntax: required
+- Effect facts: not required
 - Generated files: included
 - Type-error packages: included
 - Categories: ` +
@@ -414,6 +450,7 @@ The later rule has no fixes or options.
 - Analysis tier: lexical source
 - Node interests: none
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
 - Categories: ` +

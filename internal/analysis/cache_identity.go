@@ -288,6 +288,7 @@ func addPackageSelectionComponents(
 		Requirement string
 		Tests bool
 		LoadDependencySyntax bool
+		LoadEffectFacts bool
 		BuildTags []string
 		ModuleMode ModuleMode
 		AllowNetwork bool
@@ -297,6 +298,7 @@ func addPackageSelectionComponents(
 		Requirement: options.Requirement.String(),
 		Tests: options.Tests,
 		LoadDependencySyntax: options.LoadDependencySyntax,
+		LoadEffectFacts: options.LoadEffectFacts,
 		BuildTags: tags,
 		ModuleMode: moduleMode,
 		AllowNetwork: options.AllowNetwork,

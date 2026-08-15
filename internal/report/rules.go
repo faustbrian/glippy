@@ -32,6 +32,7 @@ type RuleMetadata struct {
 	AnalysisTier string `json:"analysis_tier"`
 	NodeInterests []string `json:"node_interests"`
 	RequiresDependencySyntax bool `json:"requires_dependency_syntax"`
+	RequiresEffectFacts bool `json:"requires_effect_facts"`
 	RunOnGenerated bool `json:"run_on_generated"`
 	RunDespiteTypeErrors bool `json:"run_despite_type_errors"`
 	Categories []string `json:"categories"`
@@ -151,6 +152,7 @@ func mapRuleMetadata(metadata rules.Metadata) RuleMetadata {
 		AnalysisTier: RequirementName(metadata.Requirement),
 		NodeInterests: make([]string, len(metadata.NodeInterests)),
 		RequiresDependencySyntax: metadata.RequiresDependencySyntax,
+		RequiresEffectFacts: metadata.RequiresEffectFacts,
 		RunOnGenerated: metadata.RunOnGenerated,
 		RunDespiteTypeErrors: metadata.RunDespiteTypeErrors,
 		Categories: make([]string, len(metadata.Categories)),

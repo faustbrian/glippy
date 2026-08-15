@@ -100,7 +100,7 @@ func TestRegistryIncludesCorrectnessAnalyzerContracts(t *testing.T) {
 	}
 }
 
-func TestContextCancelLeakDoesNotLoadDependencySyntax(t *testing.T) {
+func TestContextCancelLeakUsesImportedNoReturnFacts(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -109,17 +109,43 @@ func TestContextCancelLeakDoesNotLoadDependencySyntax(t *testing.T) {
 		filepath.Join(root, "go.mod"),
 		"module example.com/contextcancelcost\n\ngo 1.26.0\n",
 	)
+	dependencyPath := filepath.Join(root, "terminate", "terminate.go")
+	writeFixture(
+		t,
+		filepath.Join(root, "halt", "halt.go"),
+		`package halt
+
+func Now() { panic("stop") }
+`,
+	)
+	writeFixture(
+		t,
+		dependencyPath,
+		`package terminate
+
+import "example.com/contextcancelcost/halt"
+
+func Now() { halt.Now() }
+`,
+	)
 	path := filepath.Join(root, "sample.go")
 	writeFixture(
 		t,
 		path,
 		`package sample
 
-import "context"
+import (
+	"context"
+	"example.com/contextcancelcost/terminate"
+)
 
-func leak(parent context.Context) context.Context {
-	child, _ := context.WithCancel(parent)
-	return child
+func stopOrCancel(parent context.Context, stop bool) {
+	_, cancel := context.WithCancel(parent)
+	if stop {
+		terminate.Now()
+	} else {
+		cancel()
+	}
 }
 `,
 	)
@@ -148,12 +174,130 @@ func leak(parent context.Context) context.Context {
 	}
 	if paths := result.Sources.Paths(); !reflect.DeepEqual(paths, []string{path}) {
 		t.Fatalf(
-			"context-cancel-leak loaded %d source files, want only the target source",
-			len(paths),
+			"context-cancel-leak retained effect source in the analyzed source set: %q",
+			paths,
 		)
 	}
-	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 0 {
 		t.Fatalf("context-cancel-leak result = %#v", result)
+	}
+}
+
+func TestNilnessUsesImportedNoReturnFacts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/nilnesseffects\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "terminate", "terminate.go"),
+		`package terminate
+
+func Now() { panic("stop") }
+`,
+	)
+	path := filepath.Join(root, "sample.go")
+	writeFixture(
+		t,
+		path,
+		`package sample
+
+import "example.com/nilnesseffects/terminate"
+
+func inspect(pointer *int) {
+	if pointer != nil {
+		terminate.Now()
+	}
+	if pointer != nil {
+		println(pointer)
+	}
+}
+`,
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"nilness": rules.SeverityWarn},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paths := result.Sources.Paths(); !reflect.DeepEqual(paths, []string{path}) {
+		t.Fatalf("nilness retained effect source in the analyzed source set: %q", paths)
+	}
+	if len(result.Files) != 1 ||
+		len(result.Files[0].Diagnostics) != 1 ||
+		result.Files[0].Diagnostics[0].RuleID != "nilness" ||
+		result.Files[0].Diagnostics[0].MessageKey != "cond" {
+		t.Fatalf("nilness imported no-return result = %#v", result)
+	}
+}
+
+func BenchmarkImportedNoReturnFacts(b *testing.B) {
+	root := b.TempDir()
+	writeFixture(
+		b,
+		filepath.Join(root, "go.mod"),
+		"module example.com/effectbenchmark\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		b,
+		filepath.Join(root, "terminate", "terminate.go"),
+		"package terminate\nfunc Now() { panic(\"stop\") }\n",
+	)
+	writeFixture(
+		b,
+		filepath.Join(root, "sample.go"),
+		`package sample
+
+import "example.com/effectbenchmark/terminate"
+
+func inspect(pointer *int) {
+	if pointer != nil { terminate.Now() }
+	if pointer != nil { println(pointer) }
+}
+`,
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		b.Fatal(err)
+	}
+	options := analysis.RunOptions{
+		Presets: []rules.Preset{},
+		Overrides: map[string]rules.Severity{"nilness": rules.SeverityWarn},
+		SourceGoVersion: "go1.26",
+	}
+	load := analysis.PackageLoadOptions{
+		Dir: root,
+		Patterns: []string{"."},
+		ModuleMode: analysis.ModuleReadonly,
+	}
+	b.ResetTimer()
+	for b.Loop() {
+		result, err := analysis.RunPackages(context.Background(), registry, options, load)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+			b.Fatalf("imported effect benchmark result = %#v", result)
+		}
 	}
 }
 

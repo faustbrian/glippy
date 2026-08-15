@@ -57,7 +57,7 @@ func RunControlFlow(
 	if err != nil {
 		return nil, err
 	}
-	noReturns := newNoReturnAnalysis(ctx, packages_)
+	noReturns := newNoReturnAnalysis(ctx, packages_, loaded.effectFacts)
 
 	diagnostics := make([]rules.Diagnostic, 0)
 	for _, work := range files {

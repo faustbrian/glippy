@@ -31,6 +31,7 @@ func (sqlTransactionNotCompletedRule) Metadata() Metadata {
 		Presets: []Preset{PresetCorrectness},
 		MinimumGoVersion: "1.25",
 		Requirement: RequireControlFlow,
+		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"The initial contract recognizes direct database/sql DB.Begin, DB.BeginTx, and Conn.BeginTx assignments followed immediately by an err != nil guard whose body returns.",

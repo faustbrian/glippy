@@ -32,6 +32,11 @@ func RenderRuleText(registry *rules.Registry, ruleID string) ([]byte, bool) {
 		dependencyPolicy = "required"
 	}
 	fmt.Fprintf(&output, "dependency syntax: %s\n", dependencyPolicy)
+	effectPolicy := "not required"
+	if metadata.RequiresEffectFacts {
+		effectPolicy = "required"
+	}
+	fmt.Fprintf(&output, "effect facts: %s\n", effectPolicy)
 	generatedPolicy := "excluded"
 	if metadata.RunOnGenerated {
 		generatedPolicy = "included"

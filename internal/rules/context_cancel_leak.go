@@ -27,16 +27,17 @@ func (contextCancelLeakRule) Metadata() Metadata {
 	return Metadata{
 		ID: "context-cancel-leak",
 		Summary: "detects context cancellation functions that may not run",
-		Documentation: "The cancellation function returned by context.WithCancel, context.WithTimeout, or context.WithDeadline releases resources owned by the derived context. Discarding it or returning along a path that never uses it can retain timers, children, and references longer than intended. Glippy implements the standard lostcancel contract over its shared control-flow tier because executing the analyzer's transitive no-return fact graph would require loading dependency syntax for the complete import closure.",
+		Documentation: "The cancellation function returned by context.WithCancel, context.WithTimeout, or context.WithDeadline releases resources owned by the derived context. Discarding it or returning along a path that never uses it can retain timers, children, and references longer than intended. Glippy implements the standard lostcancel contract over its shared control-flow tier and consumes versioned no-return summaries for imported helpers in the selected modules.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetCorrectness},
 		MinimumGoVersion: "1.25",
 		Requirement: RequireControlFlow,
+		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"As in the standard lostcancel analyzer, any reference to the cancellation variable counts as a use; the rule does not prove that the referenced function is eventually called.",
 			"Cancellation transferred through helpers, fields, or containers is outside the intraprocedural ownership model.",
-			"The shared CFG propagates package-local no-return behavior and recognizes exact standard-library terminal calls from os, runtime, syscall, log, and testing; other imported helpers without source or analyzer facts remain conservatively returning.",
+			"The shared CFG propagates no-return behavior through the selected package and same-module imported helpers. Third-party helpers outside the selected modules remain conservatively returning unless they match an exact standard-library terminal API.",
 		},
 		Examples: []Example{
 			{

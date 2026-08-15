@@ -25,21 +25,27 @@ type noReturnAnalysis struct {
 	definitions map[*types.Func]*noReturnDefinition
 	ordered []*noReturnDefinition
 	panicObject types.Object
+	effects *nativeEffectFacts
 	buildDepth int
 }
 
-func newNoReturnAnalysis(ctx context.Context, packages_ []*packages.Package) *noReturnAnalysis {
+func newNoReturnAnalysis(
+	ctx context.Context,
+	packages_ []*packages.Package,
+	effects *nativeEffectFacts,
+) *noReturnAnalysis {
 	analysis := &noReturnAnalysis{
 		ctx: ctx,
 		definitions: make(map[*types.Func]*noReturnDefinition),
 		ordered: make([]*noReturnDefinition, 0),
 		panicObject: types.Universe.Lookup("panic"),
+		effects: effects,
 	}
 	for _, pkg := range packages_ {
 		if ctx.Err() != nil {
 			break
 		}
-		if pkg == nil || pkg.TypesInfo == nil {
+		if pkg == nil || pkg.TypesInfo == nil || pkg.IllTyped {
 			continue
 		}
 		for _, file := range pkg.Syntax {
@@ -98,6 +104,9 @@ func (a *noReturnAnalysis) noReturn(function *types.Func) bool {
 	if isAuthoritativeNoReturn(function) {
 		return true
 	}
+	if a.effects.noReturn(function) {
+		return true
+	}
 	definition := a.definitions[function]
 	if definition == nil {
 		return false
@@ -114,7 +123,9 @@ func (a *noReturnAnalysis) predicate() func(*types.Func) bool {
 		}
 	}
 	return func(function *types.Func) bool {
-		return noReturns[function] || isAuthoritativeNoReturn(function)
+		return noReturns[function] ||
+			isAuthoritativeNoReturn(function) ||
+			a.effects.noReturn(function)
 	}
 }
 

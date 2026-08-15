@@ -82,6 +82,25 @@ func TestRegistryValidatesPackageWideRuleMetadata(t *testing.T) {
 			) {
 		t.Fatalf("NewRegistry() node-scoped dependency syntax error = %v", err)
 	}
+
+	effects := validMetadata("effect-facts")
+	effects.Requirement = rules.RequireControlFlow
+	effects.NodeInterests = nil
+	effects.RequiresEffectFacts = true
+	if _, err := rules.NewRegistry(metadataRule{metadata: effects}); err != nil {
+		t.Fatalf("NewRegistry() effect-fact metadata error = %v", err)
+	}
+
+	cheapEffects := validMetadata("cheap-effects")
+	cheapEffects.RequiresEffectFacts = true
+	if _, err := rules.NewRegistry(metadataRule{metadata: cheapEffects});
+		err == nil ||
+			!strings.Contains(
+				err.Error(),
+				"effect facts require control-flow or SSA analysis",
+			) {
+		t.Fatalf("NewRegistry() cheap effect-fact error = %v", err)
+	}
 }
 
 func TestRegistryValidatesAndOrdersNativeRuleMetadata(t *testing.T) {

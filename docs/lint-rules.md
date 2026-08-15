@@ -124,6 +124,7 @@ explicit simultaneous assignment for swaps.
 - Analysis tier: types
 - Node interests: `block-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -172,6 +173,7 @@ editing. Glippy adapts the standard Go appends analyzer.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -216,6 +218,7 @@ defeating the synchronization contract and introducing a race.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: included
 - Categories: `correctness`, `safety`
@@ -263,6 +266,7 @@ or false and usually indicates a mistaken mask or comparison value.
 - Analysis tier: types
 - Node interests: `binary-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -311,6 +315,7 @@ ID and complements the suspicious discarded-error rule for bare call statements.
 - Analysis tier: types
 - Node interests: `assign-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -362,6 +367,7 @@ other representation adds an allocation or conversion that the matching accessor
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `performance`, `style`
@@ -403,9 +409,8 @@ detects context cancellation functions that may not run
 The cancellation function returned by context.WithCancel, context.WithTimeout, or
 context.WithDeadline releases resources owned by the derived context. Discarding it or returning
 along a path that never uses it can retain timers, children, and references longer than intended.
-Glippy implements the standard lostcancel contract over its shared control-flow tier because
-executing the analyzer's transitive no-return fact graph would require loading dependency syntax for
-the complete import closure.
+Glippy implements the standard lostcancel contract over its shared control-flow tier and consumes
+versioned no-return summaries for imported helpers in the selected modules.
 
 - Default severity: `warn`
 - Presets: `correctness`
@@ -413,6 +418,7 @@ the complete import closure.
 - Analysis tier: control flow
 - Node interests: none
 - Dependency syntax: not required
+- Effect facts: required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -431,9 +437,9 @@ None.
   use; the rule does not prove that the referenced function is eventually called.
 - Cancellation transferred through helpers, fields, or containers is outside the intraprocedural
   ownership model.
-- The shared CFG propagates package-local no-return behavior and recognizes exact standard-library
-  terminal calls from os, runtime, syscall, log, and testing; other imported helpers without source
-  or analyzer facts remain conservatively returning.
+- The shared CFG propagates no-return behavior through the selected package and same-module imported
+  helpers. Third-party helpers outside the selected modules remain conservatively returning unless
+  they match an exact standard-library terminal API.
 
 ### Example: Retain and call the cancellation function
 
@@ -464,6 +470,7 @@ keys cause context.WithValue to panic.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -511,6 +518,7 @@ of the standard Go bools analyzer through its deterministic rule contract.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -558,6 +566,7 @@ value receivers.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: included
 - Categories: `correctness`, `safety`
@@ -603,6 +612,7 @@ before checking the paired error can dereference an invalid resource and hide th
 - Analysis tier: types
 - Node interests: `block-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -653,6 +663,7 @@ graph cannot reach a return, built-in panic, or runtime.Goexit after that defer.
 - Analysis tier: control flow
 - Node interests: none
 - Dependency syntax: not required
+- Effect facts: required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -667,8 +678,9 @@ None.
 
 ### Known limitations
 
-- Calls to functions that panic, terminate the goroutine, or terminate the process are not treated
-  as exits unless they are the predeclared panic function or runtime.Goexit.
+- No-return behavior propagates through the selected package and same-module imported helpers.
+  Third-party helpers outside the selected modules remain conservatively returning unless they match
+  an exact standard-library terminal API.
 - Generated files and packages with type errors are excluded.
 
 ### Example: Release per-iteration resources explicitly
@@ -706,6 +718,7 @@ control-flow rule.
 - Analysis tier: syntax
 - Node interests: `for-stmt`, `range-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
 - Categories: `safety`, `suspicious`
@@ -753,6 +766,7 @@ by a deferred Unlock.
 - Analysis tier: types
 - Node interests: `defer-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -799,6 +813,7 @@ the surrounding function returns. Glippy adapts the standard Go defers analyzer.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -846,6 +861,7 @@ best-effort operations may need a narrow suppression.
 - Analysis tier: types
 - Node interests: `expr-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -896,6 +912,7 @@ effects are ignored because changing those branches requires more context.
 - Analysis tier: syntax
 - Node interests: `if-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
 - Categories: `correctness`
@@ -942,6 +959,7 @@ can remain documented without noise.
 - Analysis tier: syntax
 - Node interests: `if-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
 - Categories: `style`, `maintainability`, `suspicious`
@@ -991,6 +1009,7 @@ scheduler.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -1037,6 +1056,7 @@ wrapped errors will not match as intended.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -1085,6 +1105,7 @@ indentation, and excludes nested function literals from their enclosing function
 - Analysis tier: syntax
 - Node interests: `func-decl`, `func-lit`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
 - Categories: `complexity`, `maintainability`
@@ -1133,6 +1154,7 @@ whose spelling disagrees with values managed through Header.Get, Set, Add, or De
 - Analysis tier: types
 - Node interests: `index-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -1182,6 +1204,7 @@ failure.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -1234,6 +1257,7 @@ helpers through the shared control-flow graph after a conventional acquisition-e
 - Analysis tier: control flow
 - Node interests: none
 - Dependency syntax: not required
+- Effect facts: required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`, `suspicious`
@@ -1291,6 +1315,7 @@ effects, so the rule diagnoses the duplication without offering an automatic rew
 - Analysis tier: syntax
 - Node interests: `if-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
 - Categories: `suspicious`, `maintainability`
@@ -1338,6 +1363,7 @@ values entirely.
 - Analysis tier: types
 - Node interests: `assign-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -1384,6 +1410,7 @@ check.
 - Analysis tier: types
 - Node interests: `binary-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -1431,6 +1458,7 @@ Comparing that conversion to nil therefore has a constant result.
 - Analysis tier: types
 - Node interests: `binary-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -1477,6 +1505,7 @@ always panics in its single-result form and always fails in its comma-ok form.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -1523,6 +1552,7 @@ documentation inconsistent.
 - Analysis tier: types
 - Node interests: none
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `style`, `maintainability`
@@ -1572,6 +1602,7 @@ means the author intended to leave the outer loop.
 - Analysis tier: syntax
 - Node interests: `for-stmt`, `range-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
 - Categories: `correctness`
@@ -1629,6 +1660,7 @@ URL.RawQuery, so the request URL remains unchanged unless the encoded values are
 - Analysis tier: types
 - Node interests: `expr-stmt`, `assign-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -1677,6 +1709,7 @@ update the caller's value and is commonly an unintended pointer-receiver omissio
 - Analysis tier: types
 - Node interests: `func-decl`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -1724,6 +1757,7 @@ Writers already accept byte slices through Write, avoiding that conversion.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `performance`
@@ -1770,6 +1804,7 @@ strings.EqualFold performs a Unicode-aware case-insensitive comparison directly.
 - Analysis tier: types
 - Node interests: `binary-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `performance`, `style`
@@ -1818,6 +1853,7 @@ path. Every invocation recurses until stack exhaustion without producing a resul
 - Analysis tier: types
 - Node interests: `func-decl`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -1862,6 +1898,7 @@ fractional result is intended, at least one operand must be converted before the
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -1909,6 +1946,7 @@ interfaces, or pointers have no supported fixed-size binary representation.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -1957,6 +1995,7 @@ standard buildtag analyzer for each discovered Go source file.
 - Analysis tier: syntax
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
 - Categories: `correctness`
@@ -2007,6 +2046,7 @@ directives are reported through the shared syntax pipeline.
 - Analysis tier: syntax
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
 - Categories: `correctness`
@@ -2056,6 +2096,7 @@ off-by-one error or an ineffective attempt to choose between alternatives.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -2103,6 +2144,7 @@ and makes Compile or the Match helpers return an error instead of performing the
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -2150,6 +2192,7 @@ runtime diagnostics. Glippy adapts the standard Go slog analyzer.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -2196,6 +2239,7 @@ instead of the intended number.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -2244,6 +2288,7 @@ field selection ambiguous. Glippy adapts the standard Go structtag analyzer.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: included
 - Categories: `correctness`
@@ -2290,6 +2335,7 @@ standard tests analyzer through its typed package scheduler.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -2335,6 +2381,7 @@ leaves the intended result unchanged. Glippy adapts the standard Go unmarshal an
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -2381,6 +2428,7 @@ methods and a deliberately small set of APIs whose contract is to wait.
 - Analysis tier: types
 - Node interests: `block-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `safety`, `suspicious`, `performance`
@@ -2437,6 +2485,7 @@ retaining the modern-Go cases that the standard analyzer no longer reports.
 - Analysis tier: types
 - Node interests: `for-stmt`, `range-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -2488,6 +2537,7 @@ comparison and assignment structure.
 - Analysis tier: types
 - Node interests: `if-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `style`, `complexity`, `maintainability`
@@ -2537,6 +2587,7 @@ ownership model.
 - Analysis tier: types
 - Node interests: none
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `style`, `maintainability`
@@ -2587,6 +2638,7 @@ with == or != therefore produces a constant result instead of testing whether a 
 - Analysis tier: types
 - Node interests: `binary-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -2632,6 +2684,7 @@ which iteration or receive occurs.
 - Analysis tier: types
 - Node interests: `assign-stmt`, `range-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `style`, `maintainability`
@@ -2678,6 +2731,7 @@ only the underlying bytes, while net.IP.Equal accounts for both valid representa
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -2726,6 +2780,7 @@ propagation contract expected by Go code.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -2776,6 +2831,7 @@ optional callback. Glippy adapts the standard Go nilfunc analyzer.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -2821,6 +2877,7 @@ only writes whose map is still proven nil.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -2869,6 +2926,7 @@ constructing a second SSA program.
 - Analysis tier: SSA
 - Node interests: none
 - Dependency syntax: not required
+- Effect facts: required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -2885,9 +2943,9 @@ None.
 
 - Control-flow joins may lose nilness facts, so the rule intentionally misses some defects rather
   than guessing.
-- The shared SSA program propagates package-local no-return behavior and recognizes exact
-  standard-library terminal calls from os, runtime, syscall, log, and testing; other imported
-  helpers without source or analyzer facts remain conservatively returning.
+- The shared SSA program propagates no-return behavior through the selected package and same-module
+  imported helpers. Third-party helpers outside the selected modules remain conservatively returning
+  unless they match an exact standard-library terminal API.
 - Functions marked with //go:cgo_unsafe_args are excluded because their runtime behavior is not
   represented faithfully in SSA.
 - Generated files and packages with type errors are excluded.
@@ -2940,6 +2998,7 @@ execution.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -2988,6 +3047,7 @@ analyzer and excludes constant bit-width idioms handled by its upstream contract
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -3037,6 +3097,7 @@ extraction, then reports only result components assignable to Go's built-in erro
 - Analysis tier: SSA
 - Node interests: none
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -3093,6 +3154,7 @@ its wrapper facts, through the shared typed scheduler and deterministic diagnost
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -3141,6 +3203,7 @@ boolean expression directly, negating it when the comparison reverses its truth 
 - Analysis tier: types
 - Node interests: `binary-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `style`, `maintainability`
@@ -3193,6 +3256,7 @@ with captures, method values, conversions, or additional statements remain expli
 - Analysis tier: types
 - Node interests: `func-lit`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `style`, `maintainability`
@@ -3240,6 +3304,7 @@ control. Moving the alternative after the if reduces nesting while preserving wh
 - Analysis tier: syntax
 - Node interests: `if-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
 - Categories: `complexity`, `style`
@@ -3289,6 +3354,7 @@ a preceding nil check therefore cannot change the condition and only duplicates 
 - Analysis tier: types
 - Node interests: `binary-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `style`, `maintainability`
@@ -3335,6 +3401,7 @@ information without changing the variable's type.
 - Analysis tier: types
 - Node interests: `value-spec`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `style`, `maintainability`
@@ -3382,6 +3449,7 @@ outside the loop with regexp.Compile or regexp.MustCompile.
 - Analysis tier: types
 - Node interests: `for-stmt`, `range-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `performance`
@@ -3433,6 +3501,7 @@ termination or garbage collection.
 - Analysis tier: control flow
 - Node interests: none
 - Dependency syntax: not required
+- Effect facts: required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`, `suspicious`
@@ -3450,6 +3519,8 @@ None.
 - The initial contract treats a direct argument, return, send, composite-literal insertion, closure
   capture, or assignment to another variable as an ownership transfer and does not analyze the
   callee.
+- Pipes returned by os/exec.Cmd are owned by Cmd.Start and Cmd.Wait under the standard-library
+  contract and are not treated as caller-owned closers.
 - Cleanup and ownership transfer must cover every normally returning path after a conventional
   acquisition guard when one is present.
 - Only call results whose static type has Close() error are considered resources; zero-result Close
@@ -3488,6 +3559,7 @@ fix-safety model.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -3539,6 +3611,7 @@ declarations are excluded.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -3594,6 +3667,7 @@ through the shared control-flow graph after a conventional acquisition-error gua
 - Analysis tier: control flow
 - Node interests: none
 - Dependency syntax: not required
+- Effect facts: required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -3651,6 +3725,7 @@ the standard stdversion analyzer using package and per-file Go versions.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: included
 - Categories: `correctness`
@@ -3700,6 +3775,7 @@ communicates the opposite intent. Glippy adapts the standard Go stdmethods analy
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -3747,6 +3823,7 @@ is reported only when the index is absent or discarded.
 - Analysis tier: types
 - Node interests: `range-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `performance`
@@ -3795,6 +3872,7 @@ ordered from broadest to narrowest.
 - Analysis tier: types
 - Node interests: `if-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `suspicious`, `correctness`
@@ -3842,6 +3920,7 @@ usually an ineffective update.
 - Analysis tier: types
 - Node interests: `range-stmt`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -3892,6 +3971,7 @@ in the suspicious preset.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -3939,6 +4019,7 @@ placing their multiword headers in an interface also requires allocation.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `performance`
@@ -3988,6 +4069,7 @@ with invalid state. Glippy adapts the standard Go testinggoroutine analyzer.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -4034,6 +4116,7 @@ another explicit unit.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -4080,6 +4163,7 @@ timeformat analyzer through its deterministic typed scheduler.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -4124,6 +4208,7 @@ time.Now().Sub for a time.Time argument.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `style`, `maintainability`
@@ -4168,6 +4253,7 @@ deadline.Sub(time.Now()).
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `style`, `maintainability`
@@ -4213,6 +4299,7 @@ inserted semicolons, and the enclosing braces.
 - Analysis tier: syntax
 - Node interests: `func-decl`, `func-lit`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
 - Categories: `complexity`, `maintainability`
@@ -4263,6 +4350,7 @@ unnamed parameter field counts once.
 - Analysis tier: syntax
 - Node interests: `func-type`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
 - Categories: `complexity`, `maintainability`
@@ -4311,6 +4399,7 @@ part of the call contract.
 - Analysis tier: syntax
 - Node interests: `func-type`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
 - Categories: `complexity`, `maintainability`
@@ -4358,6 +4447,7 @@ definitely nil and whose concrete type is converted to an error interface result
 - Analysis tier: SSA
 - Node interests: none
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -4408,6 +4498,7 @@ Glippy adapts the standard sigchanyzer analyzer.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -4458,6 +4549,7 @@ matching Rows.Err result.
 - Analysis tier: control flow
 - Node interests: none
 - Dependency syntax: not required
+- Effect facts: required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -4478,9 +4570,9 @@ None.
   writes through range targets and indirect aliases are not modeled.
 - Passing Rows.Err to another call counts as observing the result; the rule does not inspect the
   callee's behavior.
-- The shared CFG propagates package-local no-return behavior and recognizes exact standard-library
-  terminal calls from os, runtime, syscall, log, and testing; other imported helpers without source
-  or analyzer facts remain conservatively returning.
+- The shared CFG propagates no-return behavior through the selected package and same-module imported
+  helpers. Third-party helpers outside the selected modules remain conservatively returning unless
+  they match an exact standard-library terminal API.
 - Generated files and packages with type errors are excluded.
 
 ### Example: Check the terminal iteration error
@@ -4515,6 +4607,7 @@ result.
 - Analysis tier: control flow
 - Node interests: none
 - Dependency syntax: not required
+- Effect facts: required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `suspicious`
@@ -4535,9 +4628,9 @@ None.
   writes through range targets and indirect aliases are not modeled.
 - Passing Scanner.Err to another call counts as observing the result; the rule does not inspect the
   callee's behavior.
-- The shared CFG propagates package-local no-return behavior and recognizes exact standard-library
-  terminal calls from os, runtime, syscall, log, and testing; other imported helpers without source
-  or analyzer facts remain conservatively returning.
+- The shared CFG propagates no-return behavior through the selected package and same-module imported
+  helpers. Third-party helpers outside the selected modules remain conservatively returning unless
+  they match an exact standard-library terminal API.
 - Generated files and packages with type errors are excluded.
 
 ### Example: Check the terminal scanner error
@@ -4570,6 +4663,7 @@ type boundary redundant.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `style`, `maintainability`
@@ -4620,6 +4714,7 @@ complete result string.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `performance`, `style`
@@ -4669,6 +4764,7 @@ formatting machinery.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `style`, `performance`
@@ -4719,6 +4815,7 @@ adapts the standard Go unreachable analyzer.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: included
 - Categories: `correctness`
@@ -4768,6 +4865,7 @@ analyzer.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -4816,6 +4914,7 @@ function catalog.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -4863,6 +4962,7 @@ launching the goroutine. Glippy adapts the standard Go waitgroup analyzer.
 - Analysis tier: types
 - Node interests: `file`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -4910,6 +5010,7 @@ therefore always returns an empty result, while a negative limit requests every 
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -4957,6 +5058,7 @@ substitution.
 - Analysis tier: types
 - Node interests: `call-expr`
 - Dependency syntax: not required
+- Effect facts: not required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`

@@ -90,6 +90,11 @@ func RunPackages(
 		return result, err
 	}
 	loadOptions.LoadDependencySyntax = needsFacts || needsNativeDependencies
+	needsNativeEffects, err := nativePackageRulesNeedEffects(registry, selection)
+	if err != nil {
+		return result, err
+	}
+	loadOptions.LoadEffectFacts = needsNativeEffects
 	if err := validatePackageOverlay(loadOptions.Overlay); err != nil {
 		return result, err
 	}
@@ -240,6 +245,22 @@ func nativePackageRulesNeedDependencies(
 			return false, fmt.Errorf("selected unknown rule %q", selected.ID)
 		}
 		if metadata.RequiresDependencySyntax {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func nativePackageRulesNeedEffects(
+	registry *rules.Registry,
+	selection []rules.Selection,
+) (bool, error) {
+	for _, selected := range selection {
+		metadata, found := registry.Metadata(selected.ID)
+		if !found {
+			return false, fmt.Errorf("selected unknown rule %q", selected.ID)
+		}
+		if metadata.RequiresEffectFacts {
 			return true, nil
 		}
 	}

@@ -72,15 +72,26 @@ function MUST receive the same graph, body, typed package values, package file
 set, type-error state, and exact immutable physical source. A CFG rule MUST NOT
 mutate those shared values.
 
+A native CFG-tier or SSA-tier rule MAY declare that it requires semantic
+effect facts. No cheaper tier MAY declare that requirement. When at least one
+enabled native rule requires effects, the scheduler MUST load same-module
+imported packages in deterministic dependency layers, derive versioned stable
+function summaries, and install those summaries in the shared CFG and SSA
+no-return predicate. It MUST NOT retain effect inputs as lint targets or expose
+their independently loaded type objects to rules. Third-party and workspace
+module effects remain unavailable until their identity and loading contracts
+are separately admitted.
+
 The CFG runner MUST construct `golang.org/x/tools/go/cfg` graphs only when at
 least one enabled CFG rule is eligible for the function's file and package. It
 MUST treat calls resolved by `go/types` to the predeclared `panic`, proven
-package-local no-return functions, and the documented exact standard-library
-terminal set as non-returning. It MUST conservatively treat shadowed `panic`
-identifiers, dynamic calls, interface dispatch, and imported helpers outside
-that set as potentially returning until a separate interprocedural fact
-contract exists. This CFG tier does not model short-circuit expression edges or
-complete abnormal panic flow and MUST NOT be presented as SSA-equivalent.
+package-local no-return functions, versioned same-module imported no-return
+summaries requested by an enabled consumer, and the documented exact
+standard-library terminal set as non-returning. It MUST conservatively treat
+shadowed `panic` identifiers, dynamic calls, interface dispatch, and imported
+helpers outside those sets as potentially returning. This CFG tier does not
+model short-circuit expression edges or complete abnormal panic flow and MUST
+NOT be presented as SSA-equivalent.
 
 The upstream CFG block slice has defined entry ownership but otherwise
 undefined order. A rule MUST NOT select or order diagnostics from raw block
@@ -91,8 +102,10 @@ Every native SSA-tier rule MUST NOT declare node interests and MUST NOT opt
 into type-error packages. The SSA runner MUST use `x/tools/go/ssa` through one
 `ssautil.Packages` program built from only the well-typed selected root
 packages containing a physical source eligible for at least one enabled SSA
-rule. It MUST create dependency package shells from the shared type graph but
-MUST NOT load or build dependency syntax speculatively.
+rule. It MUST create dependency package shells from the shared type graph.
+Dependency bodies MUST NOT enter the SSA program. A declared effect-fact
+consumer MAY cause the separate bounded effect summarizer to load same-module
+dependency syntax; unrelated SSA rules MUST NOT trigger that work.
 
 The SSA runner MUST build that program once and run each eligible rule once for
 every source function declaration and function literal in canonical physical
@@ -135,7 +148,10 @@ evidence. These aggregate limits complement the 64 MiB per-source limit.
 Active package parsing and type checking use the bounded I/O and
 `GOMAXPROCS`-derived CPU scheduling provided by the pinned `go/packages`
 implementation. Glippy MUST NOT start independent package loads or duplicate
-deep representations per rule. Native types, CFG, SSA, fact, and cache work
+deep representations per rule. The scheduler MAY perform one serialized load
+per same-module effect-dependency layer when an enabled rule declares that
+requirement; the combined root and effect source set MUST remain within the
+ordinary file and byte limits. Native types, CFG, SSA, fact, and cache work
 within one load remains deterministically serialized unless a later bounded
 scheduler has measured memory and ordering evidence.
 

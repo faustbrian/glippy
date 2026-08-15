@@ -544,6 +544,12 @@ func validateMetadata(metadata Metadata, packageWide bool) error {
 			metadata.ID,
 		)
 	}
+	if metadata.RequiresEffectFacts && metadata.Requirement < RequireControlFlow {
+		return fmt.Errorf(
+			"%s: effect facts require control-flow or SSA analysis",
+			metadata.ID,
+		)
+	}
 	if metadata.Requirement == RequireSyntax && len(metadata.NodeInterests) == 0 {
 		return fmt.Errorf(
 			"%s: %s rule must declare node interests",

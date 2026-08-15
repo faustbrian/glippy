@@ -33,6 +33,7 @@ func (httpResponseBodyNotClosedRule) Metadata() Metadata {
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
 		Requirement: RequireControlFlow,
+		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySafety, CategorySuspicious},
 		KnownLimitations: []string{
 			"The initial contract recognizes direct net/http Get, Head, Post, and PostForm functions plus Client.Do, Get, Head, Post, and PostForm methods followed immediately by an err != nil guard whose body returns.",

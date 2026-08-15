@@ -89,10 +89,11 @@ precision contract:
 | control flow | `ControlFlowRule` | Each source function with a shared CFG |
 | SSA | `SSARule` | Each source function with shared SSA |
 
-Do not request types, CFG, SSA, dependency syntax, generated files, or
+Do not request types, CFG, SSA, dependency syntax, effect facts, generated files, or
 type-error packages for implementation convenience. `PackageRule` is a
 types-tier package callback; dependency syntax is available only when its
-metadata declares that need. Rules report only through source ranges mapped by
+metadata declares that need. CFG and SSA rules receive same-module imported
+effects only when their metadata declares that need. Rules report only through source ranges mapped by
 their supplied context. Package-wide findings additionally use the exact
 `PackageFile` owned by that callback.
 

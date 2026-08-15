@@ -3,6 +3,7 @@ package rules
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
 
 	"golang.org/x/tools/go/cfg"
@@ -14,6 +15,7 @@ type localCloserCandidate struct {
 	identifier *ast.Ident
 	object types.Object
 	statement *ast.AssignStmt
+	acquisitionGuard *ast.IfStmt
 	guard *ast.IfStmt
 }
 
@@ -32,9 +34,11 @@ func (resourceNotClosedRule) Metadata() Metadata {
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
 		Requirement: RequireControlFlow,
+		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySafety, CategorySuspicious},
 		KnownLimitations: []string{
 			"The initial contract treats a direct argument, return, send, composite-literal insertion, closure capture, or assignment to another variable as an ownership transfer and does not analyze the callee.",
+			"Pipes returned by os/exec.Cmd are owned by Cmd.Start and Cmd.Wait under the standard-library contract and are not treated as caller-owned closers.",
 			"Cleanup and ownership transfer must cover every normally returning path after a conventional acquisition guard when one is present.",
 			"Only call results whose static type has Close() error are considered resources; zero-result Close methods are too broad for the initial ownership contract.",
 		},
@@ -115,7 +119,7 @@ func localCloserCandidates(info *types.Info, body *ast.BlockStmt) []localCloserC
 					continue
 				}
 				call, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
-				if call == nil {
+				if call == nil || commandManagedPipe(info, call) {
 					continue
 				}
 				signature, _ := types.Unalias(
@@ -125,10 +129,6 @@ func localCloserCandidates(info *types.Info, body *ast.BlockStmt) []localCloserC
 					signature.Results() == nil ||
 					signature.Results().Len() != len(assignment.Lhs) {
 					continue
-				}
-				var guard *ast.IfStmt
-				if statementIndex + 1 < len(block.List) {
-					guard, _ = block.List[statementIndex + 1].(*ast.IfStmt)
 				}
 				for index, left := range assignment.Lhs {
 					identifier, _ := left.(*ast.Ident)
@@ -141,12 +141,22 @@ func localCloserCandidates(info *types.Info, body *ast.BlockStmt) []localCloserC
 					}
 					object := info.ObjectOf(identifier)
 					if object != nil {
+						acquisitionGuard := immediateFollowingGuard(
+							block.List,
+							statementIndex,
+						)
+						guard := followingAcquisitionErrorGuard(
+							info,
+							block.List[statementIndex + 1:],
+							assignment,
+						)
 						result = append(
 							result,
 							localCloserCandidate{
 								identifier: identifier,
 								object: object,
 								statement: assignment,
+								acquisitionGuard: acquisitionGuard,
 								guard: guard,
 							},
 						)
@@ -159,14 +169,88 @@ func localCloserCandidates(info *types.Info, body *ast.BlockStmt) []localCloserC
 	return result
 }
 
+func commandManagedPipe(info *types.Info, call *ast.CallExpr) bool {
+	if info == nil || call == nil {
+		return false
+	}
+	selector, _ := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if selector == nil {
+		return false
+	}
+	function, _ := info.ObjectOf(selector.Sel).(*types.Func)
+	if function == nil || function.Pkg() == nil || function.Pkg().Path() != "os/exec" {
+		return false
+	}
+	switch function.Name() {
+	case "StdinPipe", "StdoutPipe", "StderrPipe":
+		selection := info.Selections[selector]
+		return selection != nil && namedTypeName(selection.Recv()) == "Cmd"
+	default:
+		return false
+	}
+}
+
+func immediateFollowingGuard(statements []ast.Stmt, index int) *ast.IfStmt {
+	if index < 0 || index + 1 >= len(statements) {
+		return nil
+	}
+	guard, _ := statements[index + 1].(*ast.IfStmt)
+	return guard
+}
+
+func followingAcquisitionErrorGuard(
+	info *types.Info,
+	statements []ast.Stmt,
+	assignment *ast.AssignStmt,
+) *ast.IfStmt {
+	errorObject := assignmentErrorObject(info, assignment)
+	if errorObject == nil {
+		return nil
+	}
+	var first *ast.IfStmt
+	for _, statement := range statements {
+		guard, ok := statement.(*ast.IfStmt)
+		if !ok || !returningErrorBranch(info, guard, errorObject) {
+			return first
+		}
+		if first == nil {
+			first = guard
+		}
+		if returningNonNilErrorGuard(info, guard, errorObject) {
+			return guard
+		}
+	}
+	return first
+}
+
+func returningErrorBranch(info *types.Info, guard *ast.IfStmt, errorObject types.Object) bool {
+	if info == nil ||
+		guard == nil ||
+		errorObject == nil ||
+		guard.Init != nil ||
+		guard.Else != nil ||
+		guard.Body == nil ||
+		len(guard.Body.List) == 0 ||
+		!expressionUsesObject(info, guard.Cond, errorObject) {
+		return false
+	}
+	_, returns := guard.Body.List[len(guard.Body.List) - 1].(*ast.ReturnStmt)
+	return returns
+}
+
 func localCloserObligationStart(
 	graph *cfg.CFG,
 	info *types.Info,
 	candidate localCloserCandidate,
 ) (obligationStart, bool) {
-	if errorObject := assignmentErrorObject(info, candidate.statement);
-		errorObject != nil &&
-			returningNonNilErrorGuard(info, candidate.guard, errorObject) {
+	if constructionFailureProvesNil(graph, info, candidate.acquisitionGuard, candidate.object) {
+		return obligationStart{}, false
+	}
+	errorObject := assignmentErrorObject(info, candidate.statement)
+	if successfulAcquisitionTransfers(info, candidate.guard, errorObject, candidate.object) {
+		return obligationStart{}, false
+	}
+	if errorObject != nil && returningNonNilErrorGuard(info, candidate.guard, errorObject) {
 		for _, block := range graph.Blocks {
 			if block.Live &&
 				block.Kind == cfg.KindIfDone &&
@@ -176,6 +260,111 @@ func localCloserObligationStart(
 		}
 	}
 	return obligationStartAfter(graph, candidate.statement)
+}
+
+func constructionFailureProvesNil(
+	graph *cfg.CFG,
+	info *types.Info,
+	guard *ast.IfStmt,
+	resourceObject types.Object,
+) bool {
+	if graph == nil ||
+		info == nil ||
+		guard == nil ||
+		resourceObject == nil ||
+		guard.Init != nil ||
+		guard.Else != nil ||
+		!trueWhenObjectIsNonNil(info, guard.Cond, resourceObject) {
+		return false
+	}
+	var thenBlock *cfg.Block
+	var doneBlock *cfg.Block
+	for _, block := range graph.Blocks {
+		if !block.Live || block.Stmt != guard {
+			continue
+		}
+		switch block.Kind {
+		case cfg.KindIfThen:
+			thenBlock = block
+		case cfg.KindIfDone:
+			doneBlock = block
+		}
+	}
+	if thenBlock == nil || doneBlock == nil {
+		return false
+	}
+	seen := make(map[*cfg.Block]bool)
+	work := []*cfg.Block{thenBlock}
+	for len(work) > 0 {
+		block := work[len(work) - 1]
+		work = work[:len(work) - 1]
+		if block == nil || !block.Live || seen[block] {
+			continue
+		}
+		if block == doneBlock {
+			return false
+		}
+		seen[block] = true
+		work = append(work, block.Succs...)
+	}
+	return true
+}
+
+func trueWhenObjectIsNonNil(info *types.Info, expression ast.Expr, object types.Object) bool {
+	binary, _ := ast.Unparen(expression).(*ast.BinaryExpr)
+	if binary == nil {
+		return false
+	}
+	if binary.Op == token.LOR {
+		return trueWhenObjectIsNonNil(info, binary.X, object) ||
+			trueWhenObjectIsNonNil(info, binary.Y, object)
+	}
+	if binary.Op != token.NEQ {
+		return false
+	}
+	nilObject := types.Universe.Lookup("nil")
+	return directObject(info, binary.X) == object &&
+		directObject(info, binary.Y) == nilObject ||
+		directObject(info, binary.Y) == object && directObject(info, binary.X) == nilObject
+}
+
+func successfulAcquisitionTransfers(
+	info *types.Info,
+	guard *ast.IfStmt,
+	errorObject types.Object,
+	resourceObject types.Object,
+) bool {
+	if info == nil ||
+		guard == nil ||
+		errorObject == nil ||
+		resourceObject == nil ||
+		guard.Init != nil ||
+		guard.Else != nil ||
+		guard.Body == nil ||
+		len(guard.Body.List) != 1 {
+		return false
+	}
+	comparison, _ := ast.Unparen(guard.Cond).(*ast.BinaryExpr)
+	if comparison == nil || comparison.Op != token.EQL {
+		return false
+	}
+	nilObject := types.Universe.Lookup("nil")
+	if !(directObject(info, comparison.X) == errorObject &&
+		directObject(info, comparison.Y) == nilObject ||
+		directObject(info, comparison.Y) == errorObject &&
+			directObject(info, comparison.X) == nilObject) {
+		return false
+	}
+	statement, _ := guard.Body.List[0].(*ast.ReturnStmt)
+	if statement == nil {
+		return false
+	}
+	for _, expression := range statement.Results {
+		if directObject(info, expression) == resourceObject {
+			return true
+		}
+	}
+	return false
 }
 
 func assignmentErrorObject(info *types.Info, assignment *ast.AssignStmt) types.Object {

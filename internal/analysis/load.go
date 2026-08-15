@@ -50,6 +50,7 @@ type PackageLoadOptions struct {
 	Requirement rules.Requirement
 	Tests bool
 	LoadDependencySyntax bool
+	LoadEffectFacts bool
 	BuildTags []string
 	ModuleMode ModuleMode
 	Env []string
@@ -76,6 +77,7 @@ type PackageLoadResult struct {
 	Packages []*packages.Package
 	Diagnostics []PackageDiagnostic
 	Sources PackageSourceSet
+	effectFacts *nativeEffectFacts
 }
 
 // PackageSourceSet is one immutable index of the exact bytes parsed by a
@@ -212,11 +214,19 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 	}
 	diagnostics = append(diagnostics, cgoDiagnostics...)
 	orderPackageDiagnostics(diagnostics)
+	var effects *nativeEffectFacts
+	if options.LoadEffectFacts {
+		effects, err = loadNativeEffectFacts(ctx, options, ordered, sources)
+		if err != nil {
+			return PackageLoadResult{}, err
+		}
+	}
 	return PackageLoadResult{
 		Requirement: options.Requirement,
 		Packages: ordered,
 		Diagnostics: diagnostics,
 		Sources: sources,
+		effectFacts: effects,
 	}, nil
 }
 

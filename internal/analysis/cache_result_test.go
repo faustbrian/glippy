@@ -25,11 +25,25 @@ type nativeCachePackageRule struct {
 	metadata rules.Metadata
 }
 
+type nativeCacheControlFlowRule struct {
+	metadata rules.Metadata
+}
+
 func (r nativeCacheTestRule) Metadata() rules.Metadata {
 	return r.metadata
 }
 
 func (nativeCacheTestRule) RunTypes(*rules.TypesContext, ast.Node) ([]rules.Finding, error) {
+	return nil, nil
+}
+
+func (r nativeCacheControlFlowRule) Metadata() rules.Metadata {
+	return r.metadata
+}
+
+func (nativeCacheControlFlowRule) RunControlFlow(
+	*rules.ControlFlowContext,
+) ([]rules.Finding, error) {
 	return nil, nil
 }
 
@@ -76,6 +90,45 @@ func TestNativeRuleSnapshotsBindDependencySyntaxRequirement(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(snapshots) != 1 || !snapshots[0].RequiresDependencySyntax {
+		t.Fatalf("native rule snapshots = %#v", snapshots)
+	}
+}
+
+func TestNativeRuleSnapshotsBindEffectFactRequirement(t *testing.T) {
+	t.Parallel()
+
+	metadata := rules.Metadata{
+		ID: "effect-cache",
+		Summary: "consumes imported effects",
+		Documentation: "Full effect-aware rule documentation.",
+		DefaultSeverity: rules.SeverityWarn,
+		Presets: []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion: "1.22",
+		Requirement: rules.RequireControlFlow,
+		RequiresEffectFacts: true,
+		Categories: []rules.Category{rules.CategoryCorrectness},
+		Examples: []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+	}
+	registry, err := rules.NewRegistry(nativeCacheControlFlowRule{metadata: metadata})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshots, err := nativeRuleSnapshots(
+		registry,
+		nil,
+		[]rules.Selection{
+			{
+				ID: metadata.ID,
+				Severity: rules.SeverityWarn,
+				Requirement: rules.RequireControlFlow,
+			},
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshots) != 1 || !snapshots[0].RequiresEffectFacts {
 		t.Fatalf("native rule snapshots = %#v", snapshots)
 	}
 }

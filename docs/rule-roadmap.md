@@ -152,6 +152,13 @@ another existing default tool already owns the problem well enough.
 | 8 | Structurally credible allocation or concurrency costs | types, CFG, or SSA | Is there a reproducible cost mechanism and an opt-in performance contract rather than a generic micro-optimization preference? |
 | 9 | Explicit Go-version and API migrations | syntax or types | Is there a configured target version, a canonical replacement, and a migration-specific safety classification? |
 
+The first priority now has a versioned no-return fact foundation. Enabled CFG
+and SSA consumers summarize same-module imported helpers through stable
+function identities without retaining dependency source as lint targets.
+Resource completion, ownership transfer, cancellation ownership, returned
+nil/error relationships, workspace modules, and third-party packages remain
+in the priority-one investigation rather than being inferred from names.
+
 The first six tracks focus on correctness and suspicious behavior. The last
 three remain opt-in unless release evidence justifies a compatibility-reviewed
 preset change.

@@ -19,6 +19,12 @@ func TestResourceNotClosedReportsUnreleasedLocalClosers(t *testing.T) {
 
 import "os"
 
+type customCommand struct{}
+
+func (*customCommand) StdoutPipe() (*os.File, error) {
+	return os.Open("input")
+}
+
 func bad() error {
 	file, err := os.Open("input")
 	if err != nil { return err }
@@ -29,6 +35,13 @@ func bad() error {
 func badFallthrough() {
 	file, _ := os.Open("input")
 	_ = file.Name()
+}
+
+func badCustomPipe(command *customCommand) error {
+	file, err := command.StdoutPipe()
+	if err != nil { return err }
+	_ = file.Name()
+	return nil
 }
 
 func goodDefer() error {
@@ -113,7 +126,7 @@ func consume(*os.File) {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 4 {
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 5 {
 		t.Fatalf("resource-not-closed result = %#v", result)
 	}
 	expected := []struct {
@@ -122,6 +135,7 @@ func consume(*os.File) {}
 	}{
 		{function: "func bad()", acquisition: "file, err := os.Open"},
 		{function: "func badFallthrough()", acquisition: "file, _ := os.Open"},
+		{function: "func badCustomPipe(", acquisition: "file, err := command.StdoutPipe"},
 		{function: "func partialClose(", acquisition: "file, err := os.Open"},
 		{function: "func overwritten()", acquisition: "file, err := os.Open"},
 	}
@@ -150,6 +164,107 @@ func consume(*os.File) {}
 	}
 	if len(expectedStarts) != 0 {
 		t.Fatalf("missing resource-not-closed ranges = %#v", expectedStarts)
+	}
+}
+
+func TestResourceNotClosedAcceptsDogfoodOwnershipPatterns(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/resourceownership\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "sample.go"),
+		`package sample
+
+import (
+	"io"
+	"os"
+	"os/exec"
+	"testing"
+)
+
+func methodDefer(root *os.Root) error {
+	file, err := root.Open("input")
+	if os.IsNotExist(err) { return err }
+	if err != nil { return err }
+	defer file.Close()
+	_, err = file.Stat()
+	return err
+}
+
+func cleanupCapture(t *testing.T) {
+	store, err := os.OpenRoot(".")
+	if err != nil { t.Fatal(err) }
+	t.Cleanup(func() { _ = store.Close() })
+}
+
+func rejectedConstruction(t *testing.T) {
+	store, err := os.OpenRoot("missing")
+	if store != nil || err == nil { t.Fatal("constructor unexpectedly succeeded") }
+}
+
+func returnSuccessfulLoop(root *os.Root) (string, *os.File, error) {
+	for range 10 {
+		file, err := root.Open("input")
+		if err == nil { return "input", file, nil }
+		if !os.IsNotExist(err) { return "", nil, err }
+	}
+	return "", nil, os.ErrNotExist
+}
+
+func pipeTransfer() error {
+	command := exec.Command("true")
+	output, err := command.StdoutPipe()
+	if err != nil { return err }
+	if err := consume(output); err != nil { _ = output.Close(); return err }
+	return command.Wait()
+}
+
+func commandOwnedPipe() error {
+	command := exec.Command("true")
+	output, err := command.StdoutPipe()
+	if err != nil { return err }
+	if err := command.Start(); err != nil { return err }
+	extractErr := consume(output)
+	if extractErr != nil { _ = output.Close() }
+	waitErr := command.Wait()
+	if extractErr != nil { return extractErr }
+	return waitErr
+}
+
+func consume(io.Reader) error { return nil }
+`,
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"resource-not-closed": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 0 {
+		t.Fatalf("resource-not-closed dogfood patterns = %#v", result)
 	}
 }
 

@@ -20,9 +20,10 @@ func (deferInInfiniteLoopRule) Metadata() Metadata {
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
 		Requirement: RequireControlFlow,
+		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySuspicious},
 		KnownLimitations: []string{
-			"Calls to functions that panic, terminate the goroutine, or terminate the process are not treated as exits unless they are the predeclared panic function or runtime.Goexit.",
+			"No-return behavior propagates through the selected package and same-module imported helpers. Third-party helpers outside the selected modules remain conservatively returning unless they match an exact standard-library terminal API.",
 			"Generated files and packages with type errors are excluded.",
 		},
 		Examples: []Example{

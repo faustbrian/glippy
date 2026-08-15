@@ -26,12 +26,13 @@ func (uncheckedScannerErrorRule) Metadata() Metadata {
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
 		Requirement: RequireControlFlow,
+		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySuspicious},
 		KnownLimitations: []string{
 			"The initial contract recognizes direct identifier-backed bufio.Scanner.Scan and Scanner.Err calls; aliases stored in fields, containers, or other variables are not tracked.",
 			"A direct assignment to the scanner variable invalidates later checks against a replacement value; writes through range targets and indirect aliases are not modeled.",
 			"Passing Scanner.Err to another call counts as observing the result; the rule does not inspect the callee's behavior.",
-			"The shared CFG propagates package-local no-return behavior and recognizes exact standard-library terminal calls from os, runtime, syscall, log, and testing; other imported helpers without source or analyzer facts remain conservatively returning.",
+			"The shared CFG propagates no-return behavior through the selected package and same-module imported helpers. Third-party helpers outside the selected modules remain conservatively returning unless they match an exact standard-library terminal API.",
 			"Generated files and packages with type errors are excluded.",
 		},
 		Examples: []Example{

@@ -70,6 +70,7 @@ project or configuration discovery:
     "analysis_tier": "syntax",
     "node_interests": ["if-stmt"],
     "requires_dependency_syntax": false,
+    "requires_effect_facts": false,
     "run_on_generated": false,
     "run_despite_type_errors": false,
     "categories": ["correctness"],
