@@ -364,6 +364,131 @@ func defects(value uint8, number int, items []int, host string, start time.Time)
 	}
 }
 
+func TestUnreachableCodePreservesSharedCFGControlFlowBoundaries(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "testing"
+
+func sideEffect() int { return 1 }
+
+func afterReturn() {
+	return
+	println("after return")
+	println("same dead region")
+}
+
+func deadControl(condition bool) {
+	return
+	if condition {
+		println("dead parent")
+	}
+}
+
+func nested(condition bool) {
+	if condition {
+		return
+		println("dead branch")
+	}
+	println("reachable after if")
+}
+
+func loops() {
+	for {
+	}
+	println("after loop")
+}
+
+func breakable() {
+	for {
+		break
+	}
+	println("after break")
+}
+
+func labels() {
+	goto live
+	println("between goto and label")
+live:
+	println("label target")
+}
+
+func declaration() {
+	return
+	var _ = sideEffect()
+}
+
+func literal() {
+	callback := func() {
+		return
+		println("dead literal")
+	}
+	_ = callback
+}
+
+func shadowedPanic() {
+	panic := func(any) {}
+	panic("returns")
+	println("after shadowed panic")
+}
+
+func requiredReturn(t *testing.T) int {
+	t.Fatal("terminal")
+	return 0
+}
+
+func redundantReturn(t *testing.T) {
+	t.Fatal("terminal")
+	return
+}
+
+func skipped(t *testing.T) {
+	t.Skip("disabled test")
+	println("intentionally retained test body")
+}
+
+func requiredPanic(t *testing.T, ready <-chan int) int {
+	select {
+	case value := <-ready:
+		return value
+	default:
+		t.Fatal("terminal")
+	}
+	panic("syntactically required")
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"unreachable-code"})
+	want := []string{
+		`println("after return")`,
+		"if condition {\n\t\tprintln(\"dead parent\")\n\t}",
+		`println("dead branch")`,
+		`println("after loop")`,
+		`println("between goto and label")`,
+		"var _ = sideEffect()",
+		`println("dead literal")`,
+		"return",
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
+		t.Fatalf("unreachable-code CFG result = %#v", result)
+	}
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		if diagnostic.RuleID != "unreachable-code" ||
+			diagnostic.Range.Start < 0 ||
+			diagnostic.Range.End > len(input) ||
+			string(input[diagnostic.Range.Start:diagnostic.Range.End]) != want[index] ||
+			len(diagnostic.Fixes) != 1 ||
+			diagnostic.Fixes[0].Safety != rules.FixSuggestion {
+			t.Fatalf(
+				"unreachable-code diagnostic[%d] = %#v, want %q",
+				index,
+				diagnostic,
+				want[index],
+			)
+		}
+	}
+}
+
 func TestRemainingVetCompatibilityPackMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -387,15 +512,19 @@ func TestRemainingVetCompatibilityPackMetadata(t *testing.T) {
 		if !found {
 			t.Fatalf("product registry does not include %s", id)
 		}
+		wantRequirement := rules.RequireTypes
+		wantInterests := []rules.NodeKind{rules.NodeFile}
+		if id == "unreachable-code" {
+			wantRequirement = rules.RequireControlFlow
+			wantInterests = nil
+		}
 		if metadata.DefaultSeverity != rules.SeverityWarn ||
 			!reflect.DeepEqual(metadata.Presets, presets) ||
 			metadata.MinimumGoVersion != "1.25" ||
-			metadata.Requirement != rules.RequireTypes ||
-			!reflect.DeepEqual(
-				metadata.NodeInterests,
-				[]rules.NodeKind{rules.NodeFile},
-			) ||
-			metadata.RunOnGenerated {
+			metadata.Requirement != wantRequirement ||
+			!reflect.DeepEqual(metadata.NodeInterests, wantInterests) ||
+			metadata.RunOnGenerated ||
+			metadata.RequiresEffectFacts != (id == "unreachable-code") {
 			t.Fatalf("%s metadata = %#v", id, metadata)
 		}
 	}

@@ -140,10 +140,14 @@ func TestRunExposesAndBaselinesVetCompatibilityPack(t *testing.T) {
 		stdout.Reset()
 		stderr.Reset()
 		exitCode = Run([]string{"explain", ruleID}, strings.NewReader(""), &stdout, &stderr)
+		wantTier := "types"
+		if ruleID == "unreachable-code" {
+			wantTier = "control flow"
+		}
 		if exitCode != ExitSuccess ||
 			stderr.Len() != 0 ||
 			!strings.HasPrefix(stdout.String(), ruleID + "\n") ||
-			!strings.Contains(stdout.String(), "analysis tier: types\n") {
+			!strings.Contains(stdout.String(), "analysis tier: " + wantTier + "\n") {
 			t.Fatalf(
 				"Run(explain %s) = exit %d, stdout %q, stderr %q",
 				ruleID,
@@ -254,6 +258,32 @@ func TestRunAppliesUnambiguousVetCompatibilitySuggestions(t *testing.T) {
 						stdout.String(),
 						stderr.String(),
 						second,
+					)
+				}
+
+				stdout.Reset()
+				stderr.Reset()
+				exitCode = Run(
+					[]string{"lint", "--fix-suggestions", path},
+					strings.NewReader(""),
+					&stdout,
+					&stderr,
+				)
+				repeated, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if exitCode != ExitSuccess ||
+					stdout.Len() != 0 ||
+					stderr.Len() != 0 ||
+					string(repeated) != test.want {
+					t.Fatalf(
+						"Run(repeated fix %s) = exit %d, stdout %q, stderr %q, source %q",
+						test.ruleID,
+						exitCode,
+						stdout.String(),
+						stderr.String(),
+						repeated,
 					)
 				}
 			},

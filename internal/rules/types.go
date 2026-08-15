@@ -589,6 +589,7 @@ type ControlFlowContext struct {
 	body *ast.BlockStmt
 	graph *cfg.CFG
 	effects EffectFacts
+	callMayReturn func(*ast.CallExpr) bool
 }
 
 // ParameterEffectKind identifies a proven terminal ownership effect applied
@@ -825,6 +826,7 @@ func NewControlFlowContext(
 	body *ast.BlockStmt,
 	graph *cfg.CFG,
 	effects EffectFacts,
+	callMayReturn func(*ast.CallExpr) bool,
 ) *ControlFlowContext {
 	return &ControlFlowContext{
 		typesContext: typesContext,
@@ -832,6 +834,7 @@ func NewControlFlowContext(
 		body: body,
 		graph: graph,
 		effects: effects,
+		callMayReturn: callMayReturn,
 	}
 }
 
@@ -857,6 +860,16 @@ func (c *ControlFlowContext) Graph() *cfg.CFG {
 		return nil
 	}
 	return c.graph
+}
+
+// CallMayReturn reports whether the shared no-return analysis found a normal
+// continuation for one call. Missing or dynamic call information is
+// conservative and therefore returns true.
+func (c *ControlFlowContext) CallMayReturn(call *ast.CallExpr) bool {
+	if c == nil || c.callMayReturn == nil || call == nil {
+		return true
+	}
+	return c.callMayReturn(call)
 }
 
 // ParameterEffect returns the conservative summary for one argument of a

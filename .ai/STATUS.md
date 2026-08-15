@@ -1588,11 +1588,22 @@ generated target before any write, and refreshes all remaining selections in
 one package analysis after each successful change. Context-dependent untyped
 shifts and defined-boolean conversions no longer receive invalid
 `unnecessary-conversion` suggestions. Six pinned repositories cover CLI, HTTP,
-database, concurrent-server, library, generated, and cgo workloads; default
-correctness is clean, reviewed lifecycle findings add value beyond vet and
-Staticcheck, and 82 applied fix rehearsals are idempotent. Eight additional
+database, concurrent-server, library, generated, and cgo workloads; reviewed
+default and lifecycle findings add value beyond vet and Staticcheck, and 82
+applied fix rehearsals are idempotent. Eight additional
 NATS suggestions fail closed at the formatter's existing comment-ownership
 boundary. The recorded Apple M4 Max budget is 40 seconds cold, 12 seconds warm,
 and 8 GiB RSS for this exact corpus; observed 5-7.65 GB large-repository peaks
 remain an explicit memory-reduction priority. This closes the v0.4 development
 milestone without tagging, publishing, or claiming release readiness.
+
+The native `unreachable-code` rule now consumes the same no-return predicate
+as the shared CFG and SSA builders. Same-module imported terminal helpers
+therefore remove false continuations from unreachable-code analysis without
+retaining dependency source as a lint target. Exact first-statement ranges,
+branch and label reachability, nested function literals, type-error behavior,
+suggestion application, and repeated fixing are covered by focused regressions.
+Corpus review found eight true-positive dead statements across fzf, Caddy,
+NATS, and chi while sqlc and the approved `go-libraries/pkg/prompts` target
+remained clean. Direct `testing.T.Skip*` bodies and compiler-required return or
+panic terminators are excluded to preserve Go testing and type-checking idioms.

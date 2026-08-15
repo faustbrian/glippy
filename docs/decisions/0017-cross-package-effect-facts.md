@@ -39,11 +39,12 @@ unknown error construction, conflicting returns, dynamic calls, interface dispat
 unsupported local aliases, ill-typed packages, third-party modules, and
 workspace modules outside the selected module paths remain conservative.
 
-The shared CFG builder and SSA no-return predicate consume the same immutable
-summary set. Effect source is not added to the selected source set, is never a
-diagnostic or fix target, and is not built into the root SSA program. Loading
-is demand-driven by enabled rule metadata and remains serialized. Root and
-effect sources share the configured package, file, and byte limits.
+The shared CFG builder, native `unreachable-code` control-flow walk, and SSA
+no-return predicate consume the same immutable summary set. Effect source is
+not added to the selected source set, is never a diagnostic or fix target, and
+is not built into the root SSA program. Loading is demand-driven by enabled
+rule metadata and remains serialized. Root and effect sources share the
+configured package, file, and byte limits.
 
 Native cache snapshots bind the effect requirement. Cache keys include a
 digest identified as `native-effects-v3`, derived from the schema version,
@@ -71,9 +72,12 @@ diagnostics without making source pointers persistent.
 ## Consequences
 
 CFG and SSA rules can remove impossible continuations through same-module
-helpers without making unrelated typed rules pay for effect loading. Cold runs
-perform additional module-local package loads; warm native-result caching and
-the bounded source policy constrain that cost.
+helpers without making unrelated typed rules pay for effect loading. The
+native `unreachable-code` rule reports the first statement after those proven
+terminal calls while preserving branch, label, nested-function, type-error,
+and suggestion-fix behavior. Cold runs perform additional module-local package
+loads; warm native-result caching and the bounded source policy constrain that
+cost.
 
 The third schema improves the four lifecycle consumers and lets `nilness`
 diagnose direct dereferences and nil comparisons dominated by a proven error

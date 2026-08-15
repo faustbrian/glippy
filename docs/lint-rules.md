@@ -4876,17 +4876,19 @@ text := value
 
 detects statements that execution cannot reach
 
-Statements following an unconditional return, panic, terminating branch, or infinite loop cannot
-execute. They often preserve stale work after a refactor or conceal control-flow mistakes. Glippy
-adapts the standard Go unreachable analyzer.
+Statements following an unconditional return, panic, terminating branch, infinite loop, or proven
+no-return call cannot execute. They often preserve stale work after a refactor or conceal
+control-flow mistakes. Glippy uses the shared no-return analysis behind its control-flow graph so
+same-module imported no-return facts participate without retaining dependency source as a lint
+target.
 
 - Default severity: `warn`
 - Presets: `correctness`
 - Minimum Go: `1.25`
-- Analysis tier: types
-- Node interests: `file`
+- Analysis tier: control flow
+- Node interests: none
 - Dependency syntax: not required
-- Effect facts: not required
+- Effect facts: required
 - Generated files: excluded
 - Type-error packages: included
 - Categories: `correctness`
@@ -4901,7 +4903,13 @@ None.
 
 ### Known limitations
 
-- The upstream control-flow model reports the first unreachable statement in a contiguous region.
+- The control-flow walk reports the first unreachable statement in each contiguous lexical region.
+- Same-module imported no-return helpers are recognized; dynamic calls, recursion without a proven
+  terminal path, and helpers outside selected modules remain conservatively returning.
+- A return or built-in panic required for a value-returning function to satisfy Go's syntactic
+  termination check after a proven helper call is not reported.
+- Source retained after a direct testing Skip, Skipf, or SkipNow call is treated as an intentional
+  disabled-test body and is not reported.
 - Removal remains suggestion-only because comments and intentionally retained examples require
   review.
 

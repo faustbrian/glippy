@@ -102,6 +102,7 @@ func RunControlFlow(
 				return nil, err
 			}
 			graph := noReturns.graphFor(function.function, function.body, pkg.TypesInfo)
+			callMayReturn := noReturns.mayReturn(pkg.TypesInfo)
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
@@ -112,6 +113,7 @@ func RunControlFlow(
 					function.body,
 					graph,
 					effects,
+					callMayReturn,
 				)
 				ruleStarted := beginStatisticsMeasurement(statistics)
 				findings, err := active.rule.RunControlFlow(ruleContext)

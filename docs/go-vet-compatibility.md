@@ -5,7 +5,7 @@ with one rule registry, preset model, suppression syntax, baseline format,
 deterministic reporter, and fix coordinator. It does **not** claim to replace
 the complete `go vet` command.
 
-This boundary was audited on 2026-08-14 against Go 1.26.6 and x/tools v0.48.0.
+This boundary was audited on 2026-08-15 against Go 1.26.6 and x/tools v0.48.0.
 It must be revisited when either dependency changes its analyzer catalog or
 behavior.
 
@@ -32,7 +32,6 @@ behavior.
 | `testinggoroutine` | `testing-goroutine-call` |
 | `timeformat` | `time-layout` |
 | `unmarshal` | `invalid-unmarshal-target` |
-| `unreachable` | `unreachable-code` |
 | `unusedresult` | `unused-result` |
 | `waitgroup` | `waitgroup-misuse` |
 
@@ -46,6 +45,7 @@ analyzer as one rule.
 | --- | --- |
 | `loopclosure` | `loop-capture` is native and follows Glippy's supported-source-version and range contract. It is not promised to reproduce every `loopclosure` diagnostic. |
 | `lostcancel` | `context-cancel-leak` is native and uses shared CFG. Package-local summaries and exact standard-library terminal APIs are shared, but Glippy does not reproduce `lostcancel`'s complete transitive dependency-fact graph. |
+| `unreachable` | `unreachable-code` is native and preserves the upstream first-statement and run-despite-errors behavior while using Glippy's shared no-return analysis for same-module imported helpers. |
 
 These native rules address the same defect families, but they are documented
 differences rather than analyzer-equivalence claims.
@@ -78,12 +78,14 @@ Run `go vet` in addition to Glippy when any unsupported analyzer is required.
   Glippy does not expose `-unusedresult.funcs` or
   `-unusedresult.stringmethods`.
 - The experimental `testinggoroutine` subtest flag remains disabled.
-- Upstream suggested fixes are never assumed safe. Glippy classifies the
-  admitted `printf`, `stringintconv`, `unreachable`, and `hostport` edits as
-  suggestions, then applies selected edits through stale-source, overlap,
-  reparse, formatting, validation, and atomic-write checks.
+- Upstream suggested fixes are never assumed safe. Glippy classifies admitted
+  `printf`, `stringintconv`, and `hostport` edits as suggestions. The native
+  `unreachable-code` removal is also suggestion-only. Selected edits pass
+  through stale-source, overlap, reparse, formatting, validation, and
+  atomic-write checks.
 - Most adapted typed rules exclude ill-typed packages. `invalid-struct-tag` and
-  `unreachable-code` retain their upstream run-despite-errors behavior.
+  the native `unreachable-code` rule retain their upstream run-despite-errors
+  behavior.
 - Generated files are not analyzed by these rules and are never writable by
   default.
 - Glippy intentionally strips upstream analyzer flag sets whose storage is

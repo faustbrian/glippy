@@ -250,6 +250,92 @@ func inspect(pointer *int) {
 	}
 }
 
+func TestUnreachableCodeUsesImportedNoReturnFacts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/unreachableeffects\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "terminate", "terminate.go"),
+		`package terminate
+
+func Now() { panic("stop") }
+`,
+	)
+	path := filepath.Join(root, "sample.go")
+	writeFixture(
+		t,
+		path,
+		`package sample
+
+import "example.com/unreachableeffects/terminate"
+
+func run() {
+	terminate.Now()
+	println("unreachable")
+}
+
+func value() int {
+	terminate.Now()
+	return 0
+}
+`,
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"unreachable-code": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paths := result.Sources.Paths(); !reflect.DeepEqual(paths, []string{path}) {
+		t.Fatalf(
+			"unreachable-code retained effect source in the analyzed source set: %q",
+			paths,
+		)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("unreachable-code imported no-return result = %#v", result)
+	}
+	diagnostic := result.Files[0].Diagnostics[0]
+	if diagnostic.RuleID != "unreachable-code" ||
+		diagnostic.MessageKey != "unreachable-code" ||
+		len(diagnostic.Fixes) != 1 ||
+		diagnostic.Fixes[0].Name != "remove-unreachable-code" ||
+		diagnostic.Fixes[0].Safety != rules.FixSuggestion {
+		t.Fatalf("unreachable-code imported no-return diagnostic = %#v", diagnostic)
+	}
+	physical, found := result.Sources.Lookup(path)
+	if !found {
+		t.Fatal("unreachable-code source is missing")
+	}
+	text, found := physical.Slice(diagnostic.Range)
+	if !found || string(text) != `println("unreachable")` {
+		t.Fatalf("unreachable-code range = %q, found = %t", text, found)
+	}
+}
+
 func BenchmarkImportedNoReturnFacts(b *testing.B) {
 	root := b.TempDir()
 	writeFixture(

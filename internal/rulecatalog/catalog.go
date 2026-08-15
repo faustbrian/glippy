@@ -92,6 +92,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewSQLTransactionNotCompletedRule(),
 		rules.NewUncheckedRowsErrorRule(),
 		rules.NewUncheckedScannerErrorRule(),
+		rules.NewUnreachableCodeRule(),
 	)
 	all = append(all, rules.NewAlmostSwappedRule())
 	registry, err := rules.NewRegistry(all...)
@@ -118,7 +119,6 @@ func standardAnalyzerRules() ([]rules.Rule, error) {
 		appendNoValuesRule,
 		invalidSlogArgumentsRule,
 		unusedResultRule,
-		unreachableCodeRule,
 		unsafeHostPortRule,
 		deferredTimeSinceRule,
 		selfAssignmentRule,

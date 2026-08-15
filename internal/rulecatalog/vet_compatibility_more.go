@@ -8,7 +8,6 @@ import (
 	"golang.org/x/tools/go/analysis/passes/shift"
 	"golang.org/x/tools/go/analysis/passes/slog"
 	"golang.org/x/tools/go/analysis/passes/stringintconv"
-	"golang.org/x/tools/go/analysis/passes/unreachable"
 	"golang.org/x/tools/go/analysis/passes/unusedresult"
 
 	"github.com/faustbrian/glippy/internal/analysis"
@@ -197,43 +196,6 @@ func unusedResultRule() (rules.Rule, error) {
 			},
 		},
 		nil,
-	)
-}
-
-func unreachableCodeRule() (rules.Rule, error) {
-	return adaptStandardAnalyzer(
-		unreachable.Analyzer,
-		rules.Metadata{
-			ID: "unreachable-code",
-			Summary: "detects statements that execution cannot reach",
-			Documentation: "Statements following an unconditional return, panic, terminating branch, or infinite loop cannot execute. They often preserve stale work after a refactor or conceal control-flow mistakes. Glippy adapts the standard Go unreachable analyzer.",
-			DefaultSeverity: rules.SeverityWarn,
-			Presets: []rules.Preset{rules.PresetCorrectness},
-			MinimumGoVersion: "1.25",
-			Requirement: rules.RequireTypes,
-			NodeInterests: []rules.NodeKind{rules.NodeFile},
-			RunDespiteTypeErrors: true,
-			Categories: []rules.Category{rules.CategoryCorrectness},
-			KnownLimitations: []string{
-				"The upstream control-flow model reports the first unreachable statement in a contiguous region.",
-				"Removal remains suggestion-only because comments and intentionally retained examples require review.",
-			},
-			Examples: []rules.Example{
-				{
-					Title: "Remove statements after a terminal return",
-					Incorrect: "return\nwork()",
-					Correct: "work()\nreturn",
-				},
-			},
-		},
-		[]analysis.AnalyzerFixMapping{
-			{
-				Message: "Remove",
-				Name: "remove-unreachable-code",
-				Description: "remove the unreachable statement",
-				Safety: rules.FixSuggestion,
-			},
-		},
 	)
 }
 
