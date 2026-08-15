@@ -1508,3 +1508,15 @@ an 81.4 ms median with about 3.50 MB allocated on Darwin arm64. Non-mutating
 exact-rule dogfood remained clean on Glippy and `pkg/prompts`, while the
 disposable supported-version cpd clone reported the reviewed line. The active
 Clippy-comparability goal continues.
+
+The next standard-library correctness rule admits `net-ip-bytes-equal` for
+exact `bytes.Equal` calls whose operands both have exact `net.IP` type. Raw
+byte equality does not account for equivalent 4-byte and 16-byte IPv4
+representations; aliases and dot imports remain recognized, while ordinary
+byte slices, one-IP comparisons, distinct named wrappers, indirect calls, and
+local lookalikes remain excluded. Current Staticcheck SA1021 and two live
+DeepFlow comparisons support admission. Five one-iteration 100-finding probes
+measured a 137.3 ms median with about 4.60 MB allocated on Darwin arm64. A
+direct disposable DeepFlow run reported both reviewed lines, and non-mutating
+exact-rule dogfood remained clean on Glippy and `pkg/prompts`. The documented
+catalog reaches 100 rules, and the active Clippy-comparability goal continues.

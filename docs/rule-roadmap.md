@@ -127,6 +127,13 @@ panic despite the APIs' `any` parameter, while slices and runtime-unknown
 interface or type-parameter values remain conservative. No fix guesses whether
 the caller intended a dereference, copy, or different data shape.
 
+The IP comparison track now admits `net-ip-bytes-equal` for exact
+`bytes.Equal` calls over two exact `net.IP` values. Raw byte equality can treat
+equivalent 4-byte and 16-byte IPv4 representations as different addresses,
+while `net.IP.Equal` accounts for both representations. Ordinary byte slices,
+distinct named wrappers, indirect calls, and local lookalikes remain excluded,
+and no fix silently changes equality semantics or guesses import ownership.
+
 ## Investigation Queue
 
 The queue contains defect classes to investigate, not accepted rule IDs.

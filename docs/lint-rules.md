@@ -62,6 +62,7 @@ not stable release promises.
 - [mixed-receiver-type](#mixed-receiver-type)
 - [nan-comparison](#nan-comparison)
 - [needless-blank-identifier](#needless-blank-identifier)
+- [net-ip-bytes-equal](#net-ip-bytes-equal)
 - [nil-context](#nil-context)
 - [nil-function-comparison](#nil-function-comparison)
 - [nil-map-write](#nil-map-write)
@@ -2662,6 +2663,53 @@ for _, _ = range values {}
 
 ```go
 for range values {}
+```
+
+## net-ip-bytes-equal
+
+detects representation-sensitive net.IP comparisons
+
+A net.IP value may represent the same IPv4 address with either 4 or 16 bytes. bytes.Equal compares
+only the underlying bytes, while net.IP.Equal accounts for both valid representations.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct bytes.Equal calls whose two arguments have the exact net.IP type are recognized;
+  function values remain conservative.
+- Named byte-slice wrappers and interface values are excluded because net.IP semantics are not
+  proven.
+- Generated files and packages with type errors are excluded.
+
+### Example: Compare IP addresses semantically
+
+**Incorrect**
+
+```go
+same := bytes.Equal(first, second)
+```
+
+**Correct**
+
+```go
+same := first.Equal(second)
 ```
 
 ## nil-context
