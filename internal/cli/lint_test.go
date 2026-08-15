@@ -22,6 +22,7 @@ import (
 	"github.com/faustbrian/glippy/internal/filesystem"
 	fixengine "github.com/faustbrian/glippy/internal/fix"
 	glippyreport "github.com/faustbrian/glippy/internal/report"
+	"github.com/faustbrian/glippy/internal/rulecatalog"
 	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
 	"github.com/faustbrian/glippy/internal/suppressions"
@@ -6936,54 +6937,36 @@ func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 	}
 	if err := os.WriteFile(
 		filepath.Join(root, ".glippy.toml"),
-		[]byte(
-			"version = 1\n[lint.rules]\n" +
-				"append-no-values = \"off\"\n" +
-				"atomic-update-assignment = \"off\"\n" +
-				"bad-bit-mask = \"off\"\n" +
-				"context-cancel-leak = \"off\"\n" +
-				"contradictory-condition = \"off\"\n" +
-				"copied-lock = \"off\"\n" +
-				"defer-before-error-check = \"off\"\n" +
-				"deferred-lock = \"off\"\n" +
-				"deferred-time-since = \"off\"\n" +
-				"errors-as-target = \"off\"\n" +
-				"http-response-before-error = \"off\"\n" +
-				"ignored-append-result = \"off\"\n" +
-				"impossible-comparison = \"off\"\n" +
-				"impossible-interface-nil-comparison = \"off\"\n" +
-				"impossible-type-assertion = \"off\"\n" +
-				"ineffective-url-query-mutation = \"off\"\n" +
-				"infinite-recursion = \"off\"\n" +
-				"invalid-random-bound = \"off\"\n" +
-				"invalid-slog-arguments = \"off\"\n" +
-				"invalid-struct-tag = \"off\"\n" +
-				"invalid-test-signature = \"off\"\n" +
-				"invalid-unmarshal-target = \"off\"\n" +
-				"loop-capture = \"off\"\n" +
-				"nan-comparison = \"off\"\n" +
-				"nil-context = \"off\"\n" +
-				"nil-function-comparison = \"off\"\n" +
-				"nil-map-write = \"off\"\n" +
-				"oversized-shift = \"off\"\n" +
-				"printf-arguments = \"off\"\n" +
-				"self-assignment = \"off\"\n" +
-				"sql-transaction-not-completed = \"off\"\n" +
-				"standard-library-version = \"off\"\n" +
-				"standard-method-signature = \"off\"\n" +
-				"testing-goroutine-call = \"off\"\n" +
-				"time-duration-unit = \"off\"\n" +
-				"time-layout = \"off\"\n" +
-				"unreachable-code = \"off\"\n" +
-				"unbuffered-signal-channel = \"off\"\n" +
-				"unsafe-host-port = \"off\"\n" +
-				"unused-result = \"off\"\n" +
-				"waitgroup-misuse = \"off\"\n" +
-				"zero-replace-count = \"off\"\n",
-		),
+		[]byte("version = 1\n[lint.rules]\n" + syntaxOnlyProductRuleOverrides(t)),
 		0o600,
 	);
 		err != nil {
 		t.Fatal(err)
 	}
+}
+
+func syntaxOnlyProductRuleOverrides(t *testing.T) string {
+	t.Helper()
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.ResolveOptions(
+		rules.ResolveOptions{
+			Presets: []rules.Preset{rules.PresetCorrectness},
+			SourceGoVersion: "go1.26",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var overrides strings.Builder
+	for _, selected := range selection {
+		if selected.Requirement <= rules.RequireSyntax {
+			continue
+		}
+		overrides.WriteString(selected.ID)
+		overrides.WriteString(" = \"off\"\n")
+	}
+	return overrides.String()
 }

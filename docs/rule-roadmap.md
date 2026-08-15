@@ -106,6 +106,13 @@ nonzero and dynamic counts, function values, and local lookalikes remain
 excluded. No fix guesses whether the caller intended one, some, or all
 replacements.
 
+The regexp correctness track now admits `invalid-regexp` and
+`zero-regexp-match-limit`. Exact constant patterns are checked with the
+appropriate Perl or POSIX parser under a 64 KiB work bound, while exact FindAll
+methods report a compile-time zero result limit. Dynamic arguments, indirect
+calls, local lookalikes, generated files, and ill-typed packages remain
+excluded, and neither rule guesses a replacement.
+
 ## Investigation Queue
 
 The queue contains defect classes to investigate, not accepted rule IDs.

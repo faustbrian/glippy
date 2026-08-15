@@ -1268,49 +1268,8 @@ func TestRunCombinedCheckHonorsLintAndFormatConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	configuration := "version = 1\n[format]\nline-width = 30\n[lint.rules]\n" +
-		"append-no-values = \"off\"\n" +
-		"atomic-update-assignment = \"off\"\n" +
-		"bad-bit-mask = \"off\"\n" +
-		"context-cancel-leak = \"off\"\n" +
-		"contradictory-condition = \"off\"\n" +
-		"copied-lock = \"off\"\n" +
-		"defer-before-error-check = \"off\"\n" +
-		"deferred-lock = \"off\"\n" +
-		"deferred-time-since = \"off\"\n" +
-		"duplicate-condition = \"off\"\n" +
-		"errors-as-target = \"off\"\n" +
-		"http-response-before-error = \"off\"\n" +
-		"ignored-append-result = \"off\"\n" +
-		"impossible-comparison = \"off\"\n" +
-		"impossible-interface-nil-comparison = \"off\"\n" +
-		"impossible-type-assertion = \"off\"\n" +
-		"ineffective-url-query-mutation = \"off\"\n" +
-		"infinite-recursion = \"off\"\n" +
-		"invalid-random-bound = \"off\"\n" +
-		"invalid-slog-arguments = \"off\"\n" +
-		"invalid-struct-tag = \"off\"\n" +
-		"invalid-test-signature = \"off\"\n" +
-		"invalid-unmarshal-target = \"off\"\n" +
-		"loop-capture = \"off\"\n" +
-		"nan-comparison = \"off\"\n" +
-		"nil-context = \"off\"\n" +
-		"nil-function-comparison = \"off\"\n" +
-		"nil-map-write = \"off\"\n" +
-		"oversized-shift = \"off\"\n" +
-		"printf-arguments = \"off\"\n" +
-		"self-assignment = \"off\"\n" +
-		"sql-transaction-not-completed = \"off\"\n" +
-		"standard-library-version = \"off\"\n" +
-		"standard-method-signature = \"off\"\n" +
-		"testing-goroutine-call = \"off\"\n" +
-		"time-duration-unit = \"off\"\n" +
-		"time-layout = \"off\"\n" +
-		"unreachable-code = \"off\"\n" +
-		"unbuffered-signal-channel = \"off\"\n" +
-		"unsafe-host-port = \"off\"\n" +
-		"unused-result = \"off\"\n" +
-		"waitgroup-misuse = \"off\"\n" +
-		"zero-replace-count = \"off\"\n"
+		syntaxOnlyProductRuleOverrides(t) +
+		"duplicate-condition = \"off\"\n"
 	if err := os.WriteFile(filepath.Join(root, ".glippy.toml"), []byte(configuration), 0o600);
 		err != nil {
 		t.Fatal(err)

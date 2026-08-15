@@ -49,6 +49,7 @@ not stable release promises.
 - [invalid-build-constraint](#invalid-build-constraint)
 - [invalid-directive](#invalid-directive)
 - [invalid-random-bound](#invalid-random-bound)
+- [invalid-regexp](#invalid-regexp)
 - [invalid-slog-arguments](#invalid-slog-arguments)
 - [invalid-struct-tag](#invalid-struct-tag)
 - [invalid-test-signature](#invalid-test-signature)
@@ -102,6 +103,7 @@ not stable release promises.
 - [unsafe-host-port](#unsafe-host-port)
 - [unused-result](#unused-result)
 - [waitgroup-misuse](#waitgroup-misuse)
+- [zero-regexp-match-limit](#zero-regexp-match-limit)
 - [zero-replace-count](#zero-replace-count)
 
 ## almost-swapped
@@ -2034,6 +2036,52 @@ choice := rand.Intn(1)
 
 ```go
 choice := rand.Intn(2)
+```
+
+## invalid-regexp
+
+detects invalid constant regular expressions
+
+The regexp package parses patterns at runtime. An invalid constant pattern makes MustCompile panic
+and makes Compile or the Match helpers return an error instead of performing the intended match.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct calls to exact regexp compilation and Match helpers with compile-time constant
+  patterns are recognized; function values remain conservative.
+- Patterns larger than 64 KiB are skipped to bound analysis work.
+- Generated files and packages with type errors are excluded.
+
+### Example: Use a valid regular expression
+
+**Incorrect**
+
+```go
+pattern := regexp.MustCompile("[")
+```
+
+**Correct**
+
+```go
+pattern := regexp.MustCompile("[a-z]")
 ```
 
 ## invalid-slog-arguments
@@ -4652,6 +4700,52 @@ go func() { wg.Add(1); defer wg.Done() }()
 ```go
 wg.Add(1)
 go func() { defer wg.Done() }()
+```
+
+## zero-regexp-match-limit
+
+detects regexp FindAll calls whose zero limit returns no matches
+
+Regexp FindAll methods return at most n matches when n is nonnegative. A compile-time zero limit
+therefore always returns an empty result, while a negative limit requests every match.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct calls to exact *regexp.Regexp FindAll methods are recognized; method values and
+  interface dispatch remain conservative.
+- Only compile-time integer zero limits are reported; value flow through variables is not inferred.
+- Generated files and packages with type errors are excluded.
+
+### Example: Request all matches
+
+**Incorrect**
+
+```go
+matches := pattern.FindAllString(input, 0)
+```
+
+**Correct**
+
+```go
+matches := pattern.FindAllString(input, -1)
 ```
 
 ## zero-replace-count

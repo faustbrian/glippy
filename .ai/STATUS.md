@@ -1470,3 +1470,18 @@ Current Staticcheck SA1018 and a live `diskfs/go-diskfs` path-normalization
 defect support admission. A 100-call cold package probe had a 101.0 ms median
 with about 2.92 MB allocated, and exact-rule dogfood remained clean on Glippy
 and `pkg/prompts`. The active Clippy-comparability goal continues.
+
+The next standard-library correctness batch admits `invalid-regexp` and
+`zero-regexp-match-limit`. Exact `regexp` compilation and Match helpers now
+validate compile-time patterns with the appropriate Perl or POSIX parser;
+diagnostics retain the error category without copying pattern text, and a 64
+KiB pattern bound limits parser work. All eight exact `*regexp.Regexp` FindAll
+methods now report a compile-time zero limit because no matches can be
+returned. Type identity excludes indirect calls, interface dispatch, and local
+lookalikes while generated and ill-typed files remain ineligible. Five
+one-iteration 100-finding probes measured 124.7 ms and about 2.75 MB for
+invalid patterns, and 93.9 ms and about 2.78 MB for zero limits, on Darwin
+arm64. Current Staticcheck SA1000 and SA1010 support admission; local Glippy and
+Go-libraries searches found no production occurrence. Non-mutating exact-rule
+dogfood remained clean on Glippy and `pkg/prompts`. The active
+Clippy-comparability goal continues.
