@@ -566,7 +566,12 @@ func (r *packageAnalyzerRule) packageFinding(
 				NewText: string(edit.NewText),
 			}
 		}
-		fixes[fixIndex] = rules.Fix{Name: mapped.name, Safety: mapped.safety, Edits: edits}
+		fixes[fixIndex] = rules.Fix{
+			Name: mapped.name,
+			Safety: mapped.safety,
+			Edits: edits,
+			RequiredImports: slices.Clone(mapped.requiredImports),
+		}
 	}
 	help, err := analyzerDiagnosticURL(&r.analyzer, diagnostic)
 	if err != nil {

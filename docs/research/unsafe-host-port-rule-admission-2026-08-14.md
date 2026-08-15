@@ -21,4 +21,9 @@ imports and malformed-input formatting may change.
 A one-iteration package-load probe measured 109,170,834 ns on darwin/arm64.
 Non-mutating dogfood found no diagnostics across 178 Glippy files or 57 prompts
 files at `2c9842015ab62fd7790f0d99bf54855ffa7000f2`. CLI tests prove formatted,
-validated, repeated suggestion application.
+validated, repeated suggestion application. The v0.4 fix-coordination
+extension proves the cross-file form in which one file declares the diagnosed
+`fmt.Sprintf` value and another passes it to `net.Dial`: the accepted
+suggestion adds the exact `net` binding to the diagnosed file, removes its
+newly unused `fmt` binding, reparses and reanalyses both files, reports both
+derived import operations, and is idempotent.

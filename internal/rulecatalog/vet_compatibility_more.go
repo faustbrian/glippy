@@ -268,6 +268,9 @@ func unsafeHostPortRule() (rules.Rule, error) {
 				Name: "use-net-join-host-port",
 				Description: "construct the address with net.JoinHostPort",
 				Safety: rules.FixSuggestion,
+				RequiredImports: []rules.ImportRequirement{
+					{Path: "net", Name: "net"},
+				},
 			},
 		},
 	)

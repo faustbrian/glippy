@@ -432,7 +432,8 @@ func NewLintFixResult(
 			)
 		}
 		for _, change := range outcome.ImportChanges {
-			if change.Action != fixengine.ImportRemove ||
+			if (change.Action != fixengine.ImportAdd &&
+				change.Action != fixengine.ImportRemove) ||
 				change.Path == "" ||
 				change.Name == "" {
 				return LintResult{}, fmt.Errorf(

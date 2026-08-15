@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/faustbrian/glippy/internal/source"
+	"golang.org/x/mod/module"
 	"golang.org/x/tools/go/cfg"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
@@ -1153,11 +1154,30 @@ type Edit struct {
 	NewText string
 }
 
+// ImportRequirement identifies one exact package binding required by a fix.
+type ImportRequirement struct {
+	Path string
+	Name string
+}
+
+// Validate rejects package bindings that cannot be represented as an exact
+// ordinary Go import.
+func (r ImportRequirement) Validate() error {
+	if err := module.CheckImportPath(r.Path); err != nil || r.Path == "C" {
+		return fmt.Errorf("required import path %q is invalid", r.Path)
+	}
+	if !token.IsIdentifier(r.Name) || r.Name == "_" || r.Name == "." {
+		return fmt.Errorf("required import name %q is invalid", r.Name)
+	}
+	return nil
+}
+
 // Fix is one named, safety-classified set of source edits.
 type Fix struct {
 	Name string
 	Safety FixSafety
 	Edits []Edit
+	RequiredImports []ImportRequirement
 }
 
 // FixWithholdingReason classifies why a declared fix was not offered for one

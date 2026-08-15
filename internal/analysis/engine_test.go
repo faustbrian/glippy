@@ -383,6 +383,10 @@ func TestRunSyntaxPreservesRichFindingSequence(t *testing.T) {
 			Safety: rules.FixSuggestion,
 		},
 	}
+	requiredImports := []rules.ImportRequirement{
+		{Path: "net", Name: "net"},
+		{Path: "example.com/alpha", Name: "alpha"},
+	}
 	nativeRule := syntaxRule{
 		metadata: metadata,
 		run: func(ctx *rules.Context, node ast.Node) ([]rules.Finding, error) {
@@ -405,6 +409,7 @@ func TestRunSyntaxPreservesRichFindingSequence(t *testing.T) {
 						{
 							Name: "rewrite",
 							Safety: rules.FixSafe,
+							RequiredImports: requiredImports,
 							Edits: []rules.Edit{
 								{
 									Range: sourceRange,
@@ -434,12 +439,22 @@ func TestRunSyntaxPreservesRichFindingSequence(t *testing.T) {
 		},
 	}
 	diagnostic := runOneDiagnostic(t, file, nativeRule)
+	requiredImports[0].Path = "example.com/mutated"
 	if got, want := []string{
 		diagnostic.Related[0].Message,
 		diagnostic.Related[1].Message,
 	}, []string{"z related first", "a related second"};
 		!reflect.DeepEqual(got, want) {
 		t.Fatalf("related order = %#v, want %#v", got, want)
+	}
+	if got, want := diagnostic.
+		Fixes[0].
+		RequiredImports, []rules.ImportRequirement{
+		{Path: "example.com/alpha", Name: "alpha"},
+		{Path: "net", Name: "net"},
+	};
+		!reflect.DeepEqual(got, want) {
+		t.Fatalf("fix required imports = %#v, want %#v", got, want)
 	}
 	if got, want := diagnostic.Notes, []string{"z note first", "a note second"};
 		!reflect.DeepEqual(got, want) {
@@ -547,6 +562,43 @@ func TestRunSyntaxRejectsMalformedRichFindings(t *testing.T) {
 				},
 			},
 			wantError: "invalid edit range",
+		},
+		{
+			name: "invalid required import",
+			finding: rules.Finding{
+				MessageKey: "invalid-import",
+				Message: "invalid required import",
+				Range: source.Range{Start: 0, End: 1},
+				Fixes: []rules.Fix{
+					{
+						Name: "rewrite",
+						Safety: rules.FixSafe,
+						RequiredImports: []rules.ImportRequirement{
+							{Path: "bad path", Name: "bad"},
+						},
+					},
+				},
+			},
+			wantError: "invalid import requirement",
+		},
+		{
+			name: "duplicate required import",
+			finding: rules.Finding{
+				MessageKey: "duplicate-import",
+				Message: "duplicate required import",
+				Range: source.Range{Start: 0, End: 1},
+				Fixes: []rules.Fix{
+					{
+						Name: "rewrite",
+						Safety: rules.FixSafe,
+						RequiredImports: []rules.ImportRequirement{
+							{Path: "net", Name: "net"},
+							{Path: "net", Name: "net"},
+						},
+					},
+				},
+			},
+			wantError: "repeats required import",
 		},
 		{
 			name: "undeclared withheld fix",

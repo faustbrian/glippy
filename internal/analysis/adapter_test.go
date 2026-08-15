@@ -180,6 +180,9 @@ func visible() { target() }
 					Message: "Replace target call",
 					Name: "replace-target",
 					Description: "replace the target call",
+					RequiredImports: []rules.ImportRequirement{
+						{Path: "example.com/primary", Name: "primary"},
+					},
 				},
 			},
 		},
@@ -223,6 +226,10 @@ func visible() { target() }
 		len(diagnostic.Fixes) != 1 ||
 		diagnostic.Fixes[0].Name != "replace-target" ||
 		diagnostic.Fixes[0].Safety != rules.FixSuggestion ||
+		!reflect.DeepEqual(
+			diagnostic.Fixes[0].RequiredImports,
+			[]rules.ImportRequirement{{Path: "example.com/primary", Name: "primary"}},
+		) ||
 		len(diagnostic.Fixes[0].Edits) != 1 ||
 		diagnostic.Fixes[0].Edits[0].NewText != "primary()" {
 		t.Fatalf("adapter diagnostic = %#v", diagnostic)
@@ -3091,6 +3098,7 @@ func TestAdaptAnalyzerMapsTypedPackageSuggestedFixes(t *testing.T) {
 			Description: "replace the value",
 			Safety: rules.FixSafe,
 			Audited: true,
+			RequiredImports: []rules.ImportRequirement{{Path: "net", Name: "net"}},
 		},
 	}
 	adapted, err := analysis.AdaptAnalyzer(upstream, options)
@@ -3123,6 +3131,10 @@ func TestAdaptAnalyzerMapsTypedPackageSuggestedFixes(t *testing.T) {
 		len(diagnostic.Fixes) != 1 ||
 		diagnostic.Fixes[0].Name != "replace-value" ||
 		diagnostic.Fixes[0].Safety != rules.FixSafe ||
+		!reflect.DeepEqual(
+			diagnostic.Fixes[0].RequiredImports,
+			[]rules.ImportRequirement{{Path: "net", Name: "net"}},
+		) ||
 		len(diagnostic.Fixes[0].Edits) != 1 ||
 		diagnostic.Fixes[0].Edits[0] !=
 			(rules.Edit{
@@ -3752,6 +3764,29 @@ func TestAdaptAnalyzerRejectsUnsupportedAnalyzerContracts(t *testing.T) {
 				return options
 			}(),
 			wantError: "invalid fix safety",
+		},
+		{
+			name: "invalid required import",
+			analyzer: &goanalysis.Analyzer{
+				Name: "invalidrequiredimport",
+				Doc: "offers an invalid required import",
+				Run: validRun,
+			},
+			options: func() analysis.AnalyzerAdapterOptions {
+				options := adapterOptions("invalid-required-import")
+				options.SuggestedFixes = []analysis.AnalyzerFixMapping{
+					{
+						Message: "Rewrite",
+						Name: "rewrite",
+						Description: "rewrite source",
+						RequiredImports: []rules.ImportRequirement{
+							{Path: "bad path", Name: "bad"},
+						},
+					},
+				}
+				return options
+			}(),
+			wantError: "invalid required import",
 		},
 		{
 			name: "typed metadata without read-only audit",

@@ -1567,3 +1567,15 @@ invalidation without making dependency source a lint target. A 100-function,
 allocations on Darwin arm64. Exact-rule dogfood remained clean on Glippy and
 `go-libraries/pkg/prompts` without modifying the pre-existing dirty prompts
 `go.sum`.
+
+The v0.4 fix coordinator now accepts exact path and local-name requirements
+from native and adapted fixes. Requirements are validated, cloned, canonically
+ordered, persisted in analyzer and native cache schema version 3, and included
+when fixes are compared. The coordinator reuses exact bindings, rejects
+incompatible fix or source bindings, appends only to a safely represented
+single import group, otherwise adds independent declarations, and never prunes
+an import required by another accepted fix. Machine fix output distinguishes
+deterministic `add` and `remove` operations. The `unsafe-host-port` suggestion
+proves the cross-file case by adding `net` to the diagnosed formatting file,
+removing its final `fmt` import, completing typed reanalysis, and remaining
+idempotent on a second run.

@@ -71,7 +71,10 @@ type Result struct {
 // ImportAction identifies one coordinator-owned import operation.
 type ImportAction string
 
-const ImportRemove ImportAction = "remove"
+const (
+	ImportAdd ImportAction = "add"
+	ImportRemove ImportAction = "remove"
+)
 
 // ImportChange records one deterministic import operation required by fixes.
 type ImportChange struct {
@@ -155,8 +158,9 @@ func Coordinate(file *source.File, selections []Selection, options Options) (Res
 			fmt.Sprintf("fixed source did not parse: %v", err),
 		), nil
 	}
+	requiredImports := acceptedImportRequirements(accepted)
 	var importChanges []ImportChange
-	edited, importChanges, err = pruneNewlyUnusedImports(file, editedFile)
+	edited, importChanges, err = coordinateImports(file, editedFile, requiredImports)
 	if err != nil {
 		return rejectedTransaction(
 			input,
@@ -255,8 +259,13 @@ func prepareCandidate(
 	}
 	base.fix = matched[0]
 	base.fix.Edits = slices.Clone(matched[0].Edits)
+	base.fix.RequiredImports = slices.Clone(matched[0].RequiredImports)
 	if reason, message, disallowed := safetyRejection(base.fix.Safety, options); disallowed {
 		rejection := reject(base, reason, message)
+		return candidate{}, &rejection
+	}
+	if err := validateRequiredImportBindings(file, base.fix.RequiredImports); err != nil {
+		rejection := reject(base, RejectionValidation, err.Error())
 		return candidate{}, &rejection
 	}
 	if len(base.fix.Edits) == 0 {
@@ -322,6 +331,7 @@ func byteBoundary(input []byte, offset int) bool {
 
 func conflictingCandidates(candidates []candidate) []bool {
 	conflicts := make([]bool, len(candidates))
+	markImportRequirementConflicts(candidates, conflicts)
 	edits := make([]candidateEdit, 0)
 	for candidateIndex, prepared := range candidates {
 		for _, edit := range prepared.fix.Edits {
@@ -388,6 +398,43 @@ func conflictingCandidates(candidates []candidate) []bool {
 	return conflicts
 }
 
+func markImportRequirementConflicts(candidates []candidate, conflicts []bool) {
+	byName := make(map[string]map[string][]int)
+	byPath := make(map[string]map[string][]int)
+	for candidateIndex, prepared := range candidates {
+		for _, requirement := range prepared.fix.RequiredImports {
+			paths := byName[requirement.Name]
+			if paths == nil {
+				paths = make(map[string][]int)
+				byName[requirement.Name] = paths
+			}
+			paths[requirement.Path] = append(paths[requirement.Path], candidateIndex)
+
+			names := byPath[requirement.Path]
+			if names == nil {
+				names = make(map[string][]int)
+				byPath[requirement.Path] = names
+			}
+			names[requirement.Name] = append(names[requirement.Name], candidateIndex)
+		}
+	}
+	markIncompatibleImportRequirementGroups(byName, conflicts)
+	markIncompatibleImportRequirementGroups(byPath, conflicts)
+}
+
+func markIncompatibleImportRequirementGroups(groups map[string]map[string][]int, conflicts []bool) {
+	for _, variants := range groups {
+		if len(variants) < 2 {
+			continue
+		}
+		for _, candidates := range variants {
+			for _, candidate := range candidates {
+				conflicts[candidate] = true
+			}
+		}
+	}
+}
+
 func applyCandidates(input []byte, candidates []candidate) []byte {
 	edits := make([]candidateEdit, 0)
 	for candidateIndex, prepared := range candidates {
@@ -433,6 +480,30 @@ func applyCandidates(input []byte, candidates []candidate) []byte {
 		result = next
 	}
 	return result
+}
+
+func acceptedImportRequirements(candidates []candidate) []rules.ImportRequirement {
+	seen := make(map[rules.ImportRequirement]struct{})
+	requirements := make([]rules.ImportRequirement, 0)
+	for _, prepared := range candidates {
+		for _, requirement := range prepared.fix.RequiredImports {
+			if _, found := seen[requirement]; found {
+				continue
+			}
+			seen[requirement] = struct{}{}
+			requirements = append(requirements, requirement)
+		}
+	}
+	sort.Slice(
+		requirements,
+		func(left, right int) bool {
+			if requirements[left].Path != requirements[right].Path {
+				return requirements[left].Path < requirements[right].Path
+			}
+			return requirements[left].Name < requirements[right].Name
+		},
+	)
+	return requirements
 }
 
 func rejectedTransaction(

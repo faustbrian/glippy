@@ -18,7 +18,7 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const packageAnalyzerCacheEntryVersion = 2
+const packageAnalyzerCacheEntryVersion = 3
 
 // PackageCacheOptions binds a caller-owned persistent store to the complete
 // non-source identity of one typed analysis run. Source, package, module,
@@ -96,10 +96,16 @@ type persistedEdit struct {
 	NewText string `json:"newText"`
 }
 
+type persistedImportRequirement struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+}
+
 type persistedFix struct {
 	Name string `json:"name"`
 	Safety rules.FixSafety `json:"safety"`
 	Edits []persistedEdit `json:"edits"`
+	RequiredImports []persistedImportRequirement `json:"requiredImports"`
 }
 
 type persistedWithheldFix struct {
@@ -388,7 +394,22 @@ func persistDiagnostic(diagnostic rules.Diagnostic) persistedDiagnostic {
 				NewText: edit.NewText,
 			}
 		}
-		fixes[index] = persistedFix{Name: fix.Name, Safety: fix.Safety, Edits: edits}
+		var requirements []persistedImportRequirement
+		if fix.RequiredImports != nil {
+			requirements = make([]persistedImportRequirement, len(fix.RequiredImports))
+		}
+		for requirementIndex, requirement := range fix.RequiredImports {
+			requirements[requirementIndex] = persistedImportRequirement{
+				Path: requirement.Path,
+				Name: requirement.Name,
+			}
+		}
+		fixes[index] = persistedFix{
+			Name: fix.Name,
+			Safety: fix.Safety,
+			Edits: edits,
+			RequiredImports: requirements,
+		}
 	}
 	var withheldFixes []persistedWithheldFix
 	if diagnostic.WithheldFixes != nil {
@@ -451,7 +472,31 @@ func restorePersistedDiagnostic(persisted persistedDiagnostic) (rules.Diagnostic
 				NewText: edit.NewText,
 			}
 		}
-		fixes[index] = rules.Fix{Name: fix.Name, Safety: fix.Safety, Edits: edits}
+		var requirements []rules.ImportRequirement
+		if fix.RequiredImports != nil {
+			requirements = make([]rules.ImportRequirement, len(fix.RequiredImports))
+		}
+		for requirementIndex, requirement := range fix.RequiredImports {
+			restored := rules.ImportRequirement{
+				Path: requirement.Path,
+				Name: requirement.Name,
+			}
+			if err := restored.Validate(); err != nil {
+				return rules.Diagnostic{}, fmt.Errorf(
+					"fix %q required import %d is invalid: %w",
+					fix.Name,
+					requirementIndex,
+					err,
+				)
+			}
+			requirements[requirementIndex] = restored
+		}
+		fixes[index] = rules.Fix{
+			Name: fix.Name,
+			Safety: fix.Safety,
+			Edits: edits,
+			RequiredImports: requirements,
+		}
 	}
 	var withheldFixes []rules.WithheldFix
 	if persisted.WithheldFixes != nil {

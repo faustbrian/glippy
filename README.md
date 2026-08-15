@@ -56,6 +56,9 @@ inside formatting, and layout policy is not duplicated as lint noise.
   imported helpers, without retaining dependency syntax as lint targets.
 - **Safe source changes:** fixes carry source identity and safety class;
   conflicts, stale ranges, and failed validation cannot silently write source.
+  Accepted fixes may declare exact required imports, while the coordinator
+  owns collision checks, fix-caused cleanup, and deterministic add/remove
+  provenance without becoming a general import organizer.
 - **One product, separate engines:** formatting, diagnostics, fix coordination,
   filesystem replacement, and reporting retain distinct owners.
 

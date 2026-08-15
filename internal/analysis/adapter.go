@@ -26,6 +26,7 @@ type AnalyzerFixMapping struct {
 	Description string
 	Safety rules.FixSafety
 	Audited bool
+	RequiredImports []rules.ImportRequirement
 }
 
 // AnalyzerAdapterOptions supplies the native product contract for an analyzer.
@@ -49,6 +50,7 @@ type AnalyzerFlagBinding struct {
 type analyzerFix struct {
 	name string
 	safety rules.FixSafety
+	requiredImports []rules.ImportRequirement
 }
 
 type analyzerRule struct {
@@ -434,7 +436,20 @@ func adaptAnalyzer(
 				analyzer.Name,
 			)
 		}
-		fixes[mapping.Message] = analyzerFix{name: mapping.Name, safety: safety}
+		requiredImports, err := canonicalAnalyzerImportRequirements(mapping.RequiredImports)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"adapt go/analysis %q: fix %q: %w",
+				analyzer.Name,
+				mapping.Name,
+				err,
+			)
+		}
+		fixes[mapping.Message] = analyzerFix{
+			name: mapping.Name,
+			safety: safety,
+			requiredImports: requiredImports,
+		}
 		fixNames[mapping.Name] = struct{}{}
 		metadata.Fixes = append(
 			metadata.Fixes,
@@ -509,6 +524,52 @@ func adaptAnalyzer(
 		return nil, fmt.Errorf("adapt go/analysis %q metadata: %w", analyzer.Name, err)
 	}
 	return adapted, nil
+}
+
+func canonicalAnalyzerImportRequirements(
+	requirements []rules.ImportRequirement,
+) ([]rules.ImportRequirement, error) {
+	result := slices.Clone(requirements)
+	seen := make(map[rules.ImportRequirement]struct{}, len(result))
+	names := make(map[string]string, len(result))
+	paths := make(map[string]string, len(result))
+	for _, requirement := range result {
+		if err := requirement.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid required import: %w", err)
+		}
+		if _, duplicate := seen[requirement]; duplicate {
+			return nil, fmt.Errorf(
+				"duplicate required import %q as %q",
+				requirement.Path,
+				requirement.Name,
+			)
+		}
+		seen[requirement] = struct{}{}
+		if path, found := names[requirement.Name]; found && path != requirement.Path {
+			return nil, fmt.Errorf(
+				"required import name %q has incompatible paths",
+				requirement.Name,
+			)
+		}
+		if name, found := paths[requirement.Path]; found && name != requirement.Name {
+			return nil, fmt.Errorf(
+				"required import path %q has incompatible names",
+				requirement.Path,
+			)
+		}
+		names[requirement.Name] = requirement.Path
+		paths[requirement.Path] = requirement.Name
+	}
+	sort.Slice(
+		result,
+		func(left, right int) bool {
+			if result[left].Path != result[right].Path {
+				return result[left].Path < result[right].Path
+			}
+			return result[left].Name < result[right].Name
+		},
+	)
+	return result, nil
 }
 
 func analyzerExecutionPlan(root *goanalysis.Analyzer) []*goanalysis.Analyzer {
@@ -971,7 +1032,12 @@ func (r *analyzerRule) finding(
 				NewText: string(edit.NewText),
 			}
 		}
-		fixes[fixIndex] = rules.Fix{Name: mapped.name, Safety: mapped.safety, Edits: edits}
+		fixes[fixIndex] = rules.Fix{
+			Name: mapped.name,
+			Safety: mapped.safety,
+			Edits: edits,
+			RequiredImports: slices.Clone(mapped.requiredImports),
+		}
 	}
 	help, err := analyzerDiagnosticURL(&r.analyzer, diagnostic)
 	if err != nil {

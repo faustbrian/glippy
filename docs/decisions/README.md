@@ -12,7 +12,7 @@ deferred status is an explicit gate, not silent approval.
 | Width and tabs | ADR 0003 |
 | Comment attachment | ADR 0009; initial project-owned corpus proof complete |
 | Directive preservation | ADR 0009; initial project-owned corpus proof complete |
-| Import organization ownership | Formatter specification; layout only. ADR 0018 permits fix-owned cleanup caused by accepted edits |
+| Import organization ownership | Formatter specification; layout only. ADR 0018 permits exact fix-owned additions and cleanup caused by accepted edits |
 | Gofmt fixed point | ADR 0004; product-wide fixed point rejected with recorded divergences |
 | Semantic equivalence | Equivalence specification |
 | Invalid-source formatting | Source model specification; diagnostic-only |

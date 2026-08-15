@@ -16,7 +16,7 @@ import (
 	"github.com/faustbrian/glippy/internal/rules"
 )
 
-const nativePackageCacheEntryVersion = 2
+const nativePackageCacheEntryVersion = 3
 
 type nativePackageCacheEntry struct {
 	Version int `json:"version"`

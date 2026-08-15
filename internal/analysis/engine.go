@@ -310,6 +310,58 @@ func diagnosticForFinding(
 		}
 		seenFixes[fix.Name] = struct{}{}
 		fix.Edits = slices.Clone(fix.Edits)
+		fix.RequiredImports = slices.Clone(fix.RequiredImports)
+		seenImports := make(map[rules.ImportRequirement]struct{}, len(fix.RequiredImports))
+		importNames := make(map[string]string, len(fix.RequiredImports))
+		importPaths := make(map[string]string, len(fix.RequiredImports))
+		for _, requirement := range fix.RequiredImports {
+			if err := requirement.Validate(); err != nil {
+				return rules.Diagnostic{}, fmt.Errorf(
+					"finding fix %q has invalid import requirement: %w",
+					fix.Name,
+					err,
+				)
+			}
+			if _, duplicate := seenImports[requirement]; duplicate {
+				return rules.Diagnostic{}, fmt.Errorf(
+					"finding fix %q repeats required import %q as %q",
+					fix.Name,
+					requirement.Path,
+					requirement.Name,
+				)
+			}
+			seenImports[requirement] = struct{}{}
+			if path, found := importNames[requirement.Name];
+				found && path != requirement.Path {
+				return rules.Diagnostic{}, fmt.Errorf(
+					"finding fix %q requires import name %q for incompatible paths",
+					fix.Name,
+					requirement.Name,
+				)
+			}
+			if name, found := importPaths[requirement.Path];
+				found && name != requirement.Name {
+				return rules.Diagnostic{}, fmt.Errorf(
+					"finding fix %q requires import path %q with incompatible names",
+					fix.Name,
+					requirement.Path,
+				)
+			}
+			importNames[requirement.Name] = requirement.Path
+			importPaths[requirement.Path] = requirement.Name
+		}
+		sort.Slice(
+			fix.RequiredImports,
+			func(left, right int) bool {
+				if fix.RequiredImports[left].Path !=
+					fix.RequiredImports[right].Path {
+					return fix.RequiredImports[left].Path <
+						fix.RequiredImports[right].Path
+				}
+				return fix.RequiredImports[left].Name <
+					fix.RequiredImports[right].Name
+			},
+		)
 		for _, edit := range fix.Edits {
 			if _, valid := file.Slice(edit.Range); !valid {
 				return rules.Diagnostic{}, fmt.Errorf(
@@ -477,6 +529,27 @@ func compareFixes(left, right []rules.Fix) int {
 			}
 		}
 		if order := cmp.Compare(len(leftEdits), len(rightEdits)); order != 0 {
+			return order
+		}
+		leftImports := left[index].RequiredImports
+		rightImports := right[index].RequiredImports
+		for required := 0; required < min(len(leftImports), len(rightImports)); required++ {
+			if order := cmp.Compare(
+				leftImports[required].Path,
+				rightImports[required].Path,
+			);
+				order != 0 {
+				return order
+			}
+			if order := cmp.Compare(
+				leftImports[required].Name,
+				rightImports[required].Name,
+			);
+				order != 0 {
+				return order
+			}
+		}
+		if order := cmp.Compare(len(leftImports), len(rightImports)); order != 0 {
 			return order
 		}
 	}

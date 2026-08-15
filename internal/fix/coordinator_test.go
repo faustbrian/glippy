@@ -98,6 +98,501 @@ func run(text string) {
 	}
 }
 
+func TestCoordinateAddsAnExactImportRequiredByAFix(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n\nfunc run() { _ = 0 }\n"
+	file := loadSource(t, input)
+	selected := selection(
+		file,
+		"use-net-constant",
+		"replace-zero",
+		rules.FixSafe,
+		edit(input, "0", "net.IPv4len"),
+	)
+	selected.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "net", Name: "net"},
+	}
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{selected}, fixOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package sample\n\nimport \"net\"\n\nfunc run() {\n\t_ = net.IPv4len\n}\n"
+	wantChanges := []fixengine.ImportChange{
+		{Action: fixengine.ImportAdd, Path: "net", Name: "net"},
+	}
+	if string(result.Bytes) != want ||
+		!reflect.DeepEqual(result.ImportChanges, wantChanges) ||
+		len(result.Applied) != 1 ||
+		len(result.Rejected) != 0 {
+		t.Fatalf("Coordinate() import addition = %#v, bytes %q", result, result.Bytes)
+	}
+}
+
+func TestCoordinateReusesAnExistingExactRequiredImport(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n\nimport \"net\"\n\nfunc run() { _ = 0 }\n"
+	file := loadSource(t, input)
+	selected := selection(
+		file,
+		"use-net-constant",
+		"replace-zero",
+		rules.FixSafe,
+		edit(input, "0", "net.IPv4len"),
+	)
+	selected.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "net", Name: "net"},
+	}
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{selected}, fixOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.ImportChanges) != 0 ||
+		len(result.Applied) != 1 ||
+		!bytes.Contains(result.Bytes, []byte("net.IPv4len")) {
+		t.Fatalf(
+			"Coordinate() existing import result = %#v, bytes %q",
+			result,
+			result.Bytes,
+		)
+	}
+}
+
+func TestCoordinateAppendsRequiredImportsWithoutChangingAGroupedImport(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	// formatting owns strings
+	"strings"
+
+	"time" // retained group
+)
+
+func run() { _ = 0 }
+`
+	file := loadSource(t, input)
+	selected := selection(
+		file,
+		"use-net-constant",
+		"replace-zero",
+		rules.FixSafe,
+		edit(input, "0", "network.IPv4len"),
+	)
+	selected.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "net", Name: "network"},
+	}
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{selected}, fixOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantImports := "import (\n\t// formatting owns strings\n\t\"strings\"\n\n\t\"time\" // retained group\n\tnetwork \"net\"\n)"
+	if !bytes.Contains(result.Bytes, []byte(wantImports)) ||
+		len(result.ImportChanges) != 1 ||
+		result.ImportChanges[0] !=
+			(fixengine.ImportChange{
+				Action: fixengine.ImportAdd,
+				Path: "net",
+				Name: "network",
+			}) {
+		t.Fatalf("Coordinate() grouped import result = %#v, bytes %q", result, result.Bytes)
+	}
+}
+
+func TestCoordinateUsesASeparateDeclarationAfterAGroupedImportFooterComment(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"strings"
+
+	// keep this footer with the existing group
+)
+
+func run() { _ = strings.TrimSpace(""); _ = 0 }
+`
+	file := loadSource(t, input)
+	selected := selection(
+		file,
+		"use-net-constant",
+		"replace-zero",
+		rules.FixSafe,
+		edit(input, "_ = 0", "_ = net.IPv4len"),
+	)
+	selected.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "net", Name: "net"},
+	}
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{selected}, fixOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantImports := "import (\n\t\"strings\"\n\n\t// keep this footer with the existing group\n)\n\nimport \"net\""
+	if len(result.Applied) != 1 ||
+		len(result.Rejected) != 0 ||
+		len(result.ImportChanges) != 1 ||
+		!bytes.Contains(result.Bytes, []byte(wantImports)) {
+		t.Fatalf(
+			"Coordinate() footer comment import result = %#v, bytes %q",
+			result,
+			result.Bytes,
+		)
+	}
+}
+
+func TestCoordinateRejectsIncompatibleRequiredImportBindings(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n\nfunc run() { first(); second() }\n"
+	file := loadSource(t, input)
+	first := selection(
+		file,
+		"first-rule",
+		"rewrite-first",
+		rules.FixSafe,
+		edit(input, "first()", "shared.First()"),
+	)
+	first.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "example.com/first", Name: "shared"},
+	}
+	second := selection(
+		file,
+		"second-rule",
+		"rewrite-second",
+		rules.FixSafe,
+		edit(input, "second()", "shared.Second()"),
+	)
+	second.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "example.com/second", Name: "shared"},
+	}
+	result, err := fixengine.Coordinate(
+		file,
+		[]fixengine.Selection{first, second},
+		fixOptions(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Applied) != 0 ||
+		len(result.Rejected) != 2 ||
+		result.Rejected[0].Reason != fixengine.RejectionConflict ||
+		result.Rejected[1].Reason != fixengine.RejectionConflict ||
+		!bytes.Equal(result.Bytes, file.Bytes()) {
+		t.Fatalf("Coordinate() conflicting import requirements = %#v", result)
+	}
+}
+
+func TestCoordinateRejectsEveryParticipantInAnImportBindingConflict(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n\nfunc run() { first(); second(); third() }\n"
+	file := loadSource(t, input)
+	first := selection(
+		file,
+		"a-first-rule",
+		"rewrite-first",
+		rules.FixSafe,
+		edit(input, "first()", "shared.First()"),
+	)
+	first.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "example.com/first", Name: "shared"},
+	}
+	second := selection(
+		file,
+		"b-second-rule",
+		"rewrite-second",
+		rules.FixSafe,
+		edit(input, "second()", "shared.Second()"),
+	)
+	second.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "example.com/second", Name: "shared"},
+	}
+	third := selection(
+		file,
+		"c-third-rule",
+		"rewrite-third",
+		rules.FixSafe,
+		edit(input, "third()", "shared.Third()"),
+	)
+	third.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "example.com/first", Name: "shared"},
+	}
+	result, err := fixengine.Coordinate(
+		file,
+		[]fixengine.Selection{first, second, third},
+		fixOptions(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Applied) != 0 ||
+		len(result.Rejected) != 3 ||
+		!bytes.Equal(result.Bytes, file.Bytes()) {
+		t.Fatalf("Coordinate() import conflict participants = %#v", result)
+	}
+	for _, rejected := range result.Rejected {
+		if rejected.Reason != fixengine.RejectionConflict {
+			t.Fatalf("Coordinate() rejection = %#v", rejected)
+		}
+	}
+}
+
+func TestCoordinateRejectsARequiredImportThatConflictsWithASourceBinding(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n\nfunc run() { net := 0; _ = net }\n"
+	file := loadSource(t, input)
+	selected := selection(
+		file,
+		"use-net-constant",
+		"replace-zero",
+		rules.FixSafe,
+		edit(input, "_ = net", "_ = net.IPv4len"),
+	)
+	selected.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "net", Name: "net"},
+	}
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{selected}, fixOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Applied) != 0 ||
+		len(result.Rejected) != 1 ||
+		result.Rejected[0].Reason != fixengine.RejectionValidation ||
+		!strings.Contains(
+			result.Rejected[0].Message,
+			"resolves to a local source binding",
+		) ||
+		!bytes.Equal(result.Bytes, file.Bytes()) {
+		t.Fatalf("Coordinate() source binding conflict = %#v", result)
+	}
+}
+
+func TestCoordinateAllowsAnUnrelatedLocalWithARequiredImportName(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n\nfunc unrelated() { net := 0; _ = net }\n\nfunc run() { _ = 0 }\n"
+	file := loadSource(t, input)
+	selected := selection(
+		file,
+		"use-net-constant",
+		"replace-zero",
+		rules.FixSafe,
+		edit(input, "func run() { _ = 0 }", "func run() { _ = net.IPv4len }"),
+	)
+	selected.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "net", Name: "net"},
+	}
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{selected}, fixOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Applied) != 1 ||
+		len(result.Rejected) != 0 ||
+		len(result.ImportChanges) != 1 ||
+		!bytes.Contains(result.Bytes, []byte("import \"net\"")) ||
+		!bytes.Contains(result.Bytes, []byte("net.IPv4len")) {
+		t.Fatalf(
+			"Coordinate() unrelated local binding = %#v, bytes %q",
+			result,
+			result.Bytes,
+		)
+	}
+}
+
+func TestCoordinateRejectsARequiredImportWithAnExistingInexactBinding(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n\nimport network \"net\"\n\nfunc run() { _ = network.IPv4len; _ = 0 }\n"
+	file := loadSource(t, input)
+	selected := selection(
+		file,
+		"use-net-constant",
+		"replace-zero",
+		rules.FixSafe,
+		edit(input, "_ = 0", "_ = net.IPv6len"),
+	)
+	selected.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "net", Name: "net"},
+	}
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{selected}, fixOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Applied) != 0 ||
+		len(result.Rejected) != 1 ||
+		result.Rejected[0].Reason != fixengine.RejectionValidation ||
+		!strings.Contains(result.Rejected[0].Message, "already uses name") ||
+		!bytes.Equal(result.Bytes, file.Bytes()) {
+		t.Fatalf("Coordinate() existing inexact import = %#v", result)
+	}
+}
+
+func TestCoordinateRejectsARequiredImportAlreadyPresentAsBlank(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n\nimport _ \"net/http/pprof\"\n\nfunc run() { _ = 0 }\n"
+	file := loadSource(t, input)
+	selected := selection(
+		file,
+		"use-pprof",
+		"replace-zero",
+		rules.FixSafe,
+		edit(input, "0", "pprof.Handler(\"index\")"),
+	)
+	selected.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "net/http/pprof", Name: "pprof"},
+	}
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{selected}, fixOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Applied) != 0 ||
+		len(result.Rejected) != 1 ||
+		result.Rejected[0].Reason != fixengine.RejectionValidation ||
+		!strings.Contains(result.Rejected[0].Message, "already uses name") ||
+		!bytes.Equal(result.Bytes, file.Bytes()) {
+		t.Fatalf("Coordinate() blank required import = %#v", result)
+	}
+}
+
+func TestCoordinateRejectsDuplicateRequiredImports(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n\nfunc run() { _ = 0 }\n"
+	file := loadSource(t, input)
+	selected := selection(
+		file,
+		"use-net-constant",
+		"replace-zero",
+		rules.FixSafe,
+		edit(input, "0", "net.IPv4len"),
+	)
+	selected.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "net", Name: "net"},
+		{Path: "net", Name: "net"},
+	}
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{selected}, fixOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Applied) != 0 ||
+		len(result.Rejected) != 1 ||
+		result.Rejected[0].Reason != fixengine.RejectionValidation ||
+		!strings.Contains(result.Rejected[0].Message, "duplicated") ||
+		!bytes.Equal(result.Bytes, file.Bytes()) {
+		t.Fatalf("Coordinate() duplicate required imports = %#v", result)
+	}
+}
+
+func TestCoordinateOrdersMultipleRequiredImportAdditions(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n\nfunc run() { _ = 0 }\n"
+	file := loadSource(t, input)
+	selected := selection(
+		file,
+		"use-imports",
+		"replace-zero",
+		rules.FixSafe,
+		edit(input, "0", "alpha.Value + zeta.Value"),
+	)
+	selected.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "example.com/zeta", Name: "zeta"},
+		{Path: "example.com/alpha", Name: "alpha"},
+	}
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{selected}, fixOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantChanges := []fixengine.ImportChange{
+		{Action: fixengine.ImportAdd, Path: "example.com/alpha", Name: "alpha"},
+		{Action: fixengine.ImportAdd, Path: "example.com/zeta", Name: "zeta"},
+	}
+	if !reflect.DeepEqual(result.ImportChanges, wantChanges) ||
+		bytes.Index(result.Bytes, []byte(`"example.com/alpha"`)) >
+			bytes.Index(result.Bytes, []byte(`"example.com/zeta"`)) {
+		t.Fatalf("Coordinate() ordered imports = %#v, bytes %q", result, result.Bytes)
+	}
+}
+
+func TestCoordinatePreservesOriginalBytesWhenRequiredImportValidationFails(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n\nfunc run() { _ = 0 }\n"
+	file := loadSource(t, input)
+	selected := selection(
+		file,
+		"use-net-constant",
+		"replace-zero",
+		rules.FixSafe,
+		edit(input, "0", "net.IPv4len"),
+	)
+	selected.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "net", Name: "net"},
+	}
+	options := fixOptions()
+	options.Validate = func(*source.File) error {
+		return errors.New("typed validation failed")
+	}
+	result, err := fixengine.Coordinate(file, []fixengine.Selection{selected}, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Applied) != 0 ||
+		len(result.ImportChanges) != 0 ||
+		len(result.Rejected) != 1 ||
+		result.Rejected[0].Reason != fixengine.RejectionValidation ||
+		!strings.Contains(result.Rejected[0].Message, "typed validation failed") ||
+		!bytes.Equal(result.Bytes, file.Bytes()) {
+		t.Fatalf("Coordinate() required import rollback = %#v", result)
+	}
+}
+
+func TestCoordinateDoesNotPruneAnImportRequiredByAnotherAcceptedFix(t *testing.T) {
+	t.Parallel()
+
+	input := "package sample\n\nimport \"fmt\"\n\nfunc run(text string) { _ = fmt.Sprintf(\"%s\", text); _ = 0 }\n"
+	file := loadSource(t, input)
+	removeUse := selection(
+		file,
+		"remove-format-use",
+		"use-text",
+		rules.FixSafe,
+		edit(input, "fmt.Sprintf(\"%s\", text)", "text"),
+	)
+	addUse := selection(
+		file,
+		"add-format-use",
+		"format-number",
+		rules.FixSafe,
+		edit(input, "_ = 0", "_ = fmt.Sprint(0)"),
+	)
+	addUse.Diagnostic.Fixes[0].RequiredImports = []rules.ImportRequirement{
+		{Path: "fmt", Name: "fmt"},
+	}
+	result, err := fixengine.Coordinate(
+		file,
+		[]fixengine.Selection{removeUse, addUse},
+		fixOptions(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Applied) != 2 ||
+		len(result.ImportChanges) != 0 ||
+		!bytes.Contains(result.Bytes, []byte("import \"fmt\"")) ||
+		!bytes.Contains(result.Bytes, []byte("fmt.Sprint(0)")) {
+		t.Fatalf(
+			"Coordinate() retained required import = %#v, bytes %q",
+			result,
+			result.Bytes,
+		)
+	}
+}
+
 func TestCoordinateRejectsEveryConflictingFixButAppliesIndependentFixes(t *testing.T) {
 	t.Parallel()
 

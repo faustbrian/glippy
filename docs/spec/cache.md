@@ -101,9 +101,9 @@ diagnostics, including severity, requirement, execution shape, node interests,
 generated and type-error policies, minimum Go version, declared fix identity,
 and resolved options. Restore MUST compare that snapshot to the current
 registry and revalidate each diagnostic's exact source digest, physical owner
-package, ranges, offered and withheld fixes, and canonical order before
-returning any result. A
-missing, corrupt, malformed, stale, or unowned entry MUST fall back to complete
+package, ranges, offered and withheld fixes, exact required-import bindings,
+and canonical order before returning any result. A missing, corrupt, malformed,
+stale, or unowned entry MUST fall back to complete
 native execution. A valid warm entry MAY bypass native callbacks and CFG or SSA
 construction because the key and payload bind every selected rule and
 loaded-graph input.
@@ -179,7 +179,7 @@ One analyzer-package cache entry MUST bind its schema version, native rule ID,
 opaque package ID, package path, canonical diagnostics, and one fact snapshot
 for every prerequisite step. Diagnostic restore MUST revalidate source digest,
 ownership, severity, ranges, related locations, offered and withheld fixes,
-and canonical order.
+exact required-import bindings, and canonical order.
 Fact snapshots and diagnostics MUST validate into an isolated candidate before
 any live fact state changes. A malformed or stale entry is a miss and normal
 analysis remains authoritative. If any package-owned object lacks stable

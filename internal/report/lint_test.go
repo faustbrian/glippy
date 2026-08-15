@@ -1,6 +1,7 @@
 package report
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -327,6 +328,10 @@ func TestNewLintFixResultPreservesSourceVersionsAndFixOutcomes(t *testing.T) {
 				Applied: []fixengine.Applied{
 					{RuleID: "call-rule", FixName: "rewrite", Range: target},
 				},
+				ImportChanges: []fixengine.ImportChange{
+					{Action: fixengine.ImportAdd, Path: "net", Name: "net"},
+					{Action: fixengine.ImportRemove, Path: "fmt", Name: "fmt"},
+				},
 			},
 		},
 		nil,
@@ -339,13 +344,33 @@ func TestNewLintFixResultPreservesSourceVersionsAndFixOutcomes(t *testing.T) {
 		result.Summary.FixedFiles != 1 ||
 		result.Summary.AppliedFixes != 1 ||
 		result.Summary.RejectedFixes != 0 ||
+		result.Summary.ImportChanges != 2 ||
 		len(result.Files) != 1 ||
 		result.Files[0].Status != LintFileFixed ||
 		result.Files[0].SourceDigest != digestString(before.Digest()) ||
 		result.Files[0].ResultDigest != digestString(after.Digest()) ||
 		len(result.AppliedFixes) != 1 ||
 		result.AppliedFixes[0].RuleID != "call-rule" ||
-		len(result.RejectedFixes) != 0 {
+		len(result.RejectedFixes) != 0 ||
+		!reflect.DeepEqual(
+			result.ImportChanges,
+			[]LintImportChange{
+				{
+					Action: fixengine.ImportRemove,
+					ImportPath: "fmt",
+					ImportName: "fmt",
+					Path: before.Path(),
+					SourceDigest: digestString(before.Digest()),
+				},
+				{
+					Action: fixengine.ImportAdd,
+					ImportPath: "net",
+					ImportName: "net",
+					Path: before.Path(),
+					SourceDigest: digestString(before.Digest()),
+				},
+			},
+		) {
 		t.Fatalf("lint fix result = %#v", result)
 	}
 	encoded, err := MarshalLintJSON(result)

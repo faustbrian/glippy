@@ -156,14 +156,17 @@ func TestPackageAnalyzerCacheEntryRestoresDiagnosticsAndFacts(t *testing.T) {
 			Range: source.Range{Start: 0, End: 7},
 			Related: []rules.Related{},
 			Notes: []string{"note"},
-			Fixes: []rules.Fix{},
-			WithheldFixes: []rules.WithheldFix{
+			Fixes: []rules.Fix{
 				{
 					Name: "cached-rewrite",
-					Reason: rules.FixWithheldComments,
-					Message: "cached rewrite would remove comments",
+					Safety: rules.FixSafe,
+					Edits: []rules.Edit{},
+					RequiredImports: []rules.ImportRequirement{
+						{Path: "net", Name: "net"},
+					},
 				},
 			},
+			WithheldFixes: []rules.WithheldFix{},
 		},
 	}
 
@@ -296,6 +299,22 @@ func TestPackageAnalyzerCacheEntryRejectsStaleIdentityWithoutPartialRestore(t *t
 			name: "withheld fix reason",
 			mutate: func(entry *packageAnalyzerCacheEntry) {
 				entry.Diagnostics[0].WithheldFixes[0].Reason = "guess"
+			},
+		},
+		{
+			name: "required import",
+			mutate: func(entry *packageAnalyzerCacheEntry) {
+				entry.Diagnostics[0].WithheldFixes = nil
+				entry.Diagnostics[0].Fixes = []persistedFix{
+					{
+						Name: "cached-rewrite",
+						Safety: rules.FixSafe,
+						Edits: []persistedEdit{},
+						RequiredImports: []persistedImportRequirement{
+							{Path: "bad path", Name: "bad"},
+						},
+					},
+				}
 			},
 		},
 		{

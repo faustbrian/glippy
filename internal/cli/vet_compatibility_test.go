@@ -261,6 +261,108 @@ func TestRunAppliesUnambiguousVetCompatibilitySuggestions(t *testing.T) {
 	}
 }
 
+func TestRunAddsAnImportForACrossFileHostPortSuggestion(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	addressPath := filepath.Join(root, "address.go")
+	dialPath := filepath.Join(root, "dial.go")
+	writeCLIFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/hostportfix\n\ngo 1.25.0\n",
+	)
+	writeCLIFixture(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = []\n[lint.rules]\nunsafe-host-port = \"warn\"\n",
+	)
+	writeCLIFixture(
+		t,
+		addressPath,
+		"package sample\n\nimport \"fmt\"\n\nvar endpoint = fmt.Sprintf(\"%s:%d\", \"localhost\", 8080)\n",
+	)
+	dialInput := "package sample\n\nimport \"net\"\n\nfunc dial() { _, _ = net.Dial(\"tcp\", endpoint) }\n"
+	writeCLIFixture(t, dialPath, dialInput)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"lint", "--fix-suggestions", "--reporter=json", root},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	fixedAddress, err := os.ReadFile(addressPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixedDial, err := os.ReadFile(dialPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	wantAddress := "package sample\n\nimport \"net\"\n\nvar endpoint = net.JoinHostPort(\"localhost\", \"8080\")\n"
+	if exitCode != ExitSuccess ||
+		stderr.Len() != 0 ||
+		string(fixedAddress) != wantAddress ||
+		string(fixedDial) != dialInput ||
+		len(result.AppliedFixes) != 1 ||
+		result.AppliedFixes[0].RuleID != "unsafe-host-port" ||
+		len(result.RejectedFixes) != 0 ||
+		len(result.ImportChanges) != 2 ||
+		result.ImportChanges[0].Path != addressPath ||
+		result.ImportChanges[0].Action != "remove" ||
+		result.ImportChanges[0].ImportPath != "fmt" ||
+		result.ImportChanges[1].Path != addressPath ||
+		result.ImportChanges[1].Action != "add" ||
+		result.ImportChanges[1].ImportPath != "net" {
+		t.Fatalf(
+			"cross-file hostport fix = exit %d, stdout %q, stderr %q, address %q, dial %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			fixedAddress,
+			fixedDial,
+		)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run(
+		[]string{"lint", "--fix-suggestions", "--reporter=json", root},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	repeatedAddress, err := os.ReadFile(addressPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var repeated glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &repeated); err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitSuccess ||
+		stderr.Len() != 0 ||
+		len(repeated.Diagnostics) != 0 ||
+		len(repeated.AppliedFixes) != 0 ||
+		len(repeated.RejectedFixes) != 0 ||
+		len(repeated.ImportChanges) != 0 ||
+		!bytes.Equal(repeatedAddress, fixedAddress) {
+		t.Fatalf(
+			"repeated cross-file hostport fix = exit %d, stdout %q, stderr %q, source %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			repeatedAddress,
+		)
+	}
+}
+
 func TestRunAppliesNetIPComparisonSuggestionAndRemovesBytesImport(t *testing.T) {
 	t.Parallel()
 

@@ -60,15 +60,19 @@ For one source version, the coordinator MUST:
 4. report every rejected fix and MUST NOT select a winner silently;
 5. apply accepted edits from highest offset to lowest;
 6. parse the complete edited result;
-7. remove an import only when the original source used that exact path and
+7. add an import only when an accepted fix declares its exact path and local
+   name, that binding is absent, no accepted fix or source binding conflicts,
+   and the insertion preserves existing import comments and groups;
+8. remove an import only when the original source used that exact path and
    local name, accepted edits removed its final selector use, and its physical
-   declaration can be deleted without changing another import;
-8. format through the canonical formatter;
-9. reparse and run normalized syntax, comment, directive, and fix-specific
+   declaration can be deleted without changing another import, unless another
+   accepted fix requires that exact binding;
+9. format through the canonical formatter;
+10. reparse and run normalized syntax, comment, directive, and fix-specific
    validation;
-10. recheck the on-disk source identity and digest;
-11. replace atomically while preserving permissions where supported; and
-12. report diagnostics, coordinator-owned import changes, and fixes left
+11. recheck the on-disk source identity and digest;
+12. replace atomically while preserving permissions where supported; and
+13. report diagnostics, coordinator-owned import changes, and fixes left
     unapplied with stable provenance.
 
 Any validation failure or replacement failure before rename MUST preserve the
@@ -106,8 +110,16 @@ package analysis for reporting after all serialized writes.
 
 Formatter normalization after fixes MUST NOT make a semantic rewrite appear to
 be formatter behavior. Fix provenance remains attached to the resulting
-diagnostic outcome. Import cleanup belongs to the fix coordinator, not the
-formatter. It MUST NOT remove blank imports, dot imports, cgo imports,
+diagnostic outcome. Import coordination belongs to the fix coordinator, not the
+formatter. A fix MAY require ordinary imports only by declaring exact path and
+local-name bindings. The coordinator MUST reject invalid, duplicate, or
+incompatible requirements, a conflicting existing import or package binding,
+and a newly introduced selector that resolves to a local source binding. It
+MUST reuse an existing exact binding. It MAY append to one safely represented
+grouped declaration; otherwise it MUST add independent declarations without
+sorting, merging, renaming, or otherwise organizing existing imports.
+
+Import coordination MUST NOT remove blank imports, dot imports, cgo imports,
 pre-existing unused imports, imports whose package name cannot be proven from
 syntax, or one import from multiple specifications sharing a physical line. It
 MAY remove the complete declaration when every import in that declaration
