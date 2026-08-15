@@ -57,6 +57,13 @@ return-site defect without waiting for a caller to compare the result to nil.
 Keeping it opt-in preserves syntax-only default scheduling until default SSA
 cost and source-error behavior are explicitly adopted.
 
+The error-flow track also admits `shadowed-error` as an opt-in suspicious
+types rule. A broad adaptation of x/tools `shadow` was rejected after it
+reported ordinary local error handling during dogfood. The admitted contract
+is limited to two stale flows: breaking from a loop on an inner error before
+observing the unchanged outer error, and deferred assignment to an inner error
+that hides a named result. General lexical shadowing remains out of scope.
+
 The lifecycle track now admits `sql-transaction-not-completed` as a default
 correctness CFG rule for direct `database/sql` transactions. After a
 conventional successful acquisition guard, every normally returning path must

@@ -167,6 +167,12 @@ every normally returning path after a direct `database/sql.Rows.Next` or
 `bufio.Scanner.Scan` loop to observe the matching terminal error. Discarded
 results and checks against a reassigned iterator do not satisfy the contract.
 
+The opt-in error-flow catalog includes `overwritten-error`,
+`typed-nil-error-return`, and `shadowed-error`. The shadow rule deliberately
+does not warn about ordinary nested `if err := ...` handling: it reports only
+stale outer errors carried out of loops and deferred assignments that update a
+shadowing error instead of the named result.
+
 The default correctness catalog checks direct `database/sql` transaction
 lifecycles. After a conventional successful `DB.Begin`, `DB.BeginTx`, or
 `Conn.BeginTx` guard, `sql-transaction-not-completed` requires every normally

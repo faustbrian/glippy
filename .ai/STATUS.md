@@ -1400,3 +1400,16 @@ Focused eligibility and API-surface fixtures, a 100-candidate cost probe, and
 non-mutating Glippy plus `pkg/prompts` dogfood support admission. Arbitrary
 helper effects, custom transports, and broader interprocedural lifecycle facts
 remain open, so the active Clippy-comparability goal continues.
+
+The next error-flow batch admits `shadowed-error` as an opt-in suspicious
+types-tier rule. A first error-only adaptation of x/tools `shadow` was rejected
+after exact-rule dogfood produced widespread ordinary local-handling findings.
+The native admitted contract reports only an inner non-nil error that breaks a
+loop before the stale outer error is observed, or a deferred closure that
+assigns a shadowing error instead of the named result. A reviewed cake-repl
+close-error defect proves the deferred shape; focused fixtures, a 100-function
+probe, a 100-to-1,000-loop scaling probe, and clean Glippy plus `pkg/prompts`
+dogfood support admission. No fix is offered because declaration reuse,
+renaming, and explicit propagation are not generally equivalent. Additional
+interprocedural error and lifecycle facts remain open, so the active
+Clippy-comparability goal continues.

@@ -70,6 +70,7 @@ not stable release promises.
 - [regexp-compile-in-loop](#regexp-compile-in-loop)
 - [resource-not-closed](#resource-not-closed)
 - [self-assignment](#self-assignment)
+- [shadowed-error](#shadowed-error)
 - [sql-transaction-not-completed](#sql-transaction-not-completed)
 - [standard-library-version](#standard-library-version)
 - [standard-method-signature](#standard-method-signature)
@@ -3078,6 +3079,62 @@ value = value
 
 ```go
 value = replacement
+```
+
+## shadowed-error
+
+detects shadowed errors that leave stale error state
+
+An inner error declaration can hide an outer error whose value is observed after the inner scope
+ends. Glippy reports two bounded stale-flow shapes: breaking out of a loop after checking the inner
+error and then observing the unchanged outer error, and assigning a shadowed named result from a
+deferred closure so the returned result is never updated. Ordinary locally handled error
+declarations are excluded.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only identical error-implementing types are compared; differently typed errors and assignments
+  without declarations are excluded.
+- Loop findings require an inner err != nil check that can break the containing loop and an explicit
+  outer-error return or nil check after that loop.
+- Deferred findings require a named error result and a deferred function literal that assigns the
+  shadowing error object.
+- Generated files and packages with type errors are excluded.
+
+### Example: Carry the loop error into the returned variable
+
+**Incorrect**
+
+```go
+var err error
+for { _, err := reader.Read(buf); if err != nil { break } }
+return err
+```
+
+**Correct**
+
+```go
+var err error
+for { _, err = reader.Read(buf); if err != nil { break } }
+return err
 ```
 
 ## sql-transaction-not-completed

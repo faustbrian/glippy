@@ -44,6 +44,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewNeedlessBlankIdentifierRule(),
 		rules.NewNilContextRule(),
 		rules.NewOverwrittenErrorRule(),
+		rules.NewShadowedErrorRule(),
 		rules.NewRedundantClosureRule(),
 		rules.NewResourceNotClosedRule(),
 		rules.NewRedundantElseRule(),
