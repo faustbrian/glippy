@@ -48,6 +48,7 @@ not stable release promises.
 - [integer-division-before-conversion](#integer-division-before-conversion)
 - [invalid-build-constraint](#invalid-build-constraint)
 - [invalid-directive](#invalid-directive)
+- [invalid-random-bound](#invalid-random-bound)
 - [invalid-slog-arguments](#invalid-slog-arguments)
 - [invalid-struct-tag](#invalid-struct-tag)
 - [invalid-test-signature](#invalid-test-signature)
@@ -1984,6 +1985,54 @@ package library
 ```go
 //go:debug panicnil=1
 package main
+```
+
+## invalid-random-bound
+
+detects random bounds that panic or always return zero
+
+Bounded math/rand and math/rand/v2 APIs generate values in the half-open interval [0,n). A constant
+nonpositive bound panics, while a bound of one can only produce zero and usually indicates an
+off-by-one error or an ineffective attempt to choose between alternatives.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct calls to exact math/rand and math/rand/v2 package functions or Rand methods are
+  recognized; function values and interface dispatch remain conservative.
+- Only compile-time integer bounds less than or equal to one are reported; value flow through
+  variables is not inferred.
+- Generated files and packages with type errors are excluded.
+
+### Example: Use the exclusive upper bound
+
+**Incorrect**
+
+```go
+choice := rand.Intn(1)
+```
+
+**Correct**
+
+```go
+choice := rand.Intn(2)
 ```
 
 ## invalid-slog-arguments

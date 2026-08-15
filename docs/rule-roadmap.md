@@ -94,6 +94,12 @@ contracts, remain opt-in, and avoid claiming that a readability preference is
 a correctness defect. Only redundant type spelling has a safe fix, and comment
 ownership can withhold that edit.
 
+The standard-library correctness track now admits `invalid-random-bound` for
+exact `math/rand` and `math/rand/v2` bounded calls. Constant nonpositive bounds
+panic, while a bound of one always returns zero. Unknown values, function
+values, interface dispatch, and local lookalikes remain excluded, and no fix
+guesses the intended result domain.
+
 ## Investigation Queue
 
 The queue contains defect classes to investigate, not accepted rule IDs.

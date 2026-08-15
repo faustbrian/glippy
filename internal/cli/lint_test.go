@@ -6955,6 +6955,7 @@ func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 				"impossible-type-assertion = \"off\"\n" +
 				"ineffective-url-query-mutation = \"off\"\n" +
 				"infinite-recursion = \"off\"\n" +
+				"invalid-random-bound = \"off\"\n" +
 				"invalid-slog-arguments = \"off\"\n" +
 				"invalid-struct-tag = \"off\"\n" +
 				"invalid-test-signature = \"off\"\n" +

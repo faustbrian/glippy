@@ -1448,3 +1448,14 @@ Five 100-iteration probes over 100 direct terminal calls measured a
 47.5-microsecond median with about 52.9 KiB and 1,051 allocations per run on
 Darwin arm64. General project and third-party effect facts remain open, so the
 active Clippy-comparability goal continues.
+
+The next standard-library correctness rule, `invalid-random-bound`, recognizes
+exact bounded functions and `Rand` methods from `math/rand` and `math/rand/v2`.
+Compile-time nonpositive bounds report because the call panics; a bound of one
+reports because the half-open result interval contains only zero. The rule is
+independent of import aliases, excludes function values, interface dispatch,
+local lookalikes, unknown values, generated files, and ill-typed packages, and
+offers no fix because the intended domain size is not inferable. A 100-call
+cold package probe measured an 80.2 ms median with about 2.11 MB allocated on
+Darwin arm64. Exact-rule dogfood remained clean on Glippy and `pkg/prompts`, so
+the active Clippy-comparability goal continues.

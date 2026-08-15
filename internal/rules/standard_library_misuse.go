@@ -14,6 +14,8 @@ type nilContextRule struct{}
 
 type timeDurationUnitRule struct{}
 
+type invalidRandomBoundRule struct{}
+
 // NewNilContextRule constructs the nil context argument rule for product
 // registry composition.
 func NewNilContextRule() Rule {
@@ -24,6 +26,12 @@ func NewNilContextRule() Rule {
 // product registry composition.
 func NewTimeDurationUnitRule() Rule {
 	return timeDurationUnitRule{}
+}
+
+// NewInvalidRandomBoundRule constructs the constant random-bound rule for
+// product registry composition.
+func NewInvalidRandomBoundRule() Rule {
+	return invalidRandomBoundRule{}
 }
 
 func (nilContextRule) Metadata() Metadata {
@@ -220,4 +228,133 @@ func bareNonzeroInteger(info *types.Info, expression ast.Expr) bool {
 	}
 	value := info.Types[expression].Value
 	return value != nil && value.Kind() == constant.Int && constant.Sign(value) != 0
+}
+
+func (invalidRandomBoundRule) Metadata() Metadata {
+	return Metadata{
+		ID: "invalid-random-bound",
+		Summary: "detects random bounds that panic or always return zero",
+		Documentation: "Bounded math/rand and math/rand/v2 APIs generate values in the half-open interval [0,n). A constant nonpositive bound panics, while a bound of one can only produce zero and usually indicates an off-by-one error or an ineffective attempt to choose between alternatives.",
+		DefaultSeverity: SeverityWarn,
+		Presets: []Preset{PresetCorrectness},
+		MinimumGoVersion: "1.25",
+		Requirement: RequireTypes,
+		NodeInterests: []NodeKind{NodeCallExpr},
+		Categories: []Category{CategoryCorrectness, CategorySafety},
+		KnownLimitations: []string{
+			"Only direct calls to exact math/rand and math/rand/v2 package functions or Rand methods are recognized; function values and interface dispatch remain conservative.",
+			"Only compile-time integer bounds less than or equal to one are reported; value flow through variables is not inferred.",
+			"Generated files and packages with type errors are excluded.",
+		},
+		Examples: []Example{
+			{
+				Title: "Use the exclusive upper bound",
+				Incorrect: "choice := rand.Intn(1)",
+				Correct: "choice := rand.Intn(2)",
+			},
+		},
+	}
+}
+
+func (invalidRandomBoundRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
+	call, ok := node.(*ast.CallExpr)
+	if !ok || ctx == nil || ctx.Info() == nil {
+		return nil, fmt.Errorf(
+			"invalid-random-bound requires a call expression and type information",
+		)
+	}
+	if len(call.Args) != 1 || !isBoundedRandomCall(ctx.Info(), call) {
+		return nil, nil
+	}
+	argument := ast.Unparen(call.Args[0])
+	value := ctx.Info().Types[argument].Value
+	if value == nil || value.Kind() != constant.Int {
+		return nil, nil
+	}
+	sign := constant.Sign(value)
+	if sign > 0 && !constant.Compare(value, token.EQL, constant.MakeInt64(1)) {
+		return nil, nil
+	}
+	range_, err := ctx.Range(call.Args[0])
+	if err != nil {
+		return nil, err
+	}
+	if sign <= 0 {
+		return []Finding{
+			{
+				MessageKey: "nonpositive",
+				Message: "random call with a nonpositive bound panics",
+				Range: range_,
+				Help: "pass a positive exclusive upper bound",
+			},
+		}, nil
+	}
+	return []Finding{
+		{
+			MessageKey: "constant-result",
+			Message: "random call with bound 1 always returns zero",
+			Range: range_,
+			Help: "increase the exclusive upper bound to include another result",
+		},
+	}, nil
+}
+
+func isBoundedRandomCall(info *types.Info, call *ast.CallExpr) bool {
+	selector := directCallSelector(call.Fun)
+	if selector == nil {
+		return false
+	}
+	function, _ := info.ObjectOf(selector.Sel).(*types.Func)
+	if function == nil || function.Pkg() == nil {
+		return false
+	}
+	signature, _ := function.Type().(*types.Signature)
+	if signature == nil {
+		return false
+	}
+	switch function.Pkg().Path() {
+	case "math/rand":
+		switch function.Name() {
+		case "Intn", "Int31n", "Int63n":
+			return signature.Recv() == nil ||
+				isNamedReceiver(signature.Recv().Type(), "math/rand", "Rand")
+		}
+	case "math/rand/v2":
+		switch function.Name() {
+		case "N":
+			return signature.Recv() == nil
+		case "IntN", "Int32N", "Int64N", "UintN", "Uint32N", "Uint64N":
+			return signature.Recv() == nil ||
+				isNamedReceiver(signature.Recv().Type(), "math/rand/v2", "Rand")
+		}
+	}
+	return false
+}
+
+func directCallSelector(expression ast.Expr) *ast.SelectorExpr {
+	switch expression := ast.Unparen(expression).(type) {
+	case *ast.SelectorExpr:
+		return expression
+	case *ast.IndexExpr:
+		selector, _ := ast.Unparen(expression.X).(*ast.SelectorExpr)
+		return selector
+	case *ast.IndexListExpr:
+		selector, _ := ast.Unparen(expression.X).(*ast.SelectorExpr)
+		return selector
+	default:
+		return nil
+	}
+}
+
+func isNamedReceiver(type_ types.Type, packagePath string, name string) bool {
+	type_ = types.Unalias(type_)
+	if pointer, ok := type_.(*types.Pointer); ok {
+		type_ = types.Unalias(pointer.Elem())
+	}
+	named, _ := type_.(*types.Named)
+	return named != nil &&
+		named.Obj() != nil &&
+		named.Obj().Pkg() != nil &&
+		named.Obj().Pkg().Path() == packagePath &&
+		named.Obj().Name() == name
 }

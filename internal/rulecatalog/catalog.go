@@ -39,6 +39,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewHTTPResponseBodyNotClosedRule(),
 		rules.NewInconsistentReceiverNameRule(),
 		rules.NewImpossibleComparisonRule(),
+		rules.NewInvalidRandomBoundRule(),
 		rules.NewLockHeldAcrossBlockingCallRule(),
 		rules.NewLoopCaptureRule(),
 		rules.NewManualMinMaxRule(),
