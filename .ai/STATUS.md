@@ -1459,3 +1459,14 @@ offers no fix because the intended domain size is not inferable. A 100-call
 cold package probe measured an 80.2 ms median with about 2.11 MB allocated on
 Darwin arm64. Exact-rule dogfood remained clean on Glippy and `pkg/prompts`, so
 the active Clippy-comparability goal continues.
+
+The next standard-library correctness rule, `zero-replace-count`, recognizes
+exact `strings.Replace` and `bytes.Replace` calls whose compile-time count is
+zero. The call replaces no occurrences, and no fix guesses whether the caller
+intended one, some, or all replacements. Exact type identity excludes import
+aliases as a source of ambiguity while function values, local lookalikes,
+dynamic counts, generated files, and ill-typed packages remain excluded.
+Current Staticcheck SA1018 and a live `diskfs/go-diskfs` path-normalization
+defect support admission. A 100-call cold package probe had a 101.0 ms median
+with about 2.92 MB allocated, and exact-rule dogfood remained clean on Glippy
+and `pkg/prompts`. The active Clippy-comparability goal continues.

@@ -6978,7 +6978,8 @@ func writeSyntaxOnlyProductConfig(t *testing.T, root string) {
 				"unbuffered-signal-channel = \"off\"\n" +
 				"unsafe-host-port = \"off\"\n" +
 				"unused-result = \"off\"\n" +
-				"waitgroup-misuse = \"off\"\n",
+				"waitgroup-misuse = \"off\"\n" +
+				"zero-replace-count = \"off\"\n",
 		),
 		0o600,
 	);

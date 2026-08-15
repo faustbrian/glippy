@@ -1309,7 +1309,8 @@ func TestRunCombinedCheckHonorsLintAndFormatConfiguration(t *testing.T) {
 		"unbuffered-signal-channel = \"off\"\n" +
 		"unsafe-host-port = \"off\"\n" +
 		"unused-result = \"off\"\n" +
-		"waitgroup-misuse = \"off\"\n"
+		"waitgroup-misuse = \"off\"\n" +
+		"zero-replace-count = \"off\"\n"
 	if err := os.WriteFile(filepath.Join(root, ".glippy.toml"), []byte(configuration), 0o600);
 		err != nil {
 		t.Fatal(err)

@@ -40,6 +40,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewInconsistentReceiverNameRule(),
 		rules.NewImpossibleComparisonRule(),
 		rules.NewInvalidRandomBoundRule(),
+		rules.NewZeroReplaceCountRule(),
 		rules.NewLockHeldAcrossBlockingCallRule(),
 		rules.NewLoopCaptureRule(),
 		rules.NewManualMinMaxRule(),

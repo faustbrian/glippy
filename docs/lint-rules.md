@@ -102,6 +102,7 @@ not stable release promises.
 - [unsafe-host-port](#unsafe-host-port)
 - [unused-result](#unused-result)
 - [waitgroup-misuse](#waitgroup-misuse)
+- [zero-replace-count](#zero-replace-count)
 
 ## almost-swapped
 
@@ -4651,4 +4652,51 @@ go func() { wg.Add(1); defer wg.Done() }()
 ```go
 wg.Add(1)
 go func() { defer wg.Done() }()
+```
+
+## zero-replace-count
+
+detects replacement calls whose zero count replaces nothing
+
+strings.Replace and bytes.Replace interpret their final argument as the maximum number of
+replacements. A compile-time zero requests no replacements, so the call cannot perform the apparent
+substitution.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct calls to exact strings.Replace and bytes.Replace package functions are recognized;
+  function values remain conservative.
+- Only compile-time integer zero counts are reported; value flow through variables is not inferred.
+- Generated files and packages with type errors are excluded.
+
+### Example: Request the intended number of replacements
+
+**Incorrect**
+
+```go
+path = strings.Replace(path, "\\", "/", 0)
+```
+
+**Correct**
+
+```go
+path = strings.ReplaceAll(path, "\\", "/")
 ```

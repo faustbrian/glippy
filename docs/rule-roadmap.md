@@ -100,6 +100,12 @@ panic, while a bound of one always returns zero. Unknown values, function
 values, interface dispatch, and local lookalikes remain excluded, and no fix
 guesses the intended result domain.
 
+The same track now admits `zero-replace-count` for exact `strings.Replace` and
+`bytes.Replace` calls. Compile-time zero counts replace no occurrences, while
+nonzero and dynamic counts, function values, and local lookalikes remain
+excluded. No fix guesses whether the caller intended one, some, or all
+replacements.
+
 ## Investigation Queue
 
 The queue contains defect classes to investigate, not accepted rule IDs.
