@@ -47,6 +47,57 @@ func TestCoordinateAppliesSafeNonOverlappingFixesAndFormatsResult(t *testing.T) 
 	}
 }
 
+func TestCoordinateReportsDerivedImportRemovalsInStableOrder(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"strings"
+	"fmt"
+)
+
+func run(text string) {
+	_ = fmt.Sprintf("%s", text)
+	_ = strings.TrimSpace(text)
+}
+`
+	file := loadSource(t, input)
+	result, err := fixengine.Coordinate(
+		file,
+		[]fixengine.Selection{
+			selection(
+				file,
+				"remove-strings-use",
+				"rewrite",
+				rules.FixSafe,
+				edit(input, `strings.TrimSpace(text)`, "text"),
+			),
+			selection(
+				file,
+				"remove-fmt-use",
+				"rewrite",
+				rules.FixSafe,
+				edit(input, `fmt.Sprintf("%s", text)`, "text"),
+			),
+		},
+		fixOptions(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []fixengine.ImportChange{
+		{Action: fixengine.ImportRemove, Path: "fmt", Name: "fmt"},
+		{Action: fixengine.ImportRemove, Path: "strings", Name: "strings"},
+	}
+	if !reflect.DeepEqual(result.ImportChanges, want) ||
+		bytes.Contains(result.Bytes, []byte("import")) ||
+		len(result.Applied) != 2 ||
+		len(result.Rejected) != 0 {
+		t.Fatalf("Coordinate() import result = %#v, bytes %q", result, result.Bytes)
+	}
+}
+
 func TestCoordinateRejectsEveryConflictingFixButAppliesIndependentFixes(t *testing.T) {
 	t.Parallel()
 

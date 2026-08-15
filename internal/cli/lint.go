@@ -2249,7 +2249,12 @@ func recordLintFixTransaction(
 		[]fixengine.Rejection(nil),
 		transaction.Result.Rejected...,
 	)
+	execution.outcome.ImportChanges = append(
+		[]fixengine.ImportChange(nil),
+		transaction.Result.ImportChanges...,
+	)
 	if errors.Is(transactionErr, filesystem.ErrStale) {
+		execution.outcome.ImportChanges = nil
 		for _, applied := range transaction.Result.Applied {
 			execution.outcome.Rejected = append(
 				execution.outcome.Rejected,

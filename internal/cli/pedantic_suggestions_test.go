@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -138,7 +139,7 @@ func run(text string, name Name, values []int, start, deadline time.Time) {
 	}
 }
 
-func TestRunRejectsPedanticSuggestionLeavingUnusedImport(t *testing.T) {
+func TestRunAppliesPedanticSuggestionAndRemovesItsUnusedImport(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -180,16 +181,14 @@ func TestRunRejectsPedanticSuggestionLeavingUnusedImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if exit != ExitFindings ||
+	if exit != ExitSuccess ||
 		stderr.Len() != 0 ||
-		!strings.Contains(
-			stdout.String(),
-			"rejected fix[unnecessary-sprintf/replace-unnecessary-sprintf/validation]",
-		) ||
-		!strings.Contains(stdout.String(), "imported and not used") ||
-		!bytes.Equal(got, input) {
+		stdout.Len() != 0 ||
+		bytes.Contains(got, []byte(`import "fmt"`)) ||
+		bytes.Contains(got, []byte("fmt.Sprintf")) ||
+		!bytes.Contains(got, []byte("return text")) {
 		t.Fatalf(
-			"unused-import suggestion = exit %d, stdout %q, stderr %q, source %q",
+			"import-aware suggestion = exit %d, stdout %q, stderr %q, source %q",
 			exit,
 			stdout.String(),
 			stderr.String(),
@@ -280,7 +279,7 @@ func TestRunAppliesUnnecessaryFormatSuggestionWhenImportRemains(t *testing.T) {
 	}
 }
 
-func TestRunRejectsUnnecessaryFormatSuggestionLeavingUnusedImport(t *testing.T) {
+func TestRunAppliesUnnecessaryFormatSuggestionAndRemovesItsUnusedImport(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -322,16 +321,103 @@ func TestRunRejectsUnnecessaryFormatSuggestionLeavingUnusedImport(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if exit != ExitFindings ||
+	if exit != ExitSuccess ||
 		stderr.Len() != 0 ||
-		!strings.Contains(
-			stdout.String(),
-			"rejected fix[unnecessary-format/use-format-operand/validation]",
-		) ||
-		!strings.Contains(stdout.String(), "imported and not used") ||
-		!bytes.Equal(got, input) {
+		stdout.Len() != 0 ||
+		bytes.Contains(got, []byte(`import "fmt"`)) ||
+		bytes.Contains(got, []byte("fmt.Sprintf")) ||
+		!bytes.Contains(got, []byte(`return "literal"`)) {
 		t.Fatalf(
-			"unused-import unnecessary-format suggestion = exit %d, stdout %q, stderr %q, source %q",
+			"import-aware unnecessary-format suggestion = exit %d, stdout %q, stderr %q, source %q",
+			exit,
+			stdout.String(),
+			stderr.String(),
+			got,
+		)
+	}
+}
+
+func TestRunImportAwareSuggestionPreservesRemainingImportComments(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/importcomments\n\ngo 1.25.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".glippy.toml"),
+		[]byte(
+			"version = 1\n[lint]\npresets = []\n[lint.rules]\nunnecessary-sprintf = \"warn\"\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sample.go")
+	input := []byte(
+		`package sample
+
+import (
+	// retained dependency
+	"os"
+	"fmt" // formatting only
+)
+
+func run(text string) string {
+	_ = os.ErrInvalid
+	return fmt.Sprintf("%s", text)
+}
+`,
+	)
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exit := Run(
+		[]string{"lint", "--fix-suggestions", "--reporter=json", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan struct {
+		Summary struct {
+			ImportChanges int `json:"import_changes"`
+		} `json:"summary"`
+		ImportChanges []struct {
+			Action string `json:"action"`
+			ImportPath string `json:"import_path"`
+			ImportName string `json:"import_name"`
+		} `json:"import_changes"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &plan); err != nil {
+		t.Fatal(err)
+	}
+	if exit != ExitSuccess ||
+		stderr.Len() != 0 ||
+		plan.Summary.ImportChanges != 1 ||
+		len(plan.ImportChanges) != 1 ||
+		plan.ImportChanges[0].Action != "remove" ||
+		plan.ImportChanges[0].ImportPath != "fmt" ||
+		plan.ImportChanges[0].ImportName != "fmt" ||
+		bytes.Contains(got, []byte(`"fmt"`)) ||
+		bytes.Contains(got, []byte("formatting only")) ||
+		!bytes.Contains(got, []byte("retained dependency")) ||
+		!bytes.Contains(got, []byte(`"os"`)) ||
+		!bytes.Contains(got, []byte("return text")) {
+		t.Fatalf(
+			"comment-preserving import fix = exit %d, stdout %q, stderr %q, source %q",
 			exit,
 			stdout.String(),
 			stderr.String(),

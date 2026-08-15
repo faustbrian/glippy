@@ -65,6 +65,19 @@ type Result struct {
 	Bytes []byte
 	Applied []Applied
 	Rejected []Rejection
+	ImportChanges []ImportChange
+}
+
+// ImportAction identifies one coordinator-owned import operation.
+type ImportAction string
+
+const ImportRemove ImportAction = "remove"
+
+// ImportChange records one deterministic import operation required by fixes.
+type ImportChange struct {
+	Action ImportAction
+	Path string
+	Name string
 }
 
 type candidate struct {
@@ -142,6 +155,25 @@ func Coordinate(file *source.File, selections []Selection, options Options) (Res
 			fmt.Sprintf("fixed source did not parse: %v", err),
 		), nil
 	}
+	var importChanges []ImportChange
+	edited, importChanges, err = pruneNewlyUnusedImports(file, editedFile)
+	if err != nil {
+		return rejectedTransaction(
+			input,
+			rejected,
+			accepted,
+			fmt.Sprintf("fixed source import coordination failed: %v", err),
+		), nil
+	}
+	editedFile, err = source.Load(file.Path(), edited)
+	if err != nil {
+		return rejectedTransaction(
+			input,
+			rejected,
+			accepted,
+			fmt.Sprintf("import-coordinated fixed source did not parse: %v", err),
+		), nil
+	}
 	formatted, err := glippyformat.File(editedFile, options.Format)
 	if err != nil {
 		return rejectedTransaction(
@@ -180,7 +212,12 @@ func Coordinate(file *source.File, selections []Selection, options Options) (Res
 	}
 	sortApplied(applied)
 	sortRejections(rejected)
-	return Result{Bytes: formatted, Applied: applied, Rejected: rejected}, nil
+	return Result{
+		Bytes: formatted,
+		Applied: applied,
+		Rejected: rejected,
+		ImportChanges: importChanges,
+	}, nil
 }
 
 func prepareCandidate(

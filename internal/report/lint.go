@@ -30,6 +30,7 @@ type LintSummary struct {
 	FixedFiles int `json:"fixed_files,omitempty"`
 	AppliedFixes int `json:"applied_fixes,omitempty"`
 	RejectedFixes int `json:"rejected_fixes,omitempty"`
+	ImportChanges int `json:"import_changes,omitempty"`
 	Complete bool `json:"complete"`
 }
 
@@ -59,6 +60,7 @@ type LintFixOutcome struct {
 	Status LintFileStatus
 	Applied []fixengine.Applied
 	Rejected []fixengine.Rejection
+	ImportChanges []fixengine.ImportChange
 }
 
 type LintAppliedFix struct {
@@ -77,6 +79,14 @@ type LintRejectedFix struct {
 	Range ByteRange `json:"range"`
 	Reason fixengine.RejectionReason `json:"reason"`
 	Message string `json:"message"`
+}
+
+type LintImportChange struct {
+	Action fixengine.ImportAction `json:"action"`
+	ImportPath string `json:"import_path"`
+	ImportName string `json:"import_name"`
+	Path string `json:"path"`
+	SourceDigest string `json:"source_digest"`
 }
 
 type ByteRange struct {
@@ -154,6 +164,7 @@ type LintResult struct {
 	SourceProblems []LintSourceProblem `json:"source_problems,omitempty"`
 	AppliedFixes []LintAppliedFix `json:"applied_fixes,omitempty"`
 	RejectedFixes []LintRejectedFix `json:"rejected_fixes,omitempty"`
+	ImportChanges []LintImportChange `json:"import_changes,omitempty"`
 	Errors []Error `json:"errors"`
 }
 
@@ -314,6 +325,7 @@ func NewLintFixResult(
 	}
 	result.AppliedFixes = make([]LintAppliedFix, 0)
 	result.RejectedFixes = make([]LintRejectedFix, 0)
+	result.ImportChanges = make([]LintImportChange, 0)
 	for index, outcome := range ordered {
 		file := &result.Files[index]
 		if outcome.Path != file.Path {
@@ -412,6 +424,26 @@ func NewLintFixResult(
 				},
 			)
 		}
+		for _, change := range outcome.ImportChanges {
+			if change.Action != fixengine.ImportRemove ||
+				change.Path == "" ||
+				change.Name == "" {
+				return LintResult{}, fmt.Errorf(
+					"lint fix outcome %q has an invalid import change",
+					outcome.Path,
+				)
+			}
+			result.ImportChanges = append(
+				result.ImportChanges,
+				LintImportChange{
+					Action: change.Action,
+					ImportPath: change.Path,
+					ImportName: change.Name,
+					Path: outcome.Path,
+					SourceDigest: encodeDigest(outcome.SourceDigest),
+				},
+			)
+		}
 	}
 	sort.Slice(
 		result.AppliedFixes,
@@ -435,6 +467,23 @@ func NewLintFixResult(
 	)
 	result.Summary.AppliedFixes = len(result.AppliedFixes)
 	result.Summary.RejectedFixes = len(result.RejectedFixes)
+	sort.Slice(
+		result.ImportChanges,
+		func(left, right int) bool {
+			first, second := result.ImportChanges[left], result.ImportChanges[right]
+			if first.Path != second.Path {
+				return first.Path < second.Path
+			}
+			if first.ImportPath != second.ImportPath {
+				return first.ImportPath < second.ImportPath
+			}
+			if first.ImportName != second.ImportName {
+				return first.ImportName < second.ImportName
+			}
+			return first.Action < second.Action
+		},
+	)
+	result.Summary.ImportChanges = len(result.ImportChanges)
 	return result, nil
 }
 

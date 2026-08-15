@@ -60,12 +60,16 @@ For one source version, the coordinator MUST:
 4. report every rejected fix and MUST NOT select a winner silently;
 5. apply accepted edits from highest offset to lowest;
 6. parse the complete edited result;
-7. format through the canonical formatter;
-8. reparse and run normalized syntax, comment, directive, and fix-specific
+7. remove an import only when the original source used that exact path and
+   local name, accepted edits removed its final selector use, and its physical
+   declaration can be deleted without changing another import;
+8. format through the canonical formatter;
+9. reparse and run normalized syntax, comment, directive, and fix-specific
    validation;
-9. recheck the on-disk source identity and digest;
-10. replace atomically while preserving permissions where supported; and
-11. report diagnostics and fixes left unapplied with a stable reason.
+10. recheck the on-disk source identity and digest;
+11. replace atomically while preserving permissions where supported; and
+12. report diagnostics, coordinator-owned import changes, and fixes left
+    unapplied with stable provenance.
 
 Any validation failure or replacement failure before rename MUST preserve the
 original file. A post-rename durability failure MAY leave the validated new
@@ -102,7 +106,13 @@ package analysis for reporting after all serialized writes.
 
 Formatter normalization after fixes MUST NOT make a semantic rewrite appear to
 be formatter behavior. Fix provenance remains attached to the resulting
-diagnostic outcome.
+diagnostic outcome. Import cleanup belongs to the fix coordinator, not the
+formatter. It MUST NOT remove blank imports, dot imports, cgo imports,
+pre-existing unused imports, imports whose package name cannot be proven from
+syntax, or one import from multiple specifications sharing a physical line. It
+MAY remove the complete declaration when every import in that declaration
+became unused. A withheld cleanup therefore remains visible through final
+validation instead of broadening into general import organization.
 
 Lint fix preview uses the same coordinator and validation callback but stops
 before atomic replacement. A preview MUST validate that every filesystem

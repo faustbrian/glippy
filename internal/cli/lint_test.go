@@ -5240,6 +5240,9 @@ func TestRecordLintFixTransactionKeepsOriginalResultAfterStaleWrite(t *testing.T
 					Range: source.Range{Start: 26, End: 34},
 				},
 			},
+			ImportChanges: []fixengine.ImportChange{
+				{Action: fixengine.ImportRemove, Path: "fmt", Name: "fmt"},
+			},
 		},
 		Status: fixengine.WriteNotPerformed,
 	}
@@ -5257,6 +5260,7 @@ func TestRecordLintFixTransactionKeepsOriginalResultAfterStaleWrite(t *testing.T
 		execution.outcome.Status != glippyreport.LintFileConflict ||
 		len(execution.outcome.Applied) != 1 ||
 		len(execution.outcome.Rejected) != 1 ||
+		len(execution.outcome.ImportChanges) != 0 ||
 		execution.outcome.Rejected[0].Reason != fixengine.RejectionStaleSource ||
 		lintFixExitCode([]lintFixExecution{execution}) != ExitConflict {
 		t.Fatalf("stale lint fix execution = %#v", execution)

@@ -230,6 +230,10 @@ Lint summaries always contain `files`, `diagnostics`, `suppressed`,
 `unused_suppressions`, and `complete`. Typed runs add
 `package_diagnostics` and `source_problems` when nonzero. Fix runs add
 `fixed_files`, `applied_fixes`, and `rejected_fixes` when nonzero.
+Fix runs also add deterministic `import_changes` when accepted fixes require
+coordinator-owned cleanup. Each entry carries the source identity, `remove`
+action, import path, and local name. This does not make the formatter a general
+import organizer.
 Changed-code runs add `preexisting_diagnostics` when full analysis found
 diagnostics outside the lines selected by `--new-from`; those diagnostics are
 not emitted and do not affect the outcome.

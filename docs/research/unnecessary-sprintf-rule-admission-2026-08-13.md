@@ -38,8 +38,10 @@ The `replace-unnecessary-sprintf` fix is suggestion-only. It uses an argument
 directly only when the result already has predeclared string type and otherwise
 emits an explicit `string` conversion for defined strings and byte slices. It
 refuses comment-dropping edits and remains subject to complete-file typed
-validation, including refusal when removing the last fmt use would leave an
-unused import.
+validation. Since 2026-08-15, the fix coordinator removes `fmt` when an accepted
+fix removes its final proven selector use. This is coordinator-owned import
+cleanup with separate machine provenance, not part of the expression rewrite
+or formatter.
 
 ## Admission Evidence
 
@@ -61,6 +63,5 @@ Non-mutating pedantic dogfood produced no findings for this rule in Glippy or
 ## Revisit Trigger
 
 Broaden the recognized value set only when the direct replacement is unique and
-preserves Go formatting semantics. Add import removal only through a separate
-comment-preserving import-ownership contract rather than hiding it in an
-expression edit.
+preserves Go formatting semantics. Broaden import cleanup only through the
+separate comment-preserving coordinator contract.
