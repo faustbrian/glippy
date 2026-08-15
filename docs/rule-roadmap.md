@@ -49,6 +49,14 @@ rule. It is deliberately narrower than Staticcheck SA4006: only error-typed
 values followed by another definition of the same object report, while any
 observable use or explicit blank assignment prevents a finding.
 
+The same track now admits `typed-nil-error-return` as an opt-in suspicious
+rule. It reports only concrete error values proven nil at an explicit return;
+untyped nil, interface operands, unknown values, bare returns, and tuple calls
+remain excluded. This complements Staticcheck SA4023 by locating the definite
+return-site defect without waiting for a caller to compare the result to nil.
+Keeping it opt-in preserves syntax-only default scheduling until default SSA
+cost and source-error behavior are explicitly adopted.
+
 ## Investigation Queue
 
 The queue contains defect classes to investigate, not accepted rule IDs.

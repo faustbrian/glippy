@@ -1337,3 +1337,14 @@ probe and non-mutating Glippy plus `pkg/prompts` dogfood support admission. No
 fix is offered because the intended handling path is not inferable. Broader
 error-flow coverage and the fixability sweep remain open, so the active
 Clippy-comparability goal continues.
+
+The next error-flow batch admits `typed-nil-error-return` as an opt-in
+suspicious SSA rule. It reports explicit concrete error operands proven nil
+across every incoming SSA value before conversion to an error interface.
+Untyped nil, interface operands, unknown or maybe-non-nil values, bare returns,
+tuple calls, generated files, and ill-typed packages remain excluded. The rule
+has no fix because returning nil changes observable behavior and signature or
+control-flow repairs require intent. A 100-function package probe measured a
+59.3 ms median with about 2.02 MB allocated on Darwin arm64. Broader error-flow
+coverage, any explicit default SSA policy, and the fixability sweep remain
+open, so the active Clippy-comparability goal continues.

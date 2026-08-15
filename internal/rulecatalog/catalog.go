@@ -52,6 +52,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewTimeDurationUnitRule(),
 		rules.NewTimeSinceRule(),
 		rules.NewTimeUntilRule(),
+		rules.NewTypedNilErrorReturnRule(),
 		rules.NewUnnecessaryConversionRule(),
 		rules.NewUnnecessaryFormatRule(),
 		rules.NewUnnecessarySprintfRule(),

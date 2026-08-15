@@ -84,6 +84,7 @@ not stable release promises.
 - [too-many-lines](#too-many-lines)
 - [too-many-parameters](#too-many-parameters)
 - [too-many-results](#too-many-results)
+- [typed-nil-error-return](#typed-nil-error-return)
 - [unbuffered-signal-channel](#unbuffered-signal-channel)
 - [unchecked-rows-error](#unchecked-rows-error)
 - [unchecked-scanner-error](#unchecked-scanner-error)
@@ -3723,6 +3724,56 @@ func inspect() (string, int, bool, error)
 
 ```go
 func inspect() (Inspection, error)
+```
+
+## typed-nil-error-return
+
+detects definitely nil concrete values returned as errors
+
+Converting a nil concrete value to an error interface produces a non-nil interface because its
+dynamic type remains present. The rule reports explicit return operands whose SSA value is
+definitely nil and whose concrete type is converted to an error interface result.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: SSA
+- Node interests: none
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only explicit one-to-one return operands are considered; bare returns and tuple-returning calls
+  are excluded.
+- Values are reported only when SSA proves every incoming value nil; values that may be nil are
+  conservatively excluded.
+- Generated files and packages with type errors are excluded.
+
+### Example: Return a nil error interface directly
+
+**Incorrect**
+
+```go
+var problem *Problem
+return problem
+```
+
+**Correct**
+
+```go
+if problem != nil { return problem }
+return nil
 ```
 
 ## unbuffered-signal-channel
