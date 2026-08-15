@@ -75,6 +75,10 @@ func (redundantBoolComparisonRule) RunTypes(ctx *TypesContext, node ast.Node) ([
 		return nil, err
 	}
 	if commentsOutsideRetainedRange(ctx.File().Comments(), comparisonRange, otherRange) {
+		finding.WithheldFixes = commentWithheldFix(
+			redundantBoolComparisonFix,
+			"simplifying this comparison would remove comments",
+		)
 		return []Finding{finding}, nil
 	}
 	replacement, found := ctx.File().Slice(otherRange)

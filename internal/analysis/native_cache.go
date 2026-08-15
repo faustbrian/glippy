@@ -16,7 +16,7 @@ import (
 	"github.com/faustbrian/glippy/internal/rules"
 )
 
-const nativePackageCacheEntryVersion = 1
+const nativePackageCacheEntryVersion = 2
 
 type nativePackageCacheEntry struct {
 	Version int `json:"version"`
@@ -435,6 +435,7 @@ func restoreNativePackageCacheEntry(
 			Notes: diagnostic.Notes,
 			Help: diagnostic.Help,
 			Fixes: diagnostic.Fixes,
+			WithheldFixes: diagnostic.WithheldFixes,
 		}
 		validated, err := diagnosticForFinding(
 			file,

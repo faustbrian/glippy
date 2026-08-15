@@ -47,6 +47,14 @@ type Related struct {
 	Message string
 }
 
+// WithheldFix is one rule-declared fix that could not be offered safely for
+// the current source.
+type WithheldFix struct {
+	Name string `json:"name"`
+	Reason string `json:"reason"`
+	Message string `json:"message"`
+}
+
 // Diagnostic is one editor-facing finding over physical UTF-8 byte ranges.
 type Diagnostic struct {
 	Range source.Range
@@ -55,6 +63,7 @@ type Diagnostic struct {
 	DocumentationURI string
 	Message string
 	Related []Related
+	WithheldFixes []WithheldFix
 }
 
 // Analysis binds editor findings and backend state to one immutable source.
@@ -74,6 +83,7 @@ type CodeAction struct {
 	DiagnosticSeverity Severity
 	DiagnosticMessage string
 	DiagnosticDocumentationURI string
+	DiagnosticWithheldFixes []WithheldFix
 	NewText []byte
 }
 
@@ -173,6 +183,11 @@ type protocolDiagnostic struct {
 	Source string `json:"source"`
 	Message string `json:"message"`
 	RelatedInformation []protocolRelated `json:"relatedInformation,omitempty"`
+	Data *protocolDiagnosticData `json:"data,omitempty"`
+}
+
+type protocolDiagnosticData struct {
+	WithheldFixes []WithheldFix `json:"withheld_fixes"`
 }
 
 type protocolCodeDescription struct {
@@ -521,6 +536,7 @@ func (s *server) handleCodeAction(message rpcMessage) error {
 					Code: action.DiagnosticCode,
 					DocumentationURI: action.DiagnosticDocumentationURI,
 					Message: action.DiagnosticMessage,
+					WithheldFixes: action.DiagnosticWithheldFixes,
 				},
 			)
 			if err != nil {
@@ -690,6 +706,21 @@ func convertDiagnostic(
 		Source: "glippy",
 		Message: diagnostic.Message,
 		RelatedInformation: related,
+	}
+	if len(diagnostic.WithheldFixes) > 0 {
+		withheldFixes := make([]WithheldFix, len(diagnostic.WithheldFixes))
+		copy(withheldFixes, diagnostic.WithheldFixes)
+		for _, fix := range withheldFixes {
+			if strings.TrimSpace(fix.Name) == "" ||
+				strings.TrimSpace(fix.Reason) == "" ||
+				strings.TrimSpace(fix.Message) == "" {
+				return protocolDiagnostic{}, fmt.Errorf(
+					"diagnostic %q has invalid withheld fix metadata",
+					diagnostic.Code,
+				)
+			}
+		}
+		result.Data = &protocolDiagnosticData{WithheldFixes: withheldFixes}
 	}
 	if diagnostic.DocumentationURI != "" {
 		parsed, err := url.ParseRequestURI(diagnostic.DocumentationURI)

@@ -42,6 +42,13 @@ func TestNewLintResultEmitsStableVersionedDiagnostics(t *testing.T) {
 				Edits: []rules.Edit{{Range: target, NewText: "primary()"}},
 			},
 		},
+		WithheldFixes: []rules.WithheldFix{
+			{
+				Name: "rewrite-with-comments",
+				Reason: rules.FixWithheldComments,
+				Message: "rewriting this call would remove comments",
+			},
+		},
 	}
 	result, err := NewLintResult(
 		"check",
@@ -144,6 +151,13 @@ func TestNewLintResultEmitsStableVersionedDiagnostics(t *testing.T) {
 		"        {\n" +
 		"          \"name\": \"rewrite\",\n" +
 		"          \"safety\": \"safe\"\n" +
+		"        }\n" +
+		"      ],\n" +
+		"      \"withheld_fixes\": [\n" +
+		"        {\n" +
+		"          \"name\": \"rewrite-with-comments\",\n" +
+		"          \"reason\": \"comments\",\n" +
+		"          \"message\": \"rewriting this call would remove comments\"\n" +
 		"        }\n" +
 		"      ]\n" +
 		"    }\n" +

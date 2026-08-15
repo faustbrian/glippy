@@ -167,8 +167,18 @@ func run() {
 	assertRuleRanges(t, input, result, "redundant-type-declaration", "redundant-type", want)
 	for index, diagnostic := range result.Files[0].Diagnostics {
 		if index == len(result.Files[0].Diagnostics) - 1 {
-			if len(diagnostic.Fixes) != 0 {
-				t.Fatalf("commented declaration fixes = %#v", diagnostic.Fixes)
+			if len(diagnostic.Fixes) != 0 ||
+				!reflect.DeepEqual(
+					diagnostic.WithheldFixes,
+					[]rules.WithheldFix{
+						{
+							Name: "remove-redundant-type",
+							Reason: rules.FixWithheldComments,
+							Message: "removing this explicit type would remove comments",
+						},
+					},
+				) {
+				t.Fatalf("commented declaration diagnostic = %#v", diagnostic)
 			}
 			continue
 		}

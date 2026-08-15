@@ -147,6 +147,18 @@ func run(values []string) {
 	if len(result.Files[0].Diagnostics[0].Fixes) != 0 {
 		t.Fatalf("removed-comment diagnostic = %#v", result.Files[0].Diagnostics[0])
 	}
+	if !reflect.DeepEqual(
+		result.Files[0].Diagnostics[0].WithheldFixes,
+		[]rules.WithheldFix{
+			{
+				Name: "remove-redundant-nil-check",
+				Reason: rules.FixWithheldComments,
+				Message: "removing this nil check would remove comments",
+			},
+		},
+	) {
+		t.Fatalf("removed-comment diagnostic = %#v", result.Files[0].Diagnostics[0])
+	}
 	fixed := result.Files[0].Diagnostics[1]
 	if len(fixed.Fixes) != 1 ||
 		fixed.Fixes[0].Safety != rules.FixSafe ||
@@ -225,18 +237,26 @@ func TestPedanticSimplificationSuggestionsPreserveComments(t *testing.T) {
 	tests := []struct {
 		id string
 		input string
+		fix string
+		message string
 	}{
 		{
 			"needless-blank-identifier",
 			"package sample\nfunc run(values []int) { for _, /* keep */ _ = range values {} }\n",
+			"remove-blank-identifier",
+			"removing this blank-identifier assignment would remove comments",
 		},
 		{
 			"time-since",
 			"package sample\nimport \"time\"\nfunc run(start time.Time) { _ = time.Now().Sub(/* keep */ start) }\n",
+			"use-time-since",
+			"rewriting this duration calculation would remove comments",
 		},
 		{
 			"time-until",
 			"package sample\nimport \"time\"\nfunc run(deadline time.Time) { _ = deadline.Sub(/* keep */ time.Now()) }\n",
+			"use-time-until",
+			"rewriting this duration calculation would remove comments",
 		},
 	}
 	for _, test := range tests {
@@ -246,9 +266,20 @@ func TestPedanticSimplificationSuggestionsPreserveComments(t *testing.T) {
 			func(t *testing.T) {
 				t.Parallel()
 				result := runOnePedanticRule(t, test.id, test.input)
+				diagnostic := result.Files[0].Diagnostics[0]
 				if len(result.Files) != 1 ||
 					len(result.Files[0].Diagnostics) != 1 ||
-					len(result.Files[0].Diagnostics[0].Fixes) != 0 {
+					len(diagnostic.Fixes) != 0 ||
+					!reflect.DeepEqual(
+						diagnostic.WithheldFixes,
+						[]rules.WithheldFix{
+							{
+								Name: test.fix,
+								Reason: rules.FixWithheldComments,
+								Message: test.message,
+							},
+						},
+					) {
 					t.Fatalf("%s comment result = %#v", test.id, result)
 				}
 			},
@@ -358,8 +389,18 @@ func run() {
 		},
 	)
 	diagnostics := result.Files[0].Diagnostics
-	if len(diagnostics[0].Fixes) != 0 {
-		t.Fatalf("outside-comment diagnostic fixes = %#v", diagnostics[0].Fixes)
+	if len(diagnostics[0].Fixes) != 0 ||
+		!reflect.DeepEqual(
+			diagnostics[0].WithheldFixes,
+			[]rules.WithheldFix{
+				{
+					Name: "use-format-operand",
+					Reason: rules.FixWithheldComments,
+					Message: "replacing this formatting call would remove comments",
+				},
+			},
+		) {
+		t.Fatalf("outside-comment diagnostic = %#v", diagnostics[0])
 	}
 	if len(diagnostics[1].Fixes) != 1 ||
 		len(diagnostics[1].Fixes[0].Edits) != 1 ||

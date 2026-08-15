@@ -325,6 +325,48 @@ func diagnosticForFinding(
 			return fixes[left].Name < fixes[right].Name
 		},
 	)
+	withheldFixes := slices.Clone(finding.WithheldFixes)
+	seenWithheldFixes := make(map[string]struct{}, len(withheldFixes))
+	for _, fix := range withheldFixes {
+		if _, found := fixMetadata[fix.Name]; !found {
+			return rules.Diagnostic{}, fmt.Errorf(
+				"finding withholds undeclared fix %q",
+				fix.Name,
+			)
+		}
+		if _, offered := seenFixes[fix.Name]; offered {
+			return rules.Diagnostic{}, fmt.Errorf(
+				"finding both offers and withholds fix %q",
+				fix.Name,
+			)
+		}
+		if _, duplicate := seenWithheldFixes[fix.Name]; duplicate {
+			return rules.Diagnostic{}, fmt.Errorf(
+				"finding repeats withheld fix %q",
+				fix.Name,
+			)
+		}
+		seenWithheldFixes[fix.Name] = struct{}{}
+		if fix.Reason != rules.FixWithheldComments {
+			return rules.Diagnostic{}, fmt.Errorf(
+				"finding withheld fix %q has invalid reason %q",
+				fix.Name,
+				fix.Reason,
+			)
+		}
+		if strings.TrimSpace(fix.Message) == "" {
+			return rules.Diagnostic{}, fmt.Errorf(
+				"finding withheld fix %q has no message",
+				fix.Name,
+			)
+		}
+	}
+	sort.Slice(
+		withheldFixes,
+		func(left, right int) bool {
+			return withheldFixes[left].Name < withheldFixes[right].Name
+		},
+	)
 	related := slices.Clone(finding.Related)
 	notes := slices.Clone(finding.Notes)
 	return rules.Diagnostic{
@@ -339,6 +381,7 @@ func diagnosticForFinding(
 		Notes: notes,
 		Help: finding.Help,
 		Fixes: fixes,
+		WithheldFixes: withheldFixes,
 	}, nil
 }
 
@@ -380,7 +423,10 @@ func sortDiagnostics(diagnostics []rules.Diagnostic) {
 			if order := cmp.Compare(first.Help, second.Help); order != 0 {
 				return order < 0
 			}
-			return compareFixes(first.Fixes, second.Fixes) < 0
+			if order := compareFixes(first.Fixes, second.Fixes); order != 0 {
+				return order < 0
+			}
+			return compareWithheldFixes(first.WithheldFixes, second.WithheldFixes) < 0
 		},
 	)
 }
@@ -431,6 +477,21 @@ func compareFixes(left, right []rules.Fix) int {
 			}
 		}
 		if order := cmp.Compare(len(leftEdits), len(rightEdits)); order != 0 {
+			return order
+		}
+	}
+	return cmp.Compare(len(left), len(right))
+}
+
+func compareWithheldFixes(left, right []rules.WithheldFix) int {
+	for index := 0; index < min(len(left), len(right)); index++ {
+		if order := cmp.Compare(left[index].Name, right[index].Name); order != 0 {
+			return order
+		}
+		if order := cmp.Compare(left[index].Reason, right[index].Reason); order != 0 {
+			return order
+		}
+		if order := cmp.Compare(left[index].Message, right[index].Message); order != 0 {
 			return order
 		}
 	}

@@ -4788,8 +4788,8 @@ None.
   print, and scan APIs are excluded to keep pedantic noise bounded.
 - Calls with arguments, dynamic formats, and percent escapes are excluded.
 - The suggestion is withheld when replacing the call would remove a comment.
-- If replacing the call leaves fmt unused, final validation rejects the edit because import
-  organization is outside this rule's ownership.
+- When the accepted fix makes its qualified fmt import unused, the fix coordinator removes only that
+  fix-owned import; unrelated import organization remains out of scope.
 
 ### Example: Use a literal directly
 

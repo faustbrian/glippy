@@ -236,6 +236,68 @@ func TestRunLSPHidesSuggestionActionsUnlessExplicitlyEnabled(t *testing.T) {
 	}
 }
 
+func TestRunLSPPublishesRuleLevelWithheldFixReasons(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editorwithheld\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = [\"style\"]\n",
+	)
+	path := filepath.Join(root, "source.go")
+	buffer := "package sample\n\nfunc run(ready bool) {\n\t_ = ready /* keep */ == true\n}\n"
+	writeChangedCLIFile(t, path, buffer)
+	uri := "file://" + filepath.ToSlash(path)
+	input := cliLSPFrames(
+		t,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": uri,
+					"languageId": "go",
+					"version": 4,
+					"text": buffer,
+				},
+			},
+		},
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := RunContext(
+		context.Background(),
+		[]string{"lsp"},
+		bytes.NewReader(input),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf(
+			"RunContext(lsp) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	output := stdout.String()
+	if !strings.Contains(
+		output,
+		`"withheld_fixes":[{"name":"simplify-comparison","reason":"comments","message":"simplifying this comparison would remove comments"}]`,
+	) {
+		t.Fatalf("LSP output omitted withheld fix reason: %q", output)
+	}
+}
+
 func TestRunLSPUsesConfiguredPersistentCacheForTypedOverlays(t *testing.T) {
 	root := t.TempDir()
 	cacheRoot := t.TempDir()

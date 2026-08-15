@@ -51,6 +51,13 @@ func TestRenderLintTextUsesPhysicalLocationsAndSourceFrames(t *testing.T) {
 				Notes: []string{"review the result"},
 				Help: "replace the target",
 				Fixes: []rules.Fix{{Name: "rewrite", Safety: rules.FixSafe}},
+				WithheldFixes: []rules.WithheldFix{
+					{
+						Name: "rewrite-with-comments",
+						Reason: rules.FixWithheldComments,
+						Message: "rewriting this call would remove comments",
+					},
+				},
 			},
 		},
 		SuppressionProblems: []suppressions.Problem{
@@ -84,6 +91,7 @@ func TestRenderLintTextUsesPhysicalLocationsAndSourceFrames(t *testing.T) {
 		"   = note: review the result\n" +
 		"   = help: replace the target\n" +
 		"   = fix[safe]: rewrite\n" +
+		"   = fix[rewrite-with-comments] withheld[comments]: rewriting this call would remove comments\n" +
 		"\n" +
 		"suppression[malformed]: malformed suppression\n" +
 		"  --> /project/source.go:1:1\n" +
@@ -284,6 +292,13 @@ func TestRenderLintShortTextKeepsSourceFreeLocationOutput(t *testing.T) {
 				Path: file.Path(),
 				Digest: file.Digest(),
 				Range: source.Range{Start: start, End: start + len("target")},
+				WithheldFixes: []rules.WithheldFix{
+					{
+						Name: "rewrite",
+						Reason: rules.FixWithheldComments,
+						Message: "rewriting this call would remove comments",
+					},
+				},
 			},
 		},
 	}
@@ -292,7 +307,8 @@ func TestRenderLintShortTextKeepsSourceFreeLocationOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "/project/source.go:2:14: warn[call-rule]: call requires review\n"
+	want := "/project/source.go:2:14: warn[call-rule]: call requires review\n" +
+		"  fix[rewrite] withheld[comments]: rewriting this call would remove comments\n"
 	if string(got) != want {
 		t.Fatalf("RenderLintShortText() = %q, want %q", got, want)
 	}

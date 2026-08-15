@@ -18,7 +18,7 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const packageAnalyzerCacheEntryVersion = 1
+const packageAnalyzerCacheEntryVersion = 2
 
 // PackageCacheOptions binds a caller-owned persistent store to the complete
 // non-source identity of one typed analysis run. Source, package, module,
@@ -102,6 +102,12 @@ type persistedFix struct {
 	Edits []persistedEdit `json:"edits"`
 }
 
+type persistedWithheldFix struct {
+	Name string `json:"name"`
+	Reason rules.FixWithholdingReason `json:"reason"`
+	Message string `json:"message"`
+}
+
 type persistedDiagnostic struct {
 	RuleID string `json:"rule"`
 	Severity rules.Severity `json:"severity"`
@@ -114,6 +120,7 @@ type persistedDiagnostic struct {
 	Notes []string `json:"notes"`
 	Help string `json:"help"`
 	Fixes []persistedFix `json:"fixes"`
+	WithheldFixes []persistedWithheldFix `json:"withheldFixes"`
 }
 
 type packageAnalyzerCacheEntry struct {
@@ -263,6 +270,7 @@ func (r *packageAnalyzerRule) restorePackageCacheEntry(
 			Notes: diagnostic.Notes,
 			Help: diagnostic.Help,
 			Fixes: diagnostic.Fixes,
+			WithheldFixes: diagnostic.WithheldFixes,
 		}
 		validated, err := diagnosticForFinding(file, r.metadata, severity, finding)
 		if err != nil {
@@ -382,6 +390,17 @@ func persistDiagnostic(diagnostic rules.Diagnostic) persistedDiagnostic {
 		}
 		fixes[index] = persistedFix{Name: fix.Name, Safety: fix.Safety, Edits: edits}
 	}
+	var withheldFixes []persistedWithheldFix
+	if diagnostic.WithheldFixes != nil {
+		withheldFixes = make([]persistedWithheldFix, len(diagnostic.WithheldFixes))
+	}
+	for index, fix := range diagnostic.WithheldFixes {
+		withheldFixes[index] = persistedWithheldFix{
+			Name: fix.Name,
+			Reason: fix.Reason,
+			Message: fix.Message,
+		}
+	}
 	return persistedDiagnostic{
 		RuleID: diagnostic.RuleID,
 		Severity: diagnostic.Severity,
@@ -394,6 +413,7 @@ func persistDiagnostic(diagnostic rules.Diagnostic) persistedDiagnostic {
 		Notes: slices.Clone(diagnostic.Notes),
 		Help: diagnostic.Help,
 		Fixes: fixes,
+		WithheldFixes: withheldFixes,
 	}
 }
 
@@ -433,6 +453,17 @@ func restorePersistedDiagnostic(persisted persistedDiagnostic) (rules.Diagnostic
 		}
 		fixes[index] = rules.Fix{Name: fix.Name, Safety: fix.Safety, Edits: edits}
 	}
+	var withheldFixes []rules.WithheldFix
+	if persisted.WithheldFixes != nil {
+		withheldFixes = make([]rules.WithheldFix, len(persisted.WithheldFixes))
+	}
+	for index, fix := range persisted.WithheldFixes {
+		withheldFixes[index] = rules.WithheldFix{
+			Name: fix.Name,
+			Reason: fix.Reason,
+			Message: fix.Message,
+		}
+	}
 	return rules.Diagnostic{
 		RuleID: persisted.RuleID,
 		Severity: persisted.Severity,
@@ -445,6 +476,7 @@ func restorePersistedDiagnostic(persisted persistedDiagnostic) (rules.Diagnostic
 		Notes: slices.Clone(persisted.Notes),
 		Help: persisted.Help,
 		Fixes: fixes,
+		WithheldFixes: withheldFixes,
 	}, nil
 }
 

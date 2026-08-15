@@ -1056,6 +1056,22 @@ type Fix struct {
 	Edits []Edit
 }
 
+// FixWithholdingReason classifies why a declared fix was not offered for one
+// source-specific finding.
+type FixWithholdingReason string
+
+const (
+	FixWithheldComments FixWithholdingReason = "comments"
+)
+
+// WithheldFix records a declared fix that could not be offered safely for one
+// source-specific finding.
+type WithheldFix struct {
+	Name string
+	Reason FixWithholdingReason
+	Message string
+}
+
 // Finding is the rule-owned portion of a diagnostic.
 type Finding struct {
 	MessageKey string
@@ -1065,6 +1081,7 @@ type Finding struct {
 	Notes []string
 	Help string
 	Fixes []Fix
+	WithheldFixes []WithheldFix
 }
 
 // Diagnostic is one source-versioned, reporter-ready lint diagnostic.
@@ -1080,6 +1097,7 @@ type Diagnostic struct {
 	Notes []string
 	Help string
 	Fixes []Fix
+	WithheldFixes []WithheldFix
 }
 
 // Selection is one enabled rule with its resolved severity and cost.

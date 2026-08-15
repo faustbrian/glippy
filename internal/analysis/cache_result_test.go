@@ -157,6 +157,13 @@ func TestPackageAnalyzerCacheEntryRestoresDiagnosticsAndFacts(t *testing.T) {
 			Related: []rules.Related{},
 			Notes: []string{"note"},
 			Fixes: []rules.Fix{},
+			WithheldFixes: []rules.WithheldFix{
+				{
+					Name: "cached-rewrite",
+					Reason: rules.FixWithheldComments,
+					Message: "cached rewrite would remove comments",
+				},
+			},
 		},
 	}
 
@@ -223,6 +230,13 @@ func TestPackageAnalyzerCacheEntryRejectsStaleIdentityWithoutPartialRestore(t *t
 			Related: []rules.Related{},
 			Notes: []string{},
 			Fixes: []rules.Fix{},
+			WithheldFixes: []rules.WithheldFix{
+				{
+					Name: "cached-rewrite",
+					Reason: rules.FixWithheldComments,
+					Message: "cached rewrite would remove comments",
+				},
+			},
 		},
 	}
 	encoded, err := rule.encodePackageCacheEntry(pkg, diagnostics, facts)
@@ -276,6 +290,12 @@ func TestPackageAnalyzerCacheEntryRejectsStaleIdentityWithoutPartialRestore(t *t
 			name: "diagnostic order",
 			mutate: func(entry *packageAnalyzerCacheEntry) {
 				entry.Diagnostics = append(entry.Diagnostics, entry.Diagnostics[0])
+			},
+		},
+		{
+			name: "withheld fix reason",
+			mutate: func(entry *packageAnalyzerCacheEntry) {
+				entry.Diagnostics[0].WithheldFixes[0].Reason = "guess"
 			},
 		},
 		{
@@ -607,7 +627,16 @@ func packageAnalyzerCacheTestRule() (*packageAnalyzerRule, *goanalysis.Analyzer)
 		FactTypes: []goanalysis.Fact{new(snapshotFact)},
 	}
 	rule := &packageAnalyzerRule{
-		metadata: rules.Metadata{ID: "cache-rule"},
+		metadata: rules.Metadata{
+			ID: "cache-rule",
+			Fixes: []rules.FixMetadata{
+				{
+					Name: "cached-rewrite",
+					Description: "rewrite cached source",
+					Safety: rules.FixSafe,
+				},
+			},
+		},
 		steps: []packageAnalyzerStep{{original: analyzer, analyzer: *analyzer}},
 	}
 	return rule, analyzer

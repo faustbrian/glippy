@@ -80,7 +80,7 @@ func run() {
 		diagnostic.Fixes[0].Name != "buffer-signal-channel" ||
 		diagnostic.Fixes[0].Safety != rules.FixSuggestion ||
 		len(diagnostic.Fixes[0].Edits) != 1 ||
-		string(diagnostic.Fixes[0].Edits[0].NewText) != "make(chan os.Signal, 1)" {
+		diagnostic.Fixes[0].Edits[0].NewText != "make(chan os.Signal, 1)" {
 		t.Fatalf("unbuffered signal fix = %#v", diagnostic.Fixes)
 	}
 }

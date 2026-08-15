@@ -90,7 +90,15 @@ func run(ready bool) {
 		t.Fatalf("result = %#v, want two diagnostics", result)
 	}
 	for _, diagnostic := range result.Files[0].Diagnostics {
-		if diagnostic.RuleID != "redundant-bool-comparison" || len(diagnostic.Fixes) != 0 {
+		if diagnostic.RuleID != "redundant-bool-comparison" ||
+			len(diagnostic.Fixes) != 0 ||
+			len(diagnostic.WithheldFixes) != 1 ||
+			diagnostic.WithheldFixes[0] !=
+				(rules.WithheldFix{
+					Name: "simplify-comparison",
+					Reason: rules.FixWithheldComments,
+					Message: "simplifying this comparison would remove comments",
+				}) {
 			t.Fatalf(
 				"diagnostic = %#v, want comment-preserving no-fix finding",
 				diagnostic,

@@ -375,7 +375,13 @@ func TestRunSyntaxPreservesRichFindingSequence(t *testing.T) {
 	}
 	metadata := analysisMetadata("rich-finding", rules.NodeCallExpr, false)
 	metadata.Fixes = []rules.FixMetadata{
+		{Name: "commented", Description: "rewrite commented source", Safety: rules.FixSafe},
 		{Name: "rewrite", Description: "rewrite the call", Safety: rules.FixSafe},
+		{
+			Name: "alternate",
+			Description: "use an alternate rewrite",
+			Safety: rules.FixSuggestion,
+		},
 	}
 	nativeRule := syntaxRule{
 		metadata: metadata,
@@ -411,6 +417,18 @@ func TestRunSyntaxPreservesRichFindingSequence(t *testing.T) {
 							},
 						},
 					},
+					WithheldFixes: []rules.WithheldFix{
+						{
+							Name: "commented",
+							Reason: rules.FixWithheldComments,
+							Message: "commented rewrite would remove comments",
+						},
+						{
+							Name: "alternate",
+							Reason: rules.FixWithheldComments,
+							Message: "alternate rewrite would remove comments",
+						},
+					},
 				},
 			}, nil
 		},
@@ -436,6 +454,24 @@ func TestRunSyntaxPreservesRichFindingSequence(t *testing.T) {
 	}, []string{"z replacement first", "a replacement second"};
 		!reflect.DeepEqual(got, want) {
 		t.Fatalf("fix edit order = %#v, want %#v", got, want)
+	}
+	if got, want := []rules.WithheldFix{
+		diagnostic.WithheldFixes[0],
+		diagnostic.WithheldFixes[1],
+	}, []rules.WithheldFix{
+		{
+			Name: "alternate",
+			Reason: rules.FixWithheldComments,
+			Message: "alternate rewrite would remove comments",
+		},
+		{
+			Name: "commented",
+			Reason: rules.FixWithheldComments,
+			Message: "commented rewrite would remove comments",
+		},
+	};
+		!reflect.DeepEqual(got, want) {
+		t.Fatalf("withheld fixes = %#v, want %#v", got, want)
 	}
 }
 
@@ -511,6 +547,84 @@ func TestRunSyntaxRejectsMalformedRichFindings(t *testing.T) {
 				},
 			},
 			wantError: "invalid edit range",
+		},
+		{
+			name: "undeclared withheld fix",
+			finding: rules.Finding{
+				MessageKey: "withheld-undeclared",
+				Message: "undeclared withheld fix",
+				Range: source.Range{Start: 0, End: 1},
+				WithheldFixes: []rules.WithheldFix{
+					{
+						Name: "missing",
+						Reason: rules.FixWithheldComments,
+						Message: "would remove comments",
+					},
+				},
+			},
+			wantError: "withholds undeclared fix \"missing\"",
+		},
+		{
+			name: "offered and withheld fix",
+			finding: rules.Finding{
+				MessageKey: "withheld-offered",
+				Message: "offered and withheld fix",
+				Range: source.Range{Start: 0, End: 1},
+				Fixes: []rules.Fix{{Name: "rewrite", Safety: rules.FixSafe}},
+				WithheldFixes: []rules.WithheldFix{
+					{
+						Name: "rewrite",
+						Reason: rules.FixWithheldComments,
+						Message: "would remove comments",
+					},
+				},
+			},
+			wantError: "both offers and withholds fix \"rewrite\"",
+		},
+		{
+			name: "duplicate withheld fix",
+			finding: rules.Finding{
+				MessageKey: "withheld-duplicate",
+				Message: "duplicate withheld fix",
+				Range: source.Range{Start: 0, End: 1},
+				WithheldFixes: []rules.WithheldFix{
+					{
+						Name: "rewrite",
+						Reason: rules.FixWithheldComments,
+						Message: "first reason",
+					},
+					{
+						Name: "rewrite",
+						Reason: rules.FixWithheldComments,
+						Message: "second reason",
+					},
+				},
+			},
+			wantError: "repeats withheld fix \"rewrite\"",
+		},
+		{
+			name: "invalid withheld reason",
+			finding: rules.Finding{
+				MessageKey: "withheld-reason",
+				Message: "invalid withheld reason",
+				Range: source.Range{Start: 0, End: 1},
+				WithheldFixes: []rules.WithheldFix{
+					{Name: "rewrite", Reason: "guess", Message: "uncertain"},
+				},
+			},
+			wantError: "has invalid reason \"guess\"",
+		},
+		{
+			name: "empty withheld message",
+			finding: rules.Finding{
+				MessageKey: "withheld-message",
+				Message: "empty withheld message",
+				Range: source.Range{Start: 0, End: 1},
+				WithheldFixes: []rules.WithheldFix{
+					{Name: "rewrite", Reason: rules.FixWithheldComments},
+				},
+			},
+			wantError: "has no message",
 		},
 	}
 	for _, test := range tests {

@@ -320,6 +320,13 @@ An ordinary diagnostic contains:
       "name": "rewrite",
       "safety": "safe"
     }
+  ],
+  "withheld_fixes": [
+    {
+      "name": "rewrite-with-comments",
+      "reason": "comments",
+      "message": "rewriting this call would remove comments"
+    }
   ]
 }
 ```
@@ -327,6 +334,13 @@ An ordinary diagnostic contains:
 `severity` is `warn` or `error` for an emitted diagnostic. Fix safety is
 `safe`, `suggestion`, or `unsafe`. The report intentionally omits source
 snippets, edit replacement text, and suppressed diagnostic bodies.
+`withheld_fixes` is omitted when empty. It identifies a fix declared by the
+rule but not offered for this exact source and currently uses the stable
+`comments` reason when the transformation would discard comment ownership.
+This is distinct from `rejected_fixes`: a withheld fix never entered transaction
+selection, while a rejected fix was selected and then refused by source,
+safety, conflict, or validation checks. The additive field remains in schema
+version 1 because version-1 consumers are required to ignore unknown fields.
 
 `suppression_problems` are distinct records with `kind`, source identity,
 `range`, and `message`. Schema version 1 defines these kinds:

@@ -179,6 +179,11 @@ func needlessRangeBlank(ctx *TypesContext, statement *ast.RangeStmt) ([]Finding,
 				Edits: []Edit{{Range: editRange}},
 			},
 		}
+	} else {
+		finding.WithheldFixes = commentWithheldFix(
+			removeBlankIdentifierFix,
+			"removing this blank-identifier assignment would remove comments",
+		)
 	}
 	return []Finding{finding}, nil
 }
@@ -225,6 +230,11 @@ func needlessReceiveBlank(ctx *TypesContext, statement *ast.AssignStmt) ([]Findi
 					Edits: []Edit{{Range: range_, NewText: replacement}},
 				},
 			}
+		} else {
+			finding.WithheldFixes = commentWithheldFix(
+				removeBlankIdentifierFix,
+				"removing this blank-identifier assignment would remove comments",
+			)
 		}
 	} else {
 		editRange, rangeErr := ctx.PositionRange(
@@ -242,6 +252,11 @@ func needlessReceiveBlank(ctx *TypesContext, statement *ast.AssignStmt) ([]Findi
 					Edits: []Edit{{Range: editRange}},
 				},
 			}
+		} else {
+			finding.WithheldFixes = commentWithheldFix(
+				removeBlankIdentifierFix,
+				"removing this blank-identifier assignment would remove comments",
+			)
 		}
 	}
 	return []Finding{finding}, nil
@@ -441,6 +456,10 @@ func (redundantNilCheckRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Findi
 		return nil, err
 	}
 	if commentsOutsideRetainedRange(ctx.File().Comments(), range_, retainedRange) {
+		finding.WithheldFixes = commentWithheldFix(
+			removeRedundantNilCheckFix,
+			"removing this nil check would remove comments",
+		)
 		return []Finding{finding}, nil
 	}
 	replacement, found := ctx.File().Slice(retainedRange)
@@ -710,6 +729,10 @@ func timeConvenienceFinding(
 		argumentRange,
 		qualifierRange,
 	) {
+		finding.WithheldFixes = commentWithheldFix(
+			fixName,
+			"rewriting this duration calculation would remove comments",
+		)
 		return []Finding{finding}, nil
 	}
 	argumentSource, found := ctx.File().Slice(argumentRange)
@@ -929,7 +952,7 @@ func (unnecessaryFormatRule) Metadata() Metadata {
 			"Only the exact standard fmt.Sprintf call is recognized through go/types; logging, testing, error, print, and scan APIs are excluded to keep pedantic noise bounded.",
 			"Calls with arguments, dynamic formats, and percent escapes are excluded.",
 			"The suggestion is withheld when replacing the call would remove a comment.",
-			"If replacing the call leaves fmt unused, final validation rejects the edit because import organization is outside this rule's ownership.",
+			"When the accepted fix makes its qualified fmt import unused, the fix coordinator removes only that fix-owned import; unrelated import organization remains out of scope.",
 		},
 		Examples: []Example{
 			{
@@ -973,6 +996,10 @@ func (unnecessaryFormatRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Findi
 		return nil, err
 	}
 	if commentsOutsideRetainedRange(ctx.File().Comments(), range_, operandRange) {
+		finding.WithheldFixes = commentWithheldFix(
+			useFormatOperandFix,
+			"replacing this formatting call would remove comments",
+		)
 		return []Finding{finding}, nil
 	}
 	replacement, found := ctx.File().Slice(operandRange)
@@ -987,6 +1014,10 @@ func (unnecessaryFormatRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Findi
 		},
 	}
 	return []Finding{finding}, nil
+}
+
+func commentWithheldFix(name, message string) []WithheldFix {
+	return []WithheldFix{{Name: name, Reason: FixWithheldComments, Message: message}}
 }
 
 func (inefficientStringComparisonRule) Metadata() Metadata {

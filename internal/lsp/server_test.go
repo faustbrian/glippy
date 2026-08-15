@@ -30,6 +30,13 @@ func TestServePublishesUTF16DiagnosticsAndVersionedCodeActions(t *testing.T) {
 					Severity: lsp.SeverityWarning,
 					Code: "emoji-rule",
 					Message: "review emoji",
+					WithheldFixes: []lsp.WithheldFix{
+						{
+							Name: "replace-commented-emoji",
+							Reason: "comments",
+							Message: "replacing the emoji would remove comments",
+						},
+					},
 				},
 			},
 		},
@@ -42,6 +49,13 @@ func TestServePublishesUTF16DiagnosticsAndVersionedCodeActions(t *testing.T) {
 				DiagnosticRange: source.Range{Start: emoji, End: emoji + len("😀")},
 				DiagnosticSeverity: lsp.SeverityWarning,
 				DiagnosticMessage: "review emoji",
+				DiagnosticWithheldFixes: []lsp.WithheldFix{
+					{
+						Name: "replace-commented-emoji",
+						Reason: "comments",
+						Message: "replacing the emoji would remove comments",
+					},
+				},
 				NewText: []byte("package sample\nfunc run() {}\n"),
 			},
 		},
@@ -124,12 +138,25 @@ func TestServePublishesUTF16DiagnosticsAndVersionedCodeActions(t *testing.T) {
 		end["character"] != float64(20) {
 		t.Fatalf("UTF-16 diagnostic range = %#v", range_)
 	}
+	data := diagnostics[0].(map[string]any)["data"].(map[string]any)
+	withheld := data["withheld_fixes"].([]any)
+	if len(withheld) != 1 ||
+		withheld[0].(map[string]any)["name"] != "replace-commented-emoji" ||
+		withheld[0].(map[string]any)["reason"] != "comments" ||
+		withheld[0].(map[string]any)["message"] !=
+			"replacing the emoji would remove comments" {
+		t.Fatalf("withheld fix diagnostic data = %#v", data)
+	}
 
 	actions := messages[2]["result"].([]any)
 	if len(actions) != 1 {
 		t.Fatalf("code actions = %#v", actions)
 	}
 	action := actions[0].(map[string]any)
+	actionDiagnostic := action["diagnostics"].([]any)[0].(map[string]any)
+	if _, found := actionDiagnostic["data"]; !found {
+		t.Fatalf("code action diagnostic omitted withheld fix data: %#v", actionDiagnostic)
+	}
 	changes := action["edit"].(map[string]any)["documentChanges"].([]any)
 	documentEdit := changes[0].(map[string]any)
 	versioned := documentEdit["textDocument"].(map[string]any)

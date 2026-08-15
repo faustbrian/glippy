@@ -86,6 +86,13 @@ func (netIPBytesEqualRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding
 		return nil, err
 	}
 	if commentsOutsideRetainedRanges(ctx.File().Comments(), range_, firstRange, secondRange) {
+		finding.WithheldFixes = []WithheldFix{
+			{
+				Name: useNetIPEqualFix,
+				Reason: FixWithheldComments,
+				Message: "replacing this comparison would remove comments",
+			},
+		}
 		return []Finding{finding}, nil
 	}
 	firstSource, found := ctx.File().Slice(firstRange)

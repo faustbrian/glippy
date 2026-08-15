@@ -136,7 +136,8 @@ func renderLintText(inputs []LintTextInput, sourceFrames bool) ([]byte, error) {
 				(len(diagnostic.Related) > 0 ||
 					len(diagnostic.Notes) > 0 ||
 					diagnostic.Help != "" ||
-					len(diagnostic.Fixes) > 0) {
+					len(diagnostic.Fixes) > 0 ||
+					len(diagnostic.WithheldFixes) > 0) {
 				output.WriteString("   |\n")
 			}
 			for _, related := range diagnostic.Related {
@@ -221,6 +222,32 @@ func renderLintText(inputs []LintTextInput, sourceFrames bool) ([]byte, error) {
 						"  fix[%s]: %s\n",
 						safeHumanText(string(fix.Safety)),
 						safeHumanText(fix.Name),
+					)
+				}
+			}
+			withheldFixes := slices.Clone(diagnostic.WithheldFixes)
+			sort.Slice(
+				withheldFixes,
+				func(left, right int) bool {
+					return withheldFixes[left].Name < withheldFixes[right].Name
+				},
+			)
+			for _, fix := range withheldFixes {
+				if sourceFrames {
+					fmt.Fprintf(
+						&output,
+						"   = fix[%s] withheld[%s]: %s\n",
+						safeHumanText(fix.Name),
+						safeHumanText(string(fix.Reason)),
+						safeHumanText(fix.Message),
+					)
+				} else {
+					fmt.Fprintf(
+						&output,
+						"  fix[%s] withheld[%s]: %s\n",
+						safeHumanText(fix.Name),
+						safeHumanText(string(fix.Reason)),
+						safeHumanText(fix.Message),
 					)
 				}
 			}

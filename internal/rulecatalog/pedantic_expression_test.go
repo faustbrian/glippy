@@ -231,14 +231,20 @@ func TestPedanticExpressionSuggestionsPreserveComments(t *testing.T) {
 	tests := []struct {
 		id string
 		input string
+		fix string
+		message string
 	}{
 		{
 			"unnecessary-conversion",
 			"package sample\nfunc run(text string) { _ = string(/* keep */ text) }\n",
+			"remove-unnecessary-conversion",
+			"removing this conversion would remove comments",
 		},
 		{
 			"unnecessary-sprintf",
 			"package sample\nimport \"fmt\"\nfunc run(text string) { _ = fmt.Sprintf(\"%s\", /* keep */ text) }\n",
+			"replace-unnecessary-sprintf",
+			"replacing this formatting call would remove comments",
 		},
 	}
 	for _, test := range tests {
@@ -248,9 +254,20 @@ func TestPedanticExpressionSuggestionsPreserveComments(t *testing.T) {
 			func(t *testing.T) {
 				t.Parallel()
 				result := runOnePedanticRule(t, test.id, test.input)
+				diagnostic := result.Files[0].Diagnostics[0]
 				if len(result.Files) != 1 ||
 					len(result.Files[0].Diagnostics) != 1 ||
-					len(result.Files[0].Diagnostics[0].Fixes) != 0 {
+					len(diagnostic.Fixes) != 0 ||
+					!reflect.DeepEqual(
+						diagnostic.WithheldFixes,
+						[]rules.WithheldFix{
+							{
+								Name: test.fix,
+								Reason: rules.FixWithheldComments,
+								Message: test.message,
+							},
+						},
+					) {
 					t.Fatalf("%s comment result = %#v", test.id, result)
 				}
 			},

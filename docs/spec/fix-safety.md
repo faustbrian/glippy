@@ -114,6 +114,16 @@ MAY remove the complete declaration when every import in that declaration
 became unused. A withheld cleanup therefore remains visible through final
 validation instead of broadening into general import organization.
 
+A rule that declares a fix but cannot construct it safely for one exact source
+MUST attach a structured withheld-fix record to the diagnostic. The record MUST
+name canonical fix metadata, contain one supported reason and a nonempty human
+message, and MUST NOT name a fix also offered by that diagnostic. Names MUST be
+unique and canonically ordered. The initial `comments` reason means the
+transformation would discard comment text or ownership. Rule-level withholding
+happens before selection and MUST remain distinct from coordinator rejection of
+a fix that was actually selected. Text, JSON, cached diagnostics, and editor
+diagnostic data MUST preserve the same record.
+
 Lint fix preview uses the same coordinator and validation callback but stops
 before atomic replacement. A preview MUST validate that every filesystem
 snapshot is still current, and a typed preview MUST carry earlier accepted

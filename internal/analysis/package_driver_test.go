@@ -485,8 +485,16 @@ func TestRunPackagesCachesNativeTypedTiersAcrossIndependentLoads(t *testing.T) {
 			return nil, nil
 		},
 	}
+	typedMetadata := typesMetadata("cached-types", rules.NodeCallExpr)
+	typedMetadata.Fixes = []rules.FixMetadata{
+		{
+			Name: "cached-rewrite",
+			Description: "rewrite cached source",
+			Safety: rules.FixSafe,
+		},
+	}
 	typedRule := typesRule{
-		metadata: typesMetadata("cached-types", rules.NodeCallExpr),
+		metadata: typedMetadata,
 		run: func(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
 			runs["types"]++
 			range_, err := ctx.Range(node)
@@ -494,7 +502,18 @@ func TestRunPackagesCachesNativeTypedTiersAcrossIndependentLoads(t *testing.T) {
 				return nil, err
 			}
 			return []rules.Finding{
-				{MessageKey: "types", Message: "types", Range: range_},
+				{
+					MessageKey: "types",
+					Message: "types",
+					Range: range_,
+					WithheldFixes: []rules.WithheldFix{
+						{
+							Name: "cached-rewrite",
+							Reason: rules.FixWithheldComments,
+							Message: "cached rewrite would remove comments",
+						},
+					},
+				},
 			}, nil
 		},
 	}

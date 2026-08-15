@@ -110,6 +110,14 @@ one offset conflict. A conflict rejects every complete fix that participates,
 while independent fixes may proceed. Any parse or formatter-validation failure
 rolls back every otherwise accepted fix in that source transaction.
 
+A source-specific rule may withhold one of its declared fixes before selection
+when the transformation cannot preserve the rule's safety contract. The
+diagnostic records the canonical fix name, a stable reason, and a human message;
+the same fix cannot be both offered and withheld. This provenance is validated,
+canonically ordered, cached, reported, and propagated to editor diagnostic data.
+The initial reason is `comments`. Pre-selection withholding remains distinct
+from coordinator rejection because no edit was proposed or selected.
+
 The on-disk transaction begins from one descriptor-validated filesystem
 snapshot, coordinates its exact bytes, and delegates replacement to the shared
 permission-preserving same-directory atomic writer. A stale-source error proves

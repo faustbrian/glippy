@@ -110,6 +110,11 @@ source or project state is a document diagnostic rather than a fallback to a
 different policy. Closing the buffer clears its diagnostics.
 Rule diagnostics carry a documentation link to the canonical generated rule
 catalog; `glippy explain <rule>` renders the same metadata locally.
+When a declared rule fix cannot be offered safely for the exact buffer, the
+published diagnostic carries `data.withheld_fixes` entries with stable `name`,
+`reason`, and `message` fields. The initial `comments` reason means the rewrite
+would discard comments. This is diagnostic provenance, not a code action or an
+authorization to edit the document.
 
 Safe quick fixes and a `source.fixAll.glippy` action are available by default.
 Launch with one or both explicit flags to broaden the offered action classes:

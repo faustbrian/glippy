@@ -294,6 +294,11 @@ func (redundantTypeDeclarationRule) RunTypes(ctx *TypesContext, node ast.Node) (
 				Edits: []Edit{{Range: editRange, NewText: " = "}},
 			},
 		}
+	} else {
+		finding.WithheldFixes = commentWithheldFix(
+			removeRedundantTypeFix,
+			"removing this explicit type would remove comments",
+		)
 	}
 	return []Finding{finding}, nil
 }

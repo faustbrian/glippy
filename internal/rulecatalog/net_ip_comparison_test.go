@@ -133,11 +133,19 @@ func compare(first, second net.IP) bool {
 	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
 		t.Fatalf("commented net-ip-bytes-equal result = %#v", result)
 	}
-	if len(result.Files[0].Diagnostics[0].Fixes) != 0 {
-		t.Fatalf(
-			"commented net-ip-bytes-equal diagnostic = %#v",
-			result.Files[0].Diagnostics[0],
-		)
+	diagnostic := result.Files[0].Diagnostics[0]
+	if len(diagnostic.Fixes) != 0 ||
+		!reflect.DeepEqual(
+			diagnostic.WithheldFixes,
+			[]rules.WithheldFix{
+				{
+					Name: "use-net-ip-equal",
+					Reason: rules.FixWithheldComments,
+					Message: "replacing this comparison would remove comments",
+				},
+			},
+		) {
+		t.Fatalf("commented net-ip-bytes-equal diagnostic = %#v", diagnostic)
 	}
 }
 

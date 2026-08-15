@@ -104,6 +104,12 @@ type LintFix struct {
 	Safety rules.FixSafety `json:"safety"`
 }
 
+type LintWithheldFix struct {
+	Name string `json:"name"`
+	Reason rules.FixWithholdingReason `json:"reason"`
+	Message string `json:"message"`
+}
+
 type LintDiagnostic struct {
 	RuleID string `json:"rule_id"`
 	Severity rules.Severity `json:"severity"`
@@ -116,6 +122,7 @@ type LintDiagnostic struct {
 	Notes []string `json:"notes"`
 	Help string `json:"help"`
 	Fixes []LintFix `json:"fixes"`
+	WithheldFixes []LintWithheldFix `json:"withheld_fixes,omitempty"`
 }
 
 type SuppressionProblem struct {
@@ -560,6 +567,14 @@ func lintDiagnostic(diagnostic rules.Diagnostic) LintDiagnostic {
 	for fixIndex, fix := range diagnostic.Fixes {
 		fixes[fixIndex] = LintFix{Name: fix.Name, Safety: fix.Safety}
 	}
+	withheldFixes := make([]LintWithheldFix, len(diagnostic.WithheldFixes))
+	for fixIndex, fix := range diagnostic.WithheldFixes {
+		withheldFixes[fixIndex] = LintWithheldFix{
+			Name: fix.Name,
+			Reason: fix.Reason,
+			Message: fix.Message,
+		}
+	}
 	return LintDiagnostic{
 		RuleID: diagnostic.RuleID,
 		Severity: diagnostic.Severity,
@@ -572,6 +587,7 @@ func lintDiagnostic(diagnostic rules.Diagnostic) LintDiagnostic {
 		Notes: cloneStrings(diagnostic.Notes),
 		Help: diagnostic.Help,
 		Fixes: fixes,
+		WithheldFixes: withheldFixes,
 	}
 }
 

@@ -225,6 +225,9 @@ func (b *lspBackend) CodeActions(
 					DiagnosticMessage: diagnostic.Message,
 					DiagnosticDocumentationURI: lintRuleDocumentationURL +
 						diagnostic.RuleID,
+					DiagnosticWithheldFixes: editorWithheldFixes(
+						diagnostic.WithheldFixes,
+					),
 					NewText: coordinated.Bytes,
 				},
 			)
@@ -395,6 +398,7 @@ func editorAnalysis(
 				DocumentationURI: lintRuleDocumentationURL + diagnostic.RuleID,
 				Message: diagnostic.Message,
 				Related: related,
+				WithheldFixes: editorWithheldFixes(diagnostic.WithheldFixes),
 			},
 		)
 	}
@@ -437,6 +441,18 @@ func editorAnalysis(
 		)
 	}
 	return lsp.Analysis{File: file, Diagnostics: diagnostics, State: state}
+}
+
+func editorWithheldFixes(fixes []rules.WithheldFix) []lsp.WithheldFix {
+	result := make([]lsp.WithheldFix, len(fixes))
+	for index, fix := range fixes {
+		result[index] = lsp.WithheldFix{
+			Name: fix.Name,
+			Reason: string(fix.Reason),
+			Message: fix.Message,
+		}
+	}
+	return result
 }
 
 func editorSeverity(severity rules.Severity) lsp.Severity {

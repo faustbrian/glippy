@@ -1532,3 +1532,12 @@ the five remaining optional candidates whose semantic or signal contracts are
 not yet credible. Glippy has reached reasonable Clippy-comparable usefulness
 for Go; future evidence-backed rules and cross-package effect facts are product
 evolution rather than unfinished comparability foundation.
+
+The next fix-maturity batch gives every source-specific withheld fix structured
+provenance. Native findings and diagnostics now distinguish a declared fix that
+would discard comments from a rule with no fix and from a fix later rejected by
+the coordinator. Canonical validation rejects undeclared, duplicate, invalid,
+or simultaneously offered and withheld names; analyzer and native cache entry
+version 2 preserves and revalidates the records. Text, schema-version-1 JSON,
+and LSP diagnostic data expose the same name, `comments` reason, and message.
+All existing native comment-withholding sites participate in the contract.

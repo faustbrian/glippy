@@ -96,6 +96,13 @@ func (unnecessaryConversionRule) RunTypes(ctx *TypesContext, node ast.Node) ([]F
 		return nil, err
 	}
 	if commentsOutsideRetainedRange(ctx.File().Comments(), range_, argumentRange) {
+		finding.WithheldFixes = []WithheldFix{
+			{
+				Name: removeUnnecessaryConversionFix,
+				Reason: FixWithheldComments,
+				Message: "removing this conversion would remove comments",
+			},
+		}
 		return []Finding{finding}, nil
 	}
 	replacement, found := ctx.File().Slice(argumentRange)
@@ -189,6 +196,13 @@ func (unnecessarySprintfRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Find
 		return nil, err
 	}
 	if commentsOutsideRetainedRange(ctx.File().Comments(), range_, argumentRange) {
+		finding.WithheldFixes = []WithheldFix{
+			{
+				Name: replaceUnnecessarySprintfFix,
+				Reason: FixWithheldComments,
+				Message: "replacing this formatting call would remove comments",
+			},
+		}
 		return []Finding{finding}, nil
 	}
 	argumentSource, found := ctx.File().Slice(argumentRange)
