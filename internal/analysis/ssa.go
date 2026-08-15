@@ -63,7 +63,7 @@ func RunSSA(
 	if err := validateSharedFileSet(ssaInputs); err != nil {
 		return nil, err
 	}
-	program, ssaPackages := ssautil.Packages(ssaInputs, ssa.BuilderMode(0))
+	program, ssaPackages := ssautil.Packages(ssaInputs, ssaMode(activeRules))
 	program.Build()
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -155,6 +155,16 @@ func RunSSA(
 		}
 	}
 	return OrderDiagnostics(diagnostics), nil
+}
+
+func ssaMode(activeRules []activeSSARule) ssa.BuilderMode {
+	for _, active := range activeRules {
+		_, ok := active.rule.(rules.SSADebugRule)
+		if ok {
+			return ssa.GlobalDebug
+		}
+	}
+	return ssa.BuilderMode(0)
 }
 
 func prepareSSARules(

@@ -1326,3 +1326,14 @@ identity retains ordered policy, explicit multi-root configurations keep
 independent roots, and `config show` reports the selected path and matching
 override declarations. Additional error-flow correctness rules remain open, so
 the broader Clippy-comparability goal remains active.
+
+The first post-policy error-flow batch now admits `overwritten-error` as an
+opt-in suspicious SSA rule. It reports error-typed direct assignments and
+initialized declarations whose value has no observable use before a later
+definition of the same typed object. Tuple extraction, Phi joins, switch tags,
+explicit blank observation, exact ranges, shared policies, and on-demand SSA
+debug mapping are covered without expanding ordinary SSA cost. A 100-function
+probe and non-mutating Glippy plus `pkg/prompts` dogfood support admission. No
+fix is offered because the intended handling path is not inferable. Broader
+error-flow coverage and the fixability sweep remain open, so the active
+Clippy-comparability goal continues.

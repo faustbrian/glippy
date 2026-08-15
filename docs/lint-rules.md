@@ -60,6 +60,7 @@ not stable release promises.
 - [nil-map-write](#nil-map-write)
 - [nilness](#nilness)
 - [oversized-shift](#oversized-shift)
+- [overwritten-error](#overwritten-error)
 - [printf-arguments](#printf-arguments)
 - [redundant-bool-comparison](#redundant-bool-comparison)
 - [redundant-closure](#redundant-closure)
@@ -2563,6 +2564,62 @@ _ = value << 8
 ```go
 var value uint8
 _ = value << 7
+```
+
+## overwritten-error
+
+detects error values overwritten before they are observed
+
+An error overwritten before it is checked, returned, logged, or explicitly discarded loses the
+failure from the earlier operation. The rule follows SSA values through branch joins and tuple
+extraction, then reports only result components assignable to Go's built-in error interface.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: SSA
+- Node interests: none
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only assignments and initialized variable declarations with direct identifier destinations are
+  considered; fields, indexes, dereferences, range variables, and incoming parameter values are
+  excluded.
+- An explicitly blank assignment or variable declaration such as _ = err counts as intentional
+  observation and is not reported.
+- Address-taken values, including some captured and named-result variables, may be represented
+  through memory and are conservatively excluded when SSA cannot identify the assigned value
+  precisely.
+- Generated files and packages with type errors are excluded.
+
+### Example: Check each operation's error before reusing it
+
+**Incorrect**
+
+```go
+value, err := first()
+value, err = second()
+if err != nil { return err }
+```
+
+**Correct**
+
+```go
+value, err := first()
+if err != nil { return err }
+value, err = second()
 ```
 
 ## printf-arguments

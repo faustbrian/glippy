@@ -3,6 +3,7 @@ package analysis_test
 import (
 	"context"
 	"errors"
+	"go/ast"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -21,6 +22,12 @@ type ssaRule struct {
 type ambiguousSSARule struct {
 	ssaRule
 }
+
+type debugSSARule struct {
+	ssaRule
+}
+
+func (debugSSARule) RequiresSSADebug() {}
 
 func (r ambiguousSSARule) RunControlFlow(*rules.ControlFlowContext) ([]rules.Finding, error) {
 	return nil, nil
@@ -166,6 +173,105 @@ func (owner) method() {}
 		if len(values) != 2 || values[0] != values[1] {
 			t.Fatalf("function at %d received SSA functions %#v", start, values)
 		}
+	}
+}
+
+func TestRunSSAEnablesExpressionMappingsOnlyForDebugRules(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/debugssa\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "debug.go"),
+		"package debugssa\nfunc source() int { return 1 }\nfunc run() { value := source(); _ = value }\n",
+	)
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireSSA,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkMapping := func(ctx *rules.SSAContext) bool {
+		if ctx.Function().Name() != "run" {
+			return false
+		}
+		var mapped bool
+		ast.Inspect(
+			ctx.Syntax(),
+			func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				value, _ := ctx.Function().ValueForExpr(call)
+				mapped = value != nil
+				return false
+			},
+		)
+		return mapped
+	}
+	ordinaryMapped := false
+	ordinary := ssaRule{
+		metadata: ssaMetadata("ordinary-ssa"),
+		run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
+			ordinaryMapped = ordinaryMapped || checkMapping(ctx)
+			return nil, nil
+		},
+	}
+	ordinaryRegistry, err := rules.NewRegistry(ordinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinarySelection, err := ordinaryRegistry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunSSA(
+		context.Background(),
+		loaded,
+		ordinaryRegistry,
+		ordinarySelection,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if ordinaryMapped {
+		t.Fatal("ordinary SSA rule unexpectedly received debug expression mappings")
+	}
+	debugMapped := false
+	debug := debugSSARule{
+		ssaRule{
+			metadata: ssaMetadata("debug-ssa"),
+			run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
+				debugMapped = debugMapped || checkMapping(ctx)
+				return nil, nil
+			},
+		},
+	}
+	debugRegistry, err := rules.NewRegistry(debug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	debugSelection, err := debugRegistry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunSSA(context.Background(), loaded, debugRegistry, debugSelection);
+		err != nil {
+		t.Fatal(err)
+	}
+	if !debugMapped {
+		t.Fatal("debug SSA rule did not receive expression mappings")
 	}
 }
 

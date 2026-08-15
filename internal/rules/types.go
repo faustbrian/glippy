@@ -213,6 +213,14 @@ type SSARule interface {
 	RunSSA(*SSAContext) ([]Finding, error)
 }
 
+// SSADebugRule marks an SSA rule that needs source-expression-to-value
+// mappings. The scheduler enables the more expensive x/tools debug mapping
+// only when at least one selected SSA rule declares this requirement.
+type SSADebugRule interface {
+	SSARule
+	RequiresSSADebug()
+}
+
 // Context is the immutable per-file syntax rule context.
 type Context struct {
 	file *source.File

@@ -44,6 +44,11 @@ for projects that prohibit explicit `_ = err` and tuple-error discards. It is
 not part of a selectable preset: deliberate best-effort operations require a
 reasoned suppression, and test files remain separately configurable.
 
+The error-flow track now admits `overwritten-error` as an SSA-backed suspicious
+rule. It is deliberately narrower than Staticcheck SA4006: only error-typed
+values followed by another definition of the same object report, while any
+observable use or explicit blank assignment prevents a finding.
+
 ## Investigation Queue
 
 The queue contains defect classes to investigate, not accepted rule IDs.
