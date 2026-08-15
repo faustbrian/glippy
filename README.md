@@ -179,6 +179,12 @@ to local values with `Close() error`. Cleanup or ownership transfer must cover
 every normally returning path, so a close on only one branch and reassignment
 before cleanup both report.
 
+The opt-in `http-response-body-not-closed` rule covers the standard-library
+gap where `*http.Response` is not itself a closer. After a successful direct
+package or `Client` request guard, every normal return must close or transfer
+the body. Passing the body to a reader does not count as transfer, so early
+status and read-error returns before a later close still report.
+
 The restriction catalog includes `blank-error-discard`, Glippy's Go analogue
 to Clippy's `let_underscore_must_use`. Projects can enable it by exact rule ID
 to require every explicit blank-identifier error discard to be handled or

@@ -31,6 +31,7 @@ not stable release promises.
 - [excessive-nesting](#excessive-nesting)
 - [http-canonical-header-key](#http-canonical-header-key)
 - [http-response-before-error](#http-response-before-error)
+- [http-response-body-not-closed](#http-response-body-not-closed)
 - [identical-branches](#identical-branches)
 - [ignored-append-result](#ignored-append-result)
 - [impossible-comparison](#impossible-comparison)
@@ -1155,6 +1156,64 @@ if err != nil { return err }
 response, err := http.Get(url)
 if err != nil { return err }
 defer response.Body.Close()
+```
+
+## http-response-body-not-closed
+
+detects HTTP response bodies not closed on every normal return
+
+A successful net/http client request returns a response whose Body must be closed. A locally owned
+response that reaches a normal return without closing or conservatively transferring its body can
+leak connections and prevent transport reuse. This rule follows direct package and Client request
+helpers through the shared control-flow graph after a conventional acquisition-error guard.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The initial contract recognizes direct net/http Get, Head, Post, and PostForm functions plus
+  Client.Do, Get, Head, Post, and PostForm methods followed immediately by an err != nil guard whose
+  body returns.
+- Returning, passing, sending, storing, or capturing the response transfers ownership. A body
+  argument transfers ownership only when the destination parameter itself has Close() error; passing
+  Body as an io.Reader does not discharge the obligation.
+- The rule is intraprocedural and does not infer cleanup performed by arbitrary helper functions,
+  response wrappers, or middleware.
+- Generated files and packages with type errors are excluded.
+
+### Example: Close a successful HTTP response body
+
+**Incorrect**
+
+```go
+response, err := http.Get(url)
+if err != nil { return err }
+return use(response.Body)
+```
+
+**Correct**
+
+```go
+response, err := http.Get(url)
+if err != nil { return err }
+defer response.Body.Close()
+return use(response.Body)
 ```
 
 ## identical-branches

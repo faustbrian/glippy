@@ -1389,3 +1389,14 @@ reassignment report, complete close-or-transfer branches do not, and a
 conventional acquisition-error guard starts ownership only on success.
 Interprocedural effects and the broader lifecycle pack remain open, so the
 active Clippy-comparability goal continues.
+
+The next lifecycle batch admits `http-response-body-not-closed` as an opt-in
+suspicious control-flow rule. It follows exact `net/http` package and Client
+response acquisitions after a conventional error guard and requires body close
+or conservative ownership transfer on every normally returning path. A
+reviewed listmonk occurrence proves the early-status and read-error leak shape;
+body reads no longer masquerade as transfers, while closer-typed parameters do.
+Focused eligibility and API-surface fixtures, a 100-candidate cost probe, and
+non-mutating Glippy plus `pkg/prompts` dogfood support admission. Arbitrary
+helper effects, custom transports, and broader interprocedural lifecycle facts
+remain open, so the active Clippy-comparability goal continues.

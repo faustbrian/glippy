@@ -71,6 +71,13 @@ partial cleanup and reassignment instead of accepting one close anywhere in a
 function. Interprocedural completion, transfer, and no-return facts remain a
 separate evidence-gated expansion.
 
+The response lifecycle track now also admits
+`http-response-body-not-closed`. It follows exact `net/http` package and Client
+acquisitions after a conventional error guard, requires close or transfer on
+every normal return, and does not mistake body reads for ownership transfer.
+Arbitrary helper cleanup, custom transports, and body replacement remain in
+the interprocedural investigation rather than weakening the local rule.
+
 ## Investigation Queue
 
 The queue contains defect classes to investigate, not accepted rule IDs.

@@ -229,7 +229,11 @@ func closeCallUsesObject(info *types.Info, call *ast.CallExpr, object types.Obje
 
 func methodValueUsesObject(info *types.Info, expression ast.Expr, object types.Object) bool {
 	selector, _ := ast.Unparen(expression).(*ast.SelectorExpr)
-	return selector != nil && directObject(info, selector.X) == object
+	selection := info.Selections[selector]
+	return selector != nil &&
+		selection != nil &&
+		selection.Kind() == types.MethodVal &&
+		directObject(info, selector.X) == object
 }
 
 func directObject(info *types.Info, expression ast.Expr) types.Object {
