@@ -30,6 +30,7 @@ not stable release promises.
 - [errors-as-target](#errors-as-target)
 - [errors-is-arguments](#errors-is-arguments)
 - [excessive-nesting](#excessive-nesting)
+- [exec-pipe-run](#exec-pipe-run)
 - [http-canonical-header-key](#http-canonical-header-key)
 - [http-response-before-error](#http-response-before-error)
 - [http-response-body-not-closed](#http-response-body-not-closed)
@@ -1138,6 +1139,59 @@ func run() { if ready { for next() { if valid() { work() } } } }
 
 ```go
 func run() { if !ready { return }; processValid() }
+```
+
+## exec-pipe-run
+
+detects Cmd.Run after StdoutPipe or StderrPipe
+
+The os/exec contract requires callers of Cmd.StdoutPipe and Cmd.StderrPipe to start the command,
+finish reading the pipe, and then call Wait. Cmd.Run combines Start and Wait, so it may close the
+pipe before the caller finishes reading and is explicitly documented as incorrect with these
+output-pipe methods.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `block-stmt`
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule tracks one direct local Cmd identifier within a lexical block; fields, aliases, helper
+  calls, and cross-block ownership require deeper value flow.
+- Reassigning the tracked Cmd variable clears the local pipe state conservatively.
+
+### Example: Read the pipe between Start and Wait
+
+**Incorrect**
+
+```go
+stdout, _ := command.StdoutPipe()
+_ = command.Run()
+_ = stdout
+```
+
+**Correct**
+
+```go
+stdout, _ := command.StdoutPipe()
+_ = command.Start()
+_, _ = io.ReadAll(stdout)
+_ = command.Wait()
 ```
 
 ## http-canonical-header-key
