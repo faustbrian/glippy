@@ -1520,3 +1520,15 @@ measured a 137.3 ms median with about 4.60 MB allocated on Darwin arm64. A
 direct disposable DeepFlow run reported both reviewed lines, and non-mutating
 exact-rule dogfood remained clean on Glippy and `pkg/prompts`. The documented
 catalog reaches 100 rules, and the active Clippy-comparability goal continues.
+
+The requirement-level Clippy comparability exit audit now closes the active
+post-v0.1 expansion goal. All high-value vet integrations, the complete
+semantic correctness pack through ten native and two canonical existing rule
+identities, changed-code adoption, configuration introspection, selective lint
+policy, GitHub and SARIF reporting, and the shared LSP diagnostic and code-action
+surface are implemented. The canonical catalog contains 100 rules, including
+16 pedantic, four performance, and four complexity rules, without admitting
+the five remaining optional candidates whose semantic or signal contracts are
+not yet credible. Glippy has reached reasonable Clippy-comparable usefulness
+for Go; future evidence-backed rules and cross-package effect facts are product
+evolution rather than unfinished comparability foundation.
