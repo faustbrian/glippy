@@ -2839,7 +2839,7 @@ a preceding nil check therefore cannot change the condition and only duplicates 
 
 ### Fixes
 
-None.
+- `remove-redundant-nil-check` (`safe`): replace the condition with its equivalent length comparison
 
 ### Configuration
 
@@ -2849,7 +2849,7 @@ None.
 
 - Only identifier and selector expressions repeated without calls or indexing are matched.
 - Pointers to arrays and type parameters are excluded.
-- No fix is offered until comments between the two conditions have a dedicated rewrite contract.
+- The safe fix is withheld when removing the nil check would also remove a comment.
 
 ### Example: Rely on len for nil slices
 

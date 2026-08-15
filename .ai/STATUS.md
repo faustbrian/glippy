@@ -1348,3 +1348,12 @@ control-flow repairs require intent. A 100-function package probe measured a
 59.3 ms median with about 2.02 MB allocated on Darwin arm64. Broader error-flow
 coverage, any explicit default SSA policy, and the fixability sweep remain
 open, so the active Clippy-comparability goal continues.
+
+The first post-catalog fixability revisit adds
+`remove-redundant-nil-check` as a safe fix. It retains the exact source of the
+equivalent length comparison, refuses edits that would remove comments, and
+preserves comments inside the retained comparison. Focused rule evidence and
+the product `lint --fix` path prove metadata, exact edits, complete-file
+formatting, validated writes, and second-run idempotency. Additional credible
+fixes remain open. Non-mutating exact-rule lint and fix preview remain clean on
+Glippy and `pkg/prompts`, so the active Clippy-comparability goal continues.

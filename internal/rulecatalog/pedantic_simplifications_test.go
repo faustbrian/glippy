@@ -110,6 +110,7 @@ func run(values []string, mapping map[string]int, receive chan string, array *[2
 		"mapping == nil || len(mapping) == 0",
 		"receive != nil && len(receive) >= one",
 	}
+	replacements := []string{"len(values) > 0", "len(mapping) == 0", "len(receive) >= one"}
 	assertPedanticSimplificationRanges(
 		t,
 		input,
@@ -118,6 +119,41 @@ func run(values []string, mapping map[string]int, receive chan string, array *[2
 		"omit-nil-check",
 		want,
 	)
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		if len(diagnostic.Fixes) != 1 ||
+			diagnostic.Fixes[0].Name != "remove-redundant-nil-check" ||
+			diagnostic.Fixes[0].Safety != rules.FixSafe ||
+			len(diagnostic.Fixes[0].Edits) != 1 ||
+			diagnostic.Fixes[0].Edits[0].NewText != replacements[index] {
+			t.Fatalf("redundant-nil-check diagnostic[%d] = %#v", index, diagnostic)
+		}
+	}
+}
+
+func TestRedundantNilCheckSafeFixPreservesRetainedComments(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+func run(values []string) {
+	if values != nil /* keep nil-check context */ && len(values) > 0 {}
+	if values != nil && len(/* keep length context */ values) > 0 {}
+}
+`
+	result := runOnePedanticRule(t, "redundant-nil-check", input)
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 2 {
+		t.Fatalf("redundant-nil-check result = %#v", result)
+	}
+	if len(result.Files[0].Diagnostics[0].Fixes) != 0 {
+		t.Fatalf("removed-comment diagnostic = %#v", result.Files[0].Diagnostics[0])
+	}
+	fixed := result.Files[0].Diagnostics[1]
+	if len(fixed.Fixes) != 1 ||
+		fixed.Fixes[0].Safety != rules.FixSafe ||
+		len(fixed.Fixes[0].Edits) != 1 ||
+		fixed.Fixes[0].Edits[0].NewText != "len(/* keep length context */ values) > 0" {
+		t.Fatalf("retained-comment diagnostic = %#v", fixed)
+	}
 }
 
 func TestTimeConvenienceRulesReportExactCallsAndSuggestions(t *testing.T) {
@@ -338,7 +374,16 @@ func TestPedanticSimplificationMetadata(t *testing.T) {
 			},
 		},
 		"redundant-closure": {[]rules.NodeKind{rules.NodeFuncLit}, nil},
-		"redundant-nil-check": {[]rules.NodeKind{rules.NodeBinaryExpr}, nil},
+		"redundant-nil-check": {
+			[]rules.NodeKind{rules.NodeBinaryExpr},
+			[]rules.FixMetadata{
+				{
+					Name: "remove-redundant-nil-check",
+					Description: "replace the condition with its equivalent length comparison",
+					Safety: rules.FixSafe,
+				},
+			},
+		},
 		"time-since": {
 			[]rules.NodeKind{rules.NodeCallExpr},
 			[]rules.FixMetadata{

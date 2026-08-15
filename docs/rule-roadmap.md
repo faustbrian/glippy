@@ -109,6 +109,11 @@ unsafe fixes stay separately selectable, and every applied edit continues
 through stale-source, conflict, reparse, formatter, reanalysis, and atomic
 write validation.
 
+The fixability track now includes `remove-redundant-nil-check` as a safe fix.
+It replaces the matched boolean expression with the exact length-comparison
+source and withholds edits that would discard comments. The shared coordinator
+formats, reanalyzes, validates, and writes the complete result idempotently.
+
 ## Explicit Deferrals
 
 The roadmap does not include:

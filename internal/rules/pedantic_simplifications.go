@@ -13,6 +13,7 @@ import (
 
 const (
 	removeBlankIdentifierFix = "remove-blank-identifier"
+	removeRedundantNilCheckFix = "remove-redundant-nil-check"
 	useTimeSinceFix = "use-time-since"
 	useTimeUntilFix = "use-time-until"
 )
@@ -375,10 +376,17 @@ func (redundantNilCheckRule) Metadata() Metadata {
 		Requirement: RequireTypes,
 		NodeInterests: []NodeKind{NodeBinaryExpr},
 		Categories: []Category{CategoryStyle, CategoryMaintainability},
+		Fixes: []FixMetadata{
+			{
+				Name: removeRedundantNilCheckFix,
+				Description: "replace the condition with its equivalent length comparison",
+				Safety: FixSafe,
+			},
+		},
 		KnownLimitations: []string{
 			"Only identifier and selector expressions repeated without calls or indexing are matched.",
 			"Pointers to arrays and type parameters are excluded.",
-			"No fix is offered until comments between the two conditions have a dedicated rewrite contract.",
+			"The safe fix is withheld when removing the nil check would also remove a comment.",
 		},
 		Examples: []Example{
 			{
@@ -421,14 +429,31 @@ func (redundantNilCheckRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Findi
 	if err != nil {
 		return nil, err
 	}
-	return []Finding{
+	finding := Finding{
+		MessageKey: "omit-nil-check",
+		Message: "nil check is redundant because len is zero for nil values",
+		Range: range_,
+		Help: "use the length comparison directly",
+	}
+	retainedRange, err := ctx.Range(outer.Y)
+	if err != nil {
+		return nil, err
+	}
+	if commentsOutsideRetainedRange(ctx.File().Comments(), range_, retainedRange) {
+		return []Finding{finding}, nil
+	}
+	replacement, found := ctx.File().Slice(retainedRange)
+	if !found {
+		return nil, fmt.Errorf("redundant nil check has an invalid retained range")
+	}
+	finding.Fixes = []Fix{
 		{
-			MessageKey: "omit-nil-check",
-			Message: "nil check is redundant because len is zero for nil values",
-			Range: range_,
-			Help: "use the length comparison directly",
+			Name: removeRedundantNilCheckFix,
+			Safety: FixSafe,
+			Edits: []Edit{{Range: range_, NewText: replacement}},
 		},
-	}, nil
+	}
+	return []Finding{finding}, nil
 }
 
 func nilComparison(expression *ast.BinaryExpr) (ast.Expr, ast.Expr, bool) {
