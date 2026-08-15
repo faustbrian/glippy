@@ -14,19 +14,26 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const nativeEffectFactSchemaVersion = 2
+const nativeEffectFactSchemaVersion = 3
+
+type returnStateKey struct {
+	value int
+	error int
+}
 
 // nativeEffectFacts contains conservative, versioned semantic summaries whose
 // stable identities survive independent package loads.
 type nativeEffectFacts struct {
 	noReturns map[string]struct{}
 	parameters map[string]map[int]rules.ParameterEffectSummary
+	returns map[string]map[returnStateKey]rules.ReturnStateSummary
 }
 
 func newNativeEffectFacts() *nativeEffectFacts {
 	return &nativeEffectFacts{
 		noReturns: make(map[string]struct{}),
 		parameters: make(map[string]map[int]rules.ParameterEffectSummary),
+		returns: make(map[string]map[returnStateKey]rules.ReturnStateSummary),
 	}
 }
 
@@ -45,7 +52,28 @@ func cloneNativeEffectFacts(facts *nativeEffectFacts) *nativeEffectFacts {
 		}
 		result.parameters[identity] = cloned
 	}
+	for identity, summaries := range facts.returns {
+		cloned := make(map[returnStateKey]rules.ReturnStateSummary, len(summaries))
+		for key, summary := range summaries {
+			cloned[key] = summary
+		}
+		result.returns[identity] = cloned
+	}
 	return result
+}
+
+// ReturnState implements rules.EffectFacts across independent package loads.
+func (f *nativeEffectFacts) ReturnState(
+	function *types.Func,
+	valueResult int,
+	errorResult int,
+) rules.ReturnStateSummary {
+	if f == nil || valueResult < 0 || errorResult < 0 {
+		return rules.ReturnStateSummary{}
+	}
+	return f.returns[stableFunctionIdentity(
+		function,
+	)][returnStateKey{value: valueResult, error: errorResult}]
 }
 
 func (f *nativeEffectFacts) noReturn(function *types.Func) bool {
@@ -100,6 +128,23 @@ func (f *nativeEffectFacts) addParameterEffects(analysis *parameterEffectAnalysi
 		if len(parameters) != 0 {
 			f.parameters[identity] = parameters
 		}
+	}
+}
+
+func (f *nativeEffectFacts) addReturnStates(analysis *returnStateAnalysis) {
+	if f == nil || analysis == nil {
+		return
+	}
+	for function, summaries := range analysis.summaries {
+		identity := stableFunctionIdentity(function)
+		if identity == "" || len(summaries) == 0 {
+			continue
+		}
+		cloned := make(map[returnStateKey]rules.ReturnStateSummary, len(summaries))
+		for key, summary := range summaries {
+			cloned[key] = summary
+		}
+		f.returns[identity] = cloned
 	}
 }
 
@@ -169,6 +214,50 @@ func (f *nativeEffectFacts) digest() cache.Digest {
 			_, _ = digest.Write([]byte{0})
 		}
 		_, _ = digest.Write([]byte{byte(parameter.summary.Kinds)})
+	}
+	type returnRecord struct {
+		identity string
+		key returnStateKey
+		summary rules.ReturnStateSummary
+	}
+	returns := make([]returnRecord, 0)
+	if f != nil {
+		for identity, summaries := range f.returns {
+			for key, summary := range summaries {
+				returns = append(
+					returns,
+					returnRecord{
+						identity: identity,
+						key: key,
+						summary: summary,
+					},
+				)
+			}
+		}
+	}
+	sort.Slice(
+		returns,
+		func(first, second int) bool {
+			if returns[first].identity != returns[second].identity {
+				return returns[first].identity < returns[second].identity
+			}
+			if returns[first].key.value != returns[second].key.value {
+				return returns[first].key.value < returns[second].key.value
+			}
+			return returns[first].key.error < returns[second].key.error
+		},
+	)
+	for _, returned := range returns {
+		_, _ = digest.Write([]byte{2})
+		binary.BigEndian.PutUint64(version[:], uint64(len(returned.identity)))
+		_, _ = digest.Write(version[:])
+		_, _ = digest.Write([]byte(returned.identity))
+		binary.BigEndian.PutUint64(version[:], uint64(returned.key.value))
+		_, _ = digest.Write(version[:])
+		binary.BigEndian.PutUint64(version[:], uint64(returned.key.error))
+		_, _ = digest.Write(version[:])
+		_, _ = digest.Write([]byte{byte(returned.summary.WhenErrorNil)})
+		_, _ = digest.Write([]byte{byte(returned.summary.WhenErrorNonNil)})
 	}
 	var result cache.Digest
 	copy(result[:], digest.Sum(nil))
@@ -291,6 +380,9 @@ func loadNativeEffectFacts(
 			return nil, err
 		}
 		facts.addParameterEffects(parameterEffects)
+		returnStates := newReturnStateAnalysis(ctx, layers[index])
+		returnStates.buildAll()
+		facts.addReturnStates(returnStates)
 	}
 	return facts, nil
 }

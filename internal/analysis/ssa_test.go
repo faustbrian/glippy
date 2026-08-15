@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"go/ast"
+	"go/types"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -173,6 +174,83 @@ func (owner) method() {}
 		if len(values) != 2 || values[0] != values[1] {
 			t.Fatalf("function at %d received SSA functions %#v", start, values)
 		}
+	}
+}
+
+func TestRunSSABuildsReturnStatesOnlyWhenEffectFactsAreLoaded(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "project.go"),
+		`package project
+
+type Value struct{}
+func lookup() (*Value, error) { return &Value{}, nil }
+func inspect() { _, _ = lookup() }
+`,
+	)
+	metadata := ssaMetadata("return-state-demand")
+	var summary rules.ReturnStateSummary
+	rule := ssaRule{
+		metadata: metadata,
+		run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
+			if ctx.Function().Name() != "inspect" {
+				return nil, nil
+			}
+			for _, block := range ctx.Function().Blocks {
+				for _, instruction := range block.Instrs {
+					call, ok := instruction.(*ssa.Call)
+					if !ok || call.Call.StaticCallee() == nil {
+						continue
+					}
+					function, _ := call.Call.StaticCallee().Object().(*types.Func)
+					summary = ctx.ReturnState(function, 0, 1)
+				}
+			}
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(loadEffects bool) rules.ReturnStateSummary {
+		t.Helper()
+		summary = rules.ReturnStateSummary{}
+		loaded, err := analysis.LoadPackages(
+			context.Background(),
+			analysis.PackageLoadOptions{
+				Dir: root,
+				Patterns: []string{"."},
+				Requirement: rules.RequireSSA,
+				LoadEffectFacts: loadEffects,
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := analysis.RunSSA(context.Background(), loaded, registry, selection);
+			err != nil {
+			t.Fatal(err)
+		}
+		return summary
+	}
+	if got := run(false); got != (rules.ReturnStateSummary{}) {
+		t.Fatalf("return state without effect requirement = %#v", got)
+	}
+	if got := run(true); got.WhenErrorNil != rules.NilStateNonNil {
+		t.Fatalf("return state with effect requirement = %#v", got)
 	}
 }
 

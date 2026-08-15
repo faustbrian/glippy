@@ -611,6 +611,23 @@ type ParameterEffectSummary struct {
 	Kinds ParameterEffectKind
 }
 
+// NilState is a proven nilness state for one returned value.
+type NilState uint8
+
+const (
+	NilStateUnknown NilState = iota
+	NilStateNil
+	NilStateNonNil
+)
+
+// ReturnStateSummary relates one nil-capable result to one error result.
+// Each field is independently unknown unless every matching return proves the
+// same state.
+type ReturnStateSummary struct {
+	WhenErrorNil NilState
+	WhenErrorNonNil NilState
+}
+
 // GuaranteesAny reports whether every normally returning path applies only an
 // accepted terminal effect and at least one such effect is present.
 func (s ParameterEffectSummary) GuaranteesAny(accepted ParameterEffectKind) bool {
@@ -621,6 +638,7 @@ func (s ParameterEffectSummary) GuaranteesAny(accepted ParameterEffectKind) bool
 // control-flow rules without exposing dependency source as lint targets.
 type EffectFacts interface {
 	ParameterEffect(*types.Func, int) ParameterEffectSummary
+	ReturnState(*types.Func, int, int) ReturnStateSummary
 }
 
 // SSAContext binds one source function to its shared SSA program, typed
@@ -631,6 +649,7 @@ type SSAContext struct {
 	ssaPackage *ssa.Package
 	function *ssa.Function
 	syntax ast.Node
+	effects EffectFacts
 }
 
 // NewSSAContext constructs one read-only SSA rule context.
@@ -640,6 +659,7 @@ func NewSSAContext(
 	ssaPackage *ssa.Package,
 	function *ssa.Function,
 	syntax ast.Node,
+	effects EffectFacts,
 ) *SSAContext {
 	return &SSAContext{
 		typesContext: typesContext,
@@ -647,7 +667,21 @@ func NewSSAContext(
 		ssaPackage: ssaPackage,
 		function: function,
 		syntax: syntax,
+		effects: effects,
 	}
+}
+
+// ReturnState returns a conservative nil/error relation for a statically
+// resolved function result pair.
+func (c *SSAContext) ReturnState(
+	function *types.Func,
+	valueResult int,
+	errorResult int,
+) ReturnStateSummary {
+	if c == nil || c.effects == nil || function == nil {
+		return ReturnStateSummary{}
+	}
+	return c.effects.ReturnState(function, valueResult, errorResult)
 }
 
 // Program returns the shared read-only SSA program for the package load.

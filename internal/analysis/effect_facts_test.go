@@ -58,6 +58,16 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	if first.digest() == changed.digest() {
 		t.Fatal("effect fact digest ignored a parameter effect change")
 	}
+	changed = cloneNativeEffectFacts(first)
+	changed.returns["function"] = map[returnStateKey]rules.ReturnStateSummary{
+		{
+			value: 0,
+			error: 1,
+		}: {WhenErrorNil: rules.NilStateNonNil, WhenErrorNonNil: rules.NilStateNil},
+	}
+	if first.digest() == changed.digest() {
+		t.Fatal("effect fact digest ignored a return-state change")
+	}
 }
 
 func TestNativeParameterEffectsUseStableCrossLoadFunctionIdentity(t *testing.T) {
@@ -78,6 +88,28 @@ func TestNativeParameterEffectsUseStableCrossLoadFunctionIdentity(t *testing.T) 
 	}
 	if summary := facts.ParameterEffect(second, 1); summary.Known {
 		t.Fatalf("parameter effect matched another parameter: %#v", summary)
+	}
+}
+
+func TestNativeReturnStatesUseStableCrossLoadFunctionIdentity(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestFunction("example.com/project/value", "Lookup")
+	second := effectTestFunction("example.com/project/value", "Lookup")
+	facts := newNativeEffectFacts()
+	facts.returns[stableFunctionIdentity(first)] = map[returnStateKey]rules.ReturnStateSummary{
+		{
+			value: 0,
+			error: 1,
+		}: {WhenErrorNil: rules.NilStateNonNil, WhenErrorNonNil: rules.NilStateNil},
+	}
+	summary := facts.ReturnState(second, 0, 1)
+	if summary.WhenErrorNil != rules.NilStateNonNil ||
+		summary.WhenErrorNonNil != rules.NilStateNil {
+		t.Fatalf("return state did not survive an independent type identity: %#v", summary)
+	}
+	if summary := facts.ReturnState(second, 1, 0); summary != (rules.ReturnStateSummary{}) {
+		t.Fatalf("return state matched another result pair: %#v", summary)
 	}
 }
 

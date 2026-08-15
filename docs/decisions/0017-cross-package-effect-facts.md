@@ -26,13 +26,17 @@ in deterministic dependency layers. It derives summaries through independent
 typed loads and identifies functions with stable package-qualified object
 strings rather than process pointers.
 
-Effect schema version 2 retains the proven no-return bit and adds one summary
-per function parameter. A known parameter summary distinguishes borrowing from
-an effect that every normally returning path reaches: conventional `Close`,
+Effect schema version 3 retains the proven no-return and parameter summaries
+and adds returned nil/error relationships. A known parameter summary
+distinguishes borrowing from an effect that every normally returning path
+reaches: conventional `Close`,
 `database/sql` `Commit` or `Rollback`, cancellation invocation, or ownership
-transfer. A dependency summary may consume summaries from deeper same-module
-dependencies. Dynamic calls, interface dispatch, recursion without a terminal
-proof, unsupported local aliases, ill-typed packages, third-party modules, and
+transfer. A return summary records a nil-capable result only when every explicit
+return for an exact built-in `error` state agrees. Exact `nil`, address, `new`,
+`make`, function-literal, slice/map-literal, `errors.New`, and `fmt.Errorf`
+forms are recognized. Bare results, delegated or recursive results, `&*x`,
+unknown error construction, conflicting returns, dynamic calls, interface dispatch,
+unsupported local aliases, ill-typed packages, third-party modules, and
 workspace modules outside the selected module paths remain conservative.
 
 The shared CFG builder and SSA no-return predicate consume the same immutable
@@ -42,11 +46,11 @@ is demand-driven by enabled rule metadata and remains serialized. Root and
 effect sources share the configured package, file, and byte limits.
 
 Native cache snapshots bind the effect requirement. Cache keys include a
-digest identified as `native-effects-v2`, derived from the schema version,
-canonically ordered stable no-return identities, and ordered parameter-effect
-records including index, known/always state, and effect kinds. A changed
-summary therefore invalidates native diagnostics without making source
-pointers persistent.
+digest identified as `native-effects-v3`, derived from the schema version,
+canonically ordered stable no-return identities, ordered parameter-effect
+records, and ordered returned-state records containing both result indexes and
+both error-state relationships. A changed summary therefore invalidates native
+diagnostics without making source pointers persistent.
 
 ## Alternatives
 
@@ -61,8 +65,8 @@ pointers persistent.
 - Treat every helper argument as ownership transfer: retained as the fallback
   only when no safe summary is available because proven borrowing must not hide
   a local leak.
-- Export returned-state effects in schema version 2: deferred until nil/error
-  relationships have focused path and alias evidence.
+- Infer returned states through arbitrary calls or aliases: rejected because
+  delegated values and unknown error construction do not prove a relationship.
 
 ## Consequences
 
@@ -71,11 +75,11 @@ helpers without making unrelated typed rules pay for effect loading. Cold runs
 perform additional module-local package loads; warm native-result caching and
 the bounded source policy constrain that cost.
 
-The second schema improves the four lifecycle consumers without changing their
-unknown-call safety boundary. It does not prove returned nil/error
-relationships, effects reached only through unsupported aliases,
-external-module helpers, or multi-module workspace effects. Those gaps remain
-explicit rather than being filled with optimistic assumptions.
+The third schema improves the four lifecycle consumers and lets `nilness`
+diagnose direct dereferences and nil comparisons dominated by a proven error
+branch. It does not prove relationships through unsupported aliases,
+delegation, external-module helpers, or multi-module workspace effects. Those
+gaps remain explicit rather than being filled with optimistic assumptions.
 
 ## Revisit Trigger
 

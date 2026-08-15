@@ -247,6 +247,174 @@ func inspect(pointer *int) {
 	}
 }
 
+func TestNilnessUsesImportedReturnStateFacts(t *testing.T) {
+	t.Parallel()
+
+	root, path := writeNilnessModule(
+		t,
+		`package sample
+
+import "example.com/nilness/helper"
+
+func inspect(found bool) {
+	value, err := helper.Lookup(found)
+	if err != nil {
+		_ = *value
+		if value == nil { println("always") }
+		if value != nil { println("impossible") }
+	}
+	if err == nil {
+		if value == nil { println("impossible") }
+		if value != nil { println("always") }
+	}
+}
+
+`,
+	)
+	if err := os.MkdirAll(filepath.Join(root, "helper"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "helper", "helper.go"),
+		[]byte(
+			`package helper
+
+import "errors"
+
+type Value struct{ Number int }
+
+func Lookup(found bool) (*Value, error) {
+	if !found { return nil, errors.New("missing") }
+	return &Value{}, nil
+}
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewDefaultRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"nilness": rules.SeverityWarn},
+		},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || result.Files[0].Path != path {
+		t.Fatalf("imported return-state files = %#v", result.Files)
+	}
+	file, found := result.Sources.Lookup(path)
+	if !found {
+		t.Fatal("imported return-state source is missing")
+	}
+	got := make([]string, len(result.Files[0].Diagnostics))
+	messages := make([]string, len(result.Files[0].Diagnostics))
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		text, valid := file.Slice(diagnostic.Range)
+		if !valid {
+			t.Fatalf("diagnostic %d range = %#v", index, diagnostic.Range)
+		}
+		got[index] = diagnostic.MessageKey + ":" + text
+		messages[index] = diagnostic.Message
+	}
+	want := []string{"nilderef:*", "cond:==", "cond:!=", "cond:==", "cond:!="}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("imported return-state diagnostics = %#v, want %#v", got, want)
+	}
+	wantMessages := []string{
+		"nil dereference in load",
+		"tautological condition: nil == nil",
+		"impossible condition: nil != nil",
+		"impossible condition: non-nil == nil",
+		"tautological condition: non-nil != nil",
+	}
+	if !reflect.DeepEqual(messages, wantMessages) {
+		t.Fatalf("imported return-state messages = %#v, want %#v", messages, wantMessages)
+	}
+}
+
+func TestNilnessDoesNotLoadReturnStatesAcrossModuleBoundaries(t *testing.T) {
+	t.Parallel()
+
+	root, path := writeNilnessModule(
+		t,
+		`package sample
+
+import "example.com/external/helper"
+
+func inspect(found bool) {
+	value, err := helper.Lookup(found)
+	if err != nil { _ = *value }
+}
+`,
+	)
+	external := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(external, "go.mod"),
+		[]byte("module example.com/external\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(external, "helper.go"),
+		[]byte(
+			`package helper
+
+import "errors"
+
+type Value struct{}
+func Lookup(found bool) (*Value, error) {
+	if !found { return nil, errors.New("missing") }
+	return &Value{}, nil
+}
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	module := "module example.com/nilness\n\ngo 1.26.0\n\nrequire example.com/external v0.0.0\nreplace example.com/external => " +
+		external +
+		"\n"
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(module), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewDefaultRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"nilness": rules.SeverityWarn},
+		},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 ||
+		result.Files[0].Path != path ||
+		len(result.Files[0].Diagnostics) != 0 {
+		t.Fatalf("external return-state result = %#v", result.Files)
+	}
+}
+
 func TestNilnessUsesAuthoritativeNoReturnFunctions(t *testing.T) {
 	t.Parallel()
 
@@ -415,6 +583,82 @@ func BenchmarkNilnessSharedSSA(b *testing.B) {
 	)
 }
 
+func BenchmarkNilnessImportedReturnStates(b *testing.B) {
+	root := b.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/nilness\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		b.Fatal(err)
+	}
+	var source strings.Builder
+	source.WriteString("package sample\n\nimport \"example.com/nilness/helper\"\n")
+	for index := range 100 {
+		fmt.Fprintf(
+			&source,
+			"func inspect%d(found bool) { value, err := helper.Lookup(found); if err != nil { _ = *value }; if err == nil { if value == nil { println(value) } } }\n",
+			index,
+		)
+	}
+	if err := os.WriteFile(filepath.Join(root, "sample.go"), []byte(source.String()), 0o600);
+		err != nil {
+		b.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "helper"), 0o700); err != nil {
+		b.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "helper", "helper.go"),
+		[]byte(
+			`package helper
+
+import "errors"
+
+type Value struct{}
+func Lookup(found bool) (*Value, error) {
+	if !found { return nil, errors.New("missing") }
+	return &Value{}, nil
+}
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		b.Fatal(err)
+	}
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireSSA,
+			LoadEffectFacts: true,
+		},
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	registry, err := rules.NewDefaultRegistry()
+	if err != nil {
+		b.Fatal(err)
+	}
+	selection, err := registry.Resolve(
+		rules.PresetSuspicious,
+		map[string]rules.Severity{
+			"context-key": rules.SeverityOff,
+			"defer-in-infinite-loop": rules.SeverityOff,
+			"errors-is-arguments": rules.SeverityOff,
+			"identical-branches": rules.SeverityOff,
+		},
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	benchmarkSSAExecution(b, loaded, registry, selection, 200)
+}
+
 func benchmarkSSAExecution(
 	b *testing.B,
 	loaded analysis.PackageLoadResult,
@@ -440,7 +684,7 @@ func benchmarkSSAExecution(
 	}
 }
 
-func writeNilnessModule(t *testing.T, source string) (string, string) {
+func writeNilnessModule(t testing.TB, source string) (string, string) {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.WriteFile(

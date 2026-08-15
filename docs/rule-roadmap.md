@@ -154,14 +154,16 @@ another existing default tool already owns the problem well enough.
 | 8 | Structurally credible allocation or concurrency costs | types, CFG, or SSA | Is there a reproducible cost mechanism and an opt-in performance contract rather than a generic micro-optimization preference? |
 | 9 | Explicit Go-version and API migrations | syntax or types | Is there a configured target version, a canonical replacement, and a migration-specific safety classification? |
 
-The first priority now has versioned no-return and parameter-effect facts.
+The first priority now has versioned no-return, parameter-effect, and returned
+nil/error facts.
 Enabled CFG and SSA consumers summarize same-module imported helpers through
 stable function identities without retaining dependency source as lint
 targets. The resource, HTTP-body, transaction, and cancellation lifecycle rules
 distinguish proven borrowing from guaranteed completion, invocation, or
-ownership transfer on every normally returning path. Returned nil/error
-relationships, broader aliasing, workspace modules, and third-party packages
-remain in the priority-one investigation rather than being inferred from names.
+ownership transfer on every normally returning path. `nilness` consumes exact
+returned relationships for direct uses dominated by error checks. Broader
+aliasing, delegated results, workspace modules, and third-party packages remain
+outside the admitted boundary rather than being inferred from names.
 
 Opt-in `lint/check --stats` now exposes package-loading versus analysis cost,
 per-tier and per-rule process-local measurements, cache outcomes, final finding

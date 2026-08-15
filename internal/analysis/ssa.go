@@ -68,6 +68,12 @@ func RunSSA(
 	}
 	program, ssaPackages := ssautil.Packages(ssaInputs, ssaMode(activeRules))
 	noReturns := newNoReturnAnalysis(ctx, ssaInputs, loaded.effectFacts)
+	effects := cloneNativeEffectFacts(loaded.effectFacts)
+	if loaded.effectFacts != nil {
+		returnStates := newReturnStateAnalysis(ctx, ssaInputs)
+		returnStates.buildAll()
+		effects.addReturnStates(returnStates)
+	}
 	noReturns.buildAll()
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -136,6 +142,7 @@ func RunSSA(
 					ssaPackage,
 					function,
 					sourceFunction.function,
+					effects,
 				)
 				ruleStarted := beginStatisticsMeasurement(statistics)
 				findings, err := active.rule.RunSSA(ruleContext)

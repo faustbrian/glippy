@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"go/ast"
+	"go/types"
 	"maps"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"github.com/faustbrian/glippy/internal/config"
 	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
+	"golang.org/x/tools/go/ssa"
 )
 
 func TestRunPackagesFiltersAndReseversDiagnosticsByPathPolicy(t *testing.T) {
@@ -1465,6 +1467,131 @@ func run(closer io.Closer) { helper.Apply(closer) }
 	changed := run()
 	if runs != 2 || len(changed.Files) != 1 || len(changed.Files[0].Diagnostics) != 0 {
 		t.Fatalf("changed parameter effect cache runs = %d; result = %#v", runs, changed)
+	}
+}
+
+func TestRunPackagesInvalidatesNativeCacheWhenReturnStatesChange(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/returncache\n\ngo 1.26.0\n",
+	)
+	dependencyPath := filepath.Join(root, "helper", "helper.go")
+	writeTypesFixture(
+		t,
+		dependencyPath,
+		`package helper
+
+type Value struct{}
+func Lookup() (*Value, error) { return &Value{}, nil }
+`,
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "project.go"),
+		`package project
+
+import "example.com/returncache/helper"
+func inspect() { _, _ = helper.Lookup() }
+`,
+	)
+	metadata := ssaMetadata("return-state-cache")
+	metadata.RequiresEffectFacts = true
+	runs := 0
+	registry, err := rules.NewRegistry(
+		ssaRule{
+			metadata: metadata,
+			run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
+				if ctx.Function().Name() != "inspect" {
+					return nil, nil
+				}
+				runs++
+				for _, block := range ctx.Function().Blocks {
+					for _, instruction := range block.Instrs {
+						call, ok := instruction.(*ssa.Call)
+						if !ok || call.Call.StaticCallee() == nil {
+							continue
+						}
+						function, _ := call.Call.StaticCallee().Object().(*types.Func)
+						if ctx.ReturnState(function, 0, 1).WhenErrorNil !=
+							rules.NilStateNonNil {
+							return nil, nil
+						}
+						range_, err := ctx.Range(ctx.Syntax())
+						if err != nil {
+							return nil, err
+						}
+						return []rules.Finding{
+							{
+								MessageKey: "non-nil",
+								Message: "non-nil",
+								Range: range_,
+							},
+						}, nil
+					}
+				}
+				return nil, nil
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := cache.Open(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
+	run := func() analysis.PackageResult {
+		t.Helper()
+		result, err := analysis.RunPackages(
+			context.Background(),
+			registry,
+			analysis.RunOptions{
+				Preset: rules.PresetCorrectness,
+				Cache: packageAnalyzerCacheOptions(store),
+			},
+			packageAnalyzerCacheLoadOptions(root),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	first := run()
+	second := run()
+	if runs != 1 ||
+		len(first.Files) != 1 ||
+		len(first.Files[0].Diagnostics) != 1 ||
+		!reflect.DeepEqual(second.Files, first.Files) {
+		t.Fatalf(
+			"warm return-state cache runs = %d; results = %#v, %#v",
+			runs,
+			first,
+			second,
+		)
+	}
+	writeTypesFixture(
+		t,
+		dependencyPath,
+		`package helper
+
+type Value struct{}
+func Lookup() (*Value, error) { return nil, nil }
+`,
+	)
+	changed := run()
+	if runs != 2 || len(changed.Files) != 1 || len(changed.Files[0].Diagnostics) != 0 {
+		t.Fatalf("changed return-state cache runs = %d; result = %#v", runs, changed)
 	}
 }
 

@@ -1551,5 +1551,19 @@ unsupported aliasing, and recursion remain conservative; stable identities and
 the `native-effects-v2` digest make independent loads and dependency cache
 invalidation deterministic. A 100-call cold package probe measured an 833.4 ms
 median with about 5.84 MB and 58,789 allocations on Darwin arm64. Exact-rule
-dogfood remained clean on Glippy and `go-libraries/pkg/prompts`. Returned
-nil/error-state facts remain the next cross-package semantic-effect boundary.
+dogfood remained clean on Glippy and `go-libraries/pkg/prompts`. That batch left
+returned nil/error-state facts as the next semantic-effect boundary.
+
+Effect schema version 3 now exports conservative returned nil/error
+relationships for selected-package and same-module helpers. `nilness` consumes
+those facts only for direct result uses dominated by an exact built-in `error`
+check, diagnosing proven nil dereferences and impossible or tautological nil
+comparisons. Explicit returns must agree; bare returns, delegated or recursive
+results, unknown error construction, aliases, conflicting returns, and
+external modules remain conservative. Stable cross-load identities and the
+`native-effects-v3` digest cover returned-state lookup and dependency cache
+invalidation without making dependency source a lint target. A 100-function,
+200-finding probe measured a 287.8 ms median with about 6.10 MB and 72,782
+allocations on Darwin arm64. Exact-rule dogfood remained clean on Glippy and
+`go-libraries/pkg/prompts` without modifying the pre-existing dirty prompts
+`go.sum`.
