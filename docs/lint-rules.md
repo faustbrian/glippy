@@ -26,6 +26,7 @@ not stable release promises.
 - [deferred-time-since](#deferred-time-since)
 - [discarded-error](#discarded-error)
 - [duplicate-condition](#duplicate-condition)
+- [empty-branch](#empty-branch)
 - [errors-as-target](#errors-as-target)
 - [errors-is-arguments](#errors-is-arguments)
 - [excessive-nesting](#excessive-nesting)
@@ -53,6 +54,7 @@ not stable release promises.
 - [invalid-unmarshal-target](#invalid-unmarshal-target)
 - [lock-held-across-blocking-call](#lock-held-across-blocking-call)
 - [loop-capture](#loop-capture)
+- [manual-min-max](#manual-min-max)
 - [mixed-receiver-type](#mixed-receiver-type)
 - [nan-comparison](#nan-comparison)
 - [needless-blank-identifier](#needless-blank-identifier)
@@ -67,6 +69,7 @@ not stable release promises.
 - [redundant-closure](#redundant-closure)
 - [redundant-else](#redundant-else)
 - [redundant-nil-check](#redundant-nil-check)
+- [redundant-type-declaration](#redundant-type-declaration)
 - [regexp-compile-in-loop](#regexp-compile-in-loop)
 - [resource-not-closed](#resource-not-closed)
 - [self-assignment](#self-assignment)
@@ -914,6 +917,54 @@ if ready { use() } else if ready { retry() }
 
 ```go
 if ready { use() } else if retryable { retry() }
+```
+
+## empty-branch
+
+detects uncommented empty if and else branches
+
+An empty conditional branch is easy to overlook and often survives after logic is removed or moved.
+Glippy reports direct if and else blocks with no statements or comments so deliberate placeholders
+can remain documented without noise.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: syntax
+- Node interests: `if-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: not applicable
+- Categories: `style`, `maintainability`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct if and else blocks are considered; empty switch, select, and loop bodies have
+  different control-flow meanings.
+- A comment anywhere inside an otherwise empty block is treated as evidence of deliberate intent.
+- No fix is offered because removing a branch may also remove condition evaluation or change the
+  surrounding alternative.
+
+### Example: Remove or explain an empty branch
+
+**Incorrect**
+
+```go
+if ready {}
+```
+
+**Correct**
+
+```go
+if ready { run() }
 ```
 
 ## errors-as-target
@@ -2224,6 +2275,55 @@ for _, value = range values { go func() { use(value) }() }
 for _, value := range values { go func() { use(value) }() }
 ```
 
+## manual-min-max
+
+detects integer assignments that manually implement min or max
+
+Go's min and max built-ins express an integer bound update directly. A one-statement conditional
+assignment over the same two integer variables can use the built-in operation instead of repeating
+comparison and assignment structure.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `if-stmt`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `style`, `complexity`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule requires two distinct plain identifiers of one identical integer type and one direct
+  assignment with no initializer, else branch, or additional statement.
+- Floating-point forms are excluded because NaN behavior differs between comparisons and the min and
+  max built-ins.
+- No fix is offered because preserving comments and choosing the preferred assignment spelling
+  remains a readability decision.
+
+### Example: Use the max built-in
+
+**Incorrect**
+
+```go
+if current < candidate { current = candidate }
+```
+
+**Correct**
+
+```go
+current = max(current, candidate)
+```
+
 ## mixed-receiver-type
 
 detects mixed pointer and value receivers on one type
@@ -2924,6 +3024,53 @@ if values != nil && len(values) > 0 {}
 
 ```go
 if len(values) > 0 {}
+```
+
+## redundant-type-declaration
+
+detects variable types already inferred from their initializer
+
+A variable declaration does not need an explicit type when Go infers the identical static type from
+its initializer. Removing that duplicate spelling keeps the initializer as the single source of type
+information without changing the variable's type.
+
+- Default severity: `warn`
+- Presets: `pedantic`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `value-spec`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `style`, `maintainability`
+
+### Fixes
+
+- `remove-redundant-type` (`safe`): remove the explicit type already inferred from the initializer
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The rule requires exactly one variable and one initializer; tuple-producing calls and grouped
+  declarations remain unchanged.
+- Untyped nil and initializers whose default type differs from the declared type are excluded.
+- The safe fix is withheld when the removed type region contains a comment.
+
+### Example: Infer the initializer type
+
+**Incorrect**
+
+```go
+var retries int = configuredRetries()
+```
+
+**Correct**
+
+```go
+var retries = configuredRetries()
 ```
 
 ## regexp-compile-in-loop

@@ -49,19 +49,23 @@ func (f Form) Third() {}
 func run(text string) string {
 	values := []string{text}
 	other := "value"
+	low, high := 1, 2
 	var buffer bytes.Buffer
+	var explicit int = len(text)
+	if low < high { low = high }
+	if text == "placeholder" {}
 	_ = string(text)
 	_ = fmt.Sprintf("%s", text)
 	if text == "" { return "" } else { return text }
 	for _, _ = range values {}
 	_ = func(value string) string { return strings.TrimSpace(value) }
-	if values != nil && len(values) > 0 {}
+	if values != nil && len(values) > 0 { /* condition example */ }
 	_ = time.Now().Sub(time.Time{})
 	_ = time.Time{}.Sub(time.Now())
 	_ = string(buffer.Bytes())
 	_ = fmt.Sprintf("literal")
 	_ = strings.ToLower(text) == strings.ToLower(other)
-	return text
+	return text + string(rune(explicit + low))
 }
 `
 	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
@@ -79,6 +83,9 @@ func run(text string) string {
 	want := []string{
 		"inconsistent-receiver-name",
 		"mixed-receiver-type",
+		"redundant-type-declaration",
+		"manual-min-max",
+		"empty-branch",
 		"unnecessary-conversion",
 		"unnecessary-sprintf",
 		"redundant-else",
@@ -129,7 +136,7 @@ func run(text string) string {
 	)
 	if exitCode != ExitSuccess ||
 		stdout.String() !=
-			"glippy lint: wrote baseline " + baselinePath + " (13 diagnostics)\n" ||
+			"glippy lint: wrote baseline " + baselinePath + " (16 diagnostics)\n" ||
 		stderr.Len() != 0 {
 		t.Fatalf(
 			"Run(baseline pedantic catalog) = exit %d, stdout %q, stderr %q",

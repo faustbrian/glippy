@@ -1425,3 +1425,14 @@ conservatively returning. A 100-function chain probe has a 38.3-microsecond
 median with about 52.6 KiB allocated per run on Darwin arm64. Cross-package
 effect facts remain the next foundation boundary, so the active
 Clippy-comparability goal continues.
+
+The next pedantic batch admits `empty-branch`, `manual-min-max`, and
+`redundant-type-declaration` with narrow syntax and identical-type contracts.
+Explicit empty statements count as empty, comments document deliberate
+branches, floats and compound min/max forms remain excluded, and constant
+defaulting cannot silently change a declaration's type. Only redundant type
+spelling has a safe fix, which is withheld across comments and passes the full
+fix transaction idempotently. Exact-rule dogfood found five useful manual
+min/max candidates in Glippy and one in `pkg/prompts`, with no findings from the
+other two rules. Cross-package effect facts and additional evidence-backed
+catalog growth remain open, so the active Clippy-comparability goal continues.

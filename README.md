@@ -157,6 +157,10 @@ conversions, constant formatting, and case-normalized comparisons. Five narrow
 transformations plus the constant-format operand replacement are available only
 through `lint --fix-suggestions` and still
 pass conflict, formatting, parse, typed-validation, and atomic-write gates.
+It also reports undocumented empty conditional branches, direct integer
+min/max update patterns, and redundant explicit variable types. Only the
+redundant-type rule offers a safe fix, and it refuses edits that would remove a
+comment.
 
 The opt-in complexity catalog measures structural nesting, logical function
 lines, parameter count, and result count with bounded per-rule thresholds.

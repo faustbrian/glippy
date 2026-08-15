@@ -87,6 +87,12 @@ every normal return, and does not mistake body reads for ownership transfer.
 Arbitrary helper cleanup, custom transports, and body replacement remain in
 the interprocedural investigation rather than weakening the local rule.
 
+The pedantic track now also admits `empty-branch`, `manual-min-max`, and
+`redundant-type-declaration`. These rules retain narrow syntax or exact-type
+contracts, remain opt-in, and avoid claiming that a readability preference is
+a correctness defect. Only redundant type spelling has a safe fix, and comment
+ownership can withhold that edit.
+
 ## Investigation Queue
 
 The queue contains defect classes to investigate, not accepted rule IDs.

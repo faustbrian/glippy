@@ -50,7 +50,14 @@ func (f Form) Third() {}
 func run(text string) string {
 	values := []string{text}
 	other := "value"
+	low, high := 1, 2
 	var buffer bytes.Buffer
+	//glippy:ignore redundant-type-declaration -- explicit type documents the example
+	var explicit int = len(text)
+	//glippy:ignore manual-min-max -- expanded comparison documents the example
+	if low < high { low = high }
+	//glippy:ignore empty-branch -- placeholder retained for the example
+	if text == "placeholder" {}
 	//glippy:ignore unnecessary-conversion -- explicit boundary for an example
 	_ = string(text)
 	//glippy:ignore unnecessary-sprintf -- example demonstrates formatting syntax
@@ -66,7 +73,7 @@ func run(text string) string {
 	//glippy:ignore redundant-closure -- wrapper preserves terminology in the example
 	_ = func(value string) string { return strings.TrimSpace(value) }
 	//glippy:ignore redundant-nil-check -- nil is documented separately in this example
-	if values != nil && len(values) > 0 {}
+	if values != nil && len(values) > 0 { /* condition example */ }
 	//glippy:ignore time-since -- expanded form mirrors external documentation
 	_ = time.Now().Sub(time.Time{})
 	//glippy:ignore time-until -- expanded form mirrors external documentation
@@ -77,7 +84,7 @@ func run(text string) string {
 	_ = fmt.Sprintf("literal")
 	//glippy:ignore inefficient-string-comparison -- normalization steps are shown explicitly
 	_ = strings.ToLower(text) == strings.ToLower(other)
-	return text
+	return text + string(rune(explicit + low))
 }
 `,
 	)
@@ -97,19 +104,23 @@ func (g Generated) First() {}
 func (generated *Generated) Second() {}
 func generated(text string) string {
 	values := []string{text}
+	low, high := 1, 2
 	var buffer bytes.Buffer
+	var explicit int = len(text)
+	if low < high { low = high }
+	if text == "placeholder" {}
 	_ = string(text)
 	_ = fmt.Sprintf("%s", text)
 	if text == "" { return "" } else { return text }
 	for _, _ = range values {}
 	_ = func(value string) string { return strings.TrimSpace(value) }
-	if values != nil && len(values) > 0 {}
+	if values != nil && len(values) > 0 { /* condition example */ }
 	_ = time.Now().Sub(time.Time{})
 	_ = time.Time{}.Sub(time.Now())
 	_ = string(buffer.Bytes())
 	_ = fmt.Sprintf("literal")
 	_ = strings.ToLower(text) == strings.ToLower("value")
-	return text
+	return text + string(rune(explicit + low))
 }
 `,
 	)
@@ -173,7 +184,7 @@ func invalid(text string) string {
 	for _, file := range result.Files {
 		switch filepath.Base(file.Path) {
 		case "suppressed.go":
-			if len(file.Diagnostics) != 0 || len(file.Suppressed) != 13 {
+			if len(file.Diagnostics) != 0 || len(file.Suppressed) != 16 {
 				t.Fatalf("suppressed pedantic result = %#v", file)
 			}
 			got := make([]string, len(file.Suppressed))
@@ -183,13 +194,16 @@ func invalid(text string) string {
 			slices.Sort(got)
 			want := []string{
 				"buffer-string-conversion",
+				"empty-branch",
 				"inconsistent-receiver-name",
 				"inefficient-string-comparison",
+				"manual-min-max",
 				"mixed-receiver-type",
 				"needless-blank-identifier",
 				"redundant-closure",
 				"redundant-else",
 				"redundant-nil-check",
+				"redundant-type-declaration",
 				"time-since",
 				"time-until",
 				"unnecessary-conversion",
@@ -204,8 +218,9 @@ func invalid(text string) string {
 				t.Fatalf("generated pedantic result = %#v", file)
 			}
 		case "invalid.go":
-			if len(file.Diagnostics) != 1 ||
+			if len(file.Diagnostics) != 2 ||
 				file.Diagnostics[0].RuleID != "redundant-else" ||
+				file.Diagnostics[1].RuleID != "empty-branch" ||
 				len(file.Suppressed) != 0 {
 				t.Fatalf("ill-typed pedantic result = %#v", file)
 			}
