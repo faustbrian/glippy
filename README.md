@@ -174,6 +174,11 @@ returning path to commit, roll back, or transfer ownership of the transaction.
 Conditional cleanup and reassignment cannot silently discharge another open
 path.
 
+The opt-in `resource-not-closed` rule applies the same bounded obligation model
+to local values with `Close() error`. Cleanup or ownership transfer must cover
+every normally returning path, so a close on only one branch and reassignment
+before cleanup both report.
+
 The restriction catalog includes `blank-error-discard`, Glippy's Go analogue
 to Clippy's `let_underscore_must_use`. Projects can enable it by exact rule ID
 to require every explicit blank-identifier error discard to be handled or

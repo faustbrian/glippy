@@ -26,6 +26,11 @@ func bad() error {
 	return nil
 }
 
+func badFallthrough() {
+	file, _ := os.Open("input")
+	_ = file.Name()
+}
+
 func goodDefer() error {
 	file, err := os.Open("input")
 	if err != nil { return err }
@@ -37,6 +42,30 @@ func goodExplicit() error {
 	file, err := os.Open("input")
 	if err != nil { return err }
 	return file.Close()
+}
+
+func partialClose(closeFile bool) error {
+	file, err := os.Open("input")
+	if err != nil { return err }
+	if closeFile { return file.Close() }
+	return nil
+}
+
+func completedBranches(closeFile bool) error {
+	file, err := os.Open("input")
+	if err != nil { return err }
+	if closeFile { return file.Close() }
+	consume(file)
+	return nil
+}
+
+func overwritten() error {
+	file, err := os.Open("input")
+	if err != nil { return err }
+	file, err = os.Open("replacement")
+	if err != nil { return err }
+	defer file.Close()
+	return nil
 }
 
 func transfer() (*os.File, error) {
@@ -84,17 +113,43 @@ func consume(*os.File) {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 4 {
 		t.Fatalf("resource-not-closed result = %#v", result)
 	}
-	diagnostic := result.Files[0].Diagnostics[0]
-	start := strings.Index(input, "file, err := os.Open")
-	if diagnostic.RuleID != "resource-not-closed" ||
-		diagnostic.Range.Start != start ||
-		diagnostic.Range.End != start + len("file") ||
-		!strings.Contains(diagnostic.Message, "not closed") ||
-		len(diagnostic.Fixes) != 0 {
-		t.Fatalf("resource-not-closed diagnostic = %#v", diagnostic)
+	expected := []struct {
+		function string
+		acquisition string
+	}{
+		{function: "func bad()", acquisition: "file, err := os.Open"},
+		{function: "func badFallthrough()", acquisition: "file, _ := os.Open"},
+		{function: "func partialClose(", acquisition: "file, err := os.Open"},
+		{function: "func overwritten()", acquisition: "file, err := os.Open"},
+	}
+	expectedStarts := make(map[int]bool, len(expected))
+	for index, location := range expected {
+		functionStart := strings.Index(input, location.function)
+		if functionStart < 0 {
+			t.Fatalf("missing function %d", index)
+		}
+		relative := strings.Index(input[functionStart:], location.acquisition)
+		if relative < 0 {
+			t.Fatalf("missing acquisition %d", index)
+		}
+		expectedStarts[functionStart + relative] = true
+	}
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		start := diagnostic.Range.Start
+		if diagnostic.RuleID != "resource-not-closed" ||
+			diagnostic.Range.End != start + len("file") ||
+			!expectedStarts[start] ||
+			!strings.Contains(diagnostic.Message, "not closed") ||
+			len(diagnostic.Fixes) != 0 {
+			t.Fatalf("resource-not-closed diagnostic %d = %#v", index, diagnostic)
+		}
+		delete(expectedStarts, start)
+	}
+	if len(expectedStarts) != 0 {
+		t.Fatalf("missing resource-not-closed ranges = %#v", expectedStarts)
 	}
 }
 
@@ -109,8 +164,8 @@ func TestResourceNotClosedMetadata(t *testing.T) {
 	if !found ||
 		metadata.DefaultSeverity != rules.SeverityWarn ||
 		!reflect.DeepEqual(metadata.Presets, []rules.Preset{rules.PresetSuspicious}) ||
-		metadata.Requirement != rules.RequireTypes ||
-		!reflect.DeepEqual(metadata.NodeInterests, []rules.NodeKind{rules.NodeFile}) ||
+		metadata.Requirement != rules.RequireControlFlow ||
+		len(metadata.NodeInterests) != 0 ||
 		len(metadata.Fixes) != 0 {
 		t.Fatalf("resource-not-closed metadata = %#v, found = %v", metadata, found)
 	}

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"go/ast"
 	"go/types"
+
+	"golang.org/x/tools/go/cfg"
 )
 
 type resourceNotClosedRule struct{}
@@ -11,6 +13,8 @@ type resourceNotClosedRule struct{}
 type localCloserCandidate struct {
 	identifier *ast.Ident
 	object types.Object
+	statement *ast.AssignStmt
+	guard *ast.IfStmt
 }
 
 // NewResourceNotClosedRule constructs the local closer-ownership rule for
@@ -23,16 +27,15 @@ func (resourceNotClosedRule) Metadata() Metadata {
 	return Metadata{
 		ID: "resource-not-closed",
 		Summary: "detects locally owned closers that are neither closed nor transferred",
-		Documentation: "A call result with a conventional Close method usually owns a file, connection, compressor, or similar resource. A local result that is never closed and never transferred can retain descriptors, connections, buffers, or other external state until process termination or garbage collection.",
+		Documentation: "A call result with a conventional Close method usually owns a file, connection, compressor, or similar resource. A locally owned result that reaches a normal return without being closed or transferred can retain descriptors, connections, buffers, or other external state until process termination or garbage collection.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
-		Requirement: RequireTypes,
-		NodeInterests: []NodeKind{NodeFile},
+		Requirement: RequireControlFlow,
 		Categories: []Category{CategoryCorrectness, CategorySafety, CategorySuspicious},
 		KnownLimitations: []string{
 			"The initial contract treats a direct argument, return, send, composite-literal insertion, closure capture, or assignment to another variable as an ownership transfer and does not analyze the callee.",
-			"Any direct Close call counts as cleanup; path-sensitive proof that cleanup runs on every successful path is deferred to a control-flow expansion.",
+			"Cleanup and ownership transfer must cover every normally returning path after a conventional acquisition guard when one is present.",
 			"Only call results whose static type has Close() error are considered resources; zero-result Close methods are too broad for the initial ownership contract.",
 		},
 		Examples: []Example{
@@ -45,65 +48,53 @@ func (resourceNotClosedRule) Metadata() Metadata {
 	}
 }
 
-func (resourceNotClosedRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
-	file, ok := node.(*ast.File)
-	if !ok {
-		return nil, fmt.Errorf("resource-not-closed requires a file")
-	}
-	if ctx == nil || ctx.Info() == nil {
-		return nil, fmt.Errorf("resource-not-closed requires complete type information")
+func (resourceNotClosedRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding, error) {
+	if ctx == nil || ctx.Body() == nil || ctx.Graph() == nil || ctx.Info() == nil {
+		return nil, fmt.Errorf(
+			"resource-not-closed requires a complete control-flow context",
+		)
 	}
 	findings := make([]Finding, 0)
-	var runErr error
-	ast.Inspect(
-		file,
-		func(current ast.Node) bool {
-			if runErr != nil {
-				return false
-			}
-			var body *ast.BlockStmt
-			switch function := current.(type) {
-			case *ast.FuncDecl:
-				body = function.Body
-			case *ast.FuncLit:
-				body = function.Body
-			default:
-				return true
-			}
-			if body == nil {
-				return false
-			}
-			for _, candidate := range localCloserCandidates(ctx.Info(), body) {
-				closed, transferred := closerDisposition(
-					ctx.Info(),
-					body,
-					candidate,
-				)
-				if closed || transferred {
-					continue
-				}
-				range_, err := ctx.Range(candidate.identifier)
-				if err != nil {
-					runErr = err
-					return false
-				}
-				findings = append(
-					findings,
-					Finding{
-						MessageKey: "resource-not-closed",
-						Message: fmt.Sprintf(
-							"resource %q is not closed or transferred",
-							candidate.identifier.Name,
-						),
-						Range: range_,
-						Help: "close the resource after checking the constructor error or transfer ownership explicitly",
-					},
-				)
-			}
-			return true
-		},
-	)
-	return findings, runErr
+	for _, candidate := range localCloserCandidates(ctx.Info(), ctx.Body()) {
+		start, found := localCloserObligationStart(ctx.Graph(), ctx.Info(), candidate)
+		if !found ||
+			!obligationReachesOpenReturn(
+				start,
+				func(node ast.Node) obligationEffect {
+					return objectObligationEffect(
+						ctx.Info(),
+						node,
+						candidate.object,
+						func(call *ast.CallExpr) bool {
+							return closeCallUsesObject(
+								ctx.Info(),
+								call,
+								candidate.object,
+							)
+						},
+					)
+				},
+			) {
+			continue
+		}
+		range_, err := ctx.Range(candidate.identifier)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(
+			findings,
+			Finding{
+				MessageKey: "resource-not-closed",
+				Message: fmt.Sprintf(
+					"resource %q is not closed or transferred on every normally returning path",
+					candidate.identifier.Name,
+				),
+				Range: range_,
+				Help: "close the resource after checking the constructor error or transfer ownership explicitly",
+			},
+		)
+	}
+	return findings, nil
 }
 
 func localCloserCandidates(info *types.Info, body *ast.BlockStmt) []localCloserCandidate {
@@ -114,42 +105,100 @@ func localCloserCandidates(info *types.Info, body *ast.BlockStmt) []localCloserC
 			if _, nested := node.(*ast.FuncLit); nested {
 				return false
 			}
-			assignment, ok := node.(*ast.AssignStmt)
-			if !ok || len(assignment.Rhs) != 1 {
+			block, ok := node.(*ast.BlockStmt)
+			if !ok {
 				return true
 			}
-			call, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
-			if call == nil {
-				return true
-			}
-			signature, _ := types.Unalias(info.TypeOf(call.Fun)).(*types.Signature)
-			if signature == nil ||
-				signature.Results() == nil ||
-				signature.Results().Len() != len(assignment.Lhs) {
-				return true
-			}
-			for index, left := range assignment.Lhs {
-				identifier, _ := left.(*ast.Ident)
-				if identifier == nil ||
-					identifier.Name == "_" ||
-					!conventionalCloser(signature.Results().At(index).Type()) {
+			for statementIndex, statement := range block.List {
+				assignment, ok := statement.(*ast.AssignStmt)
+				if !ok || len(assignment.Rhs) != 1 {
 					continue
 				}
-				object := info.ObjectOf(identifier)
-				if object != nil {
-					result = append(
-						result,
-						localCloserCandidate{
-							identifier: identifier,
-							object: object,
-						},
-					)
+				call, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
+				if call == nil {
+					continue
+				}
+				signature, _ := types.Unalias(
+					info.TypeOf(call.Fun),
+				).(*types.Signature)
+				if signature == nil ||
+					signature.Results() == nil ||
+					signature.Results().Len() != len(assignment.Lhs) {
+					continue
+				}
+				var guard *ast.IfStmt
+				if statementIndex + 1 < len(block.List) {
+					guard, _ = block.List[statementIndex + 1].(*ast.IfStmt)
+				}
+				for index, left := range assignment.Lhs {
+					identifier, _ := left.(*ast.Ident)
+					if identifier == nil ||
+						identifier.Name == "_" ||
+						!conventionalCloser(
+							signature.Results().At(index).Type(),
+						) {
+						continue
+					}
+					object := info.ObjectOf(identifier)
+					if object != nil {
+						result = append(
+							result,
+							localCloserCandidate{
+								identifier: identifier,
+								object: object,
+								statement: assignment,
+								guard: guard,
+							},
+						)
+					}
 				}
 			}
 			return true
 		},
 	)
 	return result
+}
+
+func localCloserObligationStart(
+	graph *cfg.CFG,
+	info *types.Info,
+	candidate localCloserCandidate,
+) (obligationStart, bool) {
+	if errorObject := assignmentErrorObject(info, candidate.statement);
+		errorObject != nil &&
+			returningNonNilErrorGuard(info, candidate.guard, errorObject) {
+		for _, block := range graph.Blocks {
+			if block.Live &&
+				block.Kind == cfg.KindIfDone &&
+				block.Stmt == candidate.guard {
+				return obligationStartAt(block), true
+			}
+		}
+	}
+	return obligationStartAfter(graph, candidate.statement)
+}
+
+func assignmentErrorObject(info *types.Info, assignment *ast.AssignStmt) types.Object {
+	if info == nil || assignment == nil || len(assignment.Rhs) != 1 {
+		return nil
+	}
+	call, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
+	if call == nil {
+		return nil
+	}
+	signature, _ := types.Unalias(info.TypeOf(call.Fun)).(*types.Signature)
+	if signature == nil || signature.Results().Len() != len(assignment.Lhs) {
+		return nil
+	}
+	for index, left := range assignment.Lhs {
+		identifier, _ := left.(*ast.Ident)
+		if identifier != nil &&
+			identifier.Name != "_" &&
+			isErrorType(signature.Results().At(index).Type()) {
+			return info.ObjectOf(identifier)
+		}
+	}
+	return nil
 }
 
 func conventionalCloser(type_ types.Type) bool {
@@ -169,82 +218,6 @@ func conventionalCloser(type_ types.Type) bool {
 func isErrorType(type_ types.Type) bool {
 	errorInterface, _ := types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
 	return errorInterface != nil && types.Implements(type_, errorInterface)
-}
-
-func closerDisposition(
-	info *types.Info,
-	body *ast.BlockStmt,
-	candidate localCloserCandidate,
-) (bool, bool) {
-	closed := false
-	transferred := false
-	ast.PreorderStack(
-		body,
-		nil,
-		func(node ast.Node, stack []ast.Node) bool {
-			if closed || transferred {
-				return false
-			}
-			if literal, nested := node.(*ast.FuncLit); nested {
-				if expressionUsesObject(info, literal.Body, candidate.object) {
-					transferred = true
-				}
-				return false
-			}
-			switch current := node.(type) {
-			case *ast.CallExpr:
-				if closeCallUsesObject(info, current, candidate.object) {
-					closed = true
-					return false
-				}
-				for _, argument := range current.Args {
-					if directObject(info, argument) == candidate.object ||
-						methodValueUsesObject(
-							info,
-							argument,
-							candidate.object,
-						) {
-						transferred = true
-						return false
-					}
-				}
-			case *ast.ReturnStmt:
-				for _, expression := range current.Results {
-					if directObject(info, expression) == candidate.object {
-						transferred = true
-						return false
-					}
-				}
-			case *ast.SendStmt:
-				if directObject(info, current.Value) == candidate.object {
-					transferred = true
-					return false
-				}
-			case *ast.AssignStmt:
-				for _, expression := range current.Rhs {
-					if directObject(info, expression) != candidate.object {
-						continue
-					}
-					for _, target := range current.Lhs {
-						identifier, _ := target.(*ast.Ident)
-						if identifier == nil || identifier.Name != "_" {
-							transferred = true
-							return false
-						}
-					}
-				}
-			case *ast.CompositeLit:
-				for _, element := range current.Elts {
-					if directObject(info, element) == candidate.object {
-						transferred = true
-						return false
-					}
-				}
-			}
-			return true
-		},
-	)
-	return closed, transferred
 }
 
 func closeCallUsesObject(info *types.Info, call *ast.CallExpr, object types.Object) bool {

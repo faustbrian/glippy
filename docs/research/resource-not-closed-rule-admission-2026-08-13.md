@@ -3,9 +3,10 @@
 ## Decision
 
 Admit `resource-not-closed` to the opt-in `suspicious` preset at warning
-severity. The native types-tier rule tracks locally owned call results with a
-static `Close() error` method and reports only values that are neither closed
-nor conservatively transferred.
+severity. As expanded on 2026-08-15, the native control-flow rule tracks
+locally owned call results with a static `Close() error` method and reports
+when a normally returning path neither closes nor conservatively transfers the
+value.
 
 ## Defect And Existing Tools
 
@@ -24,26 +25,35 @@ lint boundaries.
 ## Precision, Policy, And Fixes
 
 The rule recognizes direct call assignments whose corresponding result has
-`Close() error`. It treats a direct close as cleanup and a direct argument,
+`Close() error`. A conventional immediately following acquisition-error guard
+starts ownership on its successful continuation; other shapes start after the
+assignment. Exact `Close` calls complete the obligation. A direct argument,
 return, send, assignment, composite insertion, method value, or closure capture
-as a transfer. Zero-result `Close` methods are excluded after dogfood showed
-that a method name alone includes non-resource reflection values.
+transfers it conservatively. Reassignment before either effect loses the
+obligation and reports. Zero-result `Close` methods remain excluded because a
+method name alone includes non-resource reflection values.
 
-The first contract is intentionally path-insensitive: any close counts, so it
-can miss a cleanup that runs on only one branch. It is `suspicious`, not
-`correctness`, because ownership may be transferred through conventions the
-rule cannot prove. No fix is offered because the correct cleanup point and
-error policy are contextual.
+The bounded shared obligation engine summarizes each reachable CFG block as
+open, completed, transferred, or lost and stops a path after completion or
+transfer. It uses the shared CFG's no-return policy and visits each block state
+at most once per candidate. `sql-transaction-not-completed` uses the same
+engine with exact `Commit` and `Rollback` completion effects.
+
+The rule remains `suspicious`, not `correctness`, because ownership may be
+transferred through conventions it cannot prove. No fix is offered because the
+correct cleanup point and error policy are contextual.
 
 ## Admission Evidence
 
-Focused fixtures cover leaked files, deferred and explicit close, returns,
-argument transfer, exact ranges, suppressions, generated and type-error policy,
-source versions, CLI output, baselines, and absence of fixes.
+Focused fixtures cover leaked files, deferred and explicit close, partial and
+complete branches, reassignment, implicit returns, argument and result
+transfer, exact ranges, suppressions, generated and type-error policy, source
+versions, CLI output, baselines, and absence of fixes.
 
-Five complete-load samples on Go 1.26.5, Darwin arm64, Apple M4 Max measured
-medians of `167,748,492 ns/op`, `1,935,420 B/op`, and `15,617 allocs/op` for the
-one-file fixture. Imports and package loading dominate the measurement.
+Five complete-load iterations on Go 1.26.6, Darwin arm64, Apple M4 Max averaged
+`106,638,825 ns/op`, `1,969,809 B/op`, and `15,669 allocs/op` for the one-file
+CFG fixture. Imports and package loading dominate the measurement; this is
+proportional admission evidence rather than a stable latency budget.
 
 Non-mutating dogfood completed without findings over Glippy and
 `go-libraries/pkg/prompts` at
@@ -52,5 +62,7 @@ pre-existing dirty status were unchanged.
 
 ## Revisit Trigger
 
-Add all-path cleanup proof only behind the shared CFG or SSA tiers, and expand
-resource shapes only from real missed-defect evidence.
+Add interprocedural completion and transfer facts only when real missed-defect
+evidence justifies their cost. Expand resource shapes only from reviewed
+occurrences; do not infer that every method named `Close` is an ownership
+boundary.

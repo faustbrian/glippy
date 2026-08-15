@@ -2921,14 +2921,15 @@ for _, value := range values { pattern.MatchString(value) }
 detects locally owned closers that are neither closed nor transferred
 
 A call result with a conventional Close method usually owns a file, connection, compressor, or
-similar resource. A local result that is never closed and never transferred can retain descriptors,
-connections, buffers, or other external state until process termination or garbage collection.
+similar resource. A locally owned result that reaches a normal return without being closed or
+transferred can retain descriptors, connections, buffers, or other external state until process
+termination or garbage collection.
 
 - Default severity: `warn`
 - Presets: `suspicious`
 - Minimum Go: `1.25`
-- Analysis tier: types
-- Node interests: `file`
+- Analysis tier: control flow
+- Node interests: none
 - Dependency syntax: not required
 - Generated files: excluded
 - Type-error packages: excluded
@@ -2947,8 +2948,8 @@ None.
 - The initial contract treats a direct argument, return, send, composite-literal insertion, closure
   capture, or assignment to another variable as an ownership transfer and does not analyze the
   callee.
-- Any direct Close call counts as cleanup; path-sensitive proof that cleanup runs on every
-  successful path is deferred to a control-flow expansion.
+- Cleanup and ownership transfer must cover every normally returning path after a conventional
+  acquisition guard when one is present.
 - Only call results whose static type has Close() error are considered resources; zero-result Close
   methods are too broad for the initial ownership contract.
 

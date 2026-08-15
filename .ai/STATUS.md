@@ -1,16 +1,17 @@
 # Glippy Development Status
 
-- Progress: 95%
-- Current phase: Phase 5, ecosystem integration and stable release
+- Original Phase 0-5 progress: 100%
+- Active development: post-v0.1 Clippy-comparability expansion
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
 - Phase 3 completed: 2026-08-13
 - Phase 4 completed: 2026-08-13
+- Phase 5 completed: 2026-08-13
 
 The sections below retain chronological evidence from earlier checkpoints.
-Embedded progress statements describe those checkpoints; the summary above is
-the current state.
+Embedded progress statements describe those checkpoints. Post-v0.1 expansion
+does not reopen the completed original phase scale and has no percentage gate.
 
 Phase 0 established the reviewed product contracts, shared-frontend and edit
 boundaries, initial hostile-valid corpus, bounded document renderer, controlled
@@ -1378,3 +1379,13 @@ probe averaged 76.0 ms, and exact-rule dogfood remained clean across Glippy,
 prompts, migrations, capability, Vuja scoring, and Tarvero. The reusable
 obligation/effect model and broader lifecycle pack remain open, so the active
 Clippy-comparability goal continues.
+
+The first reusable obligation/effect layer now bounds intraprocedural ownership
+analysis by reachable CFG block state and distinguishes open, completed,
+transferred, and lost obligations. `sql-transaction-not-completed` uses the
+shared engine without changing its contract, while `resource-not-closed` moves
+from path-insensitive types traversal to control flow: partial cleanup and
+reassignment report, complete close-or-transfer branches do not, and a
+conventional acquisition-error guard starts ownership only on success.
+Interprocedural effects and the broader lifecycle pack remain open, so the
+active Clippy-comparability goal continues.

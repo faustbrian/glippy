@@ -64,6 +64,13 @@ call the exact transaction Commit or Rollback method or conservatively transfer
 ownership. Reassignment loses the original obligation; wrapper constructors and
 arbitrary finalizers remain outside the initial contract.
 
+The first shared obligation/effect layer now summarizes bounded intraprocedural
+CFG paths as open, completed, transferred, or lost. Both SQL transactions and
+local `Close() error` resources use it; `resource-not-closed` therefore reports
+partial cleanup and reassignment instead of accepting one close anywhere in a
+function. Interprocedural completion, transfer, and no-return facts remain a
+separate evidence-gated expansion.
+
 ## Investigation Queue
 
 The queue contains defect classes to investigate, not accepted rule IDs.
@@ -72,7 +79,7 @@ another existing default tool already owns the problem well enough.
 
 | Order | Defect class | Cheapest plausible tier | Admission question |
 | ---: | --- | --- | --- |
-| 1 | Shared obligation and effect summaries | CFG plus facts | Can one bounded model express completion, transfer, and no-return effects for transactions, closers, cancellation, locks, and streams without inventing per-rule ownership semantics? |
+| 1 | Interprocedural obligation and no-return facts | CFG plus facts | Which stable function effects materially improve the admitted transaction, closer, cancellation, and stream rules without loading dependency syntax speculatively? |
 | 2 | Standard-library argument roles and state contracts | types | Can typed object identity prove a misuse without guessing caller intent, as it does for the admitted `errors-is-arguments` and `context-key` rules? |
 | 3 | Ineffective or misleading control transfer beyond the current terminal-break cases | syntax, then CFG only if needed | Is the transfer observably ineffective, and can Glippy distinguish the intended enclosing construct without path-sensitive speculation? |
 | 4 | Resource cleanup inside repeated execution | CFG | Can reachability prove that cleanup is deferred indefinitely or skipped, while excluding deliberate process and goroutine termination? |

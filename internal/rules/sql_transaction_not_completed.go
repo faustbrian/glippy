@@ -3,7 +3,6 @@ package rules
 import (
 	"fmt"
 	"go/ast"
-	"go/token"
 	"go/types"
 
 	"golang.org/x/tools/go/cfg"
@@ -14,16 +13,8 @@ type sqlTransactionNotCompletedRule struct{}
 type sqlTransactionCandidate struct {
 	identifier *ast.Ident
 	object types.Object
-	start *cfg.Block
+	start obligationStart
 }
-
-type sqlTransactionDisposition uint8
-
-const (
-	sqlTransactionOpen sqlTransactionDisposition = iota
-	sqlTransactionDischarged
-	sqlTransactionLost
-)
 
 // NewSQLTransactionNotCompletedRule constructs the database transaction
 // lifecycle rule for product registry composition.
@@ -130,7 +121,7 @@ func sqlTransactionCandidates(
 				guard, ok := block.List[index + 1].(*ast.IfStmt)
 				start := doneBlocks[guard]
 				if !matched ||
-					!sqlAcquisitionErrorGuard(info, guard, errorObject) ||
+					!returningNonNilErrorGuard(info, guard, errorObject) ||
 					start == nil ||
 					!start.Live {
 					continue
@@ -140,7 +131,7 @@ func sqlTransactionCandidates(
 					sqlTransactionCandidate{
 						identifier: identifier,
 						object: object,
-						start: start,
+						start: obligationStartAt(start),
 					},
 				)
 			}
@@ -204,146 +195,24 @@ func sqlBeginCall(info *types.Info, call *ast.CallExpr) bool {
 	}
 }
 
-func sqlAcquisitionErrorGuard(info *types.Info, guard *ast.IfStmt, errorObject types.Object) bool {
-	if guard == nil ||
-		guard.Init != nil ||
-		guard.Else != nil ||
-		guard.Body == nil ||
-		len(guard.Body.List) == 0 {
-		return false
-	}
-	if _, returns := guard.Body.List[len(guard.Body.List) - 1].(*ast.ReturnStmt); !returns {
-		return false
-	}
-	comparison, _ := ast.Unparen(guard.Cond).(*ast.BinaryExpr)
-	if comparison == nil || comparison.Op != token.NEQ {
-		return false
-	}
-	nilObject := types.Universe.Lookup("nil")
-	return directObject(info, comparison.X) == errorObject &&
-		directObject(info, comparison.Y) == nilObject ||
-		directObject(info, comparison.Y) == errorObject &&
-			directObject(info, comparison.X) == nilObject
-}
-
 func sqlTransactionReturnsOpen(candidate sqlTransactionCandidate, info *types.Info) bool {
-	work := []*cfg.Block{candidate.start}
-	seen := make(map[*cfg.Block]bool)
-	for len(work) > 0 {
-		block := work[len(work) - 1]
-		work = work[:len(work) - 1]
-		if block == nil || !block.Live || seen[block] {
-			continue
-		}
-		seen[block] = true
-		discharged := false
-		for _, node := range block.Nodes {
-			switch sqlTransactionNodeDisposition(info, node, candidate.object) {
-			case sqlTransactionDischarged:
-				discharged = true
-			case sqlTransactionLost:
-				return true
-			}
-			if discharged {
-				break
-			}
-		}
-		if discharged {
-			continue
-		}
-		if block.Return() != nil {
-			return true
-		}
-		work = append(work, block.Succs...)
-	}
-	return false
-}
-
-func sqlTransactionNodeDisposition(
-	info *types.Info,
-	node ast.Node,
-	object types.Object,
-) sqlTransactionDisposition {
-	disposition := sqlTransactionOpen
-	ast.PreorderStack(
-		node,
-		nil,
-		func(current ast.Node, _ []ast.Node) bool {
-			if disposition != sqlTransactionOpen {
-				return false
-			}
-			if literal, nested := current.(*ast.FuncLit); nested {
-				if expressionUsesObject(info, literal.Body, object) {
-					disposition = sqlTransactionDischarged
-				}
-				return false
-			}
-			switch current := current.(type) {
-			case *ast.CallExpr:
-				if sqlTransactionCompletionCall(info, current, object) {
-					disposition = sqlTransactionDischarged
-					return false
-				}
-				for _, argument := range current.Args {
-					if directObject(info, argument) == object ||
-						methodValueUsesObject(info, argument, object) {
-						disposition = sqlTransactionDischarged
-						return false
-					}
-				}
-			case *ast.ReturnStmt:
-				for _, expression := range current.Results {
-					if directObject(info, expression) == object {
-						disposition = sqlTransactionDischarged
-						return false
-					}
-				}
-			case *ast.SendStmt:
-				if directObject(info, current.Value) == object {
-					disposition = sqlTransactionDischarged
-					return false
-				}
-			case *ast.AssignStmt:
-				for _, expression := range current.Rhs {
-					if methodValueUsesObject(info, expression, object) {
-						disposition = sqlTransactionDischarged
-						return false
-					}
-					if directObject(info, expression) != object {
-						continue
-					}
-					for _, target := range current.Lhs {
-						identifier, _ := target.(*ast.Ident)
-						if identifier == nil || identifier.Name != "_" {
-							disposition = sqlTransactionDischarged
-							return false
-						}
-					}
-				}
-			case *ast.CompositeLit:
-				for _, element := range current.Elts {
-					if expressionUsesObject(info, element, object) {
-						disposition = sqlTransactionDischarged
-						return false
-					}
-				}
-			}
-			return true
+	return obligationReachesOpenReturn(
+		candidate.start,
+		func(node ast.Node) obligationEffect {
+			return objectObligationEffect(
+				info,
+				node,
+				candidate.object,
+				func(call *ast.CallExpr) bool {
+					return sqlTransactionCompletionCall(
+						info,
+						call,
+						candidate.object,
+					)
+				},
+			)
 		},
 	)
-	if disposition != sqlTransactionOpen {
-		return disposition
-	}
-	assignment, ok := node.(*ast.AssignStmt)
-	if !ok {
-		return sqlTransactionOpen
-	}
-	for _, target := range assignment.Lhs {
-		if directObject(info, target) == object {
-			return sqlTransactionLost
-		}
-	}
-	return sqlTransactionOpen
 }
 
 func sqlTransactionCompletionCall(info *types.Info, call *ast.CallExpr, object types.Object) bool {
