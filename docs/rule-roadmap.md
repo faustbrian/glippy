@@ -113,6 +113,14 @@ methods report a compile-time zero result limit. Dynamic arguments, indirect
 calls, local lookalikes, generated files, and ill-typed packages remain
 excluded, and neither rule guesses a replacement.
 
+The standard-library argument track now also admits
+`invalid-strconv-argument` and `invalid-binary-write`. Exact `strconv` calls
+validate constant bases, bit sizes, and format bytes, while exact
+`encoding/binary.Write` calls reject statically unsupported variable-size data
+shapes. Dynamic values, indirect calls, top-level interfaces, generated files,
+and ill-typed packages remain conservative, and neither rule guesses an
+intended representation.
+
 ## Investigation Queue
 
 The queue contains defect classes to investigate, not accepted rule IDs.

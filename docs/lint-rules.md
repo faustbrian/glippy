@@ -46,11 +46,13 @@ not stable release promises.
 - [inefficient-string-comparison](#inefficient-string-comparison)
 - [infinite-recursion](#infinite-recursion)
 - [integer-division-before-conversion](#integer-division-before-conversion)
+- [invalid-binary-write](#invalid-binary-write)
 - [invalid-build-constraint](#invalid-build-constraint)
 - [invalid-directive](#invalid-directive)
 - [invalid-random-bound](#invalid-random-bound)
 - [invalid-regexp](#invalid-regexp)
 - [invalid-slog-arguments](#invalid-slog-arguments)
+- [invalid-strconv-argument](#invalid-strconv-argument)
 - [invalid-struct-tag](#invalid-struct-tag)
 - [invalid-test-signature](#invalid-test-signature)
 - [invalid-unmarshal-target](#invalid-unmarshal-target)
@@ -1891,6 +1893,54 @@ float64(total / count)
 float64(total) / float64(count)
 ```
 
+## invalid-binary-write
+
+detects values encoding/binary.Write cannot encode
+
+Encoding/binary.Write accepts fixed-size values, slices of fixed-size values, and pointers to those
+values. Architecture-sized integers and values containing strings, maps, channels, functions,
+interfaces, or pointers have no supported fixed-size binary representation.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct three-argument calls to the exact encoding/binary.Write package function are
+  recognized; tuple arguments and function values remain conservative.
+- Top-level interface and type-parameter data whose concrete runtime shape may be fixed-size remain
+  conservative.
+- Generated files and packages with type errors are excluded.
+
+### Example: Write fixed-width data
+
+**Incorrect**
+
+```go
+err := binary.Write(writer, binary.LittleEndian, "header")
+```
+
+**Correct**
+
+```go
+err := binary.Write(writer, binary.LittleEndian, []byte("header"))
+```
+
 ## invalid-build-constraint
 
 detects malformed, misplaced, or inconsistent build constraints
@@ -2128,6 +2178,54 @@ slog.Info("request", "method")
 
 ```go
 slog.Info("request", "method", method)
+```
+
+## invalid-strconv-argument
+
+detects invalid constant arguments passed to strconv
+
+Strconv parsing and formatting functions accept only documented number bases, bit sizes, and
+floating-point format bytes. Invalid constants panic, return an error, or produce a placeholder
+instead of the intended number.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct calls to exact strconv package functions are recognized; function values remain
+  conservative.
+- Only compile-time constant bases, bit sizes, and format bytes are validated; value flow through
+  variables is not inferred.
+- Generated files and packages with type errors are excluded.
+
+### Example: Use a supported integer base
+
+**Incorrect**
+
+```go
+text := strconv.FormatInt(value, 0)
+```
+
+**Correct**
+
+```go
+text := strconv.FormatInt(value, 10)
 ```
 
 ## invalid-struct-tag

@@ -1485,3 +1485,15 @@ arm64. Current Staticcheck SA1000 and SA1010 support admission; local Glippy and
 Go-libraries searches found no production occurrence. Non-mutating exact-rule
 dogfood remained clean on Glippy and `pkg/prompts`. The active
 Clippy-comparability goal continues.
+
+The next standard-library argument batch admits `invalid-strconv-argument` and
+`invalid-binary-write` as default correctness types-tier rules. Exact `strconv`
+parsing, formatting, and append calls validate compile-time bases, bit sizes,
+and float format bytes; exact `encoding/binary.Write` calls reject statically
+unsupported variable-size types while retaining conservative top-level
+interface and type-parameter behavior. Current upstream occurrences prove both
+the zero-base panic and silently omitted hash inputs. Five one-iteration
+100-finding probes measured 92.2 ms and about 2.13 MB for `strconv`, and 126.2
+ms and about 2.82 MB for binary data, on Darwin arm64. Non-mutating exact-rule
+dogfood remained clean on Glippy and `pkg/prompts`. The active
+Clippy-comparability goal continues.
