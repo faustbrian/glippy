@@ -16,6 +16,7 @@ import (
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/cache"
 	"github.com/faustbrian/glippy/internal/config"
+	"github.com/faustbrian/glippy/internal/contracts"
 	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
 	"golang.org/x/tools/go/ssa"
@@ -1607,6 +1608,121 @@ func Lookup() (*Value, error) { return nil, nil }
 	changed := run()
 	if runs != 2 || len(changed.Files) != 1 || len(changed.Files[0].Diagnostics) != 0 {
 		t.Fatalf("changed return-state cache runs = %d; result = %#v", runs, changed)
+	}
+}
+
+func TestRunPackagesInvalidatesNativeCacheWhenProjectContractsChange(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/contractcache\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "project.go"),
+		"package contractcache\n\nfunc Stop() {}\nfunc run() { Stop(); println(\"after\") }\n",
+	)
+	metadata := controlFlowMetadata("contract-cache")
+	metadata.RequiresEffectFacts = true
+	runs := 0
+	registry, err := rules.NewRegistry(
+		controlFlowRule{
+			metadata: metadata,
+			run: func(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+				declaration, ok := ctx.Function().(*ast.FuncDecl)
+				if !ok || declaration.Name.Name != "run" {
+					return nil, nil
+				}
+				runs++
+				statement, _ := declaration.Body.List[0].(*ast.ExprStmt)
+				call, _ := statement.X.(*ast.CallExpr)
+				if ctx.CallMayReturn(call) {
+					return nil, nil
+				}
+				range_, rangeErr := ctx.Range(statement)
+				if rangeErr != nil {
+					return nil, rangeErr
+				}
+				return []rules.Finding{
+					{
+						MessageKey: "configured-stop",
+						Message: "configured stop does not return",
+						Range: range_,
+					},
+				}, nil
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := cache.Open(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(
+		func() {
+			if err := store.Close(); err != nil {
+				t.Error(err)
+			}
+		},
+	)
+	parse := func(effect string) contracts.Set {
+		t.Helper()
+		set, parseErr := contracts.ParseFiles(
+			[]contracts.File{
+				{
+					Path: "contracts.toml",
+					Bytes: []byte(
+						"version = 1\n[[functions]]\nsymbol = \"example.com/contractcache.Stop\"\n" +
+							effect +
+							" = true\n",
+					),
+				},
+			},
+		)
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		return set
+	}
+	run := func(set contracts.Set) analysis.PackageResult {
+		t.Helper()
+		loadOptions := packageAnalyzerCacheLoadOptions(root)
+		loadOptions.Contracts = set
+		result, runErr := analysis.RunPackages(
+			context.Background(),
+			registry,
+			analysis.RunOptions{
+				Preset: rules.PresetCorrectness,
+				Cache: packageAnalyzerCacheOptions(store),
+			},
+			loadOptions,
+		)
+		if runErr != nil {
+			t.Fatal(runErr)
+		}
+		return result
+	}
+	first := run(parse("noreturn"))
+	warm := run(parse("noreturn"))
+	changed := run(parse("blocking"))
+	if runs != 2 ||
+		len(first.Files) != 1 ||
+		len(first.Files[0].Diagnostics) != 1 ||
+		!reflect.DeepEqual(warm.Files, first.Files) ||
+		len(changed.Files) != 1 ||
+		len(changed.Files[0].Diagnostics) != 0 {
+		t.Fatalf(
+			"contract cache runs = %d; results = %#v, %#v, %#v",
+			runs,
+			first,
+			warm,
+			changed,
+		)
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"sync"
 	"unicode"
 
+	"github.com/faustbrian/glippy/internal/contracts"
 	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
 	"golang.org/x/tools/go/packages"
@@ -61,6 +62,7 @@ type PackageLoadOptions struct {
 	MaxPackages int
 	MaxSourceFiles int
 	MaxSourceBytes int64
+	Contracts contracts.Set
 	compactDependencySource bool
 }
 

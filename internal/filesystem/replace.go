@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,6 +41,22 @@ func Read(path string) (*Snapshot, error) {
 
 // ReadWithin captures one regular file without escaping its authorized root.
 func ReadWithin(root, path string) (*Snapshot, error) {
+	return readWithin(root, path, source.MaxFileSize, true)
+}
+
+// ReadWithinLimit captures one regular file without escaping its authorized
+// root or allocating beyond the caller's byte limit.
+func ReadWithinLimit(root, path string, maxBytes int64) (*Snapshot, error) {
+	if maxBytes < 0 || maxBytes > source.MaxFileSize {
+		return nil, fmt.Errorf(
+			"read limit must be between 0 and %d bytes",
+			source.MaxFileSize,
+		)
+	}
+	return readWithin(root, path, maxBytes, false)
+}
+
+func readWithin(root, path string, maxBytes int64, sourceLimit bool) (*Snapshot, error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("resolve source path %q: %w", path, err)
@@ -94,12 +111,31 @@ func ReadWithin(root, path string) (*Snapshot, error) {
 	if !os.SameFile(listed, opened) {
 		return nil, fmt.Errorf("read source path %q: %w", absolute, ErrStale)
 	}
-	if err := source.ValidateSize(opened.Size()); err != nil {
-		return nil, fmt.Errorf("read source path %q: %w", absolute, err)
+	if sourceLimit {
+		if err := source.ValidateSize(opened.Size()); err != nil {
+			return nil, fmt.Errorf("read source path %q: %w", absolute, err)
+		}
+	} else if opened.Size() > maxBytes {
+		return nil, fmt.Errorf(
+			"read source path %q: file exceeds %d-byte limit",
+			absolute,
+			maxBytes,
+		)
 	}
-	input, err := source.ReadAll(file)
+	reader := io.Reader(file)
+	if !sourceLimit {
+		reader = io.LimitReader(file, maxBytes + 1)
+	}
+	input, err := source.ReadAll(reader)
 	if err != nil {
 		return nil, fmt.Errorf("read source path %q: %w", absolute, err)
+	}
+	if !sourceLimit && int64(len(input)) > maxBytes {
+		return nil, fmt.Errorf(
+			"read source path %q: file exceeds %d-byte limit",
+			absolute,
+			maxBytes,
+		)
 	}
 	return &Snapshot{
 		path: absolute,

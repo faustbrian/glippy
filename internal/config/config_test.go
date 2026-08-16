@@ -954,3 +954,143 @@ func TestLoadUsesDefaultsOrSelectedConfiguration(t *testing.T) {
 		t.Fatalf("Load() width = %d, want 88", loaded.Format.LineWidth)
 	}
 }
+
+func TestLoadReadsCanonicalProjectContracts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	configurationPath := filepath.Join(root, config.Filename)
+	firstPath := filepath.Join(root, "contracts", "first.toml")
+	secondPath := filepath.Join(root, "contracts", "second.toml")
+	if err := os.MkdirAll(filepath.Dir(firstPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		firstPath,
+		[]byte(
+			"version = 1\n[[functions]]\nsymbol = \"example.com/project.Stop\"\nnoreturn = true\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		secondPath,
+		[]byte(
+			"version = 1\n[[functions]]\nsymbol = \"example.com/project.Open\"\nmust-use = [0]\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	writeConfiguration := func(paths string) {
+		t.Helper()
+		input := "version = 1\n[analysis]\ncontract-files = [" + paths + "]\n"
+		if err := os.WriteFile(configurationPath, []byte(input), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	load := func() config.Config {
+		t.Helper()
+		loaded, err := config.Load(
+			config.Selection{Root: root, Path: configurationPath},
+			config.ParseOptions{},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return loaded
+	}
+
+	writeConfiguration("\"contracts/second.toml\", \"contracts/first.toml\"")
+	first := load()
+	if !slices.Equal(
+		first.Analysis.ContractFiles,
+		[]string{"contracts/first.toml", "contracts/second.toml"},
+	) {
+		t.Fatalf("contract files = %v", first.Analysis.ContractFiles)
+	}
+	functions := first.Analysis.Contracts.Functions()
+	if len(functions) != 2 ||
+		functions[0].Symbol != "example.com/project.Open" ||
+		functions[1].Symbol != "example.com/project.Stop" {
+		t.Fatalf("contracts = %#v", functions)
+	}
+
+	writeConfiguration("\"contracts/first.toml\", \"contracts/second.toml\"")
+	reordered := load()
+	if !bytes.Equal(first.CanonicalBytes(), reordered.CanonicalBytes()) {
+		t.Fatal("configuration identity depends on contract-file order")
+	}
+	if err := os.WriteFile(
+		secondPath,
+		[]byte(
+			"version = 1\n[[functions]]\nsymbol = \"example.com/project.Open\"\nmust-use = [0, 1]\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	changed := load()
+	if bytes.Equal(first.CanonicalBytes(), changed.CanonicalBytes()) {
+		t.Fatal("configuration identity ignored changed contract contents")
+	}
+}
+
+func TestLoadRejectsInvalidContractFileSelection(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		paths string
+		want string
+	}{
+		{
+			name: "outside root",
+			paths: "[\"../contracts.toml\"]",
+			want: "portable project-relative paths",
+		},
+		{
+			name: "absolute",
+			paths: "[\"/tmp/contracts.toml\"]",
+			want: "portable project-relative paths",
+		},
+		{
+			name: "duplicate",
+			paths: "[\"contracts.toml\", \"contracts.toml\"]",
+			want: "duplicate contract file",
+		},
+		{name: "missing", paths: "[\"missing.toml\"]", want: "read contract file"},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				root := t.TempDir()
+				configurationPath := filepath.Join(root, config.Filename)
+				input := "version = 1\n[analysis]\ncontract-files = " +
+					test.paths +
+					"\n"
+				if err := os.WriteFile(configurationPath, []byte(input), 0o600);
+					err != nil {
+					t.Fatal(err)
+				}
+				_, err := config.Load(
+					config.Selection{Root: root, Path: configurationPath},
+					config.ParseOptions{},
+				)
+				if err == nil || !strings.Contains(err.Error(), test.want) {
+					t.Fatalf(
+						"Load() error = %v, want containing %q",
+						err,
+						test.want,
+					)
+				}
+			},
+		)
+	}
+}

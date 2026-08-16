@@ -144,7 +144,11 @@ remain hidden unless their corresponding LSP flags are supplied.
 existing path. `glippy config check` validates discovered or explicit policy,
 while `glippy config show` explains the resolved language, presets, rule
 severities and reasons, analysis tier, file policies, baseline, suppressions,
-and cache settings. Ordered `[[lint.overrides]]` entries can adjust exact rule
+cache settings, and configured project semantic contracts. Static versioned
+contract files can declare exact project or dependency function effects such as
+no-return, required results, ownership transfer, conditional nilness, blocking,
+and returned aliases without loading executable plugins. Ordered
+`[[lint.overrides]]` entries can adjust exact rule
 severities for project-relative glob paths such as tests, fixtures, generated
 adapters, or migration trees without introducing nested configuration files.
 
@@ -277,6 +281,7 @@ precise scope.
 
 - [Formatter rules](docs/formatter-rules.md)
 - [Configuration contract](docs/spec/configuration.md)
+- [Project semantic contracts](docs/spec/project-contracts.md)
 - [Lint rule catalog](docs/lint-rules.md)
 - [Go vet compatibility](docs/go-vet-compatibility.md)
 - [Rule roadmap](docs/rule-roadmap.md)
@@ -284,6 +289,7 @@ precise scope.
 - [v0.4 ecosystem dogfood](docs/research/v0.4-diverse-ecosystem-dogfood-2026-08-15.md)
 - [v0.4 fixability sweep](docs/research/v0.4-catalog-fixability-sweep-2026-08-15.md)
 - [v0.5 typed-analysis memory reduction](docs/research/v0.5-memory-reduction-2026-08-16.md)
+- [v0.5 project semantic contracts](docs/research/v0.5-project-semantic-contracts-2026-08-16.md)
 - [Suppression reference](docs/suppressions.md)
 - [Lint engine and suppressions](docs/spec/lint-engine.md)
 - [Fix safety model](docs/spec/fix-safety.md)

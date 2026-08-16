@@ -68,6 +68,21 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	if first.digest() == changed.digest() {
 		t.Fatal("effect fact digest ignored a return-state change")
 	}
+	changed = cloneNativeEffectFacts(first)
+	changed.mustUse["function"] = map[int]struct{}{0: {}}
+	if first.digest() == changed.digest() {
+		t.Fatal("effect fact digest ignored a must-use change")
+	}
+	changed = cloneNativeEffectFacts(first)
+	changed.blocking["function"] = struct{}{}
+	if first.digest() == changed.digest() {
+		t.Fatal("effect fact digest ignored a blocking change")
+	}
+	changed = cloneNativeEffectFacts(first)
+	changed.aliases["function"] = map[returnAliasKey]struct{}{{result: 0, argument: 0}: {}}
+	if first.digest() == changed.digest() {
+		t.Fatal("effect fact digest ignored a return-alias change")
+	}
 }
 
 func TestNativeParameterEffectsUseStableCrossLoadFunctionIdentity(t *testing.T) {

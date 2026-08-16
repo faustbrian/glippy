@@ -38,6 +38,11 @@ func (c Config) CanonicalBytes() []byte {
 			encoded = appendCanonicalString(encoded, tag)
 		}
 	}
+	encoded = binary.AppendUvarint(encoded, uint64(len(c.Analysis.ContractFiles)))
+	for _, contractPath := range c.Analysis.ContractFiles {
+		encoded = appendCanonicalString(encoded, contractPath)
+	}
+	encoded = appendCanonicalBytes(encoded, c.Analysis.Contracts.CanonicalBytes())
 	encoded = binary.AppendUvarint(encoded, uint64(len(c.Lint.Presets)))
 	for _, preset := range c.Lint.Presets {
 		encoded = appendCanonicalString(encoded, string(preset))

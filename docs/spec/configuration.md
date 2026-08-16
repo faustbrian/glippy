@@ -59,6 +59,7 @@ build-tags = []
 goos = "linux"
 goarch = "amd64"
 cgo-enabled = true
+contract-files = [".glippy-contracts.toml"]
 
 [lint]
 presets = ["correctness"]
@@ -206,6 +207,22 @@ enabled. `GOOS`, `GOARCH`, and `CGO_ENABLED` environment variables MUST NOT
 override it. Package loads set `GOENV=off`; unsupported but syntactically valid
 targets remain package-loading errors rather than configuration-schema errors.
 All four resolved fields MUST contribute to result configuration identity.
+
+`analysis.contract-files` MAY select up to 32 strict, versioned semantic
+contract files using normalized portable paths relative to the selected project
+root. Glippy MUST sort the paths, reject duplicates and root escapes, read exact
+regular-file snapshots without following symlink escapes, and include both the
+paths and canonical contract contents in configuration identity. Missing,
+malformed, unsupported, oversized, or conflicting contract files MUST fail
+configuration loading.
+
+Contract parsing does not select an analysis tier. Lexical and syntax-only lint
+MUST remain file-oriented when contracts are configured. An enabled CFG or SSA
+effect consumer resolves exact contract symbols and validates their signatures
+against its already-required typed package graph. `glippy config show` MUST
+list the canonical files, function count, and normalized effects. The complete
+schema and resolution policy are defined by the
+[project semantic contract specification](project-contracts.md).
 
 `analysis.targets` MAY define an explicit CI-oriented package-analysis matrix:
 

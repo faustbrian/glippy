@@ -19,6 +19,7 @@ deferred status is an explicit gate, not silent approval.
 | Rule API and `go/analysis` | ADR 0006 and lint specification; native package-wide types rules plus syntax, typed DAG, package-fact, and object-fact adapters implemented |
 | Analysis requirement tiers | ADR 0005; ADR 0017 owns cross-package semantic effect facts |
 | CI analysis target matrices | ADR 0020; typed lint, combined check, baselines, reporters, and cache identity implement the bounded matrix contract |
+| Project semantic contracts | ADR 0021; strict static contract files seed exact versioned effects without executable plugins |
 | Suppression syntax and reasons | ADR 0006, lint specification, and public suppression reference; exact-rule grammar implemented |
 | Fix safety and conflicts | ADR 0006 and fix specification |
 | Configuration discovery | ADR 0007 and schema-version-1 configuration contract; strict discovery and precedence implemented |
@@ -29,7 +30,7 @@ deferred status is an explicit gate, not silent approval.
 | Machine diagnostics | ADR 0011 and public machine-output reference; schema version 1 covers formatter, lint, fix, typed, combined-check, and opt-in statistics reports. ADR 0019 keeps observational cost outside ordinary diagnostics |
 | Formatter diff output | ADR 0012; bounded text-only unified differences |
 | Editor architecture | ADR 0013; stdin/stdout formatter accepted, persistent service evidence-gated |
-| Extension mechanism | Syntax and audited typed `go/analysis` adapters implemented; no dynamic plugin API initially |
+| Extension mechanism | Syntax and audited typed `go/analysis` adapters plus ADR 0021 static semantic contracts implemented; no dynamic plugin API initially |
 | Formatter and rule compatibility | ADR 0008 |
 
 The shared frontend and single-file edit model have no open question that

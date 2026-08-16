@@ -2258,6 +2258,7 @@ func packageLoadOptions(
 		Overlay: overlay,
 		GOOS: selection.GOOS,
 		GOARCH: selection.GOARCH,
+		Contracts: selection.Contracts,
 	}
 }
 

@@ -543,6 +543,70 @@ func TestRunConfigShowReportsBuiltInDefaults(t *testing.T) {
 	}
 }
 
+func TestRunConfigShowReportsProjectSemanticContracts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/project\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".glippy-contracts.toml"),
+		[]byte(
+			`version = 1
+[[functions]]
+symbol = "example.com/project.Open"
+must-use = [0, 1]
+blocking = true
+nil-error = [{ value = 0, error = 1, when-error-nil = "non-nil" }]
+
+[[functions]]
+symbol = "example.com/project.Resource.Finish"
+noreturn = true
+closes = [0]
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, config.Filename),
+		[]byte("version = 1\n[analysis]\ncontract-files = [\".glippy-contracts.toml\"]\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"config", "show", root}, failingReader{}, &stdout, &stderr)
+	if exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf("Run(config show) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+	for _, expected := range
+		[]string{
+			"semantic contracts: 1 file; 2 functions",
+			"  contract-file .glippy-contracts.toml",
+			"  function example.com/project.Open: must-use=0,1; blocking; nil-error=0/1:non-nil/unknown",
+			"  function example.com/project.Resource.Finish: noreturn; closes=0",
+		} {
+		if !strings.Contains(stdout.String(), expected) {
+			t.Fatalf(
+				"Run(config show) output missing %q:\n%s",
+				expected,
+				stdout.String(),
+			)
+		}
+	}
+}
+
 func TestRunConfigShowExplainsPathScopedRulePolicy(t *testing.T) {
 	t.Parallel()
 

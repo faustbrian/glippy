@@ -3275,6 +3275,75 @@ goarch = "arm64"
 	}
 }
 
+func TestRunLintTargetMatrixUsesOneProjectContractSnapshot(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/contracts\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "common.go")
+	writeChangedCLIFile(
+		t,
+		path,
+		"package contracts\n\nfunc stop() {}\nfunc run() {\n\tstop()\n\tprintln(\"unreachable\")\n}\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy-contracts.toml"),
+		"version = 1\n[[functions]]\nsymbol = \"example.com/contracts.stop\"\nnoreturn = true\n",
+	)
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+[analysis]
+contract-files = [".glippy-contracts.toml"]
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+
+[lint]
+presets = []
+
+[lint.rules]
+unreachable-code = "warn"
+`,
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{
+			"lint",
+			"--reporter=short",
+			"--config=" + configurationPath,
+			root + "/...",
+		},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		strings.Count(stdout.String(), "warn[unreachable-code]") != 1 ||
+		!strings.Contains(stdout.String(), "[darwin/arm64,linux/amd64]") {
+		t.Fatalf(
+			"Run(lint target contracts) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
 func TestRunLintLabelsTargetSpecificPackageDiagnostics(t *testing.T) {
 	t.Parallel()
 
@@ -8018,6 +8087,114 @@ func TestRunLintStatsRejectsMutatingAndAmbiguousModes(t *testing.T) {
 					)
 				}
 			},
+		)
+	}
+}
+
+func TestRunLintUsesConfiguredNoReturnContract(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/project\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "project.go")
+	if err := os.WriteFile(
+		path,
+		[]byte(
+			"package project\n\nfunc stop() {}\nfunc run() {\n\tstop()\n\tprintln(\"unreachable\")\n}\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".glippy-contracts.toml"),
+		[]byte(
+			"version = 1\n[[functions]]\nsymbol = \"example.com/project.stop\"\nnoreturn = true\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, config.Filename),
+		[]byte(
+			"version = 1\n[analysis]\ncontract-files = [\".glippy-contracts.toml\"]\n[lint]\npresets = []\n[lint.rules]\nunreachable-code = \"warn\"\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"lint", "--reporter=short", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "warn[unreachable-code]: unreachable code") {
+		t.Fatalf(
+			"Run(lint configured noreturn) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
+func TestRunLintKeepsProjectContractsSyntaxOnlyUntilAnEffectConsumerNeedsThem(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "project.go")
+	writeChangedCLIFile(
+		t,
+		path,
+		"package project\n\nfunc Open() error { return nil }\nfunc run(ok bool) { if ok {} else if ok {} }\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy-contracts.toml"),
+		"version = 1\n[[functions]]\nsymbol = \"example.com/project.Open\"\nmust-use = [1]\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, config.Filename),
+		"version = 1\n[analysis]\ncontract-files = [\".glippy-contracts.toml\"]\n[lint]\npresets = []\n[lint.rules]\nduplicate-condition = \"warn\"\n",
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"lint", "--reporter=short", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "warn[duplicate-condition]") {
+		t.Fatalf(
+			"Run(lint syntax contract) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
 		)
 	}
 }

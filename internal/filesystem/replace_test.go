@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/faustbrian/glippy/internal/filesystem"
@@ -427,6 +428,25 @@ func TestReadWithinRejectsSymlinkEscape(t *testing.T) {
 
 	if _, err := filesystem.ReadWithin(root, filepath.Join(link, "source.go")); err == nil {
 		t.Fatal("ReadWithin() error = nil, want symlink-escape refusal")
+	}
+}
+
+func TestReadWithinLimitRejectsOversizedFileBeforeSnapshot(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "contracts.toml")
+	if err := os.WriteFile(path, []byte("12345"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := filesystem.ReadWithinLimit(root, path, 4)
+	if snapshot != nil || err == nil || !strings.Contains(err.Error(), "exceeds 4-byte limit") {
+		t.Fatalf(
+			"ReadWithinLimit() = snapshot %t, error %v, want bounded refusal",
+			snapshot != nil,
+			err,
+		)
 	}
 }
 

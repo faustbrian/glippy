@@ -641,6 +641,9 @@ func (s ParameterEffectSummary) GuaranteesAny(accepted ParameterEffectKind) bool
 type EffectFacts interface {
 	ParameterEffect(*types.Func, int) ParameterEffectSummary
 	ReturnState(*types.Func, int, int) ReturnStateSummary
+	MustUseResult(*types.Func, int) bool
+	Blocking(*types.Func) bool
+	ReturnAliasesArgument(*types.Func, int, int) bool
 }
 
 // SSAContext binds one source function to its shared SSA program, typed
@@ -891,18 +894,76 @@ func (c *ControlFlowContext) ParameterEffect(
 	if callee == nil {
 		return ParameterEffectSummary{}
 	}
-	parameter := argument
-	signature, _ := callee.Type().(*types.Signature)
-	if signature == nil || signature.Params() == nil {
-		return ParameterEffectSummary{}
-	}
-	if signature.Variadic() && parameter >= signature.Params().Len() - 1 {
-		parameter = signature.Params().Len() - 1
-	}
-	if parameter < 0 || parameter >= signature.Params().Len() {
+	parameter, valid := staticCallParameter(callee, argument)
+	if !valid {
 		return ParameterEffectSummary{}
 	}
 	return c.effects.ParameterEffect(callee, parameter)
+}
+
+// MustUse reports whether a configured contract requires one result from a
+// statically resolved call to be consumed.
+func (c *ControlFlowContext) MustUse(call *ast.CallExpr, result int) bool {
+	callee := c.staticCallee(call)
+	return callee != nil && result >= 0 && c.effects.MustUseResult(callee, result)
+}
+
+// Blocking reports whether a configured contract marks a statically resolved
+// call as a blocking operation.
+func (c *ControlFlowContext) Blocking(call *ast.CallExpr) bool {
+	callee := c.staticCallee(call)
+	return callee != nil && c.effects.Blocking(callee)
+}
+
+// ReturnAliasesArgument reports whether a configured contract states that one
+// call result aliases the selected call argument.
+func (c *ControlFlowContext) ReturnAliasesArgument(
+	call *ast.CallExpr,
+	result int,
+	argument int,
+) bool {
+	callee := c.staticCallee(call)
+	if callee == nil || result < 0 || argument < 0 || argument >= len(call.Args) {
+		return false
+	}
+	parameter, valid := staticCallParameter(callee, argument)
+	return valid && c.effects.ReturnAliasesArgument(callee, result, parameter)
+}
+
+// ReturnState returns a configured nil/error relationship for one statically
+// resolved call.
+func (c *ControlFlowContext) ReturnState(
+	call *ast.CallExpr,
+	valueResult int,
+	errorResult int,
+) ReturnStateSummary {
+	callee := c.staticCallee(call)
+	if callee == nil || valueResult < 0 || errorResult < 0 {
+		return ReturnStateSummary{}
+	}
+	return c.effects.ReturnState(callee, valueResult, errorResult)
+}
+
+func (c *ControlFlowContext) staticCallee(call *ast.CallExpr) *types.Func {
+	if c == nil || c.typesContext == nil || c.effects == nil || call == nil {
+		return nil
+	}
+	return typeutil.StaticCallee(c.typesContext.info, call)
+}
+
+func staticCallParameter(callee *types.Func, argument int) (int, bool) {
+	if callee == nil || argument < 0 {
+		return 0, false
+	}
+	signature, _ := callee.Type().(*types.Signature)
+	if signature == nil || signature.Params() == nil {
+		return 0, false
+	}
+	parameter := argument
+	if signature.Variadic() && parameter >= signature.Params().Len() - 1 {
+		parameter = signature.Params().Len() - 1
+	}
+	return parameter, parameter >= 0 && parameter < signature.Params().Len()
 }
 
 // IllTyped reports whether package loading encountered type errors.

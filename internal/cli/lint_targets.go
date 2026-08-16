@@ -33,6 +33,8 @@ func runLintTargetMatrix(
 			GOOS: target.GOOS,
 			GOARCH: target.GOARCH,
 			CGOEnabled: target.CGOEnabled,
+			ContractFiles: slices.Clone(task.options.buildSelection.ContractFiles),
+			Contracts: task.options.buildSelection.Contracts,
 		}
 		result, err := runPackageAnalysis(ctx, registry, selected)
 		if err != nil {

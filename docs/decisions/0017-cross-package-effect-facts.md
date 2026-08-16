@@ -1,6 +1,6 @@
 # ADR 0017: Cross-Package Semantic Effect Facts
 
-- Status: accepted for v0.4 development
+- Status: accepted for v0.4 development; schema advanced by ADR 0021
 - Date: 2026-08-15
 
 ## Context And Evidence
@@ -52,6 +52,10 @@ canonically ordered stable no-return identities, ordered parameter-effect
 records, and ordered returned-state records containing both result indexes and
 both error-state relationships. A changed summary therefore invalidates native
 diagnostics without making source pointers persistent.
+
+ADR 0021 advances the active schema and cache component to
+`native-effects-v4` for configured project contracts. The version-3 name in
+this record remains the historical identity of the v0.4 decision.
 
 ## Alternatives
 

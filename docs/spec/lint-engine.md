@@ -76,11 +76,14 @@ A native CFG-tier or SSA-tier rule MAY declare that it requires semantic
 effect facts. No cheaper tier MAY declare that requirement. When at least one
 enabled native rule requires effects, the scheduler MUST load same-module
 imported packages in deterministic dependency layers and derive versioned
-stable function summaries. It MUST install no-return summaries in the shared
-CFG and SSA predicate, expose immutable parameter effects to CFG rules by
-stable function identity and parameter index, and expose immutable returned
-nil/error relationships to SSA rules by stable function identity and result
-indexes. A parameter effect MUST be known
+stable function summaries. It MUST seed the same summary set from exact
+configured [project semantic contracts](project-contracts.md) resolved against
+the already-loaded type graph. External contract resolution MUST use export
+type information without requesting dependency source solely for that
+contract. The scheduler MUST install no-return summaries in the shared CFG and
+SSA predicate, expose immutable parameter effects, must-use results, blocking
+operations, returned aliases, and returned nil/error relationships by stable
+function identity and exact indexes. A parameter effect MUST be known
 only when analysis can distinguish a proven borrow from an effect reached on
 every normally returning path. Unknown calls, interface dispatch, unresolved
 recursion, and unsupported aliasing MUST fail closed. A returned-state
@@ -89,9 +92,10 @@ the exact built-in error state proves the same nilness. Bare returns,
 delegation, recursion, unknown error construction, and conflicting returns
 MUST fail closed. The scheduler MUST NOT
 retain effect inputs as lint targets or expose their independently loaded type
-objects to rules. Third-party and workspace
-module effects remain unavailable until their identity and loading contracts
-are separately admitted.
+objects to rules. Glippy does not infer third-party or unrelated workspace
+module effects from dependency bodies. Exact configured contracts MAY provide
+those effects when the package is already present in the typed graph and the
+declaration passes the project-contract validation boundary.
 
 The CFG runner MUST construct `golang.org/x/tools/go/cfg` graphs only when at
 least one enabled CFG rule is eligible for the function's file and package. It

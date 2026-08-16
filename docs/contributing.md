@@ -19,6 +19,7 @@ integration rather than introduce a parallel Go parser or type system.
 | `internal/format` | Go syntax lowering, comment placement, output validation, and idempotency |
 | `internal/rules` | Native rule metadata, contexts, findings, options, and the built-in registry |
 | `internal/analysis` | Tier scheduling; shared syntax, types, CFG, SSA, facts, and analyzer adapters |
+| `internal/contracts` | Strict project semantic contract parsing, canonical identity, and exact type-object resolution |
 | `internal/fix` | Fix selection, source identity, conflicts, edits, and validation transactions |
 | `internal/config` | Typed versioned configuration and canonical identity |
 | `internal/discovery` | Deterministic file selection and project boundaries |

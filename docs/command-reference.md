@@ -459,9 +459,10 @@ glippy config show --config ./policy/glippy.toml ./module
 The deterministic text output identifies the project root, selection origin,
 source language, formatter widths, presets, warning escalation, enabled rules
 and their enablement reasons, resolved options, maximum analysis tier, file and
-type-error policies, base build selection, canonical analysis targets, baseline
-status, suppression policy, and cache limits. The migration target is reported
-as unset until migration rules have an explicit target contract.
+type-error policies, base build selection, canonical analysis targets, project
+semantic contract files and effects, baseline status, suppression policy, and
+cache limits. The migration target is reported as unset until migration rules
+have an explicit target contract.
 
 ## Exit Codes
 

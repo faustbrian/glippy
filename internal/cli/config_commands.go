@@ -8,9 +8,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/faustbrian/glippy/internal/config"
+	"github.com/faustbrian/glippy/internal/contracts"
 	"github.com/faustbrian/glippy/internal/filesystem"
 	"github.com/faustbrian/glippy/internal/goversion"
 	"github.com/faustbrian/glippy/internal/rules"
@@ -403,6 +405,25 @@ func renderEffectiveConfiguration(
 	for _, target := range loaded.Analysis.Targets {
 		fmt.Fprintf(&output, "  target %s\n", target.ID())
 	}
+	functions := loaded.Analysis.Contracts.Functions()
+	fmt.Fprintf(
+		&output,
+		"semantic contracts: %d %s; %d functions\n",
+		len(loaded.Analysis.ContractFiles),
+		pluralize(len(loaded.Analysis.ContractFiles), "file", "files"),
+		len(functions),
+	)
+	for _, contractPath := range loaded.Analysis.ContractFiles {
+		fmt.Fprintf(&output, "  contract-file %s\n", contractPath)
+	}
+	for _, function := range functions {
+		fmt.Fprintf(
+			&output,
+			"  function %s: %s\n",
+			function.Symbol,
+			contractEffectDescription(function),
+		)
+	}
 	fmt.Fprintf(&output, "baseline: %s\n", baselineDescription(inputPath, selection, loaded))
 	expiry := loaded.Lint.Suppressions.ExpiryCutoff
 	if expiry == "" {
@@ -422,6 +443,79 @@ func renderEffectiveConfiguration(
 		loaded.Cache.MaxBytes,
 	)
 	return output.Bytes(), nil
+}
+
+func pluralize(count int, singular, plural string) string {
+	if count == 1 {
+		return singular
+	}
+	return plural
+}
+
+func contractEffectDescription(function contracts.Function) string {
+	effects := make([]string, 0, 9)
+	if function.NoReturn {
+		effects = append(effects, "noreturn")
+	}
+	effects = appendContractIndices(effects, "must-use", function.MustUse)
+	effects = appendContractIndices(effects, "closes", function.Closes)
+	effects = appendContractIndices(effects, "takes-ownership", function.TakesOwnership)
+	effects = appendContractIndices(
+		effects,
+		"completes-transaction",
+		function.CompletesTransaction,
+	)
+	effects = appendContractIndices(
+		effects,
+		"invokes-cancellation",
+		function.InvokesCancellation,
+	)
+	if function.Blocking {
+		effects = append(effects, "blocking")
+	}
+	if len(function.NilError) != 0 {
+		values := make([]string, len(function.NilError))
+		for index, relation := range function.NilError {
+			values[index] = fmt.Sprintf(
+				"%d/%d:%s/%s",
+				relation.Value,
+				relation.Error,
+				contractNilStateDescription(relation.WhenErrorNil),
+				contractNilStateDescription(relation.WhenErrorNonNil),
+			)
+		}
+		effects = append(effects, "nil-error=" + strings.Join(values, ","))
+	}
+	if len(function.ReturnsAlias) != 0 {
+		values := make([]string, len(function.ReturnsAlias))
+		for index, relation := range function.ReturnsAlias {
+			values[index] = fmt.Sprintf("%d/%d", relation.Result, relation.Argument)
+		}
+		effects = append(effects, "returns-alias=" + strings.Join(values, ","))
+	}
+	return strings.Join(effects, "; ")
+}
+
+func appendContractIndices(effects []string, name string, indices []int) []string {
+	if len(indices) == 0 {
+		return effects
+	}
+	values := make([]string, len(indices))
+	for index, value := range indices {
+		values[index] = strconv.Itoa(value)
+	}
+	return append(effects, name + "=" + strings.Join(values, ","))
+}
+
+func contractNilStateDescription(state contracts.NilState) string {
+	switch state {
+	case contracts.NilStateNil:
+		return "nil"
+	case contracts.NilStateNonNil:
+		return "non-nil"
+	default:
+		return "unknown"
+	}
 }
 
 func resolveConfiguredRules(

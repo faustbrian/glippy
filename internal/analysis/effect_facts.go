@@ -10,15 +10,21 @@ import (
 	"strings"
 
 	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/contracts"
 	"github.com/faustbrian/glippy/internal/rules"
 	"golang.org/x/tools/go/packages"
 )
 
-const nativeEffectFactSchemaVersion = 3
+const nativeEffectFactSchemaVersion = 4
 
 type returnStateKey struct {
 	value int
 	error int
+}
+
+type returnAliasKey struct {
+	result int
+	argument int
 }
 
 // nativeEffectFacts contains conservative, versioned semantic summaries whose
@@ -27,6 +33,9 @@ type nativeEffectFacts struct {
 	noReturns map[string]struct{}
 	parameters map[string]map[int]rules.ParameterEffectSummary
 	returns map[string]map[returnStateKey]rules.ReturnStateSummary
+	mustUse map[string]map[int]struct{}
+	blocking map[string]struct{}
+	aliases map[string]map[returnAliasKey]struct{}
 }
 
 func newNativeEffectFacts() *nativeEffectFacts {
@@ -34,6 +43,9 @@ func newNativeEffectFacts() *nativeEffectFacts {
 		noReturns: make(map[string]struct{}),
 		parameters: make(map[string]map[int]rules.ParameterEffectSummary),
 		returns: make(map[string]map[returnStateKey]rules.ReturnStateSummary),
+		mustUse: make(map[string]map[int]struct{}),
+		blocking: make(map[string]struct{}),
+		aliases: make(map[string]map[returnAliasKey]struct{}),
 	}
 }
 
@@ -58,6 +70,23 @@ func cloneNativeEffectFacts(facts *nativeEffectFacts) *nativeEffectFacts {
 			cloned[key] = summary
 		}
 		result.returns[identity] = cloned
+	}
+	for identity, indexes := range facts.mustUse {
+		cloned := make(map[int]struct{}, len(indexes))
+		for index := range indexes {
+			cloned[index] = struct{}{}
+		}
+		result.mustUse[identity] = cloned
+	}
+	for identity := range facts.blocking {
+		result.blocking[identity] = struct{}{}
+	}
+	for identity, aliases := range facts.aliases {
+		cloned := make(map[returnAliasKey]struct{}, len(aliases))
+		for key := range aliases {
+			cloned[key] = struct{}{}
+		}
+		result.aliases[identity] = cloned
 	}
 	return result
 }
@@ -97,6 +126,126 @@ func (f *nativeEffectFacts) ParameterEffect(
 	return parameters[index]
 }
 
+// MustUseResult implements rules.EffectFacts.
+func (f *nativeEffectFacts) MustUseResult(function *types.Func, index int) bool {
+	if f == nil || function == nil || index < 0 {
+		return false
+	}
+	_, found := f.mustUse[stableFunctionIdentity(function)][index]
+	return found
+}
+
+// Blocking implements rules.EffectFacts.
+func (f *nativeEffectFacts) Blocking(function *types.Func) bool {
+	if f == nil || function == nil {
+		return false
+	}
+	_, found := f.blocking[stableFunctionIdentity(function)]
+	return found
+}
+
+// ReturnAliasesArgument implements rules.EffectFacts.
+func (f *nativeEffectFacts) ReturnAliasesArgument(
+	function *types.Func,
+	result int,
+	argument int,
+) bool {
+	if f == nil || function == nil || result < 0 || argument < 0 {
+		return false
+	}
+	_, found := f.aliases[stableFunctionIdentity(
+		function,
+	)][returnAliasKey{result: result, argument: argument}]
+	return found
+}
+
+func (f *nativeEffectFacts) addContracts(resolved contracts.Resolved) {
+	if f == nil {
+		return
+	}
+	for _, binding := range resolved.Bindings() {
+		identity := stableFunctionIdentity(binding.Function)
+		if identity == "" {
+			continue
+		}
+		contract := binding.Contract
+		if contract.NoReturn {
+			f.noReturns[identity] = struct{}{}
+		}
+		if contract.Blocking {
+			f.blocking[identity] = struct{}{}
+		}
+		if len(contract.MustUse) != 0 {
+			indexes := make(map[int]struct{}, len(contract.MustUse))
+			for _, index := range contract.MustUse {
+				indexes[index] = struct{}{}
+			}
+			f.mustUse[identity] = indexes
+		}
+		parameters := make(map[int]rules.ParameterEffectSummary)
+		addParameterKinds := func(indices []int, kind rules.ParameterEffectKind) {
+			for _, index := range indices {
+				summary := parameters[index]
+				summary.Known = true
+				summary.Always = true
+				summary.Kinds |= kind
+				parameters[index] = summary
+			}
+		}
+		addParameterKinds(contract.Closes, rules.ParameterEffectClose)
+		addParameterKinds(contract.TakesOwnership, rules.ParameterEffectTransfer)
+		addParameterKinds(
+			contract.CompletesTransaction,
+			rules.ParameterEffectTransactionComplete,
+		)
+		addParameterKinds(contract.InvokesCancellation, rules.ParameterEffectCancelInvoke)
+		if len(parameters) != 0 {
+			f.parameters[identity] = parameters
+		}
+		if len(contract.NilError) != 0 {
+			states := make(
+				map[returnStateKey]rules.ReturnStateSummary,
+				len(contract.NilError),
+			)
+			for _, relation := range contract.NilError {
+				states[returnStateKey{
+					value: relation.Value,
+					error: relation.Error,
+				}] = rules.ReturnStateSummary{
+						WhenErrorNil: contractNilState(
+							relation.WhenErrorNil,
+						),
+						WhenErrorNonNil: contractNilState(
+							relation.WhenErrorNonNil,
+						),
+					}
+			}
+			f.returns[identity] = states
+		}
+		if len(contract.ReturnsAlias) != 0 {
+			aliases := make(map[returnAliasKey]struct{}, len(contract.ReturnsAlias))
+			for _, relation := range contract.ReturnsAlias {
+				aliases[returnAliasKey{
+					result: relation.Result,
+					argument: relation.Argument,
+				}] = struct{}{}
+			}
+			f.aliases[identity] = aliases
+		}
+	}
+}
+
+func contractNilState(state contracts.NilState) rules.NilState {
+	switch state {
+	case contracts.NilStateNil:
+		return rules.NilStateNil
+	case contracts.NilStateNonNil:
+		return rules.NilStateNonNil
+	default:
+		return rules.NilStateUnknown
+	}
+}
+
 func (f *nativeEffectFacts) addNoReturns(analysis *noReturnAnalysis) {
 	if f == nil || analysis == nil {
 		return
@@ -126,7 +275,16 @@ func (f *nativeEffectFacts) addParameterEffects(analysis *parameterEffectAnalysi
 			}
 		}
 		if len(parameters) != 0 {
-			f.parameters[identity] = parameters
+			existing := f.parameters[identity]
+			if existing == nil {
+				existing = make(map[int]rules.ParameterEffectSummary)
+				f.parameters[identity] = existing
+			}
+			for index, summary := range parameters {
+				if _, configured := existing[index]; !configured {
+					existing[index] = summary
+				}
+			}
 		}
 	}
 }
@@ -144,7 +302,16 @@ func (f *nativeEffectFacts) addReturnStates(analysis *returnStateAnalysis) {
 		for key, summary := range summaries {
 			cloned[key] = summary
 		}
-		f.returns[identity] = cloned
+		existing := f.returns[identity]
+		if existing == nil {
+			existing = make(map[returnStateKey]rules.ReturnStateSummary)
+			f.returns[identity] = existing
+		}
+		for key, summary := range cloned {
+			if _, configured := existing[key]; !configured {
+				existing[key] = summary
+			}
+		}
 	}
 }
 
@@ -259,9 +426,94 @@ func (f *nativeEffectFacts) digest() cache.Digest {
 		_, _ = digest.Write([]byte{byte(returned.summary.WhenErrorNil)})
 		_, _ = digest.Write([]byte{byte(returned.summary.WhenErrorNonNil)})
 	}
+	type indexedRecord struct {
+		identity string
+		index int
+	}
+	mustUse := make([]indexedRecord, 0)
+	if f != nil {
+		for identity, indexes := range f.mustUse {
+			for index := range indexes {
+				mustUse = append(
+					mustUse,
+					indexedRecord{identity: identity, index: index},
+				)
+			}
+		}
+	}
+	sort.Slice(
+		mustUse,
+		func(left, right int) bool {
+			if mustUse[left].identity != mustUse[right].identity {
+				return mustUse[left].identity < mustUse[right].identity
+			}
+			return mustUse[left].index < mustUse[right].index
+		},
+	)
+	for _, record := range mustUse {
+		_, _ = digest.Write([]byte{3})
+		writeEffectIdentity(digest, version[:], record.identity)
+		binary.BigEndian.PutUint64(version[:], uint64(record.index))
+		_, _ = digest.Write(version[:])
+	}
+	blocking := make([]string, 0)
+	if f != nil {
+		for identity := range f.blocking {
+			blocking = append(blocking, identity)
+		}
+	}
+	sort.Strings(blocking)
+	for _, identity := range blocking {
+		_, _ = digest.Write([]byte{4})
+		writeEffectIdentity(digest, version[:], identity)
+	}
+	type aliasRecord struct {
+		identity string
+		key returnAliasKey
+	}
+	aliases := make([]aliasRecord, 0)
+	if f != nil {
+		for identity, values := range f.aliases {
+			for key := range values {
+				aliases = append(aliases, aliasRecord{identity: identity, key: key})
+			}
+		}
+	}
+	sort.Slice(
+		aliases,
+		func(left, right int) bool {
+			if aliases[left].identity != aliases[right].identity {
+				return aliases[left].identity < aliases[right].identity
+			}
+			if aliases[left].key.result != aliases[right].key.result {
+				return aliases[left].key.result < aliases[right].key.result
+			}
+			return aliases[left].key.argument < aliases[right].key.argument
+		},
+	)
+	for _, record := range aliases {
+		_, _ = digest.Write([]byte{5})
+		writeEffectIdentity(digest, version[:], record.identity)
+		binary.BigEndian.PutUint64(version[:], uint64(record.key.result))
+		_, _ = digest.Write(version[:])
+		binary.BigEndian.PutUint64(version[:], uint64(record.key.argument))
+		_, _ = digest.Write(version[:])
+	}
 	var result cache.Digest
 	copy(result[:], digest.Sum(nil))
 	return result
+}
+
+func writeEffectIdentity(
+	digest interface {
+		Write([]byte) (int, error)
+	},
+	scratch []byte,
+	identity string,
+) {
+	binary.BigEndian.PutUint64(scratch, uint64(len(identity)))
+	_, _ = digest.Write(scratch)
+	_, _ = digest.Write([]byte(identity))
 }
 
 func stableFunctionIdentity(function *types.Func) string {
@@ -286,6 +538,11 @@ func loadNativeEffectFacts(
 	rootSources PackageSourceSet,
 ) (*nativeEffectFacts, error) {
 	facts := newNativeEffectFacts()
+	resolved, err := contracts.Resolve(options.Contracts, effectTypePackages(roots))
+	if err != nil {
+		return nil, fmt.Errorf("resolve project semantic contracts: %w", err)
+	}
+	facts.addContracts(resolved)
 	prefixes := effectModulePrefixes(roots)
 	if len(prefixes) == 0 {
 		return facts, nil
@@ -385,6 +642,37 @@ func loadNativeEffectFacts(
 		facts.addReturnStates(returnStates)
 	}
 	return facts, nil
+}
+
+func effectTypePackages(roots []*packages.Package) []*types.Package {
+	seen := make(map[*types.Package]struct{})
+	result := make([]*types.Package, 0)
+	var visit func(*types.Package)
+	visit = func(package_ *types.Package) {
+		if package_ == nil || package_.Path() == "" {
+			return
+		}
+		if _, found := seen[package_]; found {
+			return
+		}
+		seen[package_] = struct{}{}
+		result = append(result, package_)
+		for _, imported := range package_.Imports() {
+			visit(imported)
+		}
+	}
+	for _, root := range roots {
+		if root != nil {
+			visit(root.Types)
+		}
+	}
+	sort.SliceStable(
+		result,
+		func(left, right int) bool {
+			return result[left].Path() < result[right].Path()
+		},
+	)
+	return result
 }
 
 func effectModulePrefixes(roots []*packages.Package) []string {

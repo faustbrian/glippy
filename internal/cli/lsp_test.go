@@ -191,6 +191,77 @@ nil-context = "warn"
 	}
 }
 
+func TestRunLSPUsesProjectContractsWithOpenBufferOverlay(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy-contracts.toml"),
+		"version = 1\n[[functions]]\nsymbol = \"example.com/editor.stop\"\nnoreturn = true\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[analysis]\ncontract-files = [\".glippy-contracts.toml\"]\n[lint]\npresets = []\n[lint.rules]\nunreachable-code = \"warn\"\n",
+	)
+	path := filepath.Join(root, "source.go")
+	disk := "package editor\n\nfunc stop() {}\n"
+	buffer := "package editor\n\nfunc stop() {}\nfunc run() {\n\tstop()\n\tprintln(\"unreachable overlay\")\n}\n"
+	writeChangedCLIFile(t, path, disk)
+	uri := "file://" + filepath.ToSlash(path)
+	input := cliLSPFrames(
+		t,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": uri,
+					"languageId": "go",
+					"version": 4,
+					"text": buffer,
+				},
+			},
+		},
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := RunContext(
+		context.Background(),
+		[]string{"lsp"},
+		bytes.NewReader(input),
+		&stdout,
+		&stderr,
+	);
+		exitCode != ExitSuccess ||
+			stderr.Len() != 0 ||
+			!strings.Contains(stdout.String(), `"code":"unreachable-code"`) ||
+			!strings.Contains(stdout.String(), `"version":4`) {
+		t.Fatalf(
+			"RunContext(lsp contracts) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != disk {
+		t.Fatalf("LSP contract analysis mutated disk source: %q", got)
+	}
+}
+
 func TestParseLSPInvocationControlsExplicitFixClasses(t *testing.T) {
 	t.Parallel()
 

@@ -1619,3 +1619,17 @@ the LSP retains its base selection, and fix modes reject matrices before
 mutation. Fresh full-tree verification passes, and final-diff review found no
 remaining requirement, correctness, or test-quality issue. This closes the
 multi-target batch without pushing, tagging, or publishing.
+
+The v0.5 project semantic-contract batch adds strict, bounded, versioned TOML
+contracts for exact project and dependency functions and methods. No-return,
+must-use, parameter lifecycle, blocking, nil/error, and returned-alias facts
+resolve against already-loaded type graphs, seed the shared effect layer, and
+participate in CLI, LSP overlay, target-matrix, configuration-introspection,
+and persistent-cache behavior. Contract reads enforce the 1 MiB file and 4 MiB
+snapshot budgets before allocation, package-variant validation is deterministic,
+and external contracts use export types without loading dependency source
+solely for resolution. The effect schema and native cache component advance to
+version 4. The batch passes focused and full repository gates without pushing,
+tagging, or publishing. Genuine incremental LSP reuse, shared state-transition
+analysis, strictness profiles, and further evidence-backed catalog growth
+remain active v0.5 work.

@@ -8,6 +8,7 @@ import (
 	"go/build"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"sort"
@@ -18,6 +19,8 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"github.com/faustbrian/glippy/internal/baseline"
+	"github.com/faustbrian/glippy/internal/contracts"
+	"github.com/faustbrian/glippy/internal/filesystem"
 	"github.com/faustbrian/glippy/internal/rules"
 )
 
@@ -89,6 +92,8 @@ type Analysis struct {
 	GOARCH string
 	CGOEnabled bool
 	Targets []AnalysisTarget
+	ContractFiles []string
+	Contracts contracts.Set
 }
 
 // AnalysisTarget is one explicit CI-oriented Go build selection.
@@ -196,6 +201,7 @@ type analysisConfig struct {
 	GOARCH *string `toml:"goarch"`
 	CGOEnabled *bool `toml:"cgo-enabled"`
 	Targets []analysisTargetConfig `toml:"targets"`
+	ContractFiles []string `toml:"contract-files"`
 }
 
 type analysisTargetConfig struct {
@@ -271,7 +277,38 @@ func Load(selection Selection, options ParseOptions) (Config, error) {
 			cause: err,
 		}
 	}
-	return Parse(selection.Path, input, options)
+	loaded, err := Parse(selection.Path, input, options)
+	if err != nil {
+		return Config{}, err
+	}
+	if len(loaded.Analysis.ContractFiles) == 0 {
+		return loaded, nil
+	}
+	root := selection.Root
+	if root == "" {
+		root = filepath.Dir(selection.Path)
+	}
+	files := make([]contracts.File, len(loaded.Analysis.ContractFiles))
+	remainingBytes := int64(contracts.MaxTotalBytes)
+	for index, relative := range loaded.Analysis.ContractFiles {
+		absolute := filepath.Join(root, filepath.FromSlash(relative))
+		limit := min(int64(contracts.MaxFileBytes), remainingBytes)
+		snapshot, readErr := filesystem.ReadWithinLimit(root, absolute, limit)
+		if readErr != nil {
+			return Config{}, &Error{
+				Path: absolute,
+				Message: fmt.Sprintf("read contract file: %v", readErr),
+				cause: readErr,
+			}
+		}
+		files[index] = contracts.File{Path: absolute, Bytes: snapshot.Bytes()}
+		remainingBytes -= int64(len(files[index].Bytes))
+	}
+	loaded.Analysis.Contracts, err = contracts.ParseFiles(files)
+	if err != nil {
+		return Config{}, err
+	}
+	return loaded, nil
 }
 
 // Parse strictly decodes, defaults, and validates one configuration source.
@@ -403,6 +440,35 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 					result.Analysis.Targets[right].ID()
 			},
 		)
+	}
+	if decoded.Analysis.ContractFiles != nil {
+		if len(decoded.Analysis.ContractFiles) > contracts.MaxFiles {
+			return Config{}, semanticError(
+				path,
+				"analysis.contract-files must not contain more than %d paths",
+				contracts.MaxFiles,
+			)
+		}
+		result.Analysis.ContractFiles = slices.Clone(decoded.Analysis.ContractFiles)
+		for _, contractPath := range result.Analysis.ContractFiles {
+			if !baseline.ValidPath(contractPath) {
+				return Config{}, semanticError(
+					path,
+					"analysis.contract-files must contain portable project-relative paths",
+				)
+			}
+		}
+		sort.Strings(result.Analysis.ContractFiles)
+		for index := 1; index < len(result.Analysis.ContractFiles); index++ {
+			if result.Analysis.ContractFiles[index - 1] ==
+				result.Analysis.ContractFiles[index] {
+				return Config{}, semanticError(
+					path,
+					"analysis.contract-files contains duplicate contract file %q",
+					result.Analysis.ContractFiles[index],
+				)
+			}
+		}
 	}
 	if decoded.Lint.Preset != nil && decoded.Lint.Presets != nil {
 		return Config{}, semanticError(
