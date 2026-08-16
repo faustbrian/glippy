@@ -26,6 +26,8 @@ const (
 	Filename = ".glippy.toml"
 	// LegacyFilename is accepted as a deprecated fallback for the v0.2 compatibility window.
 	LegacyFilename = ".gox.toml"
+	// MaxAnalysisTargets bounds explicit CI build-matrix work from configuration.
+	MaxAnalysisTargets = 32
 )
 
 // Version is the only accepted configuration schema version.
@@ -86,6 +88,27 @@ type Analysis struct {
 	GOOS string
 	GOARCH string
 	CGOEnabled bool
+	Targets []AnalysisTarget
+}
+
+// AnalysisTarget is one explicit CI-oriented Go build selection.
+type AnalysisTarget struct {
+	BuildTags []string
+	GOOS string
+	GOARCH string
+	CGOEnabled bool
+}
+
+// ID returns the stable machine and human identity of one target.
+func (t AnalysisTarget) ID() string {
+	result := t.GOOS + "/" + t.GOARCH
+	if t.CGOEnabled {
+		result += "+cgo"
+	}
+	if len(t.BuildTags) != 0 {
+		result += "+tags=" + strings.Join(t.BuildTags, ",")
+	}
+	return result
 }
 
 // Lint contains the selected preset groups and explicit rule policy.
@@ -169,6 +192,14 @@ type formatConfig struct {
 
 type analysisConfig struct {
 	BuildTags []string `toml:"build-tags"`
+	GOOS *string `toml:"goos"`
+	GOARCH *string `toml:"goarch"`
+	CGOEnabled *bool `toml:"cgo-enabled"`
+	Targets []analysisTargetConfig `toml:"targets"`
+}
+
+type analysisTargetConfig struct {
+	Tags []string `toml:"tags"`
 	GOOS *string `toml:"goos"`
 	GOARCH *string `toml:"goarch"`
 	CGOEnabled *bool `toml:"cgo-enabled"`
@@ -307,6 +338,71 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 	}
 	if decoded.Analysis.CGOEnabled != nil {
 		result.Analysis.CGOEnabled = *decoded.Analysis.CGOEnabled
+	}
+	if decoded.Analysis.Targets != nil {
+		if len(decoded.Analysis.Targets) > MaxAnalysisTargets {
+			return Config{}, semanticError(
+				path,
+				"analysis.targets must not contain more than %d targets",
+				MaxAnalysisTargets,
+			)
+		}
+		result.Analysis.Targets = make([]AnalysisTarget, 0, len(decoded.Analysis.Targets))
+		seen := make(map[string]struct{}, len(decoded.Analysis.Targets))
+		for index, decodedTarget := range decoded.Analysis.Targets {
+			if decodedTarget.GOOS == nil || !validTarget(*decodedTarget.GOOS) {
+				return Config{}, semanticError(
+					path,
+					"analysis.targets[%d].goos must contain only lowercase ASCII letters and digits",
+					index,
+				)
+			}
+			if decodedTarget.GOARCH == nil || !validTarget(*decodedTarget.GOARCH) {
+				return Config{}, semanticError(
+					path,
+					"analysis.targets[%d].goarch must contain only lowercase ASCII letters and digits",
+					index,
+				)
+			}
+			tags := slices.Clone(decodedTarget.Tags)
+			for _, tag := range tags {
+				if !validBuildTag(tag) {
+					return Config{}, semanticError(
+						path,
+						"analysis.targets[%d].tags contains invalid tag %q",
+						index,
+						tag,
+					)
+				}
+			}
+			sort.Strings(tags)
+			tags = slices.Compact(tags)
+			target := AnalysisTarget{
+				BuildTags: tags,
+				GOOS: *decodedTarget.GOOS,
+				GOARCH: *decodedTarget.GOARCH,
+			}
+			if decodedTarget.CGOEnabled != nil {
+				target.CGOEnabled = *decodedTarget.CGOEnabled
+			}
+			identity := target.ID()
+			if _, duplicate := seen[identity]; duplicate {
+				return Config{}, semanticError(
+					path,
+					"analysis.targets repeats target %q",
+					identity,
+				)
+			}
+			seen[identity] = struct{}{}
+			result.Analysis.Targets = append(result.Analysis.Targets, target)
+		}
+		sort.Slice(
+			result.Analysis.Targets,
+			func(left, right int) bool {
+				return result.Analysis.Targets[left].ID() <
+					result.Analysis.Targets[right].ID()
+			},
+		)
 	}
 	if decoded.Lint.Preset != nil && decoded.Lint.Presets != nil {
 		return Config{}, semanticError(

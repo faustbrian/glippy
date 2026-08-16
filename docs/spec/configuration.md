@@ -207,6 +207,42 @@ override it. Package loads set `GOENV=off`; unsupported but syntactically valid
 targets remain package-loading errors rather than configuration-schema errors.
 All four resolved fields MUST contribute to result configuration identity.
 
+`analysis.targets` MAY define an explicit CI-oriented package-analysis matrix:
+
+```toml
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+tags = ["integration"]
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+cgo-enabled = true
+```
+
+Each entry MUST contain `goos` and `goarch`, MAY contain `tags`, and MAY set
+`cgo-enabled`; omission of cgo defaults to `false` for that target. Target tags
+have the same syntax as `analysis.build-tags` and MUST be sorted and
+deduplicated. Target identities use `GOOS/GOARCH`, followed by `+cgo` when
+enabled and `+tags=<comma-separated-tags>` when tags are present. Glippy MUST
+sort targets by that identity and MUST reject duplicate identities. A matrix
+MUST contain no more than 32 targets.
+
+When the selected rule policy requires package analysis, non-writing `lint`,
+combined `check`, and baseline generation MUST analyze every configured target.
+Identical diagnostics and prerequisite problems MUST be emitted once with the
+sorted union of target identities; target-specific findings MUST remain
+distinct. Syntax-only lint remains file-oriented and MUST NOT execute the
+matrix. The base `[analysis]` selection remains authoritative for LSP analysis
+and typed fix validation. Every fix mode MUST reject a configured matrix before
+mutation because one source transaction cannot safely choose among
+target-dependent fixes.
+
+`analysis.targets` contributes to canonical configuration identity. Each
+individual package load and persistent cache entry MUST additionally bind its
+resolved target fields, so results from two matrix entries cannot collide.
+
 ## Discovery And Precedence
 
 Without `--config`, Glippy discovers one project configuration by walking upward

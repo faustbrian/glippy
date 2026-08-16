@@ -1607,3 +1607,15 @@ Corpus review found eight true-positive dead statements across fzf, Caddy,
 NATS, and chi while sqlc and the approved `go-libraries/pkg/prompts` target
 remained clean. Direct `testing.T.Skip*` bodies and compiler-required return or
 panic terminators are excluded to preserve Go testing and type-checking idioms.
+
+The active v0.5 target-matrix batch adds bounded, canonical
+`[[analysis.targets]]` configuration for CI-oriented package analysis. Typed
+lint, combined check, and baseline generation execute every selected GOOS,
+GOARCH, build-tag, and cgo combination; identical diagnostics and prerequisite
+problems deduplicate with sorted target attribution across text, short, JSON,
+GitHub, and SARIF output. Persistent cache identity remains target-separated,
+statistics aggregate the complete matrix, syntax-only lint stays file-oriented,
+the LSP retains its base selection, and fix modes reject matrices before
+mutation. Fresh full-tree verification passes, and final-diff review found no
+remaining requirement, correctness, or test-quality issue. This closes the
+multi-target batch without pushing, tagging, or publishing.

@@ -48,6 +48,13 @@ configuration. A heterogeneous typed selection fails instead of silently
 analyzing only part of the request. Package loading includes test variants and
 uses the build tags, GOOS, GOARCH, and cgo policy selected by configuration.
 
+For CI, `[[analysis.targets]]` can select up to 32 explicit GOOS, GOARCH,
+build-tag, and cgo combinations. Package-aware lint, check, and baseline
+generation analyze every target, deduplicate identical findings, and label
+target-specific output. Syntax-only lint and the LSP continue using their
+single file or base-analysis policy. Fix and fix-preview modes reject a target
+matrix.
+
 ## Format
 
 ### Standard input and one file
@@ -452,9 +459,9 @@ glippy config show --config ./policy/glippy.toml ./module
 The deterministic text output identifies the project root, selection origin,
 source language, formatter widths, presets, warning escalation, enabled rules
 and their enablement reasons, resolved options, maximum analysis tier, file and
-type-error policies, build selection, baseline status, suppression policy, and
-cache limits. The migration target is reported as unset until migration rules
-have an explicit target contract.
+type-error policies, base build selection, canonical analysis targets, baseline
+status, suppression policy, and cache limits. The migration target is reported
+as unset until migration rules have an explicit target contract.
 
 ## Exit Codes
 

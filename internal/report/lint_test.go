@@ -26,6 +26,7 @@ func TestNewLintResultEmitsStableVersionedDiagnostics(t *testing.T) {
 	diagnostic := rules.Diagnostic{
 		RuleID: "call-rule",
 		Severity: rules.SeverityError,
+		Targets: []string{"darwin/arm64", "linux/amd64"},
 		MessageKey: "call",
 		Message: "call requires review",
 		Path: file.Path(),
@@ -125,6 +126,10 @@ func TestNewLintResultEmitsStableVersionedDiagnostics(t *testing.T) {
 		"    {\n" +
 		"      \"rule_id\": \"call-rule\",\n" +
 		"      \"severity\": \"error\",\n" +
+		"      \"targets\": [\n" +
+		"        \"darwin/arm64\",\n" +
+		"        \"linux/amd64\"\n" +
+		"      ],\n" +
 		"      \"message_key\": \"call\",\n" +
 		"      \"message\": \"call requires review\",\n" +
 		"      \"path\": \"/project/source.go\",\n" +

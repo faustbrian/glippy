@@ -245,7 +245,8 @@ func TestLoadPackagesRetainsCanonicalDependencyDiagnostics(t *testing.T) {
 	if len(first.Packages) != 1 || first.Packages[0].ID != "example.com/project/root" {
 		t.Fatalf("LoadPackages() roots = %#v", first.Packages)
 	}
-	if len(first.Diagnostics) == 0 || !slices.Equal(first.Diagnostics, second.Diagnostics) {
+	if len(first.Diagnostics) == 0 ||
+		!slices.EqualFunc(first.Diagnostics, second.Diagnostics, equalPackageDiagnostics) {
 		t.Fatalf(
 			"LoadPackages() diagnostics = %#v then %#v",
 			first.Diagnostics,
@@ -1065,6 +1066,14 @@ func TestLoadPackagesRejectsInvalidResourceLimitsBeforeLoading(t *testing.T) {
 			)
 		}
 	}
+}
+
+func equalPackageDiagnostics(left, right analysis.PackageDiagnostic) bool {
+	return left.PackageID == right.PackageID &&
+		slices.Equal(left.Targets, right.Targets) &&
+		left.Position == right.Position &&
+		left.Message == right.Message &&
+		left.Kind == right.Kind
 }
 
 func comparePackageDiagnostics(left, right analysis.PackageDiagnostic) int {

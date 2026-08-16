@@ -14,6 +14,7 @@ import (
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/baseline"
 	fixengine "github.com/faustbrian/glippy/internal/fix"
+	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
 )
 
@@ -91,6 +92,14 @@ func renderLintText(inputs []LintTextInput, sourceFrames bool) ([]byte, error) {
 					input.Result.Path,
 				)
 			}
+			if err := validateTargets(diagnostic.Targets); err != nil {
+				return nil, fmt.Errorf(
+					"%s: diagnostic %q targets: %w",
+					input.Result.Path,
+					diagnostic.RuleID,
+					err,
+				)
+			}
 			position, valid := physicalRangePosition(input.File, diagnostic.Range)
 			if !valid {
 				return nil, fmt.Errorf(
@@ -102,9 +111,8 @@ func renderLintText(inputs []LintTextInput, sourceFrames bool) ([]byte, error) {
 				writeTextIssueSeparator(&output)
 				fmt.Fprintf(
 					&output,
-					"%s[%s]: %s\n",
-					safeHumanText(string(diagnostic.Severity)),
-					safeHumanText(diagnostic.RuleID),
+					"%s: %s\n",
+					lintDiagnosticLabel(diagnostic),
 					safeHumanText(diagnostic.Message),
 				)
 				if err := writeSourceFrame(
@@ -123,12 +131,11 @@ func renderLintText(inputs []LintTextInput, sourceFrames bool) ([]byte, error) {
 			} else {
 				fmt.Fprintf(
 					&output,
-					"%s:%d:%d: %s[%s]: %s\n",
+					"%s:%d:%d: %s: %s\n",
 					safeHumanText(input.Result.Path),
 					position.Line,
 					position.Column,
-					safeHumanText(string(diagnostic.Severity)),
-					safeHumanText(diagnostic.RuleID),
+					lintDiagnosticLabel(diagnostic),
 					safeHumanText(diagnostic.Message),
 				)
 			}
@@ -377,6 +384,25 @@ func renderLintText(inputs []LintTextInput, sourceFrames bool) ([]byte, error) {
 		}
 	}
 	return []byte(output.String()), nil
+}
+
+func lintDiagnosticLabel(diagnostic rules.Diagnostic) string {
+	label := safeHumanText(string(diagnostic.Severity)) +
+		"[" +
+		safeHumanText(diagnostic.RuleID) +
+		"]"
+	return label + targetSuffix(diagnostic.Targets)
+}
+
+func targetSuffix(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	targets := make([]string, len(values))
+	for index, target := range values {
+		targets[index] = safeHumanText(target)
+	}
+	return "[" + strings.Join(targets, ",") + "]"
 }
 
 func newTextSource(file *source.File) textSource {

@@ -1,6 +1,7 @@
 package report
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -34,6 +35,7 @@ func TestNewPackageLintResultMapsStableProblemChannels(t *testing.T) {
 				},
 				{
 					PackageID: "a/package",
+					Targets: []string{"darwin/arm64", "linux/amd64"},
 					Position: "/project/a.go:1:1",
 					Message: "expected declaration",
 					Kind: packages.ParseError,
@@ -54,6 +56,7 @@ func TestNewPackageLintResultMapsStableProblemChannels(t *testing.T) {
 				{
 					Path: "/project/a.go",
 					Digest: problemDigest,
+					Targets: []string{"darwin/arm64"},
 					Message: "invalid source a",
 				},
 			},
@@ -70,9 +73,14 @@ func TestNewPackageLintResultMapsStableProblemChannels(t *testing.T) {
 		result.PackageDiagnostics[0].Kind != "unknown" ||
 		result.PackageDiagnostics[0].Position != "" ||
 		result.PackageDiagnostics[1].Kind != "parse" ||
+		!slices.Equal(
+			result.PackageDiagnostics[1].Targets,
+			[]string{"darwin/arm64", "linux/amd64"},
+		) ||
 		result.PackageDiagnostics[2].Kind != "type" ||
 		len(result.SourceProblems) != 2 ||
 		result.SourceProblems[0].Path != "/project/a.go" ||
+		!slices.Equal(result.SourceProblems[0].Targets, []string{"darwin/arm64"}) ||
 		result.SourceProblems[0].SourceDigest != digestString(problemDigest) {
 		t.Fatalf("NewPackageLintResult() = %#v", result)
 	}
@@ -82,6 +90,7 @@ func TestNewPackageLintResultMapsStableProblemChannels(t *testing.T) {
 	}
 	if !strings.Contains(string(encoded), `"package_diagnostics": 3`) ||
 		!strings.Contains(string(encoded), `"kind": "parse"`) ||
+		!strings.Contains(string(encoded), `"targets": [`) ||
 		!strings.Contains(string(encoded), `"source_problems": 2`) {
 		t.Fatalf("MarshalLintJSON() = %s", encoded)
 	}
@@ -133,6 +142,7 @@ func TestRenderPackageLintTextOrdersDistinctProblemChannels(t *testing.T) {
 		[]analysis.PackageDiagnostic{
 			{
 				PackageID: "z/package",
+				Targets: []string{"linux/amd64"},
 				Position: "/project/z.go:2:3",
 				Message: "undefined: z",
 				Kind: packages.TypeError,
@@ -148,6 +158,7 @@ func TestRenderPackageLintTextOrdersDistinctProblemChannels(t *testing.T) {
 			{
 				Path: "/project/z.go",
 				Digest: source.Digest{1},
+				Targets: []string{"linux/amd64"},
 				Message: "invalid source z",
 			},
 			{
@@ -161,9 +172,9 @@ func TestRenderPackageLintTextOrdersDistinctProblemChannels(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "/project/a.go:1:1: package[parse] a/package: expected declaration\n" +
-		"/project/z.go:2:3: package[type] z/package: undefined: z\n" +
+		"/project/z.go:2:3: package[type][linux/amd64] z/package: undefined: z\n" +
 		"/project/a.go: source: invalid source a\n" +
-		"/project/z.go: source: invalid source z\n"
+		"/project/z.go: source[linux/amd64]: invalid source z\n"
 	if string(output) != want {
 		t.Fatalf("RenderPackageLintText() = %q, want %q", output, want)
 	}
@@ -251,5 +262,40 @@ func TestPackageLintReportingRejectsInvalidProblemMetadata(t *testing.T) {
 	);
 		err == nil || !strings.Contains(err.Error(), "source digest") {
 		t.Fatalf("NewPackageLintResult() digest error = %v", err)
+	}
+	if _, err := NewPackageLintResult(
+		"check",
+		"source-error",
+		2,
+		false,
+		analysis.PackageResult{
+			LoadDiagnostics: []analysis.PackageDiagnostic{
+				{
+					PackageID: "package",
+					Targets: []string{"linux/amd64", "darwin/arm64"},
+					Message: "problem",
+					Kind: packages.TypeError,
+				},
+			},
+		},
+		nil,
+	);
+		err == nil || !strings.Contains(err.Error(), "targets are not strictly sorted") {
+		t.Fatalf("NewPackageLintResult() target order error = %v", err)
+	}
+	if _, err := RenderPackageLintText(
+		nil,
+		nil,
+		[]analysis.PackageSourceProblem{
+			{
+				Path: "/project/source.go",
+				Digest: source.Digest{1},
+				Targets: []string{" linux/amd64"},
+				Message: "problem",
+			},
+		},
+	);
+		err == nil || !strings.Contains(err.Error(), "empty or not canonical") {
+		t.Fatalf("RenderPackageLintText() target identity error = %v", err)
 	}
 }

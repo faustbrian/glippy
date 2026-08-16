@@ -24,6 +24,20 @@ func (c Config) CanonicalBytes() []byte {
 	} else {
 		encoded = append(encoded, 0)
 	}
+	encoded = binary.AppendUvarint(encoded, uint64(len(c.Analysis.Targets)))
+	for _, target := range c.Analysis.Targets {
+		encoded = appendCanonicalString(encoded, target.GOOS)
+		encoded = appendCanonicalString(encoded, target.GOARCH)
+		if target.CGOEnabled {
+			encoded = append(encoded, 1)
+		} else {
+			encoded = append(encoded, 0)
+		}
+		encoded = binary.AppendUvarint(encoded, uint64(len(target.BuildTags)))
+		for _, tag := range target.BuildTags {
+			encoded = appendCanonicalString(encoded, tag)
+		}
+	}
 	encoded = binary.AppendUvarint(encoded, uint64(len(c.Lint.Presets)))
 	for _, preset := range c.Lint.Presets {
 		encoded = appendCanonicalString(encoded, string(preset))

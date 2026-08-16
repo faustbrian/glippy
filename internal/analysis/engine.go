@@ -466,6 +466,9 @@ func sortDiagnostics(diagnostics []rules.Diagnostic) {
 			if order := cmp.Compare(first.Message, second.Message); order != 0 {
 				return order < 0
 			}
+			if order := slices.Compare(first.Targets, second.Targets); order != 0 {
+				return order < 0
+			}
 			if order := compareRelated(first.Related, second.Related); order != 0 {
 				return order < 0
 			}

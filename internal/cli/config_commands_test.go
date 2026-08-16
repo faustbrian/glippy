@@ -431,6 +431,16 @@ goos = "linux"
 goarch = "arm64"
 cgo-enabled = false
 
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+tags = ["linux", "integration"]
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+cgo-enabled = true
+
 [lint]
 presets = ["correctness"]
 warnings-as-errors = true
@@ -487,6 +497,9 @@ max-bytes = 4096
 			"testdata and fixtures: excluded unless explicitly selected",
 			"vendor: excluded from recursive discovery",
 			"analysis: goos=linux goarch=arm64 cgo=false build-tags=integration,linux",
+			"analysis targets: 2",
+			"  target darwin/arm64+cgo",
+			"  target linux/amd64+tags=integration,linux",
 			"baseline: .glippy-baseline.json (present; report-stale=false; expiry-cutoff=2027-02-01)",
 			"suppressions: require-reason=true expiry-cutoff=2027-01-01",
 			"cache: enabled=true max-entries=12 max-bytes=4096",

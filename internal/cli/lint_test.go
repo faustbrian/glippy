@@ -11,12 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/baseline"
 	"github.com/faustbrian/glippy/internal/cache"
 	"github.com/faustbrian/glippy/internal/config"
 	"github.com/faustbrian/glippy/internal/filesystem"
@@ -3126,6 +3128,655 @@ func TestRunLintFixDoesNotReloadUnchangedPackageForEveryFile(t *testing.T) {
 	}
 }
 
+func TestRunLintAnalyzesConfiguredTargetMatrix(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/targets\n\ngo 1.26.0\n",
+	)
+	linuxPath := filepath.Join(root, "linux.go")
+	darwinPath := filepath.Join(root, "darwin.go")
+	writeChangedCLIFile(
+		t,
+		linuxPath,
+		"//go:build linux\n\npackage targets\n\nfunc linux() { target() }\nfunc target() {}\n",
+	)
+	writeChangedCLIFile(
+		t,
+		darwinPath,
+		"//go:build darwin\n\npackage targets\n\nfunc darwin() { target() }\nfunc target() {}\n",
+	)
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+`,
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.Short,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+	want := darwinPath +
+		":5:17: warn[typed-call][darwin/arm64]: typed call requires review\n" +
+		linuxPath +
+		":5:16: warn[typed-call][linux/amd64]: typed call requires review\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(target matrix) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = runLintCheck(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.JSON,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+	var reported glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &reported); err != nil {
+		t.Fatalf("decode target matrix JSON: %v; output = %q", err, stdout.String())
+	}
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		len(reported.Diagnostics) != 2 ||
+		!slices.Equal(reported.Diagnostics[0].Targets, []string{"darwin/arm64"}) ||
+		!slices.Equal(reported.Diagnostics[1].Targets, []string{"linux/amd64"}) {
+		t.Fatalf(
+			"runLintCheck(target matrix JSON) = exit %d, result %#v, stderr %q",
+			exitCode,
+			reported,
+			stderr.String(),
+		)
+	}
+}
+
+func TestRunLintDeduplicatesFindingAcrossConfiguredTargets(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/targets\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "common.go")
+	writeChangedCLIFile(
+		t,
+		path,
+		"package targets\n\nfunc common() { target() }\nfunc target() {}\n",
+	)
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+`,
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.Short,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+	want := path +
+		":3:17: warn[typed-call][darwin/arm64,linux/amd64]: typed call requires review\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(shared target finding) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
+func TestRunLintLabelsTargetSpecificPackageDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/targets\n\ngo 1.26.0\n",
+	)
+	linuxPath := filepath.Join(root, "linux.go")
+	writeChangedCLIFile(
+		t,
+		linuxPath,
+		"//go:build linux\n\npackage targets\n\nvar value = missing\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "darwin.go"),
+		"//go:build darwin\n\npackage targets\n\nvar value = 1\n",
+	)
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+`,
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.Short,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+	if exitCode != ExitSourceError ||
+		stderr.Len() != 0 ||
+		!strings.Contains(
+			stdout.String(),
+			"package[type][linux/amd64] example.com/targets: undefined: missing",
+		) ||
+		strings.Contains(stdout.String(), "package[type][darwin/arm64]") {
+		t.Fatalf(
+			"runLintCheck(target package diagnostic) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = runLintCheck(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.JSON,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+	var reported glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &reported); err != nil {
+		t.Fatalf(
+			"decode target package diagnostic JSON: %v; output = %q",
+			err,
+			stdout.String(),
+		)
+	}
+	if exitCode != ExitSourceError ||
+		stderr.Len() != 0 ||
+		len(reported.PackageDiagnostics) != 2 {
+		t.Fatalf(
+			"runLintCheck(target package diagnostic JSON) = exit %d, result %#v, stderr %q",
+			exitCode,
+			reported,
+			stderr.String(),
+		)
+	}
+	foundType := false
+	for _, diagnostic := range reported.PackageDiagnostics {
+		if !slices.Equal(diagnostic.Targets, []string{"linux/amd64"}) {
+			t.Fatalf(
+				"target package diagnostic JSON = %#v",
+				reported.PackageDiagnostics,
+			)
+		}
+		foundType = foundType || diagnostic.Kind == "type"
+	}
+	if !foundType {
+		t.Fatalf(
+			"target package diagnostic JSON has no type error: %#v",
+			reported.PackageDiagnostics,
+		)
+	}
+}
+
+func TestRunLintTargetMatrixGeneratesAndAppliesOnePortableBaselineEntry(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/targetbaseline\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "common.go")
+	writeChangedCLIFile(
+		t,
+		path,
+		"package targetbaseline\n\nfunc common() { target() }\nfunc target() {}\n",
+	)
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	configuration := `version = 1
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+`
+	writeChangedCLIFile(t, configurationPath, configuration)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintGenerateBaseline(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			generateBaseline: "baseline.json",
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.Text,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+	baselinePath := filepath.Join(root, "baseline.json")
+	encoded, err := os.ReadFile(baselinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := baseline.Parse(
+		baselinePath,
+		encoded,
+		baseline.ParseOptions{KnownRules: []string{"typed-call"}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitSuccess ||
+		stderr.Len() != 0 ||
+		len(document.Entries) != 1 ||
+		document.Entries[0].Count != 1 {
+		t.Fatalf(
+			"runLintGenerateBaseline(target matrix) = exit %d, stdout %q, stderr %q, baseline %#v",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			document,
+		)
+	}
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		configuration + "\n[lint.baseline]\npath = \"baseline.json\"\n",
+	)
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = runLintCheck(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.Short,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+	if exitCode != ExitSuccess || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(target matrix baseline) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
+func TestRunLintTargetMatrixSeparatesPersistentCacheEntries(t *testing.T) {
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/targetcache\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "common.go")
+	writeChangedCLIFile(
+		t,
+		path,
+		"package targetcache\n\nfunc common() { target() }\nfunc target() {}\n",
+	)
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+
+[cache]
+enabled = true
+`,
+	)
+	cacheRoot := filepath.Join(t.TempDir(), "analysis-cache")
+	t.Setenv("GLIPPY_CACHE_DIR", cacheRoot)
+	invocation := lintInvocation{
+		configPath: configurationPath,
+		paths: []string{filepath.Join(root, "...")},
+		reporter: glippyreport.Short,
+		statistics: lintStatisticsJSON,
+	}
+	for run := 0; run < 2; run++ {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		exitCode := runLintCheck(
+			context.Background(),
+			invocation,
+			&stdout,
+			&stderr,
+			newCLITypesRegistry(t),
+		)
+		var statistics glippyreport.LintStatistics
+		if err := json.Unmarshal(stderr.Bytes(), &statistics); err != nil {
+			t.Fatalf(
+				"decode target cache statistics on run %d: %v; output = %q",
+				run,
+				err,
+				stderr.String(),
+			)
+		}
+		if exitCode != ExitFindings ||
+			!strings.Contains(stdout.String(), "[darwin/arm64,linux/amd64]") {
+			t.Fatalf(
+				"runLintCheck(target cache run %d) = exit %d, stdout %q, stderr %q",
+				run,
+				exitCode,
+				stdout.String(),
+				stderr.String(),
+			)
+		}
+		if run == 0 && (statistics.Cache.Misses == 0 || statistics.Cache.Writes == 0) {
+			t.Fatalf("cold target cache statistics = %#v", statistics.Cache)
+		}
+		if run == 1 && statistics.Cache.Hits < 2 {
+			t.Fatalf("warm target cache statistics = %#v", statistics.Cache)
+		}
+	}
+}
+
+func TestRunLintTargetMatrixAggregatesStatisticsAndDeduplicatesFindings(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/targetstatistics\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "common.go"),
+		"package targetstatistics\n\nfunc common() { target() }\nfunc target() {}\n",
+	)
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+`,
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.Short,
+			statistics: lintStatisticsJSON,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+	var statistics glippyreport.LintStatistics
+	if err := json.Unmarshal(stderr.Bytes(), &statistics); err != nil {
+		t.Fatalf("decode target statistics: %v; output = %q", err, stderr.String())
+	}
+	if exitCode != ExitFindings ||
+		len(statistics.Phases) != 2 ||
+		statistics.Phases[0].Name != "package-loading" ||
+		statistics.Phases[0].Metric.Calls != 2 ||
+		len(statistics.Rules) != 1 ||
+		statistics.Rules[0].ID != "typed-call" ||
+		statistics.Rules[0].Calls != 2 ||
+		statistics.Rules[0].Diagnostics != 1 ||
+		statistics.Rules[0].Findings != 1 {
+		t.Fatalf(
+			"runLintCheck(target statistics) = exit %d, stdout %q, statistics %#v",
+			exitCode,
+			stdout.String(),
+			statistics,
+		)
+	}
+}
+
+func TestRunCombinedCheckUsesConfiguredTargetMatrixWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/targets\n\ngo 1.26.0\n",
+	)
+	linuxPath := filepath.Join(root, "linux.go")
+	darwinPath := filepath.Join(root, "darwin.go")
+	linuxInput := []byte(
+		"//go:build linux\n\npackage targets\n\nfunc linux() {\n\ttarget()\n}\n\nfunc target() {}\n",
+	)
+	darwinInput := []byte(
+		"//go:build darwin\n\npackage targets\n\nfunc darwin() {\n\ttarget()\n}\n\nfunc target() {}\n",
+	)
+	writeChangedCLIFile(t, linuxPath, string(linuxInput))
+	writeChangedCLIFile(t, darwinPath, string(darwinInput))
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+`,
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runCombinedCheck(
+		context.Background(),
+		checkInvocation{
+			configPath: configurationPath,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.Short,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "warn[typed-call][darwin/arm64]") ||
+		!strings.Contains(stdout.String(), "warn[typed-call][linux/amd64]") ||
+		strings.Contains(stdout.String(), "format differs") {
+		t.Fatalf(
+			"runCombinedCheck(target matrix) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	for path, want := range map[string][]byte{linuxPath: linuxInput, darwinPath: darwinInput} {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("runCombinedCheck(target matrix) changed %q", path)
+		}
+	}
+}
+
+func TestMergeTargetPackageResultsRetainsCompletedTargetOnMergeFailure(t *testing.T) {
+	t.Parallel()
+
+	left := analysis.PackageResult{
+		Files: []analysis.Result{{Path: "/project/source.go", Digest: source.Digest{1}}},
+		Requirement: rules.RequireTypes,
+	}
+	right := analysis.PackageResult{
+		Files: []analysis.Result{{Path: "/project/source.go", Digest: source.Digest{2}}},
+		Requirement: rules.RequireTypes,
+	}
+	merged, err := mergeTargetPackageResults(left, right)
+	if err == nil {
+		t.Fatal("mergeTargetPackageResults() accepted incompatible source versions")
+	}
+	if !reflect.DeepEqual(merged, left) {
+		t.Fatalf("mergeTargetPackageResults() partial result = %#v, want %#v", merged, left)
+	}
+}
+
+func TestRunLintKeepsSyntaxOnlyAnalysisFileOrientedWithTargetMatrix(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/targets\n\ngo 1.26.0\n",
+	)
+	linuxPath := filepath.Join(root, "linux.go")
+	darwinPath := filepath.Join(root, "darwin.go")
+	writeChangedCLIFile(
+		t,
+		linuxPath,
+		"//go:build linux\n\npackage targets\n\nfunc linux() { target() }\n",
+	)
+	writeChangedCLIFile(
+		t,
+		darwinPath,
+		"//go:build darwin\n\npackage targets\n\nfunc darwin() { target() }\n",
+	)
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+`,
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{root},
+			reporter: glippyreport.Short,
+		},
+		&stdout,
+		&stderr,
+		newCLIFixRegistry(t, rules.FixSafe),
+	)
+	want := darwinPath +
+		":5:17: warn[fix-rule]: target call requires replacement\n" +
+		"  fix[safe]: rewrite\n" +
+		linuxPath +
+		":5:16: warn[fix-rule]: target call requires replacement\n" +
+		"  fix[safe]: rewrite\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(syntax target policy) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
 func TestRunLintFixUsesConfiguredBuildSelectionForPlanningAndValidation(t *testing.T) {
 	t.Parallel()
 
@@ -4177,6 +4828,61 @@ func TestRunLintFixAppliesAndFormatsOneSafeFix(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o640 {
 		t.Fatalf("runLintFix() permissions = %o, want 640", info.Mode().Perm())
+	}
+}
+
+func TestRunLintFixRejectsConfiguredTargetMatrix(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "source.go")
+	input := []byte("package sample\nfunc run(){target()}\n")
+	writeChangedCLIFile(t, path, string(input))
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+`,
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			fix: true,
+			paths: []string{path},
+			reporter: glippyreport.Text,
+		},
+		&stdout,
+		&stderr,
+		newCLIFixRegistry(t, rules.FixSafe),
+	)
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantError := "glippy lint: analysis.targets cannot be combined with fix mode\n"
+	if exitCode != ExitInvalidInvocation ||
+		stdout.Len() != 0 ||
+		stderr.String() != wantError ||
+		!bytes.Equal(got, input) {
+		t.Fatalf(
+			"runLintFix(target matrix) = exit %d, stdout %q, stderr %q, source %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			got,
+		)
 	}
 }
 

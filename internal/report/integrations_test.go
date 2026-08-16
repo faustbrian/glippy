@@ -3,6 +3,7 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -28,6 +29,7 @@ func TestRenderGitHubEmitsEscapedPhysicalAnnotations(t *testing.T) {
 			{
 				RuleID: "call-rule",
 				Severity: rules.SeverityWarn,
+				Targets: []string{"linux/amd64"},
 				MessageKey: "call",
 				Message: "review % result\nsoon",
 				Path: file.Path(),
@@ -59,7 +61,7 @@ func TestRenderGitHubEmitsEscapedPhysicalAnnotations(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "::warning file=/project/a%2Cb.go,title=format::source is not canonically formatted\n" +
-		"::warning file=/project/a%2Cb.go,line=3,col=2,endLine=3,endColumn=10,title=call-rule::review %25 result%0Asoon\n" +
+		"::warning file=/project/a%2Cb.go,line=3,col=2,endLine=3,endColumn=10,title=call-rule [linux/amd64]::review %25 result%0Asoon\n" +
 		"::warning file=/project/a%2Cb.go,line=1,col=1,endLine=1,endColumn=8,title=suppression%3Amalformed::malformed: suppression\n"
 	if string(output) != want {
 		t.Fatalf("RenderGitHub() =\n%s\nwant:\n%s", output, want)
@@ -101,6 +103,7 @@ func TestRenderSARIFEmitsDeterministicRulesAndPhysicalLocations(t *testing.T) {
 			{
 				RuleID: "call-rule",
 				Severity: rules.SeverityError,
+				Targets: []string{"darwin/arm64", "linux/amd64"},
 				MessageKey: "call",
 				Message: "call requires review",
 				Path: file.Path(),
@@ -142,6 +145,9 @@ func TestRenderSARIFEmitsDeterministicRulesAndPhysicalLocations(t *testing.T) {
 			Results []struct {
 				RuleID string `json:"ruleId"`
 				Level string `json:"level"`
+				Properties struct {
+					Targets []string `json:"targets"`
+				} `json:"properties"`
 				Locations []struct {
 					PhysicalLocation struct {
 						ArtifactLocation struct {
@@ -170,6 +176,10 @@ func TestRenderSARIFEmitsDeterministicRulesAndPhysicalLocations(t *testing.T) {
 		len(decoded.Runs[0].Results) != 1 ||
 		decoded.Runs[0].Results[0].RuleID != "call-rule" ||
 		decoded.Runs[0].Results[0].Level != "error" ||
+		!slices.Equal(
+			decoded.Runs[0].Results[0].Properties.Targets,
+			[]string{"darwin/arm64", "linux/amd64"},
+		) ||
 		decoded.Runs[0].Results[0].Locations[0].PhysicalLocation.ArtifactLocation.URI !=
 			"file:///project/source.go" ||
 		decoded.Runs[0].Results[0].Locations[0].PhysicalLocation.Region.StartLine != 3 ||
@@ -227,6 +237,7 @@ func TestRenderSARIFUsesFindingSeverityForSyntheticRuleDefaults(t *testing.T) {
 				{
 					Path: file.Path(),
 					Digest: file.Digest(),
+					Targets: []string{"linux/amd64"},
 					Message: "source failed",
 				},
 			},
@@ -247,6 +258,11 @@ func TestRenderSARIFUsesFindingSeverityForSyntheticRuleDefaults(t *testing.T) {
 					} `json:"rules"`
 				} `json:"driver"`
 			} `json:"tool"`
+			Results []struct {
+				Properties struct {
+					Targets []string `json:"targets"`
+				} `json:"properties"`
+			} `json:"results"`
 		} `json:"runs"`
 	}
 	if err := json.Unmarshal(output, &decoded); err != nil {
@@ -255,7 +271,12 @@ func TestRenderSARIFUsesFindingSeverityForSyntheticRuleDefaults(t *testing.T) {
 	if len(decoded.Runs) != 1 ||
 		len(decoded.Runs[0].Tool.Driver.Rules) != 1 ||
 		decoded.Runs[0].Tool.Driver.Rules[0].ID != "source" ||
-		decoded.Runs[0].Tool.Driver.Rules[0].DefaultConfiguration.Level != "error" {
+		decoded.Runs[0].Tool.Driver.Rules[0].DefaultConfiguration.Level != "error" ||
+		len(decoded.Runs[0].Results) != 1 ||
+		!slices.Equal(
+			decoded.Runs[0].Results[0].Properties.Targets,
+			[]string{"linux/amd64"},
+		) {
 		t.Fatalf("synthetic SARIF rule = %#v\n%s", decoded, output)
 	}
 }

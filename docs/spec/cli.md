@@ -198,6 +198,21 @@ with test variants enabled. Heterogeneous typed roots or configurations MUST
 fail as an invalid invocation until a per-path package configuration design is
 accepted.
 
+When package analysis is selected and `analysis.targets` is non-empty, `lint`
+MUST execute the complete canonical target matrix. Combined `check` and
+`lint --generate-baseline` MUST use the same matrix. Equal rule diagnostics,
+package diagnostics, and captured-source problems MUST be deduplicated with a
+sorted union of target identities; target-specific results MUST remain
+separate. Text, short, JSON, GitHub, and SARIF reporters MUST identify the
+applicable targets. A failure in one target MUST retain already completed
+targets in incomplete machine output while the invocation exits with the
+failure category.
+
+Syntax-only lint MUST remain file-oriented even when a matrix is configured.
+The LSP MUST use the base `[analysis]` selection instead of multiplying editor
+work across CI targets. Every lint fix class and fix preview MUST reject a
+configured matrix before source coordination or replacement begins.
+
 `lint --only=<id[,id...]>` and `lint --except=<id[,id...]>` MUST apply after
 configured presets and rule overrides. A selected configured-off rule MUST use
 its metadata default severity, or warning severity when that default is off.
@@ -265,6 +280,12 @@ non-portable output paths, all fix flags, and non-text reporting. It writes only
 the baseline, never source, and MUST use the shared rooted atomic writer. The
 [baseline reference](../baselines.md) defines identity, stale, expiry, and
 machine-reporting behavior.
+
+Matrix baseline generation MUST consume the merged target result. One
+diagnostic identical across targets therefore creates one portable baseline
+count, while target-specific files or diagnostics create their own structural
+entries. Applying that baseline MUST preserve target identities on baselined
+diagnostics for statistics and machine reporting.
 
 `lint` and `check` MAY select `--new-from=<git-ref>`. The driver MUST resolve
 the containing Git repository and all common ancestors of the named ref and

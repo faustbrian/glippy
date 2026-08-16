@@ -296,6 +296,7 @@ An ordinary diagnostic contains:
 {
   "rule_id": "call-rule",
   "severity": "error",
+  "targets": ["darwin/arm64", "linux/amd64"],
   "message_key": "call",
   "message": "call requires review",
   "path": "/project/source.go",
@@ -336,6 +337,10 @@ An ordinary diagnostic contains:
 `severity` is `warn` or `error` for an emitted diagnostic. Fix safety is
 `safe`, `suggestion`, or `unsafe`. The report intentionally omits source
 snippets, edit replacement text, and suppressed diagnostic bodies.
+`targets` is omitted for ordinary single-selection and syntax-only analysis.
+For an explicit analysis matrix it contains the strictly sorted target
+identities on which the exact diagnostic occurred. Identical cross-target
+diagnostics appear once with the union of identities.
 `withheld_fixes` is omitted when empty. It identifies a fix declared by the
 rule but not offered for this exact source and currently uses the stable
 `comments` reason when the transformation would discard comment ownership.
@@ -382,6 +387,7 @@ problems separate from rule diagnostics:
   "package_diagnostics": [
     {
       "package_id": "example.com/project",
+      "targets": ["linux/amd64"],
       "kind": "type",
       "position": "/project/source.go:7:3",
       "message": "undefined: value"
@@ -391,6 +397,7 @@ problems separate from rule diagnostics:
     {
       "path": "/project/generated.go",
       "source_digest": "4d88483e1fb88f2e2ab55c5d63f6f9f054d37349c68084e472b9a09bf14f28a9",
+      "targets": ["linux/amd64"],
       "message": "captured source did not parse"
     }
   ]
@@ -400,7 +407,13 @@ problems separate from rule diagnostics:
 Package `kind` is `unknown`, `list`, `parse`, or `type`. `package_id` is an
 opaque Go package-loader identity. `position` is omitted when the upstream
 diagnostic has no position. Source problems identify the exact captured bytes
-that failed to enter the ordinary analyzed-file channel.
+that failed to enter the ordinary analyzed-file channel. Matrix package and
+source problems use the same sorted, omitted-when-empty `targets` contract as
+rule diagnostics.
+
+GitHub annotations append `[target,...]` to the annotation title. SARIF results
+store the same array in `properties.targets`. Target identity never changes a
+rule ID or source range.
 
 ### Fix Provenance
 

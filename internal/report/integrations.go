@@ -28,6 +28,7 @@ type IntegrationInput struct {
 
 type integrationFinding struct {
 	ruleID string
+	targets []string
 	level string
 	message string
 	path string
@@ -73,7 +74,13 @@ func RenderGitHub(input IntegrationInput) ([]byte, error) {
 				fmt.Sprintf("endColumn=%d", end.Column),
 			)
 		}
-		properties = append(properties, "title=" + escapeGitHubProperty(finding.ruleID))
+		properties = append(
+			properties,
+			"title=" +
+				escapeGitHubProperty(
+					finding.ruleID + integrationTargetSuffix(finding.targets),
+				),
+		)
 		fmt.Fprintf(
 			&output,
 			"::%s %s::%s\n",
@@ -116,6 +123,9 @@ func RenderSARIF(input IntegrationInput) ([]byte, error) {
 			Level: finding.level,
 			Message: sarifMessage{Text: finding.message},
 			Locations: []sarifLocation{},
+		}
+		if len(finding.targets) != 0 {
+			result.Properties = &sarifProperties{Targets: slices.Clone(finding.targets)}
 		}
 		if finding.path != "" {
 			physical := sarifPhysicalLocation{
@@ -252,11 +262,19 @@ func integrationFindings(input IntegrationInput) ([]integrationFinding, error) {
 					item.Result.Path,
 				)
 			}
+			if err := validateTargets(diagnostic.Targets); err != nil {
+				return nil, fmt.Errorf(
+					"diagnostic %q targets: %w",
+					diagnostic.RuleID,
+					err,
+				)
+			}
 			range_ := diagnostic.Range
 			findings = append(
 				findings,
 				integrationFinding{
 					ruleID: diagnostic.RuleID,
+					targets: slices.Clone(diagnostic.Targets),
 					level: sarifLevel(diagnostic.Severity),
 					message: diagnostic.Message,
 					path: item.Result.Path,
@@ -324,6 +342,7 @@ func integrationFindings(input IntegrationInput) ([]integrationFinding, error) {
 			findings,
 			integrationFinding{
 				ruleID: "package:" + diagnostic.Kind,
+				targets: slices.Clone(diagnostic.Targets),
 				level: "error",
 				message: diagnostic.PackageID + ": " + message,
 			},
@@ -338,6 +357,7 @@ func integrationFindings(input IntegrationInput) ([]integrationFinding, error) {
 			findings,
 			integrationFinding{
 				ruleID: "source",
+				targets: slices.Clone(problem.Targets),
 				level: "error",
 				message: problem.Message,
 				path: problem.Path,
@@ -346,6 +366,13 @@ func integrationFindings(input IntegrationInput) ([]integrationFinding, error) {
 		)
 	}
 	return findings, nil
+}
+
+func integrationTargetSuffix(targets []string) string {
+	if len(targets) == 0 {
+		return ""
+	}
+	return " [" + strings.Join(targets, ",") + "]"
 }
 
 func physicalPositions(
@@ -476,7 +503,12 @@ type sarifResult struct {
 	RuleID string `json:"ruleId"`
 	Level string `json:"level"`
 	Message sarifMessage `json:"message"`
+	Properties *sarifProperties `json:"properties,omitempty"`
 	Locations []sarifLocation `json:"locations"`
+}
+
+type sarifProperties struct {
+	Targets []string `json:"targets,omitempty"`
 }
 
 type sarifMessage struct {

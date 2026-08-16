@@ -153,6 +153,13 @@ filesystems and a product-wide warm-performance claim remain open. The
 exercises root pinning, symlink containment, store lifecycle, and the CLI cache
 boundary on the recorded Linux pair.
 
+An explicit `analysis.targets` matrix MUST reuse the invocation-owned store but
+MUST execute one package load per canonical target. GOOS, GOARCH, sorted build
+tags, and cgo selection remain independent key inputs for each load. A warm
+entry from one target MUST NOT satisfy another target unless every target field
+is identical, which configuration rejects as a duplicate. Statistics aggregate
+lookups, hits, misses, invalidations, and writes across the complete matrix.
+
 Persistent object identity is the owning package path plus the canonical
 x/tools `objectpath`. It is proven across independent type checks for package
 objects, named types, methods, fields, type parameters, parameters, and results.

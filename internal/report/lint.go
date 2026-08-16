@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/baseline"
@@ -113,6 +114,7 @@ type LintWithheldFix struct {
 type LintDiagnostic struct {
 	RuleID string `json:"rule_id"`
 	Severity rules.Severity `json:"severity"`
+	Targets []string `json:"targets,omitempty"`
 	MessageKey string `json:"message_key"`
 	Message string `json:"message"`
 	Path string `json:"path"`
@@ -241,6 +243,13 @@ func NewLintResult(
 				return LintResult{}, fmt.Errorf(
 					"diagnostic source identity does not match analysis result %q",
 					analyzed.Path,
+				)
+			}
+			if err := validateTargets(diagnostic.Targets); err != nil {
+				return LintResult{}, fmt.Errorf(
+					"diagnostic %q targets: %w",
+					diagnostic.RuleID,
+					err,
 				)
 			}
 			result.Diagnostics = append(result.Diagnostics, lintDiagnostic(diagnostic))
@@ -579,6 +588,7 @@ func lintDiagnostic(diagnostic rules.Diagnostic) LintDiagnostic {
 	return LintDiagnostic{
 		RuleID: diagnostic.RuleID,
 		Severity: diagnostic.Severity,
+		Targets: slices.Clone(diagnostic.Targets),
 		MessageKey: diagnostic.MessageKey,
 		Message: diagnostic.Message,
 		Path: diagnostic.Path,
@@ -590,6 +600,18 @@ func lintDiagnostic(diagnostic rules.Diagnostic) LintDiagnostic {
 		Fixes: fixes,
 		WithheldFixes: withheldFixes,
 	}
+}
+
+func validateTargets(targets []string) error {
+	for index, target := range targets {
+		if strings.TrimSpace(target) == "" || strings.TrimSpace(target) != target {
+			return fmt.Errorf("target %d is empty or not canonical", index)
+		}
+		if index > 0 && targets[index - 1] >= target {
+			return fmt.Errorf("targets are not strictly sorted")
+		}
+	}
+	return nil
 }
 
 func cloneStrings(values []string) []string {

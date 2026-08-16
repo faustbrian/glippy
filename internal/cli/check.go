@@ -513,7 +513,7 @@ func runCombinedPackageCheck(
 	task lintPackageTask,
 	changedScope *changed.Scope,
 ) int {
-	result, err := runPackageAnalysis(ctx, registry, task)
+	result, err := runConfiguredPackageAnalysis(ctx, registry, task)
 	if err != nil {
 		return reportCombinedPackageCheck(
 			invocation,

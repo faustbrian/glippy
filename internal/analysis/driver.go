@@ -37,6 +37,7 @@ type RunOptions struct {
 type Result struct {
 	Path string
 	Digest source.Digest
+	Targets []string
 	Requirement rules.Requirement
 	Selection []rules.Selection
 	Diagnostics []rules.Diagnostic

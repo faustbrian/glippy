@@ -37,6 +37,79 @@ func TestPackageSourceCollectorOrdersMultipleFatalSourceFailures(t *testing.T) {
 	}
 }
 
+func TestPackageSourceSetTargetsAndMergesProblems(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("/project/source.go", []byte("package project\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := PackageSourceSet{
+		paths: []string{file.Path()},
+		files: map[string]*source.File{file.Path(): file},
+		problems: []PackageSourceProblem{
+			{Path: file.Path(), Digest: file.Digest(), Message: "source problem"},
+		},
+	}
+	darwin, err := base.WithProblemTargets([]string{"darwin/arm64"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	linux, err := base.WithProblemTargets([]string{"linux/amd64"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	merged, err := MergePackageSourceSets(darwin, linux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	problems := merged.Problems()
+	if len(problems) != 1 ||
+		!slices.Equal(problems[0].Targets, []string{"darwin/arm64", "linux/amd64"}) {
+		t.Fatalf("MergePackageSourceSets() problems = %#v", problems)
+	}
+	problems[0].Targets[0] = "mutated"
+	if got := merged.Problems()[0].Targets[0]; got != "darwin/arm64" {
+		t.Fatalf("PackageSourceSet.Problems() leaked target mutation: %q", got)
+	}
+}
+
+func TestMergePackageSourceSetsRetainsFormatterCapableDuplicate(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("package project\n")
+	full, err := source.Load("/project/source.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact, err := source.CaptureParsedBytes("/project/source.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compactSet := PackageSourceSet{
+		paths: []string{compact.Path()},
+		files: map[string]*source.File{compact.Path(): compact},
+	}
+	fullSet := PackageSourceSet{
+		paths: []string{full.Path()},
+		files: map[string]*source.File{full.Path(): full},
+	}
+	for _, sets := range [][]PackageSourceSet{{compactSet, fullSet}, {fullSet, compactSet}} {
+		merged, err := MergePackageSourceSets(sets...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		retained, found := merged.Lookup(full.Path())
+		if !found || !retained.CanFormat() {
+			t.Fatalf(
+				"MergePackageSourceSets() retained formatter capability = %t, found = %t",
+				found && retained.CanFormat(),
+				found,
+			)
+		}
+	}
+}
+
 func TestPackageLoadEnvironmentDisablesEveryOrdinaryModuleNetworkRoute(t *testing.T) {
 	t.Parallel()
 

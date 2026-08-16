@@ -1225,6 +1225,7 @@ type Finding struct {
 type Diagnostic struct {
 	RuleID string
 	Severity Severity
+	Targets []string
 	MessageKey string
 	Message string
 	Path string

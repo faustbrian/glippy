@@ -67,6 +67,7 @@ type PackageLoadOptions struct {
 // PackageDiagnostic is one canonical package-loading or type-checking error.
 type PackageDiagnostic struct {
 	PackageID string
+	Targets []string
 	Position string
 	Message string
 	Kind packages.ErrorKind
@@ -93,6 +94,7 @@ type PackageSourceSet struct {
 type PackageSourceProblem struct {
 	Path string
 	Digest source.Digest
+	Targets []string
 	Message string
 }
 
@@ -121,7 +123,117 @@ func (s PackageSourceSet) Lookup(path string) (*source.File, bool) {
 
 // Problems returns source-model failures in canonical order.
 func (s PackageSourceSet) Problems() []PackageSourceProblem {
-	return slices.Clone(s.problems)
+	result := slices.Clone(s.problems)
+	for index := range result {
+		result[index].Targets = slices.Clone(result[index].Targets)
+	}
+	return result
+}
+
+// WithProblemTargets returns the same immutable source set with one canonical
+// target set attached to every source-model problem.
+func (s PackageSourceSet) WithProblemTargets(targets []string) (PackageSourceSet, error) {
+	if err := validateProblemTargets(targets); err != nil {
+		return PackageSourceSet{}, err
+	}
+	result := s
+	result.problems = slices.Clone(s.problems)
+	for index := range result.problems {
+		result.problems[index].Targets = slices.Clone(targets)
+	}
+	return result, nil
+}
+
+// MergePackageSourceSets combines compatible immutable source indexes.
+func MergePackageSourceSets(sets ...PackageSourceSet) (PackageSourceSet, error) {
+	files := make(map[string]*source.File)
+	type problemIdentity struct {
+		path string
+		digest source.Digest
+		message string
+	}
+	problemsByIdentity := make(map[problemIdentity]PackageSourceProblem)
+	for _, set := range sets {
+		for _, path := range set.paths {
+			file, found := set.files[path]
+			if !found || file == nil {
+				return PackageSourceSet{}, fmt.Errorf(
+					"package source set is missing %q",
+					path,
+				)
+			}
+			if previous, duplicate := files[path]; duplicate {
+				if previous.Digest() != file.Digest() {
+					return PackageSourceSet{}, fmt.Errorf(
+						"package source sets contain incompatible versions of %q",
+						path,
+					)
+				}
+				if !previous.CanFormat() && file.CanFormat() {
+					files[path] = file
+				}
+				continue
+			}
+			files[path] = file
+		}
+		for _, problem := range set.problems {
+			if err := validateProblemTargets(problem.Targets); err != nil {
+				return PackageSourceSet{}, fmt.Errorf(
+					"package source problem %q targets: %w",
+					problem.Path,
+					err,
+				)
+			}
+			identity := problemIdentity{
+				path: problem.Path,
+				digest: problem.Digest,
+				message: problem.Message,
+			}
+			if previous, found := problemsByIdentity[identity]; found {
+				previous.Targets = append(previous.Targets, problem.Targets...)
+				sort.Strings(previous.Targets)
+				previous.Targets = slices.Compact(previous.Targets)
+				problemsByIdentity[identity] = previous
+				continue
+			}
+			problem.Targets = slices.Clone(problem.Targets)
+			problemsByIdentity[identity] = problem
+		}
+	}
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	problems := make([]PackageSourceProblem, 0, len(problemsByIdentity))
+	for _, problem := range problemsByIdentity {
+		problems = append(problems, problem)
+	}
+	sort.Slice(
+		problems,
+		func(left, right int) bool {
+			if problems[left].Path != problems[right].Path {
+				return problems[left].Path < problems[right].Path
+			}
+			if problems[left].Message != problems[right].Message {
+				return problems[left].Message < problems[right].Message
+			}
+			return slices.Compare(problems[left].Targets, problems[right].Targets) < 0
+		},
+	)
+	return PackageSourceSet{paths: paths, files: files, problems: problems}, nil
+}
+
+func validateProblemTargets(targets []string) error {
+	for index, target := range targets {
+		if strings.TrimSpace(target) == "" || strings.TrimSpace(target) != target {
+			return fmt.Errorf("target %d is empty or not canonical", index)
+		}
+		if index > 0 && targets[index - 1] >= target {
+			return fmt.Errorf("targets are not strictly sorted")
+		}
+	}
+	return nil
 }
 
 // LoadPackages loads the typed prerequisite shared by types, CFG, and SSA
@@ -553,7 +665,12 @@ func (c *packageSourceCollector) add(filename string, file *source.File, sourceE
 			Digest: file.Digest(),
 			Message: sourceErr.Error(),
 		}
-		if previous, found := c.problems[path]; found && previous != problem {
+		if previous, found := c.problems[path];
+			found &&
+				(previous.Path != problem.Path ||
+					previous.Digest != problem.Digest ||
+					previous.Message != problem.Message ||
+					!slices.Equal(previous.Targets, problem.Targets)) {
 			c.addError(
 				path,
 				fmt.Errorf(
@@ -907,7 +1024,10 @@ func orderPackageDiagnostics(diagnostics []PackageDiagnostic) {
 			if first.Message != second.Message {
 				return first.Message < second.Message
 			}
-			return first.Kind < second.Kind
+			if first.Kind != second.Kind {
+				return first.Kind < second.Kind
+			}
+			return slices.Compare(first.Targets, second.Targets) < 0
 		},
 	)
 }

@@ -18,6 +18,7 @@ deferred status is an explicit gate, not silent approval.
 | Invalid-source formatting | Source model specification; diagnostic-only |
 | Rule API and `go/analysis` | ADR 0006 and lint specification; native package-wide types rules plus syntax, typed DAG, package-fact, and object-fact adapters implemented |
 | Analysis requirement tiers | ADR 0005; ADR 0017 owns cross-package semantic effect facts |
+| CI analysis target matrices | ADR 0020; typed lint, combined check, baselines, reporters, and cache identity implement the bounded matrix contract |
 | Suppression syntax and reasons | ADR 0006, lint specification, and public suppression reference; exact-rule grammar implemented |
 | Fix safety and conflicts | ADR 0006 and fix specification |
 | Configuration discovery | ADR 0007 and schema-version-1 configuration contract; strict discovery and precedence implemented |

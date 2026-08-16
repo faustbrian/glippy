@@ -3,9 +3,11 @@ package config_test
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"go/build"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strconv"
@@ -322,6 +324,26 @@ func TestParseRejectsInvalidSemanticValues(t *testing.T) {
 			wantError: "analysis.goarch must contain only lowercase ASCII letters and digits",
 		},
 		{
+			name: "target missing goos",
+			input: "version = 1\n[[analysis.targets]]\ngoarch = \"amd64\"\n",
+			wantError: "analysis.targets[0].goos must contain only lowercase ASCII letters and digits",
+		},
+		{
+			name: "target missing goarch",
+			input: "version = 1\n[[analysis.targets]]\ngoos = \"linux\"\n",
+			wantError: "analysis.targets[0].goarch must contain only lowercase ASCII letters and digits",
+		},
+		{
+			name: "invalid target tag",
+			input: "version = 1\n[[analysis.targets]]\ngoos = \"linux\"\ngoarch = \"amd64\"\ntags = [\"one,two\"]\n",
+			wantError: "analysis.targets[0].tags contains invalid tag",
+		},
+		{
+			name: "duplicate target",
+			input: "version = 1\n[[analysis.targets]]\ngoos = \"linux\"\ngoarch = \"amd64\"\ntags = [\"integration\", \"linux\"]\n[[analysis.targets]]\ngoos = \"linux\"\ngoarch = \"amd64\"\ntags = [\"linux\", \"integration\"]\n",
+			wantError: "analysis.targets repeats target \"linux/amd64+tags=integration,linux\"",
+		},
+		{
 			name: "severity",
 			input: "version = 1\n[lint.rules]\nknown-rule = \"fatal\"\n",
 			knownRules: []string{"known-rule"},
@@ -584,6 +606,123 @@ disabled-rule = "off"
 			got.Lint.Rules["disabled-rule"],
 			config.SeverityOff,
 		)
+	}
+}
+
+func TestParseCanonicalizesAnalysisTargets(t *testing.T) {
+	t.Parallel()
+
+	configuration, err := config.Parse(
+		"project/.glippy.toml",
+		[]byte(
+			`version = 1
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+tags = ["integration", "linux", "integration"]
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+cgo-enabled = true
+`,
+		),
+		config.ParseOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []config.AnalysisTarget{
+		{GOOS: "darwin", GOARCH: "arm64", CGOEnabled: true},
+		{GOOS: "linux", GOARCH: "amd64", BuildTags: []string{"integration", "linux"}},
+	}
+	if !reflect.DeepEqual(configuration.Analysis.Targets, want) {
+		t.Fatalf("analysis targets = %#v, want %#v", configuration.Analysis.Targets, want)
+	}
+	if configuration.Analysis.Targets[0].ID() != "darwin/arm64+cgo" ||
+		configuration.Analysis.Targets[1].ID() != "linux/amd64+tags=integration,linux" {
+		t.Fatalf("analysis target IDs = %#v", configuration.Analysis.Targets)
+	}
+}
+
+func TestParseRejectsTooManyAnalysisTargets(t *testing.T) {
+	t.Parallel()
+
+	var input strings.Builder
+	input.WriteString("version = 1\n")
+	for index := 0; index < config.MaxAnalysisTargets + 1; index++ {
+		fmt.Fprintf(
+			&input,
+			"[[analysis.targets]]\ngoos = \"linux\"\ngoarch = \"arch%d\"\n",
+			index,
+		)
+	}
+	_, err := config.Parse(
+		"project/.glippy.toml",
+		[]byte(input.String()),
+		config.ParseOptions{},
+	)
+	if err == nil ||
+		!strings.Contains(
+			err.Error(),
+			"analysis.targets must not contain more than 32 targets",
+		) {
+		t.Fatalf("Parse() target limit error = %v", err)
+	}
+}
+
+func TestCanonicalBytesNormalizeAndRetainAnalysisTargets(t *testing.T) {
+	t.Parallel()
+
+	first, err := config.Parse(
+		"first.toml",
+		[]byte(
+			`version = 1
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+tags = ["linux", "integration"]
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+cgo-enabled = true
+`,
+		),
+		config.ParseOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := config.Parse(
+		"second.toml",
+		[]byte(
+			`version = 1
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+cgo-enabled = true
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+tags = ["integration", "linux", "integration"]
+`,
+		),
+		config.ParseOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first.CanonicalBytes(), second.CanonicalBytes()) {
+		t.Fatal("analysis target source order changed canonical configuration identity")
+	}
+	second.Analysis.Targets[0].CGOEnabled = false
+	if bytes.Equal(first.CanonicalBytes(), second.CanonicalBytes()) {
+		t.Fatal("analysis targets were omitted from canonical configuration identity")
 	}
 }
 

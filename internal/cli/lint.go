@@ -733,7 +733,7 @@ func runLintGenerateBaseline(
 	}
 	inputs := make([]baseline.InputFile, 0)
 	if packageMode {
-		result, err := runPackageAnalysis(ctx, registry, packageTask)
+		result, err := runConfiguredPackageAnalysis(ctx, registry, packageTask)
 		if err != nil {
 			return report(
 				stderr,
@@ -869,7 +869,7 @@ func runLintPackageCheck(
 	task lintPackageTask,
 	changedScope *changed.Scope,
 ) int {
-	result, err := runPackageAnalysis(ctx, registry, task)
+	result, err := runConfiguredPackageAnalysis(ctx, registry, task)
 	if err != nil {
 		return reportLintPackageFailure(
 			invocation,
@@ -1000,6 +1000,17 @@ func runLintPackageCheck(
 		result.Files,
 		exitCode,
 	)
+}
+
+func runConfiguredPackageAnalysis(
+	ctx context.Context,
+	registry *rules.Registry,
+	task lintPackageTask,
+) (analysis.PackageResult, error) {
+	if len(task.options.buildSelection.Targets) == 0 {
+		return runPackageAnalysis(ctx, registry, task)
+	}
+	return runLintTargetMatrix(ctx, registry, task)
 }
 
 func applyConfiguredBaselines(
@@ -1498,6 +1509,18 @@ func runLintFix(
 	plans, exitCode, err := prepareLintInputPlans(ctx, invocation, registry)
 	if err != nil {
 		return reportLintFixFailure(invocation, stdout, stderr, exitCode, nil, err)
+	}
+	for _, plan := range plans {
+		if len(plan.options.buildSelection.Targets) != 0 {
+			return reportLintFixFailure(
+				invocation,
+				stdout,
+				stderr,
+				ExitInvalidInvocation,
+				nil,
+				errors.New("analysis.targets cannot be combined with fix mode"),
+			)
+		}
 	}
 	changedScope, exitCode, err := prepareChangedScope(ctx, invocation.newFrom, plans)
 	if err != nil {

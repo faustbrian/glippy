@@ -399,6 +399,10 @@ func renderEffectiveConfiguration(
 		loaded.Analysis.CGOEnabled,
 		buildTags,
 	)
+	fmt.Fprintf(&output, "analysis targets: %d\n", len(loaded.Analysis.Targets))
+	for _, target := range loaded.Analysis.Targets {
+		fmt.Fprintf(&output, "  target %s\n", target.ID())
+	}
 	fmt.Fprintf(&output, "baseline: %s\n", baselineDescription(inputPath, selection, loaded))
 	expiry := loaded.Lint.Suppressions.ExpiryCutoff
 	if expiry == "" {

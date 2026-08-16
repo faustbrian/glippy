@@ -16,6 +16,7 @@ import (
 // LintPackageDiagnostic is one stable package-loading, parse, or type error.
 type LintPackageDiagnostic struct {
 	PackageID string `json:"package_id"`
+	Targets []string `json:"targets,omitempty"`
 	Kind string `json:"kind"`
 	Position string `json:"position,omitempty"`
 	Message string `json:"message"`
@@ -25,6 +26,7 @@ type LintPackageDiagnostic struct {
 type LintSourceProblem struct {
 	Path string `json:"path"`
 	SourceDigest string `json:"source_digest"`
+	Targets []string `json:"targets,omitempty"`
 	Message string `json:"message"`
 }
 
@@ -106,8 +108,9 @@ func renderPackageLintText(
 		}
 		fmt.Fprintf(
 			&output,
-			"package[%s] %s: %s\n",
+			"package[%s]%s %s: %s\n",
 			safeHumanText(diagnostic.Kind),
+			targetSuffix(diagnostic.Targets),
 			safeHumanText(diagnostic.PackageID),
 			safeHumanText(diagnostic.Message),
 		)
@@ -115,8 +118,9 @@ func renderPackageLintText(
 	for _, problem := range mappedSources {
 		fmt.Fprintf(
 			&output,
-			"%s: source: %s\n",
+			"%s: source%s: %s\n",
 			safeHumanText(problem.Path),
+			targetSuffix(problem.Targets),
 			safeHumanText(problem.Message),
 		)
 	}
@@ -145,12 +149,16 @@ func mapPackageDiagnostics(input []analysis.PackageDiagnostic) ([]LintPackageDia
 				diagnostic.Kind,
 			)
 		}
+		if err := validateTargets(diagnostic.Targets); err != nil {
+			return nil, fmt.Errorf("package diagnostic %d targets: %w", index, err)
+		}
 		position := diagnostic.Position
 		if position == "-" {
 			position = ""
 		}
 		result[index] = LintPackageDiagnostic{
 			PackageID: diagnostic.PackageID,
+			Targets: slices.Clone(diagnostic.Targets),
 			Kind: kind,
 			Position: position,
 			Message: diagnostic.Message,
@@ -169,7 +177,10 @@ func mapPackageDiagnostics(input []analysis.PackageDiagnostic) ([]LintPackageDia
 			if order := cmp.Compare(first.Message, second.Message); order != 0 {
 				return order < 0
 			}
-			return first.Kind < second.Kind
+			if order := cmp.Compare(first.Kind, second.Kind); order != 0 {
+				return order < 0
+			}
+			return slices.Compare(first.Targets, second.Targets) < 0
 		},
 	)
 	return result, nil
@@ -203,9 +214,13 @@ func mapSourceProblems(input []analysis.PackageSourceProblem) ([]LintSourceProbl
 				problem.Path,
 			)
 		}
+		if err := validateTargets(problem.Targets); err != nil {
+			return nil, fmt.Errorf("source problem %q targets: %w", problem.Path, err)
+		}
 		result[index] = LintSourceProblem{
 			Path: problem.Path,
 			SourceDigest: encodeDigest(problem.Digest),
+			Targets: slices.Clone(problem.Targets),
 			Message: problem.Message,
 		}
 	}

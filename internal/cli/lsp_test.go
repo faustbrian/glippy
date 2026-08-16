@@ -118,6 +118,79 @@ func TestRunLSPPublishesTypedDiagnosticsAndValidatedSafeAction(t *testing.T) {
 	}
 }
 
+func TestRunLSPUsesBaseBuildSelectionInsteadOfCITargetMatrix(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		`version = 1
+
+[analysis]
+build-tags = ["selected"]
+goos = "linux"
+goarch = "amd64"
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+
+[lint]
+presets = []
+
+[lint.rules]
+nil-context = "warn"
+`,
+	)
+	path := filepath.Join(root, "source.go")
+	buffer := "//go:build selected && linux\n\npackage sample\n\nimport \"context\"\n\nfunc run() {\n\t_, cancel := context.WithCancel(nil)\n\tcancel()\n}\n"
+	writeChangedCLIFile(t, path, buffer)
+	uri := "file://" + filepath.ToSlash(path)
+	input := cliLSPFrames(
+		t,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": uri,
+					"languageId": "go",
+					"version": 1,
+					"text": buffer,
+				},
+			},
+		},
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := RunContext(
+		context.Background(),
+		[]string{"lsp"},
+		bytes.NewReader(input),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitSuccess ||
+		stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), `"code":"nil-context"`) {
+		t.Fatalf(
+			"RunContext(lsp target policy) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
 func TestParseLSPInvocationControlsExplicitFixClasses(t *testing.T) {
 	t.Parallel()
 
