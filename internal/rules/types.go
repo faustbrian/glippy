@@ -600,6 +600,8 @@ type ControlFlowContext struct {
 type ControlFlowShared struct {
 	lockStateOnce sync.Once
 	lockState *lockStateAnalysis
+	resourceUseOnce sync.Once
+	resourceUse *resourceUseAnalysis
 }
 
 // NewControlFlowShared constructs one function-local shared analysis cache.

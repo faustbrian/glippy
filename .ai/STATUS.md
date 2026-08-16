@@ -1648,3 +1648,19 @@ Darwin arm64; exact-rule dogfood remained clean on Glippy and
 `go-libraries/pkg/prompts`. Resource, transaction, HTTP-body, channel, and
 WaitGroup transition rules plus strictness profiles and genuine incremental
 LSP reuse remain active v0.5 work.
+
+The v0.5 resource state-transition batch admits `resource-used-after-close` as
+an opt-in suspicious CFG rule. Direct locally acquired `Close() error` values
+move through open, closed, and conservative unknown states; only curated
+operations reached exclusively from a proven close report. Exact helper close
+effects establish closed state; ownership transfer and every other helper use
+stop state tracking because borrowing does not prove unchanged internal state.
+Direct close can reestablish precision after an escape, and reacquisition
+establishes a new open value. Deferred or
+asynchronous close, aliases, arbitrary methods, multiple tracked calls in one
+CFG node, uncertain joins, generated files, and ill-typed packages fail closed.
+The 100-function package benchmark measured a 54.36 ms median, about 4.56 MB,
+and 53,794 allocations per run on Darwin arm64; exact-rule dogfood remained
+clean on Glippy and `go-libraries/pkg/prompts`. The catalog now contains 104
+rules. Transaction, HTTP-body, channel, and WaitGroup transition rules plus
+strictness profiles and genuine incremental LSP reuse remain active v0.5 work.

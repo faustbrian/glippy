@@ -77,9 +77,9 @@ local `Close() error` resources use it; `resource-not-closed` therefore reports
 partial cleanup and reassignment instead of accepting one close anywhere in a
 function. Shared CFG and SSA construction now propagates no-return behavior
 through statically called functions and methods in the loaded package and exact
-terminal APIs from `os`, `runtime`, `syscall`, `log`, and `testing`. Imported
-project and third-party completion, transfer, and no-return facts remain a
-separate evidence-gated expansion.
+terminal APIs from `os`, `runtime`, `syscall`, `log`, and `testing`. Same-module
+facts and configured project contracts now provide exact completion, transfer,
+and no-return behavior; speculative third-party inference remains excluded.
 
 The response lifecycle track now also admits
 `http-response-body-not-closed`. It follows exact `net/http` package and Client
@@ -101,6 +101,18 @@ instead of one lexical statement list. `sync.Cond.Wait` is deliberately
 excluded because its contract requires and temporarily releases its Locker.
 Unknown helper-managed transitions, indexed receivers, and intentional
 cross-function lock handoff remain conservative boundaries.
+
+The state-transition track now also admits `resource-used-after-close` as an
+opt-in suspicious rule. It follows locally acquired `Close() error` results,
+reports curated direct operations only when every reaching CFG state is proven
+closed, and consumes exact same-module or configured close effects. Proven
+ownership transfer and every helper without an exact close effect stop state
+tracking: an ownership borrow does not prove that a helper left the resource's
+internal state unchanged. Deferred or asynchronous closes do not establish an
+immediate closed state, and a direct reacquisition establishes a new open
+state. Aliases, nested tracked calls, arbitrary methods, and uncertain joins
+remain conservative. No fix guesses whether the operation, close, or
+acquisition should move.
 
 The pedantic track now also admits `empty-branch`, `manual-min-max`, and
 `redundant-type-declaration`. These rules retain narrow syntax or exact-type

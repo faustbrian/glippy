@@ -6,6 +6,8 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
+const maxStateTransitionChanges = 1_000_000
+
 // stateTransitionModel defines one finite, monotone data-flow problem over a
 // shared Go control-flow graph. Clone isolates successor state, Merge joins an
 // incoming state into an existing block entry, and Transfer applies one CFG

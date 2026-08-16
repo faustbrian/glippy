@@ -33,6 +33,10 @@ transfers it conservatively. Reassignment before either effect loses the
 obligation and reports. Zero-result `Close` methods remain excluded because a
 method name alone includes non-resource reflection values.
 
+When an exact same-module or configured parameter effect exists, proven
+borrowing preserves the obligation while guaranteed close or transfer ends it.
+Unavailable helper behavior retains the conservative direct-transfer boundary.
+
 The bounded shared obligation engine summarizes each reachable CFG block as
 open, completed, transferred, or lost and stops a path after completion or
 transfer. It uses the shared CFG's no-return policy and visits each block state

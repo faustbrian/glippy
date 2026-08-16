@@ -145,7 +145,7 @@ func takeBodies(...io.ReadCloser) {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 5 {
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 7 {
 		t.Fatalf("http-response-body-not-closed result = %#v", result)
 	}
 	expectedFunctions := []string{
@@ -154,6 +154,8 @@ func takeBodies(...io.ReadCloser) {}
 		"func readFailure()",
 		"func overwritten(",
 		"func readWithoutClose()",
+		"func passBody()",
+		"func passBodyVariadic()",
 	}
 	for index, diagnostic := range result.Files[0].Diagnostics {
 		functionStart := strings.Index(input, expectedFunctions[index])

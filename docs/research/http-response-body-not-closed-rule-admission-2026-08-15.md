@@ -39,9 +39,12 @@ the standard client may already have closed.
 An exact `response.Body.Close()` completes the obligation. Returning, passing,
 sending, storing, or capturing the response transfers ownership. Returning,
 storing, or sending the body also transfers it. Passing the body transfers
-ownership only when the destination parameter itself has `Close() error`,
-including variadic closer parameters; passing it as `io.Reader` to
-`io.ReadAll`, a decoder, or another consumer does not imply cleanup.
+ownership when unavailable helper facts leave only a destination parameter
+with `Close() error`, including variadic closer parameters. An exact
+same-module or configured summary takes precedence: proven borrowing preserves
+the obligation, while guaranteed close or transfer ends it. Passing the body
+as `io.Reader` to `io.ReadAll`, a decoder, or another consumer does not imply
+cleanup.
 
 The shared bounded obligation engine reports conditional cleanup and response
 reassignment. During admission, its method-value classifier was corrected to

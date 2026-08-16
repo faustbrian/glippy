@@ -126,7 +126,7 @@ func consume(*os.File) {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 5 {
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 7 {
 		t.Fatalf("resource-not-closed result = %#v", result)
 	}
 	expected := []struct {
@@ -137,7 +137,9 @@ func consume(*os.File) {}
 		{function: "func badFallthrough()", acquisition: "file, _ := os.Open"},
 		{function: "func badCustomPipe(", acquisition: "file, err := command.StdoutPipe"},
 		{function: "func partialClose(", acquisition: "file, err := os.Open"},
+		{function: "func completedBranches(", acquisition: "file, err := os.Open"},
 		{function: "func overwritten()", acquisition: "file, err := os.Open"},
+		{function: "func pass()", acquisition: "file, err := os.Open"},
 	}
 	expectedStarts := make(map[int]bool, len(expected))
 	for index, location := range expected {

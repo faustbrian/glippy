@@ -80,8 +80,13 @@ func newParameterEffectAnalysis(
 
 func (a *parameterEffectAnalysis) buildAll() {
 	for _, definition := range a.ordered {
-		if a.ctx.Err() != nil || definition == nil || definition.signature.Params() == nil {
+		if a.ctx.Err() != nil {
 			return
+		}
+		if definition == nil ||
+			definition.signature == nil ||
+			definition.signature.Params() == nil {
+			continue
 		}
 		for index := range definition.signature.Params().Len() {
 			a.build(definition, index)
@@ -213,6 +218,10 @@ func (a *parameterEffectAnalysis) parameterNodeEffect(
 	node ast.Node,
 	parameter types.Object,
 ) (rules.ParameterEffectKind, bool) {
+	if asynchronous, ok := node.(*ast.GoStmt);
+		ok && expressionUsesObjectForEffects(info, asynchronous.Call, parameter) {
+		return rules.ParameterEffectTransfer, false
+	}
 	var effect rules.ParameterEffectKind
 	ambiguous := false
 	ast.PreorderStack(

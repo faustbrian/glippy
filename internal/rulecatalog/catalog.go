@@ -60,6 +60,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewShadowedErrorRule(),
 		rules.NewRedundantClosureRule(),
 		rules.NewResourceNotClosedRule(),
+		rules.NewResourceUsedAfterCloseRule(),
 		rules.NewRedundantElseRule(),
 		rules.NewRedundantNilCheckRule(),
 		rules.NewRedundantTypeDeclarationRule(),

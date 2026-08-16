@@ -484,11 +484,14 @@ func TestRunControlFlowExposesPackageParameterEffects(t *testing.T) {
 
 type closer interface { Close() error }
 
+func noParameters() {}
 func borrow(value closer) {}
 func borrowAll(values ...closer) {}
 func borrowSecond(value closer) { borrowAll(nil, value) }
 func closeFirst(values ...closer) { _ = values[0].Close() }
 func close(value closer) { _ = value.Close() }
+func closeDeferred(value closer) { defer value.Close() }
+func closeAsync(value closer) { go value.Close() }
 
 func inspect(value closer) {
 	borrow(value)
@@ -496,6 +499,8 @@ func inspect(value closer) {
 	borrowSecond(value)
 	closeFirst(value, value)
 	close(value)
+	closeDeferred(value)
+	closeAsync(value)
 }
 `,
 	)
@@ -570,6 +575,14 @@ func inspect(value closer) {
 	}
 	if close := summaries["close"]; !close.GuaranteesAny(rules.ParameterEffectClose) {
 		t.Fatalf("close summary = %#v", close)
+	}
+	if closeDeferred := summaries["closeDeferred"];
+		!closeDeferred.GuaranteesAny(rules.ParameterEffectClose) {
+		t.Fatalf("deferred close summary = %#v", closeDeferred)
+	}
+	if closeAsync := summaries["closeAsync"];
+		!closeAsync.GuaranteesAny(rules.ParameterEffectTransfer) {
+		t.Fatalf("asynchronous close summary = %#v", closeAsync)
 	}
 	if second := summaries["borrowAllSecond"]; !second.Known || second.Always {
 		t.Fatalf("variadic borrow summary = %#v", second)

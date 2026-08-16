@@ -12,7 +12,6 @@ import (
 
 const (
 	maxTrackedFunctionLocks = 4096
-	maxLockFlowChanges = 1_000_000
 )
 
 type lockHeldAcrossBlockingCallRule struct{}
@@ -320,8 +319,8 @@ func buildLockStateAnalysis(ctx *ControlFlowContext) *lockStateAnalysis {
 		initial.values[key] = lockValue{states: states}
 	}
 	changeBound := len(ctx.Graph().Blocks) * (len(keys) * 16 + 4)
-	if changeBound <= 0 || changeBound > maxLockFlowChanges {
-		changeBound = maxLockFlowChanges
+	if changeBound <= 0 || changeBound > maxStateTransitionChanges {
+		changeBound = maxStateTransitionChanges
 	}
 	snapshot, complete := runStateTransitions(
 		ctx.Graph(),

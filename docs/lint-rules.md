@@ -80,6 +80,7 @@ not stable release promises.
 - [redundant-type-declaration](#redundant-type-declaration)
 - [regexp-compile-in-loop](#regexp-compile-in-loop)
 - [resource-not-closed](#resource-not-closed)
+- [resource-used-after-close](#resource-used-after-close)
 - [self-assignment](#self-assignment)
 - [shadowed-error](#shadowed-error)
 - [sql-transaction-not-completed](#sql-transaction-not-completed)
@@ -3671,6 +3672,70 @@ use(file)
 file, err := os.Open(path)
 if err != nil { return err }
 defer file.Close()
+```
+
+## resource-used-after-close
+
+detects direct operations on definitely closed local resources
+
+Calling an operational method after a resource has definitely been closed usually returns a
+closed-handle error, loses work, or panics. The rule follows locally acquired Close() error values
+through the shared control-flow graph, consumes proven project close effects, and reports only when
+every reaching state is closed.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The initial contract tracks direct local call results whose static type has Close() error and a
+  curated set of I/O, file, deadline, synchronization, and accept operations.
+- An open/closed branch join, alias, escape, asynchronous close, unknown helper, reassignment,
+  reinitializer, observer, or arbitrary method becomes unknown instead of producing a speculative
+  finding.
+- A CFG node containing multiple tracked calls becomes unknown because AST preorder does not by
+  itself prove Go evaluation order for every nested call shape.
+- A statically resolved helper with a proven close effect establishes closed state; every other
+  helper use becomes unknown because ownership borrowing does not prove resource state preservation.
+- Deferred close calls do not close the resource at registration time and therefore do not affect
+  later statements in the same function.
+- The rule remains suspicious because a conventional Close method does not standardize every
+  concrete resource's post-close behavior.
+
+### Example: Do not read a file after closing it
+
+**Incorrect**
+
+```go
+file, err := os.Open(path)
+if err != nil { return err }
+file.Close()
+_, err = file.Read(buffer)
+```
+
+**Correct**
+
+```go
+file, err := os.Open(path)
+if err != nil { return err }
+_, err = file.Read(buffer)
+file.Close()
 ```
 
 ## self-assignment
