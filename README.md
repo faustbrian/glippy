@@ -7,7 +7,7 @@ defaults, pays only for the analysis tiers enabled rules require, and routes
 all source changes through an explicit conflict-safe transaction.
 
 Glippy v0.5 is under development and is not tagged or published. The current
-catalog contains 101 rules, including 18 rules with safe or suggestion fixes.
+catalog contains 103 rules, including 18 rules with safe or suggestion fixes.
 The existing
 v0.1.0 release remains Gox under `github.com/faustbrian/gox`; its module tags,
 binary, archives, and attestations are immutable historical identities. The
@@ -55,7 +55,10 @@ inside formatting, and layout policy is not duplicated as lint noise.
   or SSA; deeper representations are shared within one package run. CFG and
   SSA consumers share demand-driven no-return and nil/error return summaries,
   while lifecycle rules consume versioned parameter effects for same-module
-  imported helpers, without retaining dependency syntax as lint targets.
+  imported helpers, without retaining dependency syntax as lint targets. Lock
+  rules share one bounded fixed-point state transition over each function CFG,
+  distinguish read and write modes, and consume configured blocking-call
+  contracts without repeating propagation per rule.
 - **Safe source changes:** fixes carry source identity and safety class;
   conflicts, stale ranges, and failed validation cannot silently write source.
   Accepted fixes may declare exact required imports, while the coordinator

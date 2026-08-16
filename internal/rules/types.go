@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"go/types"
 	"slices"
+	"sync"
 
 	"github.com/faustbrian/glippy/internal/source"
 	"golang.org/x/mod/module"
@@ -590,6 +591,20 @@ type ControlFlowContext struct {
 	graph *cfg.CFG
 	effects EffectFacts
 	callMayReturn func(*ast.CallExpr) bool
+	shared *ControlFlowShared
+}
+
+// ControlFlowShared owns lazily constructed, rule-independent state for one
+// function graph. The scheduler supplies one instance to every selected CFG
+// rule so compatible rules do not repeat the same bounded propagation.
+type ControlFlowShared struct {
+	lockStateOnce sync.Once
+	lockState *lockStateAnalysis
+}
+
+// NewControlFlowShared constructs one function-local shared analysis cache.
+func NewControlFlowShared() *ControlFlowShared {
+	return &ControlFlowShared{}
 }
 
 // ParameterEffectKind identifies a proven terminal ownership effect applied
@@ -830,6 +845,7 @@ func NewControlFlowContext(
 	graph *cfg.CFG,
 	effects EffectFacts,
 	callMayReturn func(*ast.CallExpr) bool,
+	shared *ControlFlowShared,
 ) *ControlFlowContext {
 	return &ControlFlowContext{
 		typesContext: typesContext,
@@ -838,6 +854,7 @@ func NewControlFlowContext(
 		graph: graph,
 		effects: effects,
 		callMayReturn: callMayReturn,
+		shared: shared,
 	}
 }
 
@@ -1017,6 +1034,14 @@ func (c *ControlFlowContext) PositionRange(start, end token.Pos) (source.Range, 
 		return source.Range{}, fmt.Errorf("control-flow range requires a context")
 	}
 	return c.typesContext.PositionRange(start, end)
+}
+
+// TokenRange maps a package position to the exact physical lexical token.
+func (c *ControlFlowContext) TokenRange(position token.Pos) (source.Range, error) {
+	if c == nil || c.typesContext == nil {
+		return source.Range{}, fmt.Errorf("control-flow token range requires a context")
+	}
+	return c.typesContext.TokenRange(position)
 }
 
 // BooleanOption returns one configured boolean rule option.

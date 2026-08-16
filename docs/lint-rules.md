@@ -58,6 +58,7 @@ not stable release promises.
 - [invalid-test-signature](#invalid-test-signature)
 - [invalid-unmarshal-target](#invalid-unmarshal-target)
 - [lock-held-across-blocking-call](#lock-held-across-blocking-call)
+- [lock-not-released](#lock-not-released)
 - [loop-capture](#loop-capture)
 - [manual-min-max](#manual-min-max)
 - [mixed-receiver-type](#mixed-receiver-type)
@@ -101,6 +102,7 @@ not stable release promises.
 - [unbuffered-signal-channel](#unbuffered-signal-channel)
 - [unchecked-rows-error](#unchecked-rows-error)
 - [unchecked-scanner-error](#unchecked-scanner-error)
+- [unlock-without-lock](#unlock-without-lock)
 - [unnecessary-conversion](#unnecessary-conversion)
 - [unnecessary-format](#unnecessary-format)
 - [unnecessary-sprintf](#unnecessary-sprintf)
@@ -2479,16 +2481,17 @@ json.Unmarshal(data, &value)
 detects known blocking calls made while a sync lock is held
 
 Sleeping or waiting while holding a mutex or read lock can stall every competing goroutine and turn
-an ordinary external delay into lock contention or deadlock pressure. The rule recognizes sync lock
-methods and a deliberately small set of APIs whose contract is to wait.
+an ordinary external delay into lock contention or deadlock pressure. The rule propagates exact sync
+lock state through the shared control-flow graph and recognizes both a deliberately small
+standard-library set and configured blocking-function contracts.
 
 - Default severity: `warn`
 - Presets: `suspicious`
 - Minimum Go: `1.25`
-- Analysis tier: types
-- Node interests: `block-stmt`
+- Analysis tier: control flow
+- Node interests: none
 - Dependency syntax: not required
-- Effect facts: not required
+- Effect facts: required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `safety`, `suspicious`, `performance`
@@ -2503,10 +2506,13 @@ None.
 
 ### Known limitations
 
-- The initial contract tracks direct identifier receivers through one lexical statement list; locks
-  held across nested control-flow blocks require a later CFG expansion.
-- Known blocking APIs are time.Sleep, sync.Cond.Wait, sync.WaitGroup.Wait, and os/exec.Cmd.Wait;
-  arbitrary calls are not guessed to block.
+- Known standard-library blocking APIs are time.Sleep, sync.WaitGroup.Wait, and os/exec.Cmd.Wait;
+  project-specific calls require an exact blocking contract.
+- sync.Cond.Wait is excluded because its contract requires the associated Locker to be held and
+  releases that Locker while waiting.
+- Dynamic lock aliases, indexed receivers, helper-managed lock transitions, and ambiguous
+  deferred-unlock stacks become unknown rather than producing speculative findings.
+- Local read-lock depth is exact through eight acquisitions; deeper nesting becomes unknown.
 - A blocking call may be deliberate coordination, so this rule remains opt-in suspicious and offers
   no automatic fix.
 
@@ -2527,6 +2533,63 @@ mu.Lock()
 update()
 mu.Unlock()
 time.Sleep(delay)
+```
+
+## lock-not-released
+
+detects sync locks left held on a normally returning path
+
+Returning while a sync.Mutex or sync.RWMutex remains held can permanently block later users of
+shared state. The rule follows direct identifier and one-field receivers through branches and loops,
+applies an exact ordinary deferred unlock at normal exits, and reports only a path that remains
+locally held without an observed escape.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Returning with a lock held can be an intentional cross-function handoff because Go locks are not
+  goroutine-owned, so the rule remains suspicious rather than default correctness.
+- Passing or capturing the receiver, assigning an alias, calling an unknown receiver method, or
+  observing an ambiguous deferred-unlock stack makes the state unknown and suppresses a finding.
+- Local read-lock depth is exact through eight acquisitions; deeper nesting becomes unknown instead
+  of risking a saturation-based false positive.
+- Indexed and multi-level selector receivers are excluded until a stable storage identity can be
+  proven.
+
+### Example: Release before every return
+
+**Incorrect**
+
+```go
+mu.Lock()
+if failed { return }
+mu.Unlock()
+```
+
+**Correct**
+
+```go
+mu.Lock()
+defer mu.Unlock()
+if failed { return }
 ```
 
 ## loop-capture
@@ -4715,6 +4778,64 @@ return nil
 ```go
 for scanner.Scan() { consume(scanner.Bytes()) }
 return scanner.Err()
+```
+
+## unlock-without-lock
+
+detects path-proven unmatched or mismatched sync unlocks
+
+sync.Mutex.Unlock, sync.RWMutex.Unlock, and sync.RWMutex.RUnlock terminate the process when the
+required lock mode is absent. The rule propagates finite lock states through branches and loops,
+distinguishes read and write modes, and evaluates an exact deferred unlock against every normal
+return state.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Parameters, package variables, and fields start unknown; an unmatched unlock reports only after a
+  local zero-value declaration or an observed transition establishes an incompatible state.
+- Passing or capturing the receiver, assigning an alias, calling an unknown receiver method, or
+  observing multiple conditional deferred unlocks makes the state unknown.
+- Local read-lock depth is exact through eight acquisitions; deeper nesting becomes unknown instead
+  of risking a saturation-based false positive.
+- The rule offers no fix because the intended acquisition, release placement, and lock mode require
+  human judgment.
+
+### Example: Do not execute a deferred read unlock after an early manual release
+
+**Incorrect**
+
+```go
+mu.RLock()
+defer mu.RUnlock()
+mu.RUnlock()
+return
+```
+
+**Correct**
+
+```go
+mu.RLock()
+defer mu.RUnlock()
+return
 ```
 
 ## unnecessary-conversion

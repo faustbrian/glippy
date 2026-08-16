@@ -47,6 +47,8 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewZeroReplaceCountRule(),
 		rules.NewZeroRegexpMatchLimitRule(),
 		rules.NewLockHeldAcrossBlockingCallRule(),
+		rules.NewLockNotReleasedRule(),
+		rules.NewUnlockWithoutLockRule(),
 		rules.NewLoopCaptureRule(),
 		rules.NewManualMinMaxRule(),
 		rules.NewMixedReceiverTypeRule(),

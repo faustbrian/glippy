@@ -88,6 +88,20 @@ every normal return, and does not mistake body reads for ownership transfer.
 Arbitrary helper cleanup, custom transports, and body replacement remain in
 the interprocedural investigation rather than weakening the local rule.
 
+The first shared state-transition track now admits `unlock-without-lock` as a
+default correctness rule and `lock-not-released` as an opt-in suspicious rule.
+One finite monotone worklist reaches a stable CFG entry state before any
+diagnostic is observed, and the three lock consumers reuse that result for each
+function. Exact `sync.Mutex` and `sync.RWMutex` identities distinguish write
+locks and bounded local read depth, ordinary deferred releases apply at normal
+returns, and branch joins, loops, no-return calls, escapes, generated files,
+type errors, suppressions, and configured blocking calls retain one contract.
+The existing `lock-held-across-blocking-call` rule now consumes this CFG state
+instead of one lexical statement list. `sync.Cond.Wait` is deliberately
+excluded because its contract requires and temporarily releases its Locker.
+Unknown helper-managed transitions, indexed receivers, and intentional
+cross-function lock handoff remain conservative boundaries.
+
 The pedantic track now also admits `empty-branch`, `manual-min-max`, and
 `redundant-type-declaration`. These rules retain narrow syntax or exact-type
 contracts, remain opt-in, and avoid claiming that a readability preference is

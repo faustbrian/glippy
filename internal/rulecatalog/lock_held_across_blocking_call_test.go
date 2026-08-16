@@ -114,8 +114,9 @@ func TestLockHeldAcrossBlockingCallMetadata(t *testing.T) {
 	if !found ||
 		metadata.DefaultSeverity != rules.SeverityWarn ||
 		!reflect.DeepEqual(metadata.Presets, []rules.Preset{rules.PresetSuspicious}) ||
-		metadata.Requirement != rules.RequireTypes ||
-		!reflect.DeepEqual(metadata.NodeInterests, []rules.NodeKind{rules.NodeBlockStmt}) ||
+		metadata.Requirement != rules.RequireControlFlow ||
+		!metadata.RequiresEffectFacts ||
+		len(metadata.NodeInterests) != 0 ||
 		len(metadata.Fixes) != 0 {
 		t.Fatalf(
 			"lock-held-across-blocking-call metadata = %#v, found = %v",

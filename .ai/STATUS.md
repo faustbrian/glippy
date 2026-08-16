@@ -1633,3 +1633,18 @@ version 4. The batch passes focused and full repository gates without pushing,
 tagging, or publishing. Genuine incremental LSP reuse, shared state-transition
 analysis, strictness profiles, and further evidence-backed catalog growth
 remain active v0.5 work.
+
+The v0.5 lock-state transition batch adds one bounded function-local CFG
+worklist shared by three lock rules. `unlock-without-lock` is a default
+correctness rule for path-proven unmatched, double, and read/write-mismatched
+releases; `lock-not-released` remains opt-in suspicious because intentional
+cross-function lock handoff is legal. `lock-held-across-blocking-call` now
+propagates the same stable lock state through branches and loops, consumes
+configured blocking contracts, and excludes `sync.Cond.Wait`. Escapes,
+ambiguous defers, unknown receiver methods, nonlocal initial state, and read
+depth beyond eight fail closed. A 100-function, 300-finding package benchmark
+measured a 63.42 ms median, about 7.71 MB, and 84,642 allocations per run on
+Darwin arm64; exact-rule dogfood remained clean on Glippy and
+`go-libraries/pkg/prompts`. Resource, transaction, HTTP-body, channel, and
+WaitGroup transition rules plus strictness profiles and genuine incremental
+LSP reuse remain active v0.5 work.
