@@ -376,7 +376,7 @@ func runChangedCLIGit(t *testing.T, root string, arguments ...string) {
 	}
 }
 
-func writeChangedCLIFile(t *testing.T, path, content string) {
+func writeChangedCLIFile(t testing.TB, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)

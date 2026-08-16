@@ -660,6 +660,415 @@ func TestLSPWorkspaceBatchesCompatibleTypedDocumentsIntoOnePackageLoad(t *testin
 	}
 }
 
+func TestLSPWorkspaceReusesUnaffectedPackageAcrossDocumentSnapshots(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	leftPath := filepath.Join(root, "left", "left.go")
+	rightPath := filepath.Join(root, "right", "right.go")
+	if err := os.MkdirAll(filepath.Dir(leftPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(rightPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	left := "package left\n\nfunc Value() int { return 1 }\n"
+	right := "package right\n\nfunc Value() int { return 1 }\n"
+	writeChangedCLIFile(t, leftPath, left)
+	writeChangedCLIFile(t, rightPath, right)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := make(map[string]int)
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			if len(task.patterns) != 1 {
+				t.Fatalf(
+					"package patterns = %q, want one file pattern",
+					task.patterns,
+				)
+			}
+			runs[task.patterns[0]]++
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+	}
+	documents := []lsp.Document{
+		{
+			URI: "file://" + filepath.ToSlash(leftPath),
+			Path: leftPath,
+			Version: 1,
+			Text: []byte(left),
+		},
+		{
+			URI: "file://" + filepath.ToSlash(rightPath),
+			Path: rightPath,
+			Version: 1,
+			Text: []byte(right),
+		},
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	changedLeft := "package left\n\nfunc Value() int { return 2 }\n"
+	documents[0].Version = 2
+	documents[0].Text = []byte(changedLeft)
+	results, err := backend.AnalyzeWorkspace(context.Background(), documents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leftPattern := "file=" + leftPath
+	rightPattern := "file=" + rightPath
+	if runs[leftPattern] != 2 || runs[rightPattern] != 1 {
+		t.Fatalf(
+			"package runs = %#v, want changed left twice and unaffected right once",
+			runs,
+		)
+	}
+	state, ok := results[1].Analysis.State.(*lspAnalysisState)
+	if !ok || state == nil || !bytes.Equal(state.overlay[leftPath], []byte(changedLeft)) {
+		t.Fatalf("reused analysis does not retain the current workspace overlay")
+	}
+}
+
+func TestLSPWorkspaceInvalidatesReverseDependentPackage(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = [\"style\"]\n",
+	)
+	dependencyPath := filepath.Join(root, "dependency", "dependency.go")
+	consumerPath := filepath.Join(root, "consumer", "consumer.go")
+	if err := os.MkdirAll(filepath.Dir(dependencyPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(consumerPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dependency := "package dependency\n\nfunc Value() int { return 1 }\n"
+	consumer := "package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc Value() int { return dependency.Value() }\n"
+	writeChangedCLIFile(t, dependencyPath, dependency)
+	writeChangedCLIFile(t, consumerPath, consumer)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := make(map[string]int)
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			runs[task.patterns[0]]++
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+	}
+	documents := []lsp.Document{
+		{
+			URI: "file://" + filepath.ToSlash(dependencyPath),
+			Path: dependencyPath,
+			Version: 1,
+			Text: []byte(dependency),
+		},
+		{
+			URI: "file://" + filepath.ToSlash(consumerPath),
+			Path: consumerPath,
+			Version: 1,
+			Text: []byte(consumer),
+		},
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	documents[0].Version = 2
+	documents[0].Text = []byte("package dependency\n\nfunc Value() int { return 2 }\n")
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	dependencyPattern := "file=" + dependencyPath
+	consumerPattern := "file=" + consumerPath
+	if runs[dependencyPattern] != 2 || runs[consumerPattern] != 2 {
+		t.Fatalf(
+			"package runs = %#v, want dependency and reverse dependant invalidated",
+			runs,
+		)
+	}
+}
+
+func TestLSPWorkspaceInvalidatesReverseDependentAfterDiskSourceChange(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = [\"style\"]\n",
+	)
+	dependencyPath := filepath.Join(root, "dependency", "dependency.go")
+	helperPath := filepath.Join(root, "dependency", "helper.go")
+	consumerPath := filepath.Join(root, "consumer", "consumer.go")
+	if err := os.MkdirAll(filepath.Dir(dependencyPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(consumerPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dependency := "package dependency\n\nfunc Value() int { return helper() }\n"
+	consumer := "package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc Value() int { return dependency.Value() }\n"
+	writeChangedCLIFile(t, dependencyPath, dependency)
+	writeChangedCLIFile(t, helperPath, "package dependency\n\nfunc helper() int { return 1 }\n")
+	writeChangedCLIFile(t, consumerPath, consumer)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := make(map[string]int)
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			runs[task.patterns[0]]++
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+	}
+	documents := []lsp.Document{
+		{
+			URI: "file://" + filepath.ToSlash(dependencyPath),
+			Path: dependencyPath,
+			Version: 1,
+			Text: []byte(dependency),
+		},
+		{
+			URI: "file://" + filepath.ToSlash(consumerPath),
+			Path: consumerPath,
+			Version: 1,
+			Text: []byte(consumer),
+		},
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(t, helperPath, "package dependency\n\nfunc helper() int { return 2 }\n")
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	dependencyPattern := "file=" + dependencyPath
+	consumerPattern := "file=" + consumerPath
+	if runs[dependencyPattern] != 2 || runs[consumerPattern] != 2 {
+		t.Fatalf(
+			"package runs = %#v, want disk-changed dependency and reverse dependant invalidated",
+			runs,
+		)
+	}
+}
+
+func TestLSPWorkspaceInvalidatesChangedDiskPackageSource(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "source.go")
+	helperPath := filepath.Join(root, "helper.go")
+	sourceText := "package editor\n\nfunc Value() int { return helper() }\n"
+	writeChangedCLIFile(t, path, sourceText)
+	writeChangedCLIFile(t, helperPath, "package editor\n\nfunc helper() int { return 1 }\n")
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := 0
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			runs++
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+	}
+	documents := []lsp.Document{
+		{
+			URI: "file://" + filepath.ToSlash(path),
+			Path: path,
+			Version: 1,
+			Text: []byte(sourceText),
+		},
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(t, helperPath, "package editor\n\nfunc helper() int { return 2 }\n")
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "added.go"),
+		"package editor\n\nconst Added = true\n",
+	)
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n\n// refreshed\n",
+	)
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(t, filepath.Join(root, "go.work"), "go 1.26.0\n\nuse .\n")
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	if runs != 5 {
+		t.Fatalf(
+			"package runs = %d, want reload after source, directory, and module/workspace changes",
+			runs,
+		)
+	}
+}
+
+func TestLSPWorkspacePackageCacheRetainsMostRecentBoundedEntries(t *testing.T) {
+	t.Parallel()
+
+	entries := make(map[lspPackageGroupKey]lspWorkspacePackageEntry)
+	for index := 0; index < maximumLSPWorkspacePackageEntries + 2; index++ {
+		key := lspPackageGroupKey{
+			root: "/workspace",
+			packageDirectory: fmt.Sprintf("/workspace/package-%02d", index),
+		}
+		entries[key] = lspWorkspacePackageEntry{used: uint64(index + 1)}
+	}
+	bounded := boundLSPWorkspaceEntries(entries)
+	if len(bounded) != maximumLSPWorkspacePackageEntries {
+		t.Fatalf(
+			"bounded entries = %d, want %d",
+			len(bounded),
+			maximumLSPWorkspacePackageEntries,
+		)
+	}
+	for index := 0; index < 2; index++ {
+		key := lspPackageGroupKey{
+			root: "/workspace",
+			packageDirectory: fmt.Sprintf("/workspace/package-%02d", index),
+		}
+		if _, found := bounded[key]; found {
+			t.Fatalf("least-recently-used entry %q was retained", key.packageDirectory)
+		}
+	}
+}
+
+func BenchmarkLSPWorkspaceUnrelatedDocumentChange(b *testing.B) {
+	root := b.TempDir()
+	writeChangedCLIFile(
+		b,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	leftPath := filepath.Join(root, "left", "left.go")
+	rightPath := filepath.Join(root, "right", "right.go")
+	if err := os.MkdirAll(filepath.Dir(leftPath), 0o755); err != nil {
+		b.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(rightPath), 0o755); err != nil {
+		b.Fatal(err)
+	}
+	leftSources := [2]string{
+		"package left\n\nfunc Value() int { return 1 }\n",
+		"package left\n\nfunc Value() int { return 2 }\n",
+	}
+	right := "package right\n\nfunc Value() int { return 1 }\n"
+	writeChangedCLIFile(b, leftPath, leftSources[0])
+	writeChangedCLIFile(b, rightPath, right)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		b.Fatal(err)
+	}
+	packageRuns := 0
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			packageRuns++
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+	}
+	documents := []lsp.Document{
+		{
+			URI: "file://" + filepath.ToSlash(leftPath),
+			Path: leftPath,
+			Version: 1,
+			Text: []byte(leftSources[0]),
+		},
+		{
+			URI: "file://" + filepath.ToSlash(rightPath),
+			Path: rightPath,
+			Version: 1,
+			Text: []byte(right),
+		},
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		documents[0].Version++
+		documents[0].Text = []byte(leftSources[(index + 1) % len(leftSources)])
+		if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	measuredRuns := packageRuns - 2
+	if measuredRuns != b.N {
+		b.Fatalf("measured package runs = %d, want %d", measuredRuns, b.N)
+	}
+	b.ReportMetric(float64(measuredRuns) / float64(b.N), "package-loads/op")
+}
+
 func TestLSPWorkspaceIsolatesUnrelatedPackageFailures(t *testing.T) {
 	t.Parallel()
 

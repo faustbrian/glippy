@@ -145,6 +145,14 @@ uses the same configuration, cache, suppression, baseline, formatter, and fix
 validation contracts as the command-line paths. Suggestion and unsafe actions
 remain hidden unless their corresponding LSP flags are supplied.
 
+Typed workspace analysis retains at most eight validated package results per
+session. An edit reloads its package and open reverse dependants while
+unaffected packages reuse their exact prior result against the current complete
+overlay. Captured disk sources, Go-file directory membership, module/workspace
+control files, baselines, configuration identity, and document digests all
+invalidate reuse. This removes unrelated package loads; it does not yet retain
+or incrementally update the changed package's `go/types`, CFG, or SSA graph.
+
 `glippy init` creates a strict starter `.glippy.toml` without overwriting an
 existing path. `glippy config check` validates discovered or explicit policy,
 while `glippy config show` explains the resolved language, presets, rule

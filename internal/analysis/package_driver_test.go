@@ -100,6 +100,56 @@ func TestRunPackagesFiltersAndReseversDiagnosticsByPathPolicy(t *testing.T) {
 	}
 }
 
+func TestRunPackagesExposesCanonicalPackageDependencies(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "dependency", "dependency.go"),
+		"package dependency\n\nconst Value = 1\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "project.go"),
+		"package project\n\nimport \"example.com/project/dependency\"\n\nconst Value = dependency.Value\n",
+	)
+	registry, err := rules.NewRegistry(
+		typesRule{
+			metadata: typesMetadata("package-graph", rules.NodeFile),
+			run: func(*rules.TypesContext, ast.Node) ([]rules.Finding, error) {
+				return nil, nil
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(result.RootPackagePaths, []string{"example.com/project"}) {
+		t.Fatalf("root package paths = %q", result.RootPackagePaths)
+	}
+	if !reflect.DeepEqual(
+		result.DependencyPackagePaths,
+		[]string{"example.com/project/dependency"},
+	) {
+		t.Fatalf("dependency package paths = %q", result.DependencyPackagePaths)
+	}
+}
+
 func TestRunPackagesRejectsOversizedOverlayBeforeCloningOrCachePlanning(t *testing.T) {
 	if testing.Short() {
 		t.Skip("allocates one source-size boundary buffer")

@@ -14,6 +14,7 @@ GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkSyntaxRuleTraversa
 go test ./benchmarks -run '^$' -bench '^BenchmarkPackagesLoadSyntax(Cold|Warm)BuildCache$' -benchmem -benchtime=1x -count=3
 GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkPackageAnalyzerFactCache$' -benchmem -benchtime=1x -count=5
 GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkNativeAnalysisResultCache$' -benchmem -benchtime=1x -count=5
+GOMAXPROCS=1 go test ./internal/cli -run '^$' -bench '^BenchmarkLSPWorkspaceUnrelatedDocumentChange$' -benchmem -benchtime=3x -count=3
 GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkGlippyFormatManyClassicLoops$' -benchmem -benchtime=10x -count=3
 go test ./internal/format/doc -run '^$' -bench '^BenchmarkRenderAdversarial(Nesting|Siblings)$' -benchmem -benchtime=3x -count=5
 go test ./internal/format/doc -run '^TestRenderBoundsAdversarialDepthAndBreadthAllocations$' -count=1
@@ -58,6 +59,19 @@ seconds. The final-tree confirmation used 3,429,040,128 bytes. The complete
 workload, heap attribution, command, and limitations are
 recorded in
 [`../docs/research/v0.5-memory-reduction-2026-08-16.md`](../docs/research/v0.5-memory-reduction-2026-08-16.md).
+
+## v0.5 Incremental Workspace Result Probe
+
+The owned two-package LSP benchmark changes one open package while keeping an
+unrelated open package unchanged. Every measured operation must perform exactly
+one package load; two loads would prove that the supposedly unaffected result
+was not reused. Three three-operation samples on the non-isolated Apple M4 Max
+host measured 28.55-35.87 ms/op, 557,989-558,144 B/op, and 3,926-3,929
+allocations/op with exactly 1.000 package load/op. This is a focused
+same-process reuse probe, not a portable editor-latency budget or evidence of
+incremental type checking within the changed package. The complete contract and
+limits are recorded in
+[`../docs/research/v0.5-incremental-workspace-analysis-2026-08-16.md`](../docs/research/v0.5-incremental-workspace-analysis-2026-08-16.md).
 
 ## Initial Results
 

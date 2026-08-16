@@ -2,6 +2,8 @@
 
 - Original Phase 0-5 progress: 100%
 - Active development: post-v0.1 Clippy-comparability expansion
+- v0.5 typed peak RSS gate: complete, 53% worst-sample reduction
+- v0.5 bounded incremental workspace-result reuse: complete
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13

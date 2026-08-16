@@ -3781,6 +3781,47 @@ func TestMergeTargetPackageResultsRetainsCompletedTargetOnMergeFailure(t *testin
 	}
 }
 
+func TestMergeTargetPackageResultsUnionsCanonicalPackageGraphPaths(t *testing.T) {
+	t.Parallel()
+
+	left := analysis.PackageResult{
+		RootPackagePaths: []string{"example.com/alpha", "example.com/shared"},
+		DependencyPackagePaths: []string{
+			"example.com/dependency-b",
+			"example.com/shared-dependency",
+		},
+		Files: []analysis.Result{{Path: "/project/alpha.go", Digest: source.Digest{1}}},
+	}
+	right := analysis.PackageResult{
+		RootPackagePaths: []string{"example.com/beta", "example.com/shared"},
+		DependencyPackagePaths: []string{
+			"example.com/dependency-a",
+			"example.com/shared-dependency",
+		},
+		Files: []analysis.Result{{Path: "/project/beta.go", Digest: source.Digest{2}}},
+	}
+	merged, err := mergeTargetPackageResults(left, right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(
+		merged.RootPackagePaths,
+		[]string{"example.com/alpha", "example.com/beta", "example.com/shared"},
+	) {
+		t.Fatalf("root package paths = %q", merged.RootPackagePaths)
+	}
+	if !reflect.DeepEqual(
+		merged.DependencyPackagePaths,
+		[]string{
+			"example.com/dependency-a",
+			"example.com/dependency-b",
+			"example.com/shared-dependency",
+		},
+	) {
+		t.Fatalf("dependency package paths = %q", merged.DependencyPackagePaths)
+	}
+}
+
 func TestRunLintKeepsSyntaxOnlyAnalysisFileOrientedWithTargetMatrix(t *testing.T) {
 	t.Parallel()
 

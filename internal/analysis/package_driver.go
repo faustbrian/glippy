@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
+
+	"golang.org/x/tools/go/packages"
 
 	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/suppressions"
@@ -14,6 +17,8 @@ import (
 type PackageResult struct {
 	Requirement rules.Requirement
 	Selection []rules.Selection
+	RootPackagePaths []string
+	DependencyPackagePaths []string
 	LoadDiagnostics []PackageDiagnostic
 	SourceProblems []PackageSourceProblem
 	Sources PackageSourceSet
@@ -120,6 +125,10 @@ func RunPackages(
 	if err != nil {
 		return result, err
 	}
+	result.RootPackagePaths, result.DependencyPackagePaths, err = packageGraphPaths(packages_)
+	if err != nil {
+		return result, err
+	}
 	files, err := canonicalPackageSourceFiles(packages_, loaded.Sources)
 	if err != nil {
 		return result, err
@@ -219,6 +228,68 @@ func RunPackages(
 		)
 	}
 	return result, nil
+}
+
+func packageGraphPaths(roots []*packages.Package) ([]string, []string, error) {
+	rootPaths := make(map[string]struct{}, len(roots))
+	for _, pkg := range roots {
+		if pkg == nil ||
+			strings.TrimSpace(pkg.ID) == "" ||
+			strings.TrimSpace(pkg.PkgPath) == "" {
+			return nil, nil, fmt.Errorf(
+				"package analysis graph contains an unidentified root package",
+			)
+		}
+		rootPaths[pkg.PkgPath] = struct{}{}
+	}
+	visited := make(map[string]*packages.Package)
+	stack := slices.Clone(roots)
+	for len(stack) > 0 {
+		pkg := stack[len(stack) - 1]
+		stack = stack[:len(stack) - 1]
+		if pkg == nil ||
+			strings.TrimSpace(pkg.ID) == "" ||
+			strings.TrimSpace(pkg.PkgPath) == "" {
+			return nil, nil, fmt.Errorf(
+				"package analysis graph contains an unidentified package",
+			)
+		}
+		if previous, found := visited[pkg.ID]; found {
+			if previous != pkg {
+				return nil, nil, fmt.Errorf(
+					"package analysis graph has conflicting package ID %q",
+					pkg.ID,
+				)
+			}
+			continue
+		}
+		visited[pkg.ID] = pkg
+		imports := make([]string, 0, len(pkg.Imports))
+		for path := range pkg.Imports {
+			imports = append(imports, path)
+		}
+		slices.Sort(imports)
+		for index := len(imports) - 1; index >= 0; index-- {
+			stack = append(stack, pkg.Imports[imports[index]])
+		}
+	}
+	rootsResult := make([]string, 0, len(rootPaths))
+	for path := range rootPaths {
+		rootsResult = append(rootsResult, path)
+	}
+	slices.Sort(rootsResult)
+	dependencies := make(map[string]struct{})
+	for _, pkg := range visited {
+		if _, root := rootPaths[pkg.PkgPath]; !root {
+			dependencies[pkg.PkgPath] = struct{}{}
+		}
+	}
+	dependencyResult := make([]string, 0, len(dependencies))
+	for path := range dependencies {
+		dependencyResult = append(dependencyResult, path)
+	}
+	slices.Sort(dependencyResult)
+	return rootsResult, dependencyResult, nil
 }
 
 func selectFileDiagnostics(

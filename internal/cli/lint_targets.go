@@ -89,6 +89,8 @@ func mergeTargetPackageResults(
 	if len(left.Files) == 0 &&
 		len(left.LoadDiagnostics) == 0 &&
 		len(left.SourceProblems) == 0 &&
+		len(left.RootPackagePaths) == 0 &&
+		len(left.DependencyPackagePaths) == 0 &&
 		len(left.Sources.Paths()) == 0 {
 		return right, nil
 	}
@@ -98,6 +100,11 @@ func mergeTargetPackageResults(
 		return partial, err
 	}
 	left.Sources = mergedSources
+	left.RootPackagePaths = mergeTargetNames(left.RootPackagePaths, right.RootPackagePaths)
+	left.DependencyPackagePaths = mergeTargetNames(
+		left.DependencyPackagePaths,
+		right.DependencyPackagePaths,
+	)
 	if right.Requirement > left.Requirement {
 		left.Requirement = right.Requirement
 	}

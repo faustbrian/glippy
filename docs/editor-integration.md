@@ -108,6 +108,16 @@ rules require types, CFG, or SSA, it loads the containing package with the
 current buffer as an overlay and uses the configured persistent cache. Invalid
 source or project state is a document diagnostic rather than a fallback to a
 different policy. Closing the buffer clears its diagnostics.
+
+One server session retains at most eight validated typed package results. A
+changed open package invalidates itself and every cached open reverse dependant;
+unrelated open packages reuse their result while code actions receive the new
+complete workspace overlay. Captured disk-source contents, Go-file directory
+membership, module and workspace control files, configured baselines, and
+configuration identity are revalidated before reuse. The edited package still
+performs a complete package load and analysis; same-package incremental type,
+CFG, and SSA reconstruction remains future work.
+
 Rule diagnostics carry a documentation link to the canonical generated rule
 catalog; `glippy explain <rule>` renders the same metadata locally.
 When a declared rule fix cannot be offered safely for the exact buffer, the

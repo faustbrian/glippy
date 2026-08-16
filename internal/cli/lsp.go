@@ -3,13 +3,17 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"go/ast"
 	"io"
+	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/cache"
@@ -27,6 +31,8 @@ const lspUsage = "glippy: expected 'lsp [--fix-suggestions] [--fix-unsafe] [--co
 
 const lintRuleDocumentationURL = "https://github.com/faustbrian/gox/blob/main/docs/lint-rules.md#"
 
+const maximumLSPWorkspacePackageEntries = 8
+
 type lspInvocation struct {
 	configPath string
 	fixSuggestions bool
@@ -40,9 +46,47 @@ type lspAnalysisState struct {
 	overlay map[string][]byte
 }
 
+type lspPackageGroupKey struct {
+	root string
+	packageDirectory string
+	packageName string
+	configuration cache.Digest
+	sourceVersion string
+	requirement rules.Requirement
+}
+
+type lspPackageGroup struct {
+	key lspPackageGroupKey
+	task lintTask
+	members []int
+	documents map[string]source.Digest
+}
+
+type lspWorkspacePackageEntry struct {
+	result analysis.PackageResult
+	documents map[string]source.Digest
+	rootPackagePaths []string
+	dependencyPackagePaths []string
+	filesystemFiles map[string]lspWorkspaceFileSnapshot
+	sourceDirectories map[string]cache.Digest
+	used uint64
+}
+
+type lspWorkspaceFileSnapshot struct {
+	digest source.Digest
+	exists bool
+}
+
+type lspWorkspaceSession struct {
+	entries map[lspPackageGroupKey]lspWorkspacePackageEntry
+	clock uint64
+}
+
 type lspBackend struct {
 	registry *rules.Registry
 	invocation lspInvocation
+	workspaceMu sync.Mutex
+	workspace lspWorkspaceSession
 	runPackageAnalysis func(
 		context.Context,
 		*rules.Registry,
@@ -111,21 +155,12 @@ func (b *lspBackend) AnalyzeWorkspace(
 	ctx context.Context,
 	documents []lsp.Document,
 ) ([]lsp.WorkspaceAnalysis, error) {
+	b.workspaceMu.Lock()
+	defer b.workspaceMu.Unlock()
+
 	results := make([]lsp.WorkspaceAnalysis, len(documents))
-	type packageGroupKey struct {
-		root string
-		packageDirectory string
-		packageName string
-		configuration cache.Digest
-		sourceVersion string
-		requirement rules.Requirement
-	}
-	type packageGroup struct {
-		task lintTask
-		members []int
-	}
-	groups := make(map[packageGroupKey]int)
-	orderedGroups := make([]packageGroup, 0)
+	groups := make(map[lspPackageGroupKey]int)
+	orderedGroups := make([]lspPackageGroup, 0)
 	for index, document := range documents {
 		results[index].Document = document
 		file, err := source.Load(document.Path, document.Text)
@@ -158,7 +193,7 @@ func (b *lspBackend) AnalyzeWorkspace(
 			results[index].Err = err
 			continue
 		}
-		key := packageGroupKey{
+		key := lspPackageGroupKey{
 			root: task.root,
 			packageDirectory: filepath.Dir(document.Path),
 			packageName: packageName,
@@ -170,10 +205,33 @@ func (b *lspBackend) AnalyzeWorkspace(
 		if !found {
 			groupIndex = len(orderedGroups)
 			groups[key] = groupIndex
-			orderedGroups = append(orderedGroups, packageGroup{task: task})
+			orderedGroups = append(
+				orderedGroups,
+				lspPackageGroup{
+					key: key,
+					task: task,
+					documents: make(map[string]source.Digest),
+				},
+			)
 		}
 		orderedGroups[groupIndex].members = append(orderedGroups[groupIndex].members, index)
+		orderedGroups[groupIndex].documents[document.Path] = file.Digest()
 	}
+	sort.Slice(
+		orderedGroups,
+		func(left, right int) bool {
+			return compareLSPPackageGroupKey(
+				orderedGroups[left].key,
+				orderedGroups[right].key,
+			) <
+				0
+		},
+	)
+	invalidatedPackages, invalidateRoots := lspWorkspaceInvalidation(
+		b.workspace.entries,
+		orderedGroups,
+	)
+	nextEntries := make(map[lspPackageGroupKey]lspWorkspacePackageEntry)
 	type workspaceOverlay struct {
 		files map[string][]byte
 		err error
@@ -205,16 +263,32 @@ func (b *lspBackend) AnalyzeWorkspace(
 		}
 		overlay, err := resolved.files, resolved.err
 		if err == nil {
-			packageResult, packageErr := b.analyzePackage(ctx, packageTask, overlay)
-			if packageErr == nil {
-				packageErr = applyConfiguredPackageBaseline(
-					packageTask,
-					&packageResult,
-					b.registry,
+			entry, cached := b.workspace.entries[group.key]
+			reused := cached &&
+				equalLSPDocumentDigests(entry.documents, group.documents) &&
+				!invalidateRoots[group.key.root] &&
+				!lspPackageEntryIntersects(
+					entry,
+					invalidatedPackages[group.key.root],
 				)
-			}
-			if packageErr == nil {
-				packageErr = validateLintPackagePrerequisites(packageResult)
+			packageResult := entry.result
+			var packageErr error
+			if !reused {
+				packageResult, packageErr = b.analyzePackage(
+					ctx,
+					packageTask,
+					overlay,
+				)
+				if packageErr == nil {
+					packageErr = applyConfiguredPackageBaseline(
+						packageTask,
+						&packageResult,
+						b.registry,
+					)
+				}
+				if packageErr == nil {
+					packageErr = validateLintPackagePrerequisites(packageResult)
+				}
 			}
 			if packageErr != nil {
 				err = packageErr
@@ -223,10 +297,12 @@ func (b *lspBackend) AnalyzeWorkspace(
 				for _, result := range packageResult.Files {
 					byPath[result.Path] = result
 				}
+				complete := true
 				for _, index := range group.members {
 					document := documents[index]
 					result, found := byPath[document.Path]
 					if !found {
+						complete = false
 						results[index].Err = fmt.Errorf(
 							"typed editor analysis did not return %q",
 							document.Path,
@@ -235,6 +311,7 @@ func (b *lspBackend) AnalyzeWorkspace(
 					}
 					bound, found := packageResult.Sources.Lookup(document.Path)
 					if !found || !bytes.Equal(bound.Bytes(), document.Text) {
+						complete = false
 						results[index].Err = errors.New(
 							"typed editor analysis does not match the document source",
 						)
@@ -252,6 +329,27 @@ func (b *lspBackend) AnalyzeWorkspace(
 						},
 					)
 				}
+				filesystemFiles, sourceDirectories, snapshotErr := captureLSPWorkspaceFilesystem(
+					packageTask,
+					packageResult,
+					overlay,
+				)
+				if complete && snapshotErr == nil {
+					b.workspace.clock++
+					nextEntries[group.key] = lspWorkspacePackageEntry{
+						result: packageResult,
+						documents: cloneLSPDocumentDigests(group.documents),
+						rootPackagePaths: slices.Clone(
+							packageResult.RootPackagePaths,
+						),
+						dependencyPackagePaths: slices.Clone(
+							packageResult.DependencyPackagePaths,
+						),
+						filesystemFiles: filesystemFiles,
+						sourceDirectories: sourceDirectories,
+						used: b.workspace.clock,
+					}
+				}
 				continue
 			}
 		}
@@ -259,7 +357,247 @@ func (b *lspBackend) AnalyzeWorkspace(
 			results[index].Err = err
 		}
 	}
+	b.workspace.entries = boundLSPWorkspaceEntries(nextEntries)
 	return results, nil
+}
+
+func captureLSPWorkspaceFilesystem(
+	task lintPackageTask,
+	result analysis.PackageResult,
+	overlay map[string][]byte,
+) (map[string]lspWorkspaceFileSnapshot, map[string]cache.Digest, error) {
+	files := make(map[string]lspWorkspaceFileSnapshot)
+	directories := make(map[string]cache.Digest)
+	directoryPaths := make(map[string]struct{})
+	for _, path := range result.Sources.Paths() {
+		if _, overlaid := overlay[path]; !overlaid {
+			file, found := result.Sources.Lookup(path)
+			if !found {
+				return nil, nil, fmt.Errorf(
+					"workspace package source %q is missing",
+					path,
+				)
+			}
+			files[path] = lspWorkspaceFileSnapshot{digest: file.Digest(), exists: true}
+		}
+		directory := filepath.Dir(path)
+		if pathWithinLSPWorkspace(task.root, directory) {
+			directoryPaths[directory] = struct{}{}
+		}
+	}
+	controlFiles := []string{
+		filepath.Join(task.root, "go.mod"),
+		filepath.Join(task.root, "go.sum"),
+		filepath.Join(task.root, "go.work"),
+		filepath.Join(task.root, "go.work.sum"),
+	}
+	if task.options.baseline.Path != "" {
+		controlFiles = append(
+			controlFiles,
+			filepath.Join(task.root, filepath.FromSlash(task.options.baseline.Path)),
+		)
+	}
+	for _, path := range controlFiles {
+		contents, err := source.ReadFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			files[path] = lspWorkspaceFileSnapshot{}
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		files[path] = lspWorkspaceFileSnapshot{
+			digest: source.Digest(sha256.Sum256(contents)),
+			exists: true,
+		}
+	}
+	for directory := range directoryPaths {
+		digest, err := lspGoDirectoryDigest(directory)
+		if err != nil {
+			return nil, nil, err
+		}
+		directories[directory] = digest
+	}
+	return files, directories, nil
+}
+
+func lspWorkspaceFilesystemCurrent(entry lspWorkspacePackageEntry) bool {
+	for path, expected := range entry.filesystemFiles {
+		contents, err := source.ReadFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			if expected.exists {
+				return false
+			}
+			continue
+		}
+		if err != nil ||
+			!expected.exists ||
+			source.Digest(sha256.Sum256(contents)) != expected.digest {
+			return false
+		}
+	}
+	for directory, expected := range entry.sourceDirectories {
+		current, err := lspGoDirectoryDigest(directory)
+		if err != nil || current != expected {
+			return false
+		}
+	}
+	return true
+}
+
+func lspGoDirectoryDigest(directory string) (cache.Digest, error) {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return cache.Digest{}, err
+	}
+	names := make([]string, 0)
+	for _, entry := range entries {
+		if filepath.Ext(entry.Name()) == ".go" {
+			names = append(names, entry.Name())
+		}
+	}
+	slices.Sort(names)
+	return cache.DigestOf([]byte(strings.Join(names, "\x00"))), nil
+}
+
+func pathWithinLSPWorkspace(root, path string) bool {
+	relative, err := filepath.Rel(root, path)
+	return err == nil &&
+		relative != ".." &&
+		!strings.HasPrefix(relative, ".." + string(filepath.Separator))
+}
+
+func lspWorkspaceInvalidation(
+	previous map[lspPackageGroupKey]lspWorkspacePackageEntry,
+	groups []lspPackageGroup,
+) (map[string]map[string]struct{}, map[string]bool) {
+	invalidated := make(map[string]map[string]struct{})
+	invalidateRoots := make(map[string]bool)
+	current := make(map[lspPackageGroupKey]lspPackageGroup, len(groups))
+	add := func(root string, entry lspWorkspacePackageEntry) {
+		paths := invalidated[root]
+		if paths == nil {
+			paths = make(map[string]struct{})
+			invalidated[root] = paths
+		}
+		if len(entry.rootPackagePaths) == 0 {
+			invalidateRoots[root] = true
+			return
+		}
+		for _, path := range entry.rootPackagePaths {
+			paths[path] = struct{}{}
+		}
+	}
+	for _, group := range groups {
+		current[group.key] = group
+		entry, found := previous[group.key]
+		if !found {
+			invalidateRoots[group.key.root] = true
+			continue
+		}
+		if !equalLSPDocumentDigests(entry.documents, group.documents) ||
+			!lspWorkspaceFilesystemCurrent(entry) {
+			add(group.key.root, entry)
+		}
+	}
+	for key, entry := range previous {
+		if _, found := current[key]; !found {
+			add(key.root, entry)
+		}
+	}
+	return invalidated, invalidateRoots
+}
+
+func lspPackageEntryIntersects(entry lspWorkspacePackageEntry, paths map[string]struct{}) bool {
+	for _, path := range entry.rootPackagePaths {
+		if _, found := paths[path]; found {
+			return true
+		}
+	}
+	for _, path := range entry.dependencyPackagePaths {
+		if _, found := paths[path]; found {
+			return true
+		}
+	}
+	return false
+}
+
+func equalLSPDocumentDigests(left, right map[string]source.Digest) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for path, digest := range left {
+		if right[path] != digest {
+			return false
+		}
+	}
+	return true
+}
+
+func cloneLSPDocumentDigests(input map[string]source.Digest) map[string]source.Digest {
+	result := make(map[string]source.Digest, len(input))
+	for path, digest := range input {
+		result[path] = digest
+	}
+	return result
+}
+
+func boundLSPWorkspaceEntries(
+	entries map[lspPackageGroupKey]lspWorkspacePackageEntry,
+) map[lspPackageGroupKey]lspWorkspacePackageEntry {
+	if len(entries) <= maximumLSPWorkspacePackageEntries {
+		return entries
+	}
+	keys := make([]lspPackageGroupKey, 0, len(entries))
+	for key := range entries {
+		keys = append(keys, key)
+	}
+	sort.Slice(
+		keys,
+		func(left, right int) bool {
+			leftEntry, rightEntry := entries[keys[left]], entries[keys[right]]
+			if leftEntry.used != rightEntry.used {
+				return leftEntry.used > rightEntry.used
+			}
+			return compareLSPPackageGroupKey(keys[left], keys[right]) < 0
+		},
+	)
+	result := make(
+		map[lspPackageGroupKey]lspWorkspacePackageEntry,
+		maximumLSPWorkspacePackageEntries,
+	)
+	for _, key := range keys[:maximumLSPWorkspacePackageEntries] {
+		result[key] = entries[key]
+	}
+	return result
+}
+
+func compareLSPPackageGroupKey(left, right lspPackageGroupKey) int {
+	values := [][2]string{
+		{left.root, right.root},
+		{left.packageDirectory, right.packageDirectory},
+		{left.packageName, right.packageName},
+		{left.sourceVersion, right.sourceVersion},
+	}
+	for _, value := range values {
+		if value[0] < value[1] {
+			return -1
+		}
+		if value[0] > value[1] {
+			return 1
+		}
+	}
+	if comparison := bytes.Compare(left.configuration[:], right.configuration[:]);
+		comparison != 0 {
+		return comparison
+	}
+	if left.requirement < right.requirement {
+		return -1
+	}
+	if left.requirement > right.requirement {
+		return 1
+	}
+	return 0
 }
 
 func (b *lspBackend) analyzePackage(
