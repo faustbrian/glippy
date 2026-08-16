@@ -51,14 +51,18 @@ deep consumers within the one shared graph. Revisit these ceilings only when a
 real repository cannot fit and new corpus plus peak-memory evidence supports a
 different policy.
 
-The package parser callback also constructs the shared physical source model
-from the exact bytes supplied by `go/packages`, after overlays and build
-selection. It retains one immutable source version per normalized absolute
-path, rejects incompatible bytes for the same identity, and exposes canonical
-paths plus source-model problems. Syntax-invalid or directive-invalid inputs
-remain available as diagnostic-only source units. Typed consumers therefore
-map package positions and edits to the bytes that were actually type-checked;
-they do not reread a path after loading and guess that it is unchanged.
+The package parser callback reserves one immutable source version from the
+exact bytes supplied by `go/packages`, after overlays and build selection. It
+rejects incompatible bytes for the same normalized absolute identity. Once
+root ownership is known, reporter-visible roots receive the complete physical
+source model. Fact-only dependencies retain compact immutable bytes, digests,
+metadata, and physical-range validation alongside the package AST and types,
+without formatter token, trivia, comment, directive, and reconstruction
+indexes. Native rules that explicitly declare dependency syntax still receive
+the complete dependency source model. Syntax-invalid or directive-invalid root
+inputs remain available as diagnostic-only source units. Typed consumers map
+package positions and edits to the bytes that were actually type-checked; they
+do not reread a path after loading and guess that it is unchanged.
 
 Native types-tier rules declare AST node interests and share one direct
 preorder traversal per selected physical file. Each callback receives the
@@ -250,12 +254,14 @@ typed fix execution deliberately bypasses persistent analysis caching so
 validation cannot accept a stale package result. Types-only requests do not
 construct CFG or SSA, and CFG-only requests do not construct SSA.
 
-The typed package AST and physical source model use separate parser file sets.
-The package parser preserves `go/packages`' existing AST object-resolution
-behavior for analyzer compatibility, while the source model keeps its isolated
-syntax, scanner ledger, trivia, directives, and digest. This additional parse
-is the current cost of retaining both type identity and exact source fidelity
-through public standard-library boundaries.
+Reporter-visible typed package ASTs and physical source models use separate
+parser file sets. The package parser preserves `go/packages`' existing AST
+object-resolution behavior for analyzer compatibility, while the complete root
+source model keeps its isolated syntax, scanner ledger, trivia, directives,
+and digest. Fact-only dependencies avoid that second parse and formatter index
+retention while preserving exact bytes and type identity. The v0.5 sqlc probe
+records a 53.00% worst-sample peak-RSS reduction with byte-identical
+diagnostics; native dependency-source consumers retain the complete model.
 
 ## Revisit Trigger
 

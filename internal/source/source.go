@@ -159,6 +159,7 @@ type File struct {
 	metadata Metadata
 	lineStarts []int
 	parseErr error
+	indexed bool
 }
 
 // Load constructs a physical source unit. Invalid Go returns the lossless
@@ -205,7 +206,25 @@ func Load(path string, input []byte) (*File, error) {
 		metadata: metadata,
 		lineStarts: physicalLineStarts(physical),
 		parseErr: loadErr,
+		indexed: true,
 	}, loadErr
+}
+
+// CaptureParsedBytes retains immutable bytes for source that the package
+// loader has already parsed successfully without constructing the formatter's
+// token, trivia, comment, directive, and reconstruction indexes.
+func CaptureParsedBytes(path string, input []byte) (*File, error) {
+	if err := ValidateSize(int64(len(input))); err != nil {
+		return nil, err
+	}
+	physical := bytes.Clone(input)
+	return &File{
+		path: filepath.Clean(path),
+		bytes: physical,
+		digest: sha256.Sum256(physical),
+		metadata: inspectMetadata(physical, nil),
+		lineStarts: physicalLineStarts(physical),
+	}, nil
 }
 
 // Path returns the normalized physical source identity supplied to Load.
@@ -302,7 +321,14 @@ func (f *File) Metadata() Metadata {
 // CanFormat reports whether parsing and physical reconstruction accepted the
 // complete file.
 func (f *File) CanFormat() bool {
-	return f.parseErr == nil
+	return f != nil && f.parseErr == nil && f.indexed
+}
+
+// CanAnalyze reports whether package analysis can use the retained immutable
+// bytes. Compact dependency sources are analyzable but intentionally lack the
+// formatter indexes required by CanFormat.
+func (f *File) CanAnalyze() bool {
+	return f != nil && f.parseErr == nil
 }
 
 // ReadSyntax provides an isolated parsed syntax view to a run-owned consumer.
@@ -340,6 +366,9 @@ func (f *File) ReadSyntaxView(read func(*token.FileSet, *ast.File) error) error 
 
 // RawToken returns the exact physical spelling of the token at position.
 func (f *File) RawToken(position token.Pos) (string, bool) {
+	if f == nil || f.tokenFile == nil {
+		return "", false
+	}
 	offset := f.tokenFile.Offset(position)
 	index, found := slices.BinarySearchFunc(
 		f.tokens,

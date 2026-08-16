@@ -26,6 +26,36 @@ case "$format_budget_seconds" in
 		;;
 esac
 
+typed_budget_bytes=${GLIPPY_PEAK_RSS_TYPED_BUDGET_BYTES:-4294967296}
+case "$typed_budget_bytes" in
+	''|*[!0-9]*|0)
+		printf '%s\n' 'GLIPPY_PEAK_RSS_TYPED_BUDGET_BYTES must be a positive integer' >&2
+		exit 1
+		;;
+esac
+
+typed_budget_seconds=${GLIPPY_PEAK_RSS_TYPED_BUDGET_SECONDS:-40}
+case "$typed_budget_seconds" in
+	''|*[!0-9]*|0)
+		printf '%s\n' 'GLIPPY_PEAK_RSS_TYPED_BUDGET_SECONDS must be a positive integer' >&2
+		exit 1
+		;;
+esac
+
+typed_output_sha256=${GLIPPY_PEAK_RSS_TYPED_OUTPUT_SHA256:-}
+if [ -n "$typed_output_sha256" ]; then
+	case "$typed_output_sha256" in
+		*[!0-9a-f]*)
+			printf '%s\n' 'GLIPPY_PEAK_RSS_TYPED_OUTPUT_SHA256 must be lowercase hexadecimal' >&2
+			exit 1
+			;;
+	esac
+	if [ "${#typed_output_sha256}" -ne 64 ]; then
+		printf '%s\n' 'GLIPPY_PEAK_RSS_TYPED_OUTPUT_SHA256 must contain 64 characters' >&2
+		exit 1
+	fi
+fi
+
 time_command=${GLIPPY_TIME_COMMAND:-/usr/bin/time}
 if [ ! -x "$time_command" ]; then
 	printf 'time command is not executable: %s\n' "$time_command" >&2
@@ -41,6 +71,13 @@ if [ ! -d "$format_root_input" ]; then
 	exit 1
 fi
 format_root=$(CDPATH='' cd -- "$format_root_input" && pwd -P)
+typed_root_input=${GLIPPY_PEAK_RSS_TYPED_ROOT:-$repo_root}
+if [ ! -d "$typed_root_input" ]; then
+	printf 'GLIPPY_PEAK_RSS_TYPED_ROOT is not a directory: %s\n' \
+		"$typed_root_input" >&2
+	exit 1
+fi
+typed_root=$(CDPATH='' cd -- "$typed_root_input" && pwd -P)
 
 glippy_revision=${GLIPPY_RELEASE_GLIPPY_REVISION:-}
 if [ -n "$glippy_revision" ]; then
@@ -104,6 +141,20 @@ if [ -n "$format_revision" ]; then
 	fi
 fi
 
+typed_revision=${GLIPPY_PEAK_RSS_TYPED_REVISION:-}
+if [ -n "$typed_revision" ]; then
+	actual_typed_revision=$(git -C "$typed_root" rev-parse HEAD)
+	if [ "$actual_typed_revision" != "$typed_revision" ]; then
+		printf 'typed corpus revision is %s; want %s\n' \
+			"$actual_typed_revision" "$typed_revision" >&2
+		exit 1
+	fi
+	if [ -n "$(git -C "$typed_root" status --porcelain=v1 --untracked-files=all)" ]; then
+		printf '%s\n' 'typed corpus must be clean for a release budget run' >&2
+		exit 1
+	fi
+fi
+
 task_root=$(mktemp -d "${TMPDIR:-/tmp}/glippy-peak-rss.XXXXXX")
 
 cleanup() {
@@ -119,6 +170,7 @@ trap cleanup EXIT HUP INT TERM
 
 time_output="$task_root/time-output"
 command_output="$task_root/command-output"
+normalized_output="$task_root/normalized-output"
 if "$time_command" -l true >/dev/null 2>"$time_output" &&
 	grep -q 'maximum resident set size' "$time_output"; then
 	time_mode=darwin
@@ -133,11 +185,11 @@ fi
 GOCACHE="$task_root/cache"
 GOMODCACHE="$task_root/modcache"
 export GOCACHE GOMODCACHE
-env -u GOWORK go -C "$repo_root" mod download
+env -u GOWORK GOFLAGS=-mod=readonly go -C "$repo_root" mod download
+if [ "$typed_root" != "$repo_root" ]; then
+	env -u GOWORK GOFLAGS=-mod=readonly go -C "$typed_root" mod download
+fi
 env -u GOWORK go -C "$repo_root" build -o "$task_root/glippy" ./cmd/glippy
-
-printf '%s\n' 'version = 1' '[lint]' 'preset = "suspicious"' \
-	>"$task_root/glippy.toml"
 
 measure() {
 	label=$1
@@ -159,6 +211,31 @@ measure() {
 			sed -n '1,20p' "$command_output" >&2
 			sed -n '1,20p' "$time_output" >&2
 			exit "$status"
+		fi
+		if [ "$label" = typed-lint ] && [ -n "$typed_output_sha256" ]; then
+			awk -v root="$typed_root" '
+			{
+				remaining = $0
+				normalized = ""
+				while ((offset = index(remaining, root)) != 0) {
+					normalized = normalized substr(remaining, 1, offset - 1) "<TYPED_ROOT>"
+					remaining = substr(remaining, offset + length(root))
+				}
+				print normalized remaining
+			}' "$command_output" >"$normalized_output"
+			if command -v sha256sum >/dev/null 2>&1; then
+				actual_output_sha256=$(sha256sum "$normalized_output" | awk '{ print $1 }')
+			elif command -v shasum >/dev/null 2>&1; then
+				actual_output_sha256=$(shasum -a 256 "$normalized_output" | awk '{ print $1 }')
+			else
+				printf '%s\n' 'no SHA-256 command is available' >&2
+				exit 1
+			fi
+			if [ "$actual_output_sha256" != "$typed_output_sha256" ]; then
+				printf '%s diagnostic fingerprint changed: %s != %s\n' \
+					"$label" "$actual_output_sha256" "$typed_output_sha256" >&2
+				exit 1
+			fi
 		fi
 		if [ "$time_mode" = darwin ]; then
 			elapsed_seconds=$(awk '/ real / { print $1; exit }' "$time_output")
@@ -208,9 +285,11 @@ fi
 if [ -n "$format_revision" ]; then
 	printf 'metadata,format_revision,%s\n' "$format_revision"
 fi
+if [ -n "$typed_revision" ]; then
+	printf 'metadata,typed_revision,%s\n' "$typed_revision"
+fi
 printf '%s\n' 'workload,sample,elapsed_seconds,peak_rss_bytes'
 measure formatter-check "$format_budget_bytes" "$format_budget_seconds" \
 	"$task_root/glippy" fmt --check "$format_root"
-measure typed-combined-check 9223372036854775807 9223372036854775807 \
-	"$task_root/glippy" check \
-	--config="$task_root/glippy.toml" "$repo_root/..."
+measure typed-lint "$typed_budget_bytes" "$typed_budget_seconds" \
+	"$task_root/glippy" lint -Wsuspicious "$typed_root/..."

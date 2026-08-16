@@ -61,6 +61,7 @@ type PackageLoadOptions struct {
 	MaxPackages int
 	MaxSourceFiles int
 	MaxSourceBytes int64
+	compactDependencySource bool
 }
 
 // PackageDiagnostic is one canonical package-loading or type-checking error.
@@ -171,7 +172,7 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 	if err != nil {
 		return PackageLoadResult{}, err
 	}
-	sourceCollector := newPackageSourceCollector(limits)
+	sourceCollector := newPackageSourceCollector(limits, options.compactDependencySource)
 
 	loaded, err := packages.Load(
 		&packages.Config{
@@ -203,7 +204,7 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 		err != nil {
 		return PackageLoadResult{}, err
 	}
-	sources, err := sourceCollector.result()
+	sources, err := sourceCollector.result(options.compactDependencySource)
 	if err != nil {
 		return PackageLoadResult{}, err
 	}
@@ -339,12 +340,14 @@ func validatePackageGraphLimit(roots []*packages.Package, limit int) error {
 
 type packageSourceCollector struct {
 	mu sync.Mutex
+	inputs map[string][]byte
 	files map[string]*source.File
 	problems map[string]PackageSourceProblem
 	errors map[string]map[string]error
 	seen map[string]sourceReservation
 	limits packageResourceLimits
 	bytes int64
+	deferSourceIndexing bool
 }
 
 type packageResourceLimits struct {
@@ -358,13 +361,18 @@ type sourceReservation struct {
 	size int64
 }
 
-func newPackageSourceCollector(limits packageResourceLimits) *packageSourceCollector {
+func newPackageSourceCollector(
+	limits packageResourceLimits,
+	deferSourceIndexing bool,
+) *packageSourceCollector {
 	return &packageSourceCollector{
+		inputs: make(map[string][]byte),
 		files: make(map[string]*source.File),
 		problems: make(map[string]PackageSourceProblem),
 		errors: make(map[string]map[string]error),
 		seen: make(map[string]sourceReservation),
 		limits: limits,
+		deferSourceIndexing: deferSourceIndexing,
 	}
 }
 
@@ -381,17 +389,37 @@ func (c *packageSourceCollector) parseFile(
 			},
 		}
 	}
-	physical, sourceErr := source.Load(filename, input)
-	c.add(filename, physical, sourceErr)
-	if physical == nil {
-		return nil, scanner.ErrorList{
-			&scanner.Error{
-				Pos: token.Position{Filename: filename, Line: 1, Column: 1},
-				Msg: sourceErr.Error(),
-			},
+	if !c.deferSourceIndexing {
+		physical, sourceErr := source.Load(filename, input)
+		c.add(filename, physical, sourceErr)
+		if physical == nil {
+			return nil, scanner.ErrorList{
+				&scanner.Error{
+					Pos: token.Position{Filename: filename, Line: 1, Column: 1},
+					Msg: sourceErr.Error(),
+				},
+			}
 		}
+	} else {
+		c.remember(filename, input)
 	}
 	return parser.ParseFile(fileSet, filename, input, parser.AllErrors | parser.ParseComments)
+}
+
+func (c *packageSourceCollector) remember(filename string, input []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	path := filepath.Clean(filename)
+	if _, found := c.inputs[path]; !found {
+		c.inputs[path] = bytes.Clone(input)
+	}
+}
+
+func (c *packageSourceCollector) input(path string) ([]byte, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	input, found := c.inputs[path]
+	return bytes.Clone(input), found
 }
 
 func (c *packageSourceCollector) admit(filename string, input []byte) error {
@@ -465,7 +493,10 @@ func capturePackageOriginalSources(
 		if collector.captured(path) {
 			continue
 		}
-		input, found := overlay[path]
+		input, found := collector.input(path)
+		if !found {
+			input, found = overlay[path]
+		}
 		if !found {
 			var err error
 			input, err = source.ReadFile(path)
@@ -546,7 +577,7 @@ func (c *packageSourceCollector) addError(key string, err error) {
 	c.errors[key][err.Error()] = err
 }
 
-func (c *packageSourceCollector) result() (PackageSourceSet, error) {
+func (c *packageSourceCollector) result(compactDependencySource bool) (PackageSourceSet, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if len(c.errors) > 0 {
@@ -568,11 +599,33 @@ func (c *packageSourceCollector) result() (PackageSourceSet, error) {
 		}
 		return PackageSourceSet{}, errors.Join(failures...)
 	}
-	paths := make([]string, 0, len(c.files))
-	files := make(map[string]*source.File, len(c.files))
+	files := make(map[string]*source.File, len(c.inputs))
 	for path, file := range c.files {
-		paths = append(paths, path)
 		files[path] = file
+	}
+	for path, input := range c.inputs {
+		if _, found := files[path]; found {
+			continue
+		}
+		var file *source.File
+		var sourceErr error
+		if compactDependencySource {
+			file, sourceErr = source.CaptureParsedBytes(path, input)
+		} else {
+			file, sourceErr = source.Load(path, input)
+		}
+		if sourceErr != nil {
+			return PackageSourceSet{}, fmt.Errorf(
+				"capture package source %q: %w",
+				path,
+				sourceErr,
+			)
+		}
+		files[path] = file
+	}
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
 	}
 	sort.Strings(paths)
 	problems := make([]PackageSourceProblem, 0, len(c.problems))

@@ -1227,18 +1227,25 @@ func TestRunPackagesLoadsDependencySyntaxOnlyForDeclaredNativeRules(t *testing.T
 		"package project\nimport \"example.com/project/dependency\"\nconst Value = dependency.Value\n",
 	)
 
-	run := func(requiresDependencies bool, callerRequestsDependencies bool) int {
+	run := func(requiresDependencies bool, callerRequestsDependencies bool) (int, bool) {
 		t.Helper()
 		metadata := packageMetadata("package-dependencies")
 		metadata.RequiresDependencySyntax = requiresDependencies
 		count := -1
+		indexed := false
 		registry, err := rules.NewRegistry(
 			packageRule{
 				metadata: metadata,
 				run: func(
 					ctx *rules.PackageContext,
 				) ([]rules.PackageFinding, error) {
-					count = len(ctx.Dependencies())
+					dependencies := ctx.Dependencies()
+					count = len(dependencies)
+					if len(dependencies) != 0 {
+						files := dependencies[0].Files()
+						indexed = len(files) != 0 &&
+							len(files[0].Source().Tokens()) != 0
+					}
 					return nil, nil
 				},
 			},
@@ -1259,13 +1266,21 @@ func TestRunPackagesLoadsDependencySyntaxOnlyForDeclaredNativeRules(t *testing.T
 			err != nil {
 			t.Fatal(err)
 		}
-		return count
+		return count, indexed
 	}
-	if got := run(true, false); got != 1 {
-		t.Fatalf("declared dependency count = %d, want 1", got)
+	if count, indexed := run(true, false); count != 1 || !indexed {
+		t.Fatalf(
+			"declared dependency count = %d, indexed = %t; want 1, true",
+			count,
+			indexed,
+		)
 	}
-	if got := run(false, true); got != 0 {
-		t.Fatalf("undeclared dependency count = %d, want 0", got)
+	if count, indexed := run(false, true); count != 0 || indexed {
+		t.Fatalf(
+			"undeclared dependency count = %d, indexed = %t; want 0, false",
+			count,
+			indexed,
+		)
 	}
 }
 

@@ -36,6 +36,16 @@ consumer to mutate shared bytes, token slices, indexes, or ASTs. A source
 version MUST be the digest of the exact bytes that produced positions,
 diagnostics, and edits.
 
+Reporter-visible files and every file eligible for formatting or fixes MUST
+retain the complete token, trivia, comment, directive, reconstruction, and
+position indexes above. A dependency file loaded only to produce or consume
+adapted analyzer facts MAY retain a compact parsed source view instead. That
+view MUST retain exact immutable bytes and digest identity, MUST map package
+positions to valid physical byte ranges, and MUST NOT be formatter-eligible.
+If a native rule explicitly declares dependency-source access, its dependency
+files MUST retain the complete source model. Dependency source MUST NOT become
+a diagnostic or fix target under either representation.
+
 ## Physical Mapping
 
 All stored ranges MUST be half-open physical byte ranges within one source

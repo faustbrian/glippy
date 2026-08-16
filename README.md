@@ -6,7 +6,7 @@ deterministic width-aware layout decisions. Its linter keeps correctness-focused
 defaults, pays only for the analysis tiers enabled rules require, and routes
 all source changes through an explicit conflict-safe transaction.
 
-Glippy v0.4 is under development and is not tagged or published. The current
+Glippy v0.5 is under development and is not tagged or published. The current
 catalog contains 101 rules, including 18 rules with safe or suggestion fixes.
 The existing
 v0.1.0 release remains Gox under `github.com/faustbrian/gox`; its module tags,
@@ -283,6 +283,7 @@ precise scope.
 - [v0.4 exit audit](docs/research/v0.4-exit-audit-2026-08-15.md)
 - [v0.4 ecosystem dogfood](docs/research/v0.4-diverse-ecosystem-dogfood-2026-08-15.md)
 - [v0.4 fixability sweep](docs/research/v0.4-catalog-fixability-sweep-2026-08-15.md)
+- [v0.5 typed-analysis memory reduction](docs/research/v0.5-memory-reduction-2026-08-16.md)
 - [Suppression reference](docs/suppressions.md)
 - [Lint engine and suppressions](docs/spec/lint-engine.md)
 - [Fix safety model](docs/spec/fix-safety.md)

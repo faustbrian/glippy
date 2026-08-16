@@ -1,6 +1,8 @@
 package benchmarks_test
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -150,31 +152,60 @@ done
 test -n "$output"
 cat >"$output" <<'SCRIPT'
 #!/bin/sh
-if [ "${1:-}" = "check" ] && [ ! -e "$GOMODCACHE/downloaded" ]; then
-	exit 2
-fi
-sleep "${FAKE_GLIPPY_SLEEP_SECONDS:-0}"
+case "${1:-}" in
+	fmt)
+		sleep "${FAKE_GLIPPY_FORMAT_SLEEP_SECONDS:-0}"
+		;;
+	lint)
+		if [ "${2:-}" != "-Wsuspicious" ] || [ ! -e "$GOMODCACHE/downloaded" ]; then
+			exit 2
+		fi
+		sleep "${FAKE_GLIPPY_TYPED_SLEEP_SECONDS:-0}"
+		if [ -n "${FAKE_GLIPPY_TYPED_OUTPUT:-}" ]; then
+			printf '%s\n' "$FAKE_GLIPPY_TYPED_OUTPUT"
+		fi
+		;;
+	*) exit 2 ;;
+esac
 exit 1
 SCRIPT
 chmod +x "$output"
 	`,
 	)
 	formatRoot := t.TempDir()
+	resolvedTypedRoot, err := filepath.EvalSymlinks(formatRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	normalizedFingerprint := fmt.Sprintf("%x", sha256.Sum256([]byte("<TYPED_ROOT>/file.go\n")))
 
 	for _, test := range
 		[]struct {
 			name string
 			memoryBudget string
 			latencyBudget string
-			sleep string
+			typedMemoryBudget string
+			typedLatencyBudget string
+			formatSleep string
+			typedSleep string
+			typedOutput string
+			typedOutputSHA256 string
 			wantError bool
 			wantOutput string
 		}{
-			{name: "inside budgets", memoryBudget: "999999999999", latencyBudget: "10"},
+			{
+				name: "inside budgets",
+				memoryBudget: "999999999999",
+				latencyBudget: "10",
+				typedMemoryBudget: "999999999999",
+				typedLatencyBudget: "10",
+			},
 			{
 				name: "memory over budget",
 				memoryBudget: "1",
 				latencyBudget: "10",
+				typedMemoryBudget: "999999999999",
+				typedLatencyBudget: "10",
 				wantError: true,
 				wantOutput: "formatter-check peak RSS budget exceeded",
 			},
@@ -182,9 +213,50 @@ chmod +x "$output"
 				name: "latency over budget",
 				memoryBudget: "999999999999",
 				latencyBudget: "1",
-				sleep: "2",
+				typedMemoryBudget: "999999999999",
+				typedLatencyBudget: "10",
+				formatSleep: "2",
 				wantError: true,
 				wantOutput: "formatter-check elapsed-time budget exceeded",
+			},
+			{
+				name: "typed memory over budget",
+				memoryBudget: "999999999999",
+				latencyBudget: "10",
+				typedMemoryBudget: "1",
+				typedLatencyBudget: "10",
+				wantError: true,
+				wantOutput: "typed-lint peak RSS budget exceeded",
+			},
+			{
+				name: "typed latency over budget",
+				memoryBudget: "999999999999",
+				latencyBudget: "10",
+				typedMemoryBudget: "999999999999",
+				typedLatencyBudget: "1",
+				typedSleep: "2",
+				wantError: true,
+				wantOutput: "typed-lint elapsed-time budget exceeded",
+			},
+			{
+				name: "typed diagnostic fingerprint mismatch",
+				memoryBudget: "999999999999",
+				latencyBudget: "10",
+				typedMemoryBudget: "999999999999",
+				typedLatencyBudget: "10",
+				typedOutput: "diagnostic",
+				typedOutputSHA256: strings.Repeat("0", 64),
+				wantError: true,
+				wantOutput: "typed-lint diagnostic fingerprint changed",
+			},
+			{
+				name: "typed diagnostic fingerprint matches",
+				memoryBudget: "999999999999",
+				latencyBudget: "10",
+				typedMemoryBudget: "999999999999",
+				typedLatencyBudget: "10",
+				typedOutput: filepath.Join(resolvedTypedRoot, "file.go"),
+				typedOutputSHA256: normalizedFingerprint,
 			},
 		} {
 		t.Run(
@@ -202,10 +274,19 @@ chmod +x "$output"
 						os.Getenv("PATH"),
 					"GLIPPY_PEAK_RSS_RUNS=1",
 					"GLIPPY_PEAK_RSS_FORMAT_ROOT=" + formatRoot,
+					"GLIPPY_PEAK_RSS_TYPED_ROOT=" + formatRoot,
 					"GLIPPY_PEAK_RSS_FORMAT_BUDGET_BYTES=" + test.memoryBudget,
 					"GLIPPY_PEAK_RSS_FORMAT_BUDGET_SECONDS=" +
 						test.latencyBudget,
-					"FAKE_GLIPPY_SLEEP_SECONDS=" + test.sleep,
+					"GLIPPY_PEAK_RSS_TYPED_BUDGET_BYTES=" +
+						test.typedMemoryBudget,
+					"GLIPPY_PEAK_RSS_TYPED_BUDGET_SECONDS=" +
+						test.typedLatencyBudget,
+					"FAKE_GLIPPY_FORMAT_SLEEP_SECONDS=" + test.formatSleep,
+					"FAKE_GLIPPY_TYPED_SLEEP_SECONDS=" + test.typedSleep,
+					"FAKE_GLIPPY_TYPED_OUTPUT=" + test.typedOutput,
+					"GLIPPY_PEAK_RSS_TYPED_OUTPUT_SHA256=" +
+						test.typedOutputSHA256,
 				)
 				output, err := command.CombinedOutput()
 				if (err != nil) != test.wantError {

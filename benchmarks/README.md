@@ -38,6 +38,27 @@ measured loads, and lets the test harness remove it afterward. Both force
 `GOWORK=off`; the module download cache is unchanged because the workload has
 no non-standard-library dependencies.
 
+## v0.5 Typed Peak-RSS Gate
+
+The peak-RSS probe's typed workload is the default correctness policy plus
+`-Wsuspicious`; a suspicious-only configuration is not equivalent because it
+omits default correctness analyzers and their dependency facts. The script
+accepts `GLIPPY_PEAK_RSS_TYPED_ROOT`, `GLIPPY_PEAK_RSS_TYPED_REVISION`,
+`GLIPPY_PEAK_RSS_TYPED_BUDGET_BYTES`,
+`GLIPPY_PEAK_RSS_TYPED_BUDGET_SECONDS`, and the optional
+`GLIPPY_PEAK_RSS_TYPED_OUTPUT_SHA256` diagnostic fingerprint. The fingerprint
+normalizes the selected typed root to `<TYPED_ROOT>` before hashing.
+
+The 2026-08-16 sqlc campaign at
+`8a7cddfbb9088666eb981645285d7699e71dcb54` reduced peak RSS from
+7,369,064,448 bytes to a worst optimized sample of 3,463,626,752 bytes while
+preserving the exact 2,839-line diagnostic fingerprint. Four optimized
+samples used 3,236,823,040-3,463,626,752 bytes and completed in 23.19-31.13
+seconds. The final-tree confirmation used 3,429,040,128 bytes. The complete
+workload, heap attribution, command, and limitations are
+recorded in
+[`../docs/research/v0.5-memory-reduction-2026-08-16.md`](../docs/research/v0.5-memory-reduction-2026-08-16.md).
+
 ## Initial Results
 
 Recorded 2026-08-09 on an Apple M4 Max with 128 GiB RAM, macOS 27.0

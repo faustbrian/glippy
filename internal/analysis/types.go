@@ -549,7 +549,7 @@ func packageSyntaxFiles(
 				path,
 			)
 		}
-		if !physical.CanFormat() {
+		if !physical.CanAnalyze() {
 			continue
 		}
 		files = append(files, typedSyntaxFile{path: path, source: physical, syntax: syntax})

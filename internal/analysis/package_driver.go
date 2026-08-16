@@ -92,6 +92,7 @@ func RunPackages(
 		return result, err
 	}
 	loadOptions.LoadDependencySyntax = needsFacts || needsNativeDependencies
+	loadOptions.compactDependencySource = needsFacts && !needsNativeDependencies
 	needsNativeEffects, err := nativePackageRulesNeedEffects(registry, selection)
 	if err != nil {
 		return result, err

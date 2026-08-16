@@ -234,9 +234,10 @@ func TestPrintfArgumentsUsesDependencyWrapperFacts(t *testing.T) {
 		filepath.Join(root, "go.mod"),
 		"module example.com/printfwrapper\n\ngo 1.25.0\n",
 	)
+	dependencyPath := filepath.Join(root, "wrapped", "wrapped.go")
 	writeFixture(
 		t,
-		filepath.Join(root, "wrapped", "wrapped.go"),
+		dependencyPath,
 		"package wrapped\n\nimport \"fmt\"\n\nfunc Warnf(format string, arguments ...any) { fmt.Printf(format, arguments...) }\n",
 	)
 	input := "package app\n\nimport \"example.com/printfwrapper/wrapped\"\n\nfunc run() { wrapped.Warnf(\"%d\", \"text\") }\n"
@@ -274,6 +275,17 @@ func TestPrintfArgumentsUsesDependencyWrapperFacts(t *testing.T) {
 	diagnostic := result.Files[0].Diagnostics[0]
 	if input[diagnostic.Range.Start:diagnostic.Range.End] != "%d" {
 		t.Fatalf("printf wrapper range = %#v", diagnostic.Range)
+	}
+	rootSource, found := result.Sources.Lookup(path)
+	if !found || len(rootSource.Tokens()) == 0 {
+		t.Fatalf("root source is not fully indexed")
+	}
+	dependencySource, found := result.Sources.Lookup(dependencyPath)
+	if !found {
+		t.Fatalf("dependency source %q was not retained", dependencyPath)
+	}
+	if tokens := dependencySource.Tokens(); len(tokens) != 0 {
+		t.Fatalf("dependency retained %d lexical tokens", len(tokens))
 	}
 }
 
