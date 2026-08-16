@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/url"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -92,6 +93,21 @@ type Backend interface {
 	Analyze(context.Context, Document) (Analysis, error)
 	CodeActions(context.Context, Document, Analysis, source.Range) ([]CodeAction, error)
 	Format(context.Context, Document) ([]byte, error)
+}
+
+// WorkspaceAnalysis binds one backend result to the exact document snapshot
+// that produced it.
+type WorkspaceAnalysis struct {
+	Document Document
+	Analysis Analysis
+	Err error
+}
+
+// WorkspaceBackend analyzes one immutable snapshot of every editor-owned
+// buffer. Backends that do not need workspace state may implement Backend
+// alone.
+type WorkspaceBackend interface {
+	AnalyzeWorkspace(context.Context, []Document) ([]WorkspaceAnalysis, error)
 }
 
 type rpcMessage struct {
@@ -393,13 +409,29 @@ func (s *server) handle(message rpcMessage) (bool, error) {
 		}
 		delete(s.documents, params.TextDocument.URI)
 		delete(s.analyses, params.TextDocument.URI)
-		return false, s.notify(
+		if err := s.notify(
 			"textDocument/publishDiagnostics",
 			publishDiagnosticsParams{
 				URI: params.TextDocument.URI,
 				Diagnostics: []protocolDiagnostic{},
 			},
-		)
+		);
+			err != nil {
+			return false, err
+		}
+		if _, supported := s.backend.(WorkspaceBackend);
+			supported && len(s.documents) != 0 {
+			var next Document
+			for _, open := range s.documents {
+				if next.URI == "" ||
+					open.Path < next.Path ||
+					(open.Path == next.Path && open.URI < next.URI) {
+					next = open
+				}
+			}
+			return false, s.analyzeAndPublish(next)
+		}
+		return false, nil
 	case "textDocument/codeAction":
 		return false, s.handleCodeAction(message)
 	case "textDocument/formatting":
@@ -413,7 +445,60 @@ func (s *server) handle(message rpcMessage) (bool, error) {
 }
 
 func (s *server) analyzeAndPublish(document Document) error {
-	analysis, err := s.backend.Analyze(s.ctx, cloneDocument(document))
+	backend, workspaceSupported := s.backend.(WorkspaceBackend)
+	if !workspaceSupported {
+		analysis, err := s.backend.Analyze(s.ctx, cloneDocument(document))
+		return s.publishAnalysis(document, analysis, err)
+	}
+	documents := make([]Document, 0, len(s.documents))
+	for _, open := range s.documents {
+		documents = append(documents, cloneDocument(open))
+	}
+	sort.Slice(
+		documents,
+		func(left, right int) bool {
+			if documents[left].Path != documents[right].Path {
+				return documents[left].Path < documents[right].Path
+			}
+			return documents[left].URI < documents[right].URI
+		},
+	)
+	results, err := backend.AnalyzeWorkspace(s.ctx, documents)
+	if err != nil {
+		return err
+	}
+	byURI := make(map[string]WorkspaceAnalysis, len(results))
+	for _, result := range results {
+		if _, found := byURI[result.Document.URI]; found {
+			return fmt.Errorf(
+				"LSP workspace backend repeated document %q",
+				result.Document.URI,
+			)
+		}
+		byURI[result.Document.URI] = result
+	}
+	for _, open := range documents {
+		result, found := byURI[open.URI]
+		if !found ||
+			result.Document.Path != open.Path ||
+			result.Document.Version != open.Version ||
+			!bytes.Equal(result.Document.Text, open.Text) {
+			return fmt.Errorf(
+				"LSP workspace backend omitted exact document %q",
+				open.URI,
+			)
+		}
+		if err := s.publishAnalysis(open, result.Analysis, result.Err); err != nil {
+			return err
+		}
+	}
+	if len(byURI) != len(documents) {
+		return errors.New("LSP workspace backend returned unknown documents")
+	}
+	return nil
+}
+
+func (s *server) publishAnalysis(document Document, analysis Analysis, err error) error {
 	if contextErr := s.ctx.Err(); contextErr != nil {
 		return contextErr
 	}

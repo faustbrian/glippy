@@ -92,13 +92,16 @@ versions, malformed or duplicate length headers, oversized headers or payloads,
 and invalid UTF-16 positions MUST be refused rather than guessed.
 
 Every published diagnostic MUST identify the exact open document version that
-produced it. Typed, CFG, and SSA analysis MUST use the complete editor buffer as
-a package overlay and MUST participate in persistent analysis caching only when
-the selected configuration enables it. Syntax selections MUST remain
-independent of package loading and persistent caches. Configuration, source,
-package, and analysis failures MUST remain visible document diagnostics instead
-of silently falling back to defaults. Closing a document MUST clear its
-diagnostics.
+produced it. Each analysis event MUST use one deterministic snapshot of every
+open Go buffer under the selected workspace root. Typed, CFG, and SSA analysis
+MUST submit that complete snapshot as package overlays, batch compatible open
+documents from the same package into one package load, and republish every open document so changes
+invalidate dependent diagnostics. Persistent analysis caching remains
+configuration-controlled. Syntax selections MUST remain independent of package
+loading and persistent caches. Configuration, source, package, and analysis
+failures MUST remain visible document diagnostics instead of silently falling
+back to defaults. Closing a document MUST remove it from later snapshots and
+clear its diagnostics.
 
 Safe individual code actions and one `source.fixAll.glippy` action MUST be
 available by default. `--fix-suggestions` and `--fix-unsafe` MUST independently
@@ -106,7 +109,9 @@ authorize those additional individual action classes; neither may broaden the
 safe-only fix-all action. Every returned edit MUST bind the current document
 version, coordinate exact source ranges, reject conflicts and stale source,
 reparse, run the canonical formatter, and reanalyze the complete result before
-returning one whole-document replacement. The LSP MUST NOT write source files.
+returning one whole-document replacement. Typed action validation MUST retain
+the same immutable open-buffer snapshot and replace only the candidate target
+within it. The LSP MUST NOT write source files.
 Cancellation MUST prevent publication of an incomplete analysis or action;
 canceling an active request MUST return the LSP request-canceled error without
 ending the session.

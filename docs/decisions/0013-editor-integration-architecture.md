@@ -146,3 +146,20 @@ remain explicit process-start flags, and no LSP operation writes project
 source. Incremental synchronization, non-file documents, multi-file actions,
 workspace mutation, and a separate editor plugin API remain outside this
 decision.
+
+## 2026-08-16 Revisit
+
+Repeated typed analysis of one buffer at a time produced inconsistent package
+state when several related files had unsaved changes, and reopening dependent
+documents repeated equivalent package loads. The service now captures one
+immutable, canonically ordered snapshot of all open Go buffers for each editor
+event. Compatible same-package documents under the same root, configuration,
+source language, and analysis tier share one package load, and every open document is
+republished so an upstream change invalidates dependent diagnostics.
+
+The batch contract preserves exact document versions, treats incompatible URI
+aliases as errors, excludes buffers outside the selected root from its overlay,
+and keeps formatting and code actions document-local. Persistent reuse across
+successive changed snapshots, debounce, superseded-version cancellation,
+configuration watching, and reusable typed graphs remain later work under the
+same revisit trigger.

@@ -5,11 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
 	"io"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/cache"
 	"github.com/faustbrian/glippy/internal/config"
 	fixengine "github.com/faustbrian/glippy/internal/fix"
 	glippyformat "github.com/faustbrian/glippy/internal/format"
@@ -34,11 +37,18 @@ type lspAnalysisState struct {
 	task lintTask
 	packageTask *lintPackageTask
 	result analysis.Result
+	overlay map[string][]byte
 }
 
 type lspBackend struct {
 	registry *rules.Registry
 	invocation lspInvocation
+	runPackageAnalysis func(
+		context.Context,
+		*rules.Registry,
+		lintPackageTask,
+		map[string][]byte,
+	) (analysis.PackageResult, error)
 }
 
 func parseLSPInvocation(arguments []string) (lspInvocation, bool) {
@@ -94,6 +104,180 @@ func runLSP(
 }
 
 func (b *lspBackend) Analyze(ctx context.Context, document lsp.Document) (lsp.Analysis, error) {
+	return b.analyzeWorkspaceDocument(ctx, document, []lsp.Document{document})
+}
+
+func (b *lspBackend) AnalyzeWorkspace(
+	ctx context.Context,
+	documents []lsp.Document,
+) ([]lsp.WorkspaceAnalysis, error) {
+	results := make([]lsp.WorkspaceAnalysis, len(documents))
+	type packageGroupKey struct {
+		root string
+		packageDirectory string
+		packageName string
+		configuration cache.Digest
+		sourceVersion string
+		requirement rules.Requirement
+	}
+	type packageGroup struct {
+		task lintTask
+		members []int
+	}
+	groups := make(map[packageGroupKey]int)
+	orderedGroups := make([]packageGroup, 0)
+	for index, document := range documents {
+		results[index].Document = document
+		file, err := source.Load(document.Path, document.Text)
+		if err != nil {
+			results[index].Err = err
+			continue
+		}
+		packageName := ""
+		if err := file.ReadSyntax(
+			func(syntax *ast.File) error {
+				if syntax.Name == nil || syntax.Name.Name == "" {
+					return errors.New("editor source has no package name")
+				}
+				packageName = syntax.Name.Name
+				return nil
+			},
+		);
+			err != nil {
+			results[index].Err = err
+			continue
+		}
+		task, requirement, err := b.task(document.Path)
+		if err != nil {
+			results[index].Err = err
+			continue
+		}
+		if requirement < rules.RequireTypes {
+			analysis_, err := b.analyzeWorkspaceDocument(ctx, document, documents)
+			results[index].Analysis = analysis_
+			results[index].Err = err
+			continue
+		}
+		key := packageGroupKey{
+			root: task.root,
+			packageDirectory: filepath.Dir(document.Path),
+			packageName: packageName,
+			configuration: task.options.configurationDigest,
+			sourceVersion: task.options.sourceGoVersion,
+			requirement: requirement,
+		}
+		groupIndex, found := groups[key]
+		if !found {
+			groupIndex = len(orderedGroups)
+			groups[key] = groupIndex
+			orderedGroups = append(orderedGroups, packageGroup{task: task})
+		}
+		orderedGroups[groupIndex].members = append(orderedGroups[groupIndex].members, index)
+	}
+	type workspaceOverlay struct {
+		files map[string][]byte
+		err error
+	}
+	overlays := make(map[string]workspaceOverlay)
+	for _, group := range orderedGroups {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return nil, contextErr
+		}
+		patterns := make([]string, 0, len(group.members))
+		for _, index := range group.members {
+			patterns = append(patterns, "file=" + documents[index].Path)
+		}
+		slices.Sort(patterns)
+		patterns = slices.Compact(patterns)
+		packageTask := lintPackageTask{
+			root: group.task.root,
+			patterns: patterns,
+			options: group.task.options,
+		}
+		resolved, found := overlays[group.task.root]
+		if !found {
+			resolved.files, resolved.err = editorWorkspaceOverlay(
+				group.task.root,
+				documents[group.members[0]],
+				documents,
+			)
+			overlays[group.task.root] = resolved
+		}
+		overlay, err := resolved.files, resolved.err
+		if err == nil {
+			packageResult, packageErr := b.analyzePackage(ctx, packageTask, overlay)
+			if packageErr == nil {
+				packageErr = applyConfiguredPackageBaseline(
+					packageTask,
+					&packageResult,
+					b.registry,
+				)
+			}
+			if packageErr == nil {
+				packageErr = validateLintPackagePrerequisites(packageResult)
+			}
+			if packageErr != nil {
+				err = packageErr
+			} else {
+				byPath := make(map[string]analysis.Result, len(packageResult.Files))
+				for _, result := range packageResult.Files {
+					byPath[result.Path] = result
+				}
+				for _, index := range group.members {
+					document := documents[index]
+					result, found := byPath[document.Path]
+					if !found {
+						results[index].Err = fmt.Errorf(
+							"typed editor analysis did not return %q",
+							document.Path,
+						)
+						continue
+					}
+					bound, found := packageResult.Sources.Lookup(document.Path)
+					if !found || !bytes.Equal(bound.Bytes(), document.Text) {
+						results[index].Err = errors.New(
+							"typed editor analysis does not match the document source",
+						)
+						continue
+					}
+					memberTask := group.task
+					results[index].Analysis = editorAnalysis(
+						bound,
+						result,
+						&lspAnalysisState{
+							task: memberTask,
+							packageTask: &packageTask,
+							result: result,
+							overlay: overlay,
+						},
+					)
+				}
+				continue
+			}
+		}
+		for _, index := range group.members {
+			results[index].Err = err
+		}
+	}
+	return results, nil
+}
+
+func (b *lspBackend) analyzePackage(
+	ctx context.Context,
+	task lintPackageTask,
+	overlay map[string][]byte,
+) (analysis.PackageResult, error) {
+	if b.runPackageAnalysis != nil {
+		return b.runPackageAnalysis(ctx, b.registry, task, overlay)
+	}
+	return runPackageAnalysisWithOverlay(ctx, b.registry, task, overlay)
+}
+
+func (b *lspBackend) analyzeWorkspaceDocument(
+	ctx context.Context,
+	document lsp.Document,
+	documents []lsp.Document,
+) (lsp.Analysis, error) {
 	file, err := source.Load(document.Path, document.Text)
 	if err != nil {
 		return lsp.Analysis{}, err
@@ -129,12 +313,11 @@ func (b *lspBackend) Analyze(ctx context.Context, document lsp.Document) (lsp.An
 		patterns: []string{"file=" + document.Path},
 		options: task.options,
 	}
-	packageResult, err := runPackageAnalysisWithOverlay(
-		ctx,
-		b.registry,
-		packageTask,
-		map[string][]byte{document.Path: slices.Clone(document.Text)},
-	)
+	overlay, err := editorWorkspaceOverlay(task.root, document, documents)
+	if err != nil {
+		return lsp.Analysis{}, err
+	}
+	packageResult, err := runPackageAnalysisWithOverlay(ctx, b.registry, packageTask, overlay)
 	if err != nil {
 		return lsp.Analysis{}, err
 	}
@@ -158,10 +341,70 @@ func (b *lspBackend) Analyze(ctx context.Context, document lsp.Document) (lsp.An
 		return editorAnalysis(
 			bound,
 			result,
-			&lspAnalysisState{task: task, packageTask: &packageTask, result: result},
+			&lspAnalysisState{
+				task: task,
+				packageTask: &packageTask,
+				result: result,
+				overlay: overlay,
+			},
 		), nil
 	}
 	return lsp.Analysis{}, fmt.Errorf("typed editor analysis did not return %q", document.Path)
+}
+
+func editorWorkspaceOverlay(
+	root string,
+	target lsp.Document,
+	documents []lsp.Document,
+) (map[string][]byte, error) {
+	overlay := make(map[string][]byte, len(documents) + 1)
+	add := func(document lsp.Document) error {
+		path := filepath.Clean(document.Path)
+		if !filepath.IsAbs(path) || path != document.Path {
+			return fmt.Errorf(
+				"editor document path %q is not normalized absolute",
+				document.Path,
+			)
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return fmt.Errorf("resolve editor document %q: %w", path, err)
+		}
+		if relative == ".." ||
+			strings.HasPrefix(relative, ".." + string(filepath.Separator)) {
+			return nil
+		}
+		if filepath.Ext(path) != ".go" {
+			return nil
+		}
+		if previous, found := overlay[path];
+			found && !bytes.Equal(previous, document.Text) {
+			return fmt.Errorf(
+				"editor workspace contains incompatible buffers for %q",
+				path,
+			)
+		}
+		overlay[path] = slices.Clone(document.Text)
+		return nil
+	}
+	for _, document := range documents {
+		if err := add(document); err != nil {
+			return nil, err
+		}
+	}
+	if _, found := overlay[target.Path]; !found {
+		if err := add(target); err != nil {
+			return nil, err
+		}
+	}
+	if _, found := overlay[target.Path]; !found {
+		return nil, fmt.Errorf(
+			"typed editor target %q is outside workspace root %q",
+			target.Path,
+			root,
+		)
+	}
+	return overlay, nil
 }
 
 func (b *lspBackend) CodeActions(
@@ -286,7 +529,7 @@ func (b *lspBackend) coordinateEditorFixes(
 				b.registry,
 				*state.packageTask,
 				formatted,
-				nil,
+				state.overlay,
 			)
 			return err
 		}

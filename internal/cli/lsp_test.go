@@ -9,6 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/lsp"
+	"github.com/faustbrian/glippy/internal/rulecatalog"
+	"github.com/faustbrian/glippy/internal/rules"
 )
 
 func TestRunLSPPublishesTypedDiagnosticsAndValidatedSafeAction(t *testing.T) {
@@ -365,6 +370,403 @@ func TestRunLSPUsesConfiguredPersistentCacheForTypedOverlays(t *testing.T) {
 	}
 	if entries == 0 {
 		t.Fatal("LSP typed analysis did not populate the configured persistent cache")
+	}
+}
+
+func TestRunLSPAnalyzesEachDocumentAgainstAllOpenWorkspaceOverlays(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	definitionPath := filepath.Join(root, "definition.go")
+	consumerPath := filepath.Join(root, "consumer.go")
+	writeChangedCLIFile(t, definitionPath, "package sample\n\nfunc value() int { return 1 }\n")
+	writeChangedCLIFile(t, consumerPath, "package sample\n\nvar _ int = value()\n")
+	definitionURI := "file://" + filepath.ToSlash(definitionPath)
+	consumerURI := "file://" + filepath.ToSlash(consumerPath)
+	input := cliLSPFrames(
+		t,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": definitionURI,
+					"languageId": "go",
+					"version": 1,
+					"text": "package sample\n\nfunc value() int { return 1 }\n",
+				},
+			},
+		},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": consumerURI,
+					"languageId": "go",
+					"version": 1,
+					"text": "package sample\n\nvar _ int = value()\n",
+				},
+			},
+		},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didChange",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": definitionURI, "version": 2},
+				"contentChanges": []any{
+					map[string]any{
+						"text": "package sample\n\nfunc value() string { return \"text\" }\n",
+					},
+				},
+			},
+		},
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := RunContext(
+		context.Background(),
+		[]string{"lsp"},
+		bytes.NewReader(input),
+		&stdout,
+		&stderr,
+	);
+		exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf("RunContext(lsp) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+	if got := strings.Count(stdout.String(), `"code":"glippy"`); got != 2 {
+		t.Fatalf(
+			"typed workspace diagnostics = %d, want 2; output = %q",
+			got,
+			stdout.String(),
+		)
+	}
+}
+
+func TestLSPWorkspaceBatchesCompatibleTypedDocumentsIntoOnePackageLoad(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	firstPath := filepath.Join(root, "first.go")
+	secondPath := filepath.Join(root, "second.go")
+	first := "package sample\n\nfunc first() int { return second() }\n"
+	second := "package sample\n\nfunc second() int { return 2 }\n"
+	writeChangedCLIFile(t, firstPath, first)
+	writeChangedCLIFile(t, secondPath, second)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := 0
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			runs++
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+	}
+	documents := []lsp.Document{
+		{
+			URI: "file://" + filepath.ToSlash(firstPath),
+			Path: firstPath,
+			Version: 1,
+			Text: []byte(first),
+		},
+		{
+			URI: "file://" + filepath.ToSlash(secondPath),
+			Path: secondPath,
+			Version: 1,
+			Text: []byte(second),
+		},
+	}
+	results, err := backend.AnalyzeWorkspace(context.Background(), documents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runs != 1 {
+		t.Fatalf("typed workspace package loads = %d, want 1", runs)
+	}
+	if len(results) != len(documents) {
+		t.Fatalf("workspace results = %d, want %d", len(results), len(documents))
+	}
+	for index, result := range results {
+		if result.Err != nil ||
+			result.Analysis.File == nil ||
+			result.Analysis.File.Path() != documents[index].Path {
+			t.Fatalf("workspace result %d = %#v", index, result)
+		}
+	}
+}
+
+func TestLSPWorkspaceIsolatesUnrelatedPackageFailures(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	badPath := filepath.Join(root, "bad", "bad.go")
+	goodPath := filepath.Join(root, "good", "good.go")
+	if err := os.MkdirAll(filepath.Dir(badPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(goodPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bad := "package bad\n\nvar _ int = \"bad\"\n"
+	good := "package good\n\nfunc Value() int { return 1 }\n"
+	writeChangedCLIFile(t, badPath, bad)
+	writeChangedCLIFile(t, goodPath, good)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &lspBackend{registry: registry}
+	documents := []lsp.Document{
+		{
+			URI: "file://" + filepath.ToSlash(badPath),
+			Path: badPath,
+			Version: 1,
+			Text: []byte(bad),
+		},
+		{
+			URI: "file://" + filepath.ToSlash(goodPath),
+			Path: goodPath,
+			Version: 1,
+			Text: []byte(good),
+		},
+	}
+	results, err := backend.AnalyzeWorkspace(context.Background(), documents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 || results[0].Err == nil {
+		t.Fatalf("bad package result = %#v", results)
+	}
+	if results[1].Err != nil || results[1].Analysis.File == nil {
+		t.Fatalf("good package inherited unrelated failure: %#v", results[1])
+	}
+}
+
+func TestLSPWorkspaceIsolatesExternalTestPackageFailures(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	packagePath := filepath.Join(root, "value.go")
+	testPath := filepath.Join(root, "value_test.go")
+	packageSource := "package sample\n\nfunc Value() int { return 1 }\n"
+	testSource := "package sample_test\n\nvar _ int = \"bad\"\n"
+	writeChangedCLIFile(t, packagePath, packageSource)
+	writeChangedCLIFile(t, testPath, testSource)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &lspBackend{registry: registry}
+	documents := []lsp.Document{
+		{
+			URI: "file://" + filepath.ToSlash(packagePath),
+			Path: packagePath,
+			Version: 1,
+			Text: []byte(packageSource),
+		},
+		{
+			URI: "file://" + filepath.ToSlash(testPath),
+			Path: testPath,
+			Version: 1,
+			Text: []byte(testSource),
+		},
+	}
+	results, err := backend.AnalyzeWorkspace(context.Background(), documents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 || results[0].Err != nil || results[0].Analysis.File == nil {
+		t.Fatalf("ordinary package inherited external-test failure: %#v", results)
+	}
+	if results[1].Err == nil {
+		t.Fatalf("external test package result = %#v", results[1])
+	}
+}
+
+func TestRunLSPClosingOverlayRefreshesRemainingWorkspaceDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	definitionPath := filepath.Join(root, "definition.go")
+	consumerPath := filepath.Join(root, "consumer.go")
+	writeChangedCLIFile(t, definitionPath, "package sample\n\nfunc value() int { return 1 }\n")
+	writeChangedCLIFile(t, consumerPath, "package sample\n\nvar _ int = value()\n")
+	definitionURI := "file://" + filepath.ToSlash(definitionPath)
+	consumerURI := "file://" + filepath.ToSlash(consumerPath)
+	input := cliLSPFrames(
+		t,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": definitionURI,
+					"languageId": "go",
+					"version": 1,
+					"text": "package sample\n\nfunc value() string { return \"text\" }\n",
+				},
+			},
+		},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": consumerURI,
+					"languageId": "go",
+					"version": 1,
+					"text": "package sample\n\nvar _ int = value()\n",
+				},
+			},
+		},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didClose",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": definitionURI},
+			},
+		},
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := RunContext(
+		context.Background(),
+		[]string{"lsp"},
+		bytes.NewReader(input),
+		&stdout,
+		&stderr,
+	);
+		exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf("RunContext(lsp) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+	if got := strings.Count(stdout.String(), `"diagnostics":[]`); got != 2 {
+		t.Fatalf(
+			"workspace diagnostic clears = %d, want 2; output = %q",
+			got,
+			stdout.String(),
+		)
+	}
+}
+
+func TestRunLSPValidatesTypedActionsAgainstTheWorkspaceSnapshot(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = [\"style\"]\n",
+	)
+	definitionPath := filepath.Join(root, "definition.go")
+	consumerPath := filepath.Join(root, "consumer.go")
+	writeChangedCLIFile(t, definitionPath, "package sample\n")
+	consumer := "package sample\n\nfunc run() {\n\tif ready() == true {\n\t}\n}\n"
+	writeChangedCLIFile(t, consumerPath, consumer)
+	definitionURI := "file://" + filepath.ToSlash(definitionPath)
+	consumerURI := "file://" + filepath.ToSlash(consumerPath)
+	input := cliLSPFrames(
+		t,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": definitionURI,
+					"languageId": "go",
+					"version": 1,
+					"text": "package sample\n\nfunc ready() bool { return true }\n",
+				},
+			},
+		},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": consumerURI,
+					"languageId": "go",
+					"version": 1,
+					"text": consumer,
+				},
+			},
+		},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"id": 2,
+			"method": "textDocument/codeAction",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": consumerURI},
+				"range": map[string]any{
+					"start": map[string]any{"line": 3, "character": 0},
+					"end": map[string]any{"line": 4, "character": 0},
+				},
+			},
+		},
+		map[string]any{"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := RunContext(
+		context.Background(),
+		[]string{"lsp"},
+		bytes.NewReader(input),
+		&stdout,
+		&stderr,
+	);
+		exitCode != ExitSuccess || stderr.Len() != 0 {
+		t.Fatalf("RunContext(lsp) = exit %d, stderr %q", exitCode, stderr.String())
+	}
+	if !strings.Contains(
+		stdout.String(),
+		`"title":"redundant-bool-comparison: simplify-comparison [safe]"`,
+	) {
+		t.Fatalf("workspace-backed code action missing: %q", stdout.String())
 	}
 }
 
