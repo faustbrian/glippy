@@ -145,6 +145,12 @@ uses the same configuration, cache, suppression, baseline, formatter, and fix
 validation contracts as the command-line paths. Suggestion and unsafe actions
 remain hidden unless their corresponding LSP flags are supplied.
 
+Document analysis runs outside the protocol loop. Rapid replacements coalesce
+behind a short bounded debounce, cancel an active older snapshot, and publish
+only results whose complete document versions are still current. Code actions
+wait for the matching analysis; a later edit rejects the queued request as
+content-modified instead of applying stale state.
+
 Typed workspace analysis retains at most eight validated package results per
 session. An edit reloads its package and open reverse dependants while
 unaffected packages reuse their exact prior result against the current complete

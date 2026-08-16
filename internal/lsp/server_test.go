@@ -10,6 +10,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,8 +62,19 @@ func TestServePublishesUTF16DiagnosticsAndVersionedCodeActions(t *testing.T) {
 		},
 		formatted: []byte("package sample\n\nfunc run() { _ = \"😀\" }\n"),
 	}
-	input := framedMessages(
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
 		t,
+		writer,
 		map[string]any{
 			"jsonrpc": "2.0",
 			"id": 1,
@@ -81,6 +93,14 @@ func TestServePublishesUTF16DiagnosticsAndVersionedCodeActions(t *testing.T) {
 				},
 			},
 		},
+	)
+	if !output.waitContains(ctx, []byte("emoji-rule")) ||
+		!output.waitContains(ctx, []byte(`"version":7`)) {
+		t.Fatalf("initial diagnostics were not published: %s", output.bytes())
+	}
+	writeLSPMessages(
+		t,
+		writer,
 		map[string]any{
 			"jsonrpc": "2.0",
 			"id": 2,
@@ -106,14 +126,15 @@ func TestServePublishesUTF16DiagnosticsAndVersionedCodeActions(t *testing.T) {
 		map[string]any{"jsonrpc": "2.0", "id": 4, "method": "shutdown"},
 		map[string]any{"jsonrpc": "2.0", "method": "exit"},
 	)
-	var output bytes.Buffer
-	if err := lsp.Serve(context.Background(), bytes.NewReader(input), &output, backend);
-		err != nil {
+	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	messages := decodeFrames(t, output.Bytes())
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+	messages := decodeFrames(t, output.bytes())
 	if len(messages) != 5 {
-		t.Fatalf("Serve() emitted %d messages:\n%s", len(messages), output.Bytes())
+		t.Fatalf("Serve() emitted %d messages:\n%s", len(messages), output.bytes())
 	}
 
 	initialize := messages[0]
@@ -199,8 +220,19 @@ func TestServeReanalyzesFullDocumentChangesAndClearsClosedDiagnostics(t *testing
 			}
 		},
 	}
-	input := framedMessages(
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
 		t,
+		writer,
 		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
 		map[string]any{
 			"jsonrpc": "2.0",
@@ -213,6 +245,13 @@ func TestServeReanalyzesFullDocumentChangesAndClearsClosedDiagnostics(t *testing
 				},
 			},
 		},
+	)
+	if !output.waitContains(ctx, []byte(`"version":1`)) {
+		t.Fatalf("opened diagnostics were not published: %s", output.bytes())
+	}
+	writeLSPMessages(
+		t,
+		writer,
 		map[string]any{
 			"jsonrpc": "2.0",
 			"method": "textDocument/didChange",
@@ -226,6 +265,14 @@ func TestServeReanalyzesFullDocumentChangesAndClearsClosedDiagnostics(t *testing
 				},
 			},
 		},
+	)
+	if !output.waitContains(ctx, []byte(`"version":2`)) ||
+		!output.waitContains(ctx, []byte("changed-package")) {
+		t.Fatalf("changed diagnostics were not published: %s", output.bytes())
+	}
+	writeLSPMessages(
+		t,
+		writer,
 		map[string]any{
 			"jsonrpc": "2.0",
 			"method": "textDocument/didClose",
@@ -236,14 +283,15 @@ func TestServeReanalyzesFullDocumentChangesAndClearsClosedDiagnostics(t *testing
 		map[string]any{"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
 		map[string]any{"jsonrpc": "2.0", "method": "exit"},
 	)
-	var output bytes.Buffer
-	err := lsp.Serve(context.Background(), bytes.NewReader(input), &output, backend)
-	if err != nil {
+	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	messages := decodeFrames(t, output.Bytes())
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+	messages := decodeFrames(t, output.bytes())
 	if len(messages) != 5 {
-		t.Fatalf("Serve() emitted %d messages:\n%s", len(messages), output.Bytes())
+		t.Fatalf("Serve() emitted %d messages:\n%s", len(messages), output.bytes())
 	}
 	changed := messages[2]["params"].(map[string]any)
 	if changed["version"] != float64(2) || len(changed["diagnostics"].([]any)) != 1 {
@@ -389,8 +437,17 @@ func TestServeDoesNotPublishAnalysisCompletedAfterCancellation(t *testing.T) {
 			},
 		},
 	}
-	input := framedMessages(
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	var output bytes.Buffer
+	serveDone := make(chan error, 1)
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, &output, backend)
+	}()
+	writeLSPMessages(
 		t,
+		writer,
 		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
 		map[string]any{
 			"jsonrpc": "2.0",
@@ -404,14 +461,626 @@ func TestServeDoesNotPublishAnalysisCompletedAfterCancellation(t *testing.T) {
 			},
 		},
 	)
-	var output bytes.Buffer
-	err := lsp.Serve(ctx, bytes.NewReader(input), &output, backend)
+	err := <-serveDone
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Serve() error = %v", err)
 	}
 	if strings.Contains(output.String(), "publishDiagnostics") ||
 		strings.Contains(output.String(), "late-result") {
 		t.Fatalf("Serve() published canceled analysis: %s", output.Bytes())
+	}
+}
+
+func TestServeCancelsSupersededAnalysisAndPublishesOnlyNewestVersion(t *testing.T) {
+	t.Parallel()
+
+	backend := &supersededAnalysisBackend{
+		started: make(chan int, 4),
+		canceled: make(chan int, 4),
+	}
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": "file:///project/source.go",
+					"version": 1,
+					"text": "package first\n",
+				},
+			},
+		},
+	)
+	if version := receiveVersion(t, backend.started); version != 1 {
+		t.Fatalf("first analysis version = %d, want 1", version)
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		changedDocumentMessage(2, "package second\n"),
+		changedDocumentMessage(3, "package newest\n"),
+	)
+	if version := receiveVersion(t, backend.canceled); version != 1 {
+		t.Fatalf("canceled analysis version = %d, want 1", version)
+	}
+	if version := receiveVersion(t, backend.started); version != 3 {
+		t.Fatalf("next analysis version = %d, want debounced version 3", version)
+	}
+	if !output.waitContains(ctx, []byte(`"version":3`)) ||
+		!output.waitContains(ctx, []byte("newest-version")) {
+		t.Fatalf("newest diagnostics were not published: %s", output.bytes())
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 4, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range decodeFrames(t, output.bytes()) {
+		if message["method"] != "textDocument/publishDiagnostics" {
+			continue
+		}
+		params := message["params"].(map[string]any)
+		if params["version"] != float64(3) {
+			t.Fatalf("published superseded diagnostics: %#v", params)
+		}
+	}
+}
+
+func TestServeRejectsQueuedCodeActionWhenAnalysisIsSuperseded(t *testing.T) {
+	t.Parallel()
+
+	backend := &supersededAnalysisBackend{
+		started: make(chan int, 4),
+		canceled: make(chan int, 4),
+	}
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": "file:///project/source.go",
+					"version": 1,
+					"text": "package first\n",
+				},
+			},
+		},
+	)
+	if version := receiveVersion(t, backend.started); version != 1 {
+		t.Fatalf("first analysis version = %d, want 1", version)
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{
+			"jsonrpc": "2.0",
+			"id": 2,
+			"method": "textDocument/codeAction",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": "file:///project/source.go"},
+				"range": map[string]any{
+					"start": map[string]any{"line": 0, "character": 0},
+					"end": map[string]any{"line": 0, "character": 0},
+				},
+			},
+		},
+		changedDocumentMessage(3, "package newest\n"),
+	)
+	if !output.waitContains(ctx, []byte(`"code":-32801`)) {
+		t.Fatalf("queued action was not rejected as content-modified: %s", output.bytes())
+	}
+	if version := receiveVersion(t, backend.canceled); version != 1 {
+		t.Fatalf("canceled analysis version = %d, want 1", version)
+	}
+	if version := receiveVersion(t, backend.started); version != 3 {
+		t.Fatalf("next analysis version = %d, want 3", version)
+	}
+	if !output.waitContains(ctx, []byte(`"version":3`)) {
+		t.Fatalf("newest diagnostics were not published: %s", output.bytes())
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 4, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, message := range decodeFrames(t, output.bytes()) {
+		if message["id"] != float64(2) {
+			continue
+		}
+		error_, _ := message["error"].(map[string]any)
+		if error_["code"] == float64(-32801) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("content-modified response missing: %s", output.bytes())
+	}
+}
+
+func TestServeHonorsQueuedCodeActionCancellationBeforeSupersession(t *testing.T) {
+	t.Parallel()
+
+	backend := &supersededAnalysisBackend{
+		started: make(chan int, 4),
+		canceled: make(chan int, 4),
+	}
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": "file:///project/source.go",
+					"version": 1,
+					"text": "package first\n",
+				},
+			},
+		},
+	)
+	if version := receiveVersion(t, backend.started); version != 1 {
+		t.Fatalf("first analysis version = %d, want 1", version)
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{
+			"jsonrpc": "2.0",
+			"id": 2,
+			"method": "textDocument/codeAction",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": "file:///project/source.go"},
+				"range": map[string]any{
+					"start": map[string]any{"line": 0, "character": 0},
+					"end": map[string]any{"line": 0, "character": 0},
+				},
+			},
+		},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "$/cancelRequest",
+			"params": map[string]any{"id": 2},
+		},
+		changedDocumentMessage(3, "package newest\n"),
+	)
+	if !output.waitContains(ctx, []byte(`"code":-32800`)) {
+		t.Fatalf("queued action cancellation was not honored: %s", output.bytes())
+	}
+	if version := receiveVersion(t, backend.canceled); version != 1 {
+		t.Fatalf("canceled analysis version = %d, want 1", version)
+	}
+	if version := receiveVersion(t, backend.started); version != 3 {
+		t.Fatalf("next analysis version = %d, want 3", version)
+	}
+	if !output.waitContains(ctx, []byte(`"version":3`)) {
+		t.Fatalf("newest diagnostics were not published: %s", output.bytes())
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 4, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range decodeFrames(t, output.bytes()) {
+		if message["id"] != float64(2) {
+			continue
+		}
+		error_, _ := message["error"].(map[string]any)
+		if error_["code"] != float64(-32800) {
+			t.Fatalf("queued action response = %#v, want request canceled", message)
+		}
+	}
+}
+
+func TestServeRejectsQueuedCodeActionWhenFinalDocumentCloses(t *testing.T) {
+	t.Parallel()
+
+	backend := &supersededAnalysisBackend{
+		started: make(chan int, 4),
+		canceled: make(chan int, 4),
+	}
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": "file:///project/source.go",
+					"version": 1,
+					"text": "package first\n",
+				},
+			},
+		},
+	)
+	if version := receiveVersion(t, backend.started); version != 1 {
+		t.Fatalf("first analysis version = %d, want 1", version)
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{
+			"jsonrpc": "2.0",
+			"id": 2,
+			"method": "textDocument/codeAction",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": "file:///project/source.go"},
+				"range": map[string]any{
+					"start": map[string]any{"line": 0, "character": 0},
+					"end": map[string]any{"line": 0, "character": 0},
+				},
+			},
+		},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didClose",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": "file:///project/source.go"},
+			},
+		},
+	)
+	if version := receiveVersion(t, backend.canceled); version != 1 {
+		t.Fatalf("canceled analysis version = %d, want 1", version)
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+
+	foundClear := false
+	foundContentModified := false
+	for _, message := range decodeFrames(t, output.bytes()) {
+		if message["method"] == "textDocument/publishDiagnostics" {
+			params := message["params"].(map[string]any)
+			if params["uri"] == "file:///project/source.go" &&
+				len(params["diagnostics"].([]any)) == 0 {
+				foundClear = true
+			}
+		}
+		if message["id"] == float64(2) {
+			error_, _ := message["error"].(map[string]any)
+			if error_["code"] == float64(-32801) {
+				foundContentModified = true
+			}
+		}
+	}
+	if !foundClear {
+		t.Fatalf("closed document diagnostics were not cleared: %s", output.bytes())
+	}
+	if !foundContentModified {
+		t.Fatalf("queued action was not rejected as content-modified: %s", output.bytes())
+	}
+}
+
+func TestServeDrainsShutdownWhenAnalysisSnapshotIsStale(t *testing.T) {
+	t.Parallel()
+
+	backend := &staleWorkspaceBackend{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": "file:///project/source.go",
+					"version": 1,
+					"text": "package current\n",
+				},
+			},
+		},
+	)
+	select {
+	case <-backend.started:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for workspace analysis")
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{
+			"jsonrpc": "2.0",
+			"id": 2,
+			"method": "textDocument/codeAction",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": "file:///project/source.go"},
+				"range": map[string]any{
+					"start": map[string]any{"line": 0, "character": 0},
+					"end": map[string]any{"line": 0, "character": 0},
+				},
+			},
+		},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"id": 4,
+			"method": "textDocument/formatting",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": "file:///project/source.go"},
+			},
+		},
+	)
+	if !output.waitContains(ctx, []byte(`"id":4`)) {
+		t.Fatalf("formatting barrier response missing: %s", output.bytes())
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"id": 5,
+			"method": "textDocument/formatting",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": "file:///project/source.go"},
+			},
+		},
+	)
+	if !output.waitContains(ctx, []byte(`"id":5`)) ||
+		!output.waitContains(ctx, []byte(`"code":-32002`)) {
+		t.Fatalf("shutdown barrier response missing: %s", output.bytes())
+	}
+	writeLSPMessages(t, writer, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+	close(backend.release)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+
+	foundContentModified := false
+	foundShutdown := false
+	for _, message := range decodeFrames(t, output.bytes()) {
+		if message["id"] == float64(2) {
+			error_, _ := message["error"].(map[string]any)
+			if error_["code"] == float64(-32801) {
+				foundContentModified = true
+			}
+		}
+		if message["id"] == float64(3) {
+			_, foundShutdown = message["result"]
+		}
+	}
+	if !foundContentModified {
+		t.Fatalf("stale action was not rejected as content-modified: %s", output.bytes())
+	}
+	if !foundShutdown {
+		t.Fatalf("shutdown response missing after stale analysis: %s", output.bytes())
+	}
+}
+
+func TestServeDoesNotReplacePendingShutdownRequest(t *testing.T) {
+	t.Parallel()
+
+	backend := &delayedAnalysisBackend{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": "file:///project/source.go",
+					"version": 1,
+					"text": "package current\n",
+				},
+			},
+		},
+	)
+	select {
+	case <-backend.started:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for document analysis")
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+	)
+	if !output.waitContains(ctx, []byte(`"id":3`)) ||
+		!output.waitContains(ctx, []byte(`"code":-32002`)) {
+		t.Fatalf("repeated shutdown response missing: %s", output.bytes())
+	}
+	writeLSPMessages(t, writer, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+	close(backend.release)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+
+	foundFirstShutdown := false
+	foundSecondError := false
+	for _, message := range decodeFrames(t, output.bytes()) {
+		if message["id"] == float64(2) {
+			_, foundFirstShutdown = message["result"]
+		}
+		if message["id"] == float64(3) {
+			error_, _ := message["error"].(map[string]any)
+			foundSecondError = error_["code"] == float64(-32002)
+		}
+	}
+	if !foundFirstShutdown {
+		t.Fatalf("first shutdown response missing: %s", output.bytes())
+	}
+	if !foundSecondError {
+		t.Fatalf("repeated shutdown was not rejected: %s", output.bytes())
+	}
+}
+
+func TestServePropagatesQueuedActionRejectionWriteFailure(t *testing.T) {
+	t.Parallel()
+
+	backend := &supersededAnalysisBackend{
+		started: make(chan int, 4),
+		canceled: make(chan int, 4),
+	}
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	writeErr := errors.New("write failed")
+	output := &failAfterWriter{remaining: 2, err: writeErr}
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": "file:///project/source.go",
+					"version": 1,
+					"text": "package current\n",
+				},
+			},
+		},
+	)
+	if version := receiveVersion(t, backend.started); version != 1 {
+		t.Fatalf("first analysis version = %d, want 1", version)
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{
+			"jsonrpc": "2.0",
+			"id": 2,
+			"method": "textDocument/codeAction",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": "file:///project/source.go"},
+				"range": map[string]any{
+					"start": map[string]any{"line": 0, "character": 0},
+					"end": map[string]any{"line": 0, "character": 0},
+				},
+			},
+		},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didClose",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": "file:///project/source.go"},
+			},
+		},
+	)
+	if err := <-serveDone; !errors.Is(err, writeErr) {
+		t.Fatalf("Serve() error = %v, want output failure", err)
 	}
 }
 
@@ -423,12 +1092,12 @@ func TestServeCancelsAnActiveRequestWithoutEndingTheSession(t *testing.T) {
 	reader, writer := io.Pipe()
 	defer reader.Close()
 	defer writer.Close()
-	var output bytes.Buffer
+	output := newWaitBuffer()
 	serveDone := make(chan error, 1)
 	ctx, cancel := context.WithTimeout(context.Background(), 2 * time.Second)
 	defer cancel()
 	go func() {
-		serveDone <- lsp.Serve(ctx, reader, &output, backend)
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
 	}()
 	first := framedMessages(
 		t,
@@ -444,6 +1113,9 @@ func TestServeCancelsAnActiveRequestWithoutEndingTheSession(t *testing.T) {
 				},
 			},
 		},
+	)
+	request := framedMessages(
+		t,
 		map[string]any{
 			"jsonrpc": "2.0",
 			"id": 2,
@@ -471,6 +1143,12 @@ func TestServeCancelsAnActiveRequestWithoutEndingTheSession(t *testing.T) {
 		if _, err := writer.Write(first); err != nil {
 			return
 		}
+		if !output.waitContains(ctx, []byte(`"version":1`)) {
+			return
+		}
+		if _, err := writer.Write(request); err != nil {
+			return
+		}
 		<-started
 		_, _ = writer.Write(remaining)
 		_ = writer.Close()
@@ -478,7 +1156,7 @@ func TestServeCancelsAnActiveRequestWithoutEndingTheSession(t *testing.T) {
 	if err := <-serveDone; err != nil {
 		t.Fatalf("Serve() error = %v", err)
 	}
-	messages := decodeFrames(t, output.Bytes())
+	messages := decodeFrames(t, output.bytes())
 	foundCancellation := false
 	for _, message := range messages {
 		if message["id"] != float64(2) {
@@ -504,6 +1182,212 @@ type testBackend struct {
 	formatted []byte
 	cancel context.CancelFunc
 	actionStarted chan struct{}
+}
+
+type supersededAnalysisBackend struct {
+	started chan int
+	canceled chan int
+}
+
+type staleWorkspaceBackend struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+type delayedAnalysisBackend struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (b *supersededAnalysisBackend) Analyze(
+	ctx context.Context,
+	document lsp.Document,
+) (lsp.Analysis, error) {
+	b.started <- document.Version
+	if document.Version != 3 {
+		<-ctx.Done()
+		b.canceled <- document.Version
+		return lsp.Analysis{}, ctx.Err()
+	}
+	file, err := source.Load(document.Path, document.Text)
+	if err != nil {
+		return lsp.Analysis{}, err
+	}
+	return lsp.Analysis{
+		File: file,
+		Diagnostics: []lsp.Diagnostic{
+			{
+				Range: source.Range{},
+				Severity: lsp.SeverityWarning,
+				Code: "newest-version",
+				Message: "newest-version",
+			},
+		},
+	}, nil
+}
+
+func (*supersededAnalysisBackend) CodeActions(
+	context.Context,
+	lsp.Document,
+	lsp.Analysis,
+	source.Range,
+) ([]lsp.CodeAction, error) {
+	return nil, nil
+}
+
+func (*supersededAnalysisBackend) Format(context.Context, lsp.Document) ([]byte, error) {
+	return nil, nil
+}
+
+func (*staleWorkspaceBackend) Analyze(context.Context, lsp.Document) (lsp.Analysis, error) {
+	return lsp.Analysis{}, errors.New("unexpected single-document analysis")
+}
+
+func (b *staleWorkspaceBackend) AnalyzeWorkspace(
+	_ context.Context,
+	documents []lsp.Document,
+) ([]lsp.WorkspaceAnalysis, error) {
+	close(b.started)
+	<-b.release
+	documents[0].Text = []byte("package stale\n")
+	file, err := source.Load(documents[0].Path, documents[0].Text)
+	if err != nil {
+		return nil, err
+	}
+	return []lsp.WorkspaceAnalysis{
+		{Document: documents[0], Analysis: lsp.Analysis{File: file}},
+	}, nil
+}
+
+func (*staleWorkspaceBackend) CodeActions(
+	context.Context,
+	lsp.Document,
+	lsp.Analysis,
+	source.Range,
+) ([]lsp.CodeAction, error) {
+	return nil, nil
+}
+
+func (*staleWorkspaceBackend) Format(context.Context, lsp.Document) ([]byte, error) {
+	return nil, nil
+}
+
+func (b *delayedAnalysisBackend) Analyze(
+	ctx context.Context,
+	document lsp.Document,
+) (lsp.Analysis, error) {
+	close(b.started)
+	select {
+	case <-ctx.Done():
+		return lsp.Analysis{}, ctx.Err()
+	case <-b.release:
+	}
+	file, err := source.Load(document.Path, document.Text)
+	if err != nil {
+		return lsp.Analysis{}, err
+	}
+	return lsp.Analysis{File: file}, nil
+}
+
+func (*delayedAnalysisBackend) CodeActions(
+	context.Context,
+	lsp.Document,
+	lsp.Analysis,
+	source.Range,
+) ([]lsp.CodeAction, error) {
+	return nil, nil
+}
+
+func (*delayedAnalysisBackend) Format(context.Context, lsp.Document) ([]byte, error) {
+	return nil, nil
+}
+
+type waitBuffer struct {
+	mu sync.Mutex
+	changed chan struct{}
+	data bytes.Buffer
+}
+
+type failAfterWriter struct {
+	remaining int
+	err error
+}
+
+func (w *failAfterWriter) Write(input []byte) (int, error) {
+	if w.remaining == 0 {
+		return 0, w.err
+	}
+	w.remaining--
+	return len(input), nil
+}
+
+func newWaitBuffer() *waitBuffer {
+	return &waitBuffer{changed: make(chan struct{}, 1)}
+}
+
+func (b *waitBuffer) Write(input []byte) (int, error) {
+	b.mu.Lock()
+	written, err := b.data.Write(input)
+	b.mu.Unlock()
+	select {
+	case b.changed <- struct{}{}:
+	default:
+	}
+	return written, err
+}
+
+func (b *waitBuffer) waitContains(ctx context.Context, value []byte) bool {
+	for {
+		b.mu.Lock()
+		found := bytes.Contains(b.data.Bytes(), value)
+		b.mu.Unlock()
+		if found {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-b.changed:
+		}
+	}
+}
+
+func (b *waitBuffer) bytes() []byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return bytes.Clone(b.data.Bytes())
+}
+
+func changedDocumentMessage(version int, text string) map[string]any {
+	return map[string]any{
+		"jsonrpc": "2.0",
+		"method": "textDocument/didChange",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri": "file:///project/source.go",
+				"version": version,
+			},
+			"contentChanges": []any{map[string]any{"text": text}},
+		},
+	}
+}
+
+func writeLSPMessages(t *testing.T, writer io.Writer, messages ...map[string]any) {
+	t.Helper()
+	if _, err := writer.Write(framedMessages(t, messages...)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func receiveVersion(t *testing.T, versions <-chan int) int {
+	t.Helper()
+	select {
+	case version := <-versions:
+		return version
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for analysis version")
+		return 0
+	}
 }
 
 func (b *testBackend) Analyze(_ context.Context, document lsp.Document) (lsp.Analysis, error) {

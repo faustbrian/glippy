@@ -109,6 +109,12 @@ current buffer as an overlay and uses the configured persistent cache. Invalid
 source or project state is a document diagnostic rather than a fallback to a
 different policy. Closing the buffer clears its diagnostics.
 
+Analysis runs asynchronously from protocol message handling. Full-document
+changes are briefly debounced, supersede and cancel older analysis, and can
+publish only the exact current workspace versions. A code-action request that
+arrives during analysis waits for that snapshot; another document change
+rejects it with LSP `ContentModified` instead of using stale diagnostics.
+
 One server session retains at most eight validated typed package results. A
 changed open package invalidates itself and every cached open reverse dependant;
 unrelated open packages reuse their result while code actions receive the new

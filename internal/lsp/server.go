@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/faustbrian/glippy/internal/source"
@@ -25,6 +26,10 @@ const maximumMessageSize = source.MaxFileSize + 1 << 20
 const maximumHeaderSize = 4 << 10
 
 const maximumPendingCancellations = 1024
+
+const maximumPendingAnalysisRequests = 64
+
+const documentAnalysisDebounce = 20 * time.Millisecond
 
 // Severity is an LSP diagnostic severity.
 type Severity int
@@ -258,8 +263,25 @@ type server struct {
 	requestMu sync.Mutex
 	requests map[string]context.CancelFunc
 	pendingCancellations map[string]struct{}
+	analysisResults chan analysisCompletion
+	analysisGeneration uint64
+	analysisCancel context.CancelFunc
+	pendingAnalysisRequests []rpcMessage
+	shutdownID json.RawMessage
+	exitAfterShutdown bool
+	exitRequested bool
 	initialized bool
 	shutdown bool
+}
+
+type analysisCompletion struct {
+	generation uint64
+	trigger Document
+	documents []Document
+	analysis Analysis
+	workspace []WorkspaceAnalysis
+	workspaceSupported bool
+	err error
 }
 
 // Serve runs one LSP 3.17-compatible stdio session until exit or EOF.
@@ -267,8 +289,10 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, backend Backe
 	if ctx == nil || input == nil || output == nil || backend == nil {
 		return errors.New("LSP requires context, streams, and backend")
 	}
+	sessionCtx, cancelSession := context.WithCancel(ctx)
+	defer cancelSession()
 	state := &server{
-		ctx: ctx,
+		ctx: sessionCtx,
 		reader: bufio.NewReader(input),
 		writer: output,
 		backend: backend,
@@ -276,6 +300,7 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, backend Backe
 		analyses: make(map[string]Analysis),
 		requests: make(map[string]context.CancelFunc),
 		pendingCancellations: make(map[string]struct{}),
+		analysisResults: make(chan analysisCompletion, 16),
 	}
 	type readResult struct {
 		message rpcMessage
@@ -304,11 +329,29 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, backend Backe
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case completion := <-state.analysisResults:
+			if err := state.completeAnalysis(completion); err != nil {
+				return err
+			}
+			if state.exitRequested {
+				return nil
+			}
+			if readResults == nil && state.analysisCancel == nil {
+				return nil
+			}
 		case result, available := <-readResults:
 			if !available {
+				if state.analysisCancel != nil {
+					readResults = nil
+					continue
+				}
 				return nil
 			}
 			if errors.Is(result.err, io.EOF) {
+				if state.analysisCancel != nil {
+					readResults = nil
+					continue
+				}
 				return nil
 			}
 			if result.err != nil {
@@ -352,9 +395,21 @@ func (s *server) handle(message rpcMessage) (bool, error) {
 		if len(message.ID) == 0 {
 			return false, errors.New("shutdown requires a request ID")
 		}
+		if s.shutdown {
+			return false, s.respondError(message.ID, -32002, "server is not available")
+		}
 		s.shutdown = true
+		if s.analysisCancel != nil {
+			s.shutdownID = bytes.Clone(message.ID)
+			return false, nil
+		}
 		return false, s.respond(message.ID, nil)
 	case "exit":
+		if len(s.shutdownID) != 0 {
+			s.exitAfterShutdown = true
+			return false, nil
+		}
+		s.cancelDocumentAnalysis()
 		return true, nil
 	}
 	if !s.initialized || s.shutdown {
@@ -374,7 +429,7 @@ func (s *server) handle(message rpcMessage) (bool, error) {
 			return false, err
 		}
 		s.documents[document.URI] = document
-		return false, s.analyzeAndPublish(document)
+		return false, s.scheduleAnalysis(document, false)
 	case "textDocument/didChange":
 		var params didChangeParams
 		if err := decodeParams(message.Params, &params); err != nil {
@@ -401,14 +456,18 @@ func (s *server) handle(message rpcMessage) (bool, error) {
 		document.Version = params.TextDocument.Version
 		document.Text = []byte(params.ContentChanges[0].Text)
 		s.documents[document.URI] = document
-		return false, s.analyzeAndPublish(document)
+		return false, s.scheduleAnalysis(document, true)
 	case "textDocument/didClose":
 		var params didCloseParams
 		if err := decodeParams(message.Params, &params); err != nil {
 			return false, err
 		}
+		if err := s.rejectPendingAnalysisRequests(); err != nil {
+			return false, err
+		}
 		delete(s.documents, params.TextDocument.URI)
 		delete(s.analyses, params.TextDocument.URI)
+		s.cancelDocumentAnalysis()
 		if err := s.notify(
 			"textDocument/publishDiagnostics",
 			publishDiagnosticsParams{
@@ -429,10 +488,26 @@ func (s *server) handle(message rpcMessage) (bool, error) {
 					next = open
 				}
 			}
-			return false, s.analyzeAndPublish(next)
+			if err := s.scheduleAnalysis(next, false); err != nil {
+				return false, err
+			}
 		}
 		return false, nil
 	case "textDocument/codeAction":
+		if len(message.ID) == 0 {
+			return false, errors.New("code action requires a request ID")
+		}
+		if s.analysisCancel != nil {
+			if len(s.pendingAnalysisRequests) >= maximumPendingAnalysisRequests {
+				return false, s.respondError(
+					message.ID,
+					-32000,
+					"too many pending analysis requests",
+				)
+			}
+			s.pendingAnalysisRequests = append(s.pendingAnalysisRequests, message)
+			return false, nil
+		}
 		return false, s.handleCodeAction(message)
 	case "textDocument/formatting":
 		return false, s.handleFormatting(message)
@@ -444,11 +519,16 @@ func (s *server) handle(message rpcMessage) (bool, error) {
 	}
 }
 
-func (s *server) analyzeAndPublish(document Document) error {
+func (s *server) scheduleAnalysis(document Document, debounce bool) error {
+	if err := s.rejectPendingAnalysisRequests(); err != nil {
+		return err
+	}
+	s.cancelDocumentAnalysis()
 	backend, workspaceSupported := s.backend.(WorkspaceBackend)
-	if !workspaceSupported {
-		analysis, err := s.backend.Analyze(s.ctx, cloneDocument(document))
-		return s.publishAnalysis(document, analysis, err)
+	if workspaceSupported {
+		clear(s.analyses)
+	} else {
+		delete(s.analyses, document.URI)
 	}
 	documents := make([]Document, 0, len(s.documents))
 	for _, open := range s.documents {
@@ -463,12 +543,101 @@ func (s *server) analyzeAndPublish(document Document) error {
 			return documents[left].URI < documents[right].URI
 		},
 	)
-	results, err := backend.AnalyzeWorkspace(s.ctx, documents)
-	if err != nil {
-		return err
+	s.analysisGeneration++
+	generation := s.analysisGeneration
+	analysisCtx, cancel := context.WithCancel(s.ctx)
+	s.analysisCancel = cancel
+	go s.runAnalysis(
+		analysisCtx,
+		generation,
+		cloneDocument(document),
+		documents,
+		backend,
+		workspaceSupported,
+		debounce,
+	)
+	return nil
+}
+
+func (s *server) cancelDocumentAnalysis() {
+	s.analysisGeneration++
+	if s.analysisCancel != nil {
+		s.analysisCancel()
+		s.analysisCancel = nil
 	}
-	byURI := make(map[string]WorkspaceAnalysis, len(results))
-	for _, result := range results {
+}
+
+func (s *server) runAnalysis(
+	ctx context.Context,
+	generation uint64,
+	trigger Document,
+	documents []Document,
+	workspaceBackend WorkspaceBackend,
+	workspaceSupported bool,
+	debounce bool,
+) {
+	if debounce {
+		timer := time.NewTimer(documentAnalysisDebounce)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+	}
+	completion := analysisCompletion{
+		generation: generation,
+		trigger: trigger,
+		documents: documents,
+		workspaceSupported: workspaceSupported,
+	}
+	if workspaceSupported {
+		completion.workspace, completion.err = workspaceBackend.AnalyzeWorkspace(
+			ctx,
+			documents,
+		)
+	} else {
+		completion.analysis, completion.err = s.backend.Analyze(ctx, trigger)
+	}
+	select {
+	case s.analysisResults <- completion:
+	case <-s.ctx.Done():
+	}
+}
+
+func (s *server) completeAnalysis(completion analysisCompletion) error {
+	if completion.generation != s.analysisGeneration {
+		return nil
+	}
+	if s.analysisCancel != nil {
+		s.analysisCancel()
+		s.analysisCancel = nil
+	}
+	if completion.err != nil {
+		if errors.Is(completion.err, context.Canceled) {
+			return s.finishAnalysisCycle()
+		}
+		return completion.err
+	}
+	if !s.analysisSnapshotCurrent(completion.documents) {
+		if err := s.rejectPendingAnalysisRequests(); err != nil {
+			return err
+		}
+		return s.finishAnalysisCycle()
+	}
+	if !completion.workspaceSupported {
+		if err := s.publishAnalysis(
+			completion.trigger,
+			completion.analysis,
+			completion.err,
+		);
+			err != nil {
+			return err
+		}
+		return s.finishAnalysisCycle()
+	}
+	byURI := make(map[string]WorkspaceAnalysis, len(completion.workspace))
+	for _, result := range completion.workspace {
 		if _, found := byURI[result.Document.URI]; found {
 			return fmt.Errorf(
 				"LSP workspace backend repeated document %q",
@@ -477,7 +646,7 @@ func (s *server) analyzeAndPublish(document Document) error {
 		}
 		byURI[result.Document.URI] = result
 	}
-	for _, open := range documents {
+	for _, open := range completion.documents {
 		result, found := byURI[open.URI]
 		if !found ||
 			result.Document.Path != open.Path ||
@@ -492,10 +661,74 @@ func (s *server) analyzeAndPublish(document Document) error {
 			return err
 		}
 	}
-	if len(byURI) != len(documents) {
+	if len(byURI) != len(completion.documents) {
 		return errors.New("LSP workspace backend returned unknown documents")
 	}
+	return s.finishAnalysisCycle()
+}
+
+func (s *server) rejectPendingAnalysisRequests() error {
+	requests := s.pendingAnalysisRequests
+	s.pendingAnalysisRequests = nil
+	for _, message := range requests {
+		canceled := false
+		s.requestMu.Lock()
+		if _, found := s.pendingCancellations[string(message.ID)]; found {
+			delete(s.pendingCancellations, string(message.ID))
+			canceled = true
+		}
+		s.requestMu.Unlock()
+		if canceled {
+			if err := s.respondError(message.ID, -32800, "request canceled");
+				err != nil {
+				return err
+			}
+			continue
+		}
+		if err := s.respondError(message.ID, -32801, "document analysis was superseded");
+			err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func (s *server) finishAnalysisCycle() error {
+	requests := s.pendingAnalysisRequests
+	s.pendingAnalysisRequests = nil
+	for _, message := range requests {
+		if err := s.handleCodeAction(message); err != nil {
+			return err
+		}
+	}
+	if len(s.shutdownID) == 0 {
+		return nil
+	}
+	id := bytes.Clone(s.shutdownID)
+	s.shutdownID = nil
+	if err := s.respond(id, nil); err != nil {
+		return err
+	}
+	if s.exitAfterShutdown {
+		s.exitRequested = true
+	}
+	return nil
+}
+
+func (s *server) analysisSnapshotCurrent(documents []Document) bool {
+	if len(documents) != len(s.documents) {
+		return false
+	}
+	for _, expected := range documents {
+		current, found := s.documents[expected.URI]
+		if !found ||
+			current.Path != expected.Path ||
+			current.Version != expected.Version ||
+			!bytes.Equal(current.Text, expected.Text) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *server) publishAnalysis(document Document, analysis Analysis, err error) error {

@@ -405,11 +405,13 @@ input/output, accepts absolute local `file:` URIs, and advertises full-document
 synchronization, document formatting, and code actions. Opening or replacing a
 buffer publishes diagnostics for that exact document version. One editor event
 captures all open Go buffers under the workspace root, uses them together as
-typed package overlays, batches compatible same-package documents into one package load,
-and republishes dependent open-document diagnostics. Closing a document removes
-its overlay and clears its diagnostics. Typed, CFG, and SSA selections also
-participate in the configured persistent cache. Rule diagnostics include a
-canonical documentation link matching `glippy explain`.
+typed package overlays, batches compatible same-package documents into one
+package load, and republishes dependent open-document diagnostics. Analysis is
+asynchronous; rapid replacements debounce, cancel older work, and publish only
+the latest complete snapshot. Closing a document removes its overlay and clears
+its diagnostics. Typed, CFG, and SSA selections also participate in the
+configured persistent cache. Rule diagnostics include a canonical documentation
+link matching `glippy explain`.
 
 Individual safe actions and `source.fixAll.glippy` are available by default.
 Suggestion actions require `--fix-suggestions`; unsafe actions require
@@ -418,6 +420,8 @@ after source identity, edit conflicts, parsing, canonical formatting, and
 syntax or typed reanalysis against the same open-buffer snapshot succeed. The
 server never writes the document or any project source. Request cancellation
 returns the LSP request-canceled error and cannot publish the canceled result.
+Code actions received during analysis wait for that exact snapshot. A later
+document change rejects the queued request with LSP `ContentModified`.
 
 Malformed source, configuration, package, or analysis state is published as a
 Glippy diagnostic for the current version. Incremental edits, stale document

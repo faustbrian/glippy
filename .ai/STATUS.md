@@ -4,6 +4,7 @@
 - Active development: post-v0.1 Clippy-comparability expansion
 - v0.5 typed peak RSS gate: complete, 53% worst-sample reduction
 - v0.5 bounded incremental workspace-result reuse: complete
+- v0.5 superseded editor analysis cancellation: complete
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -1666,3 +1667,13 @@ and 53,794 allocations per run on Darwin arm64; exact-rule dogfood remained
 clean on Glippy and `go-libraries/pkg/prompts`. The catalog now contains 104
 rules. Transaction, HTTP-body, channel, and WaitGroup transition rules plus
 strictness profiles and genuine incremental LSP reuse remain active v0.5 work.
+
+The v0.5 editor scheduler now runs document analysis outside the protocol loop,
+briefly debounces replacement notifications, cancels an active superseded
+snapshot, and publishes only a result whose complete document versions remain
+current. Code actions wait for an in-flight matching snapshot and receive the
+standard content-modified error if a later edit supersedes it. Graceful shutdown
+drains the current analysis, while session cancellation and exit stop it. Same-
+package typed graph reuse, workspace file notifications, memory-aware eviction,
+portable editor budgets, state-transition rules, and strictness profiles remain
+active v0.5 work.
