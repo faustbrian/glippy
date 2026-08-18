@@ -100,7 +100,7 @@ glippy check [paths...]
 glippy check --new-from=<git-ref> [paths...]
 glippy check --stats[=text|json] [paths...]
 glippy lsp [--fix-suggestions] [--fix-unsafe]
-glippy init [directory]
+glippy init [--profile=<profile>] [directory]
 glippy config check [path]
 glippy config show [path]
 glippy rules [--preset=<preset>] [--fixable] [--tier=<tier>]
@@ -159,11 +159,14 @@ control files, baselines, configuration identity, and document digests all
 invalidate reuse. This removes unrelated package loads; it does not yet retain
 or incrementally update the changed package's `go/types`, CFG, or SSA graph.
 
-`glippy init` creates a strict starter `.glippy.toml` without overwriting an
-existing path. `glippy config check` validates discovered or explicit policy,
-while `glippy config show` explains the resolved language, presets, rule
-severities and reasons, analysis tier, file policies, baseline, suppressions,
-cache settings, and configured project semantic contracts. Static versioned
+`glippy init` creates a starter `.glippy.toml` without overwriting an existing
+path. The `default`, `recommended`, `strict`, and `pedantic` profiles provide
+increasing curated policy without requiring projects to assemble groups and
+exact rules manually; `glippy init --profile=strict` selects one explicitly.
+`glippy config check` validates discovered or explicit policy, while `glippy
+config show` explains the resolved profile, presets, rule severities and
+reasons, analysis tier, file policies, baseline, suppressions, cache settings,
+and configured project semantic contracts. Static versioned
 contract files can declare exact project or dependency function effects such as
 no-return, required results, ownership transfer, conditional nilness, blocking,
 and returned aliases without loading executable plugins. Ordered

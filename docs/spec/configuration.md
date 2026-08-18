@@ -25,8 +25,9 @@ only when no `.glippy.toml` exists in the searched project scope. Finding both
 names fails rather than choosing one. An explicit `--config=<path>` remains an
 exact selection and bypasses automatic-name ambiguity.
 
-`glippy init [directory]` creates this canonical starter policy through
-exclusive atomic creation and refuses to replace any existing file or symlink:
+`glippy init [--profile=<profile>] [directory]` creates this canonical starter
+policy through exclusive atomic creation and refuses to replace any existing
+file or symlink:
 
 ```toml
 version = 1
@@ -36,7 +37,7 @@ line-width = 100
 tab-width = 8
 
 [lint]
-presets = ["correctness"]
+profile = "default"
 warnings-as-errors = false
 ```
 
@@ -62,7 +63,7 @@ cgo-enabled = true
 contract-files = [".glippy-contracts.toml"]
 
 [lint]
-presets = ["correctness"]
+profile = "strict"
 warnings-as-errors = false
 
 [lint.suppressions]
@@ -85,12 +86,38 @@ max-entries = 4096
 max-bytes = 536870912
 ```
 
+`lint.profile` MAY select one curated policy:
+
+| Profile | Selection |
+| --- | --- |
+| `default` | complete `correctness` group |
+| `recommended` | `correctness` plus the documented low-noise suspicious set |
+| `strict` | complete `correctness`, `suspicious`, `performance`, `complexity`, and `style` groups |
+| `pedantic` | `strict` plus the complete `pedantic` group |
+
+Omitting `lint.profile`, `lint.preset`, and `lint.presets` MUST select the
+`default` profile. The `recommended` exact-rule set is `almost-swapped`,
+`defer-before-error-check`, `defer-in-infinite-loop`, `errors-is-arguments`,
+`http-response-body-not-closed`, `identical-branches`,
+`ignored-append-result`, `ineffective-value-receiver-assignment`, `nilness`,
+`overwritten-error`, `resource-used-after-close`, `shadowed-error`,
+`subsumed-condition`, `suspicious-range`, `suspicious-string-conversion`,
+`time-duration-unit`, `typed-nil-error-return`, `unchecked-rows-error`, and
+`unchecked-scanner-error`.
+
+A configuration MUST NOT combine `lint.profile` with `lint.preset` or
+`lint.presets`. Selecting either preset field explicitly disables profile
+composition, including when `lint.presets = []`. Restriction rules remain
+exact-ID-only and migration rules remain unavailable without an explicit
+target; no profile includes either group.
+
 `lint.presets` MUST be an order-independent list of unique preset groups. Glippy
 MUST canonicalize configured groups in this order: `correctness`, `suspicious`,
-`performance`, `complexity`, `style`, then `pedantic`. Omission defaults to
-`["correctness"]`; an explicitly empty list selects no group and permits only
+`performance`, `complexity`, `style`, then `pedantic`. Omission defaults to the
+`default` profile; an explicitly empty list selects no group and permits only
 rules enabled through `lint.rules`. A rule belonging to any selected group is
-enabled once at its metadata severity before explicit rule overrides apply.
+enabled once at its metadata severity before exact profile or explicit rule
+policy applies.
 
 `lint.preset` remains a compatibility alias for selecting one group. A
 configuration MUST NOT specify both singular and plural fields. A `restriction`
@@ -104,6 +131,13 @@ escalate every enabled rule whose final severity after group selection and
 per-rule overrides is `warn` to `error`. It MUST NOT enable an `off` rule or
 alter an existing `error`. The resolved escalation policy and normalized group
 set MUST contribute to configuration and cache identity.
+
+Policy precedence is profile composition, explicit `lint.rules`, matching
+`lint.overrides` in declaration order, `--only` and `--except` filtering,
+command-line lint-level directives, then warning escalation. Exact user policy
+therefore always overrides a profile selection. Configuration identity MUST
+retain both the profile name and its resolved exact-rule policy so a profile
+catalog change cannot reuse stale analysis results.
 
 `lint.rule-options` MUST use one rule-ID table per configured rule. The
 documented canonical spelling quotes the rule ID even where TOML also permits a

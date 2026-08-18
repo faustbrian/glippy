@@ -94,6 +94,15 @@ highly suspicious behavior; style, performance, complexity, and migration
 policy MUST remain opt-in unless their admission and compatibility evidence
 explicitly justifies a default change.
 
+Profile names and composition become compatibility surfaces with Glippy's first
+public release. Adding a rule to `default` or `recommended`, or adding a group
+to `strict` or `pedantic`, MUST be announced as an adoption-affecting change,
+MUST carry current noise and cost evidence, and MUST NOT ship in a patch
+release. Removing a profile or materially weakening its selection requires the
+same migration policy as removing or disabling a preset surface. Exact
+`lint.rules` and path overrides MUST continue to take precedence so consumers
+can adopt profile changes incrementally.
+
 ## Fixes And Safety
 
 Fix safety is independent of diagnostic severity. A fix classified as `safe`

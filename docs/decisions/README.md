@@ -20,6 +20,7 @@ deferred status is an explicit gate, not silent approval.
 | Analysis requirement tiers | ADR 0005; ADR 0017 owns cross-package semantic effect facts |
 | CI analysis target matrices | ADR 0020; typed lint, combined check, baselines, reporters, and cache identity implement the bounded matrix contract |
 | Project semantic contracts | ADR 0021; strict static contract files seed exact versioned effects without executable plugins |
+| Curated lint profiles | ADR 0022; default, recommended, strict, and pedantic compose versioned policy before exact overrides |
 | Suppression syntax and reasons | ADR 0006, lint specification, and public suppression reference; exact-rule grammar implemented |
 | Fix safety and conflicts | ADR 0006 and fix specification |
 | Configuration discovery | ADR 0007 and schema-version-1 configuration contract; strict discovery and precedence implemented |

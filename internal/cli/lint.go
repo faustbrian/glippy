@@ -1452,6 +1452,8 @@ func lintOptionsForSelection(
 	return lintTaskOptions{
 		analysis: analysis.RunOptions{
 			SourceGoVersion: sourceGoVersion,
+			Profile: loaded.Lint.Profile,
+			ProfileRules: loaded.Lint.ProfileRules,
 			Presets: loaded.Lint.Presets,
 			WarningsAsErrors: loaded.Lint.WarningsAsErrors,
 			Overrides: loaded.Lint.Rules,

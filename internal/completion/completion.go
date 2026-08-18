@@ -74,6 +74,10 @@ _glippy_completion() {
 	fi
 
 	case "$command:$previous" in
+		init:--profile)
+			COMPREPLY=( $(compgen -W "default recommended strict pedantic" -- "$current") )
+			return
+			;;
 		fmt:--reporter)
 			COMPREPLY=( $(compgen -W "text json" -- "$current") )
 			return
@@ -129,7 +133,8 @@ _glippy_completion() {
 			COMPREPLY=( $(compgen -W "--fix-suggestions --fix-unsafe --config" -- "$current") )
 			;;
 		init)
-			COMPREPLY=( $(compgen -d -- "$current") )
+			COMPREPLY=( $(compgen -W "--profile --profile=default --profile=recommended --profile=strict --profile=pedantic" -- "$current") )
+			COMPREPLY+=( $(compgen -d -- "$current") )
 			;;
 		config)
 			COMPREPLY=( $(compgen -W "--config --config=" -- "$current") )
@@ -258,7 +263,9 @@ _glippy() {
 				'--config=[use an explicit configuration]:configuration file:_files'
 			;;
 		init)
-			_arguments '1:directory:_directories'
+			_arguments \
+				'--profile=[select starter lint profile]:profile:(default recommended strict pedantic)' \
+				'1:directory:_directories'
 			;;
 		config)
 			_arguments \
@@ -311,6 +318,7 @@ complete -c glippy -n '__fish_seen_subcommand_from init' -a '(__fish_complete_di
 complete -c glippy -n '__fish_seen_subcommand_from config; and not __fish_seen_subcommand_from check show' -a 'check show'
 
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l write -d 'Write formatted files in place'
+complete -c glippy -n '__fish_seen_subcommand_from init' -l profile -r -a 'default recommended strict pedantic' -d 'Select starter lint profile'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l check -d 'Report files whose formatting differs'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l diff -d 'Print unified formatting differences'
 complete -c glippy -n '__fish_seen_subcommand_from fmt' -l reporter -r -a 'text json' -d 'Select reporter'

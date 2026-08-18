@@ -18,14 +18,14 @@ import (
 	"github.com/faustbrian/glippy/internal/rules"
 )
 
-const initialConfiguration = `version = 1
+const initialConfigurationTemplate = `version = 1
 
 [format]
 line-width = 100
 tab-width = 8
 
 [lint]
-presets = ["correctness"]
+profile = %q
 warnings-as-errors = false
 `
 
@@ -35,8 +35,17 @@ type configInvocation struct {
 	configPath string
 }
 
+type initInvocation struct {
+	directory string
+	profile config.Profile
+}
+
 func runInit(ctx context.Context, arguments []string, stdout, stderr io.Writer) int {
-	if len(arguments) < 1 || len(arguments) > 2 || arguments[0] != "init" {
+	invocation, err := parseInitInvocation(arguments)
+	if err != nil {
+		return report(stderr, ExitInvalidInvocation, "glippy init: %v\n", err)
+	}
+	if invocation.directory == "" {
 		return report(stderr, ExitInvalidInvocation, initUsage)
 	}
 	if ctx == nil {
@@ -45,14 +54,7 @@ func runInit(ctx context.Context, arguments []string, stdout, stderr io.Writer) 
 	if err := ctx.Err(); err != nil {
 		return report(stderr, ExitCanceled, "glippy init: %v\n", err)
 	}
-	directory := "."
-	if len(arguments) == 2 {
-		directory = arguments[1]
-		if directory == "" || strings.HasPrefix(directory, "--") {
-			return report(stderr, ExitInvalidInvocation, initUsage)
-		}
-	}
-	absoluteDirectory, err := filepath.Abs(directory)
+	absoluteDirectory, err := filepath.Abs(invocation.directory)
 	if err != nil {
 		return report(
 			stderr,
@@ -82,7 +84,7 @@ func runInit(ctx context.Context, arguments []string, stdout, stderr io.Writer) 
 	if err := filesystem.CreateWithin(
 		absoluteDirectory,
 		configurationPath,
-		[]byte(initialConfiguration),
+		[]byte(fmt.Sprintf(initialConfigurationTemplate, invocation.profile)),
 		0o600,
 	);
 		err != nil {
@@ -116,6 +118,48 @@ func runInit(ctx context.Context, arguments []string, stdout, stderr io.Writer) 
 		)
 	}
 	return ExitSuccess
+}
+
+func parseInitInvocation(arguments []string) (initInvocation, error) {
+	if len(arguments) == 0 || arguments[0] != "init" {
+		return initInvocation{}, fmt.Errorf(
+			"expected 'init [--profile=<profile>] [directory]'",
+		)
+	}
+	result := initInvocation{directory: ".", profile: config.ProfileDefault}
+	directorySet := false
+	profileSet := false
+	for index := 1; index < len(arguments); index++ {
+		argument := arguments[index]
+		switch {
+		case strings.HasPrefix(argument, "--profile=") && !profileSet:
+			value := strings.TrimPrefix(argument, "--profile=")
+			if value == "" {
+				return initInvocation{}, fmt.Errorf("lint profile is required")
+			}
+			result.profile = config.Profile(value)
+			profileSet = true
+		case argument == "--profile" && !profileSet && index + 1 < len(arguments):
+			index++
+			value := arguments[index]
+			if value == "" || strings.HasPrefix(value, "--") {
+				return initInvocation{}, fmt.Errorf("lint profile is required")
+			}
+			result.profile = config.Profile(value)
+			profileSet = true
+		case strings.HasPrefix(argument, "--") || directorySet:
+			return initInvocation{}, fmt.Errorf(
+				"expected 'init [--profile=<profile>] [directory]'",
+			)
+		default:
+			result.directory = argument
+			directorySet = true
+		}
+	}
+	if !config.ValidProfile(result.profile) {
+		return initInvocation{}, fmt.Errorf("unknown lint profile %q", result.profile)
+	}
+	return result, nil
 }
 
 func runConfig(
@@ -331,6 +375,11 @@ func renderEffectiveConfiguration(
 		loaded.Format.LineWidth,
 		loaded.Format.TabWidth,
 	)
+	profile := string(loaded.Lint.Profile)
+	if profile == "" {
+		profile = "none"
+	}
+	fmt.Fprintf(&output, "profile: %s\n", profile)
 	presets := make([]string, len(loaded.Lint.Presets))
 	for index, preset := range loaded.Lint.Presets {
 		presets[index] = string(preset)
@@ -526,7 +575,7 @@ func resolveConfiguredRules(
 	return registry.ResolveOptions(
 		rules.ResolveOptions{
 			Presets: loaded.Lint.Presets,
-			Overrides: loaded.Lint.Rules,
+			Overrides: loaded.Lint.EffectiveRules(),
 			RuleOptions: loaded.Lint.RuleOptions,
 			SourceGoVersion: sourceGoVersion,
 			WarningsAsErrors: loaded.Lint.WarningsAsErrors,
@@ -566,6 +615,20 @@ func ruleEnablementReason(
 	if severity, explicit := loaded.Lint.Rules[id]; explicit {
 		reasons = append(reasons, "explicit override")
 		if loaded.Lint.WarningsAsErrors && severity == rules.SeverityWarn {
+			reasons = append(reasons, "warnings-as-errors")
+		}
+		return strings.Join(reasons, "; ")
+	}
+	if severity, selected := loaded.Lint.ProfileRules[id]; selected {
+		reasons = append(reasons, "profile " + string(loaded.Lint.Profile))
+		if loaded.Lint.WarningsAsErrors && severity == rules.SeverityWarn {
+			reasons = append(reasons, "warnings-as-errors")
+		}
+		return strings.Join(reasons, "; ")
+	}
+	if loaded.Lint.Profile != "" {
+		reasons = append(reasons, "profile " + string(loaded.Lint.Profile))
+		if loaded.Lint.WarningsAsErrors && metadata.DefaultSeverity == rules.SeverityWarn {
 			reasons = append(reasons, "warnings-as-errors")
 		}
 		return strings.Join(reasons, "; ")

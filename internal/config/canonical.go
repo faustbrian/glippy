@@ -43,6 +43,17 @@ func (c Config) CanonicalBytes() []byte {
 		encoded = appendCanonicalString(encoded, contractPath)
 	}
 	encoded = appendCanonicalBytes(encoded, c.Analysis.Contracts.CanonicalBytes())
+	encoded = appendCanonicalString(encoded, string(c.Lint.Profile))
+	profileRuleIDs := make([]string, 0, len(c.Lint.ProfileRules))
+	for ruleID := range c.Lint.ProfileRules {
+		profileRuleIDs = append(profileRuleIDs, ruleID)
+	}
+	sort.Strings(profileRuleIDs)
+	encoded = binary.AppendUvarint(encoded, uint64(len(profileRuleIDs)))
+	for _, ruleID := range profileRuleIDs {
+		encoded = appendCanonicalString(encoded, ruleID)
+		encoded = appendCanonicalString(encoded, string(c.Lint.ProfileRules[ruleID]))
+	}
 	encoded = binary.AppendUvarint(encoded, uint64(len(c.Lint.Presets)))
 	for _, preset := range c.Lint.Presets {
 		encoded = appendCanonicalString(encoded, string(preset))

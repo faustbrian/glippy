@@ -35,7 +35,7 @@ glippy check [paths...]
 glippy check --new-from=<git-ref> [paths...]
 glippy check --stats[=text|json] [paths...]
 glippy lsp [--fix-suggestions] [--fix-unsafe] [--config=<path>]
-glippy init [directory]
+glippy init [--profile=<profile>] [directory]
 glippy config check [path]
 glippy config show [path]
 glippy rules [--preset=<preset>] [--fixable] [--tier=<tier>]
@@ -45,12 +45,14 @@ glippy version
 glippy completion <bash|zsh|fish>
 ```
 
-`glippy init [directory]` MUST resolve an existing directory, then atomically
-create `.glippy.toml` there with mode `0600`. It MUST use exclusive creation,
-MUST NOT replace an existing regular file or symlink, and MUST emit the created
-absolute path only after creation succeeds. The generated policy MUST select
-schema version 1, formatter width 100, tab width 8, the `correctness` preset,
-and warnings-as-errors disabled. Cancellation before creation MUST leave no
+`glippy init [--profile=<profile>] [directory]` MUST resolve an existing
+directory, then atomically create `.glippy.toml` there with mode `0600`. It MUST
+use exclusive creation, MUST NOT replace an existing regular file or symlink,
+and MUST emit the created absolute path only after creation succeeds. The
+generated policy MUST select schema version 1, formatter width 100, tab width
+8, the requested `default`, `recommended`, `strict`, or `pedantic` profile, and
+warnings-as-errors disabled. Omission MUST select `default`; an unknown profile
+MUST fail before creating a file. Cancellation before creation MUST leave no
 configuration; cancellation or output failure after creation MUST disclose the
 created path.
 
@@ -61,8 +63,8 @@ decoding, defaulting, source-language resolution, rule-ID validation, and
 effective rule-option validation before emitting one success record. `config
 show` MUST then deterministically report the project root,
 configuration path and origin, source and migration versions, formatter
-policy, presets, warning escalation, each enabled rule severity and reason,
-resolved rule options, maximum required tier, generated/test/vendor and
+policy, profile, presets, warning escalation, each enabled rule severity and
+reason, resolved rule options, maximum required tier, generated/test/vendor and
 type-error policies, build selection, baseline status, suppression policy, and
 cache policy. Neither command may load packages, analyze source, read standard
 input, or mutate project files.

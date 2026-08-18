@@ -61,6 +61,53 @@ const (
 	PresetMigration = rules.PresetMigration
 )
 
+// Profile identifies one curated, versioned lint policy.
+type Profile string
+
+const (
+	ProfileDefault Profile = "default"
+	ProfileRecommended Profile = "recommended"
+	ProfileStrict Profile = "strict"
+	ProfilePedantic Profile = "pedantic"
+)
+
+var recommendedProfileRules = []string{
+	"almost-swapped",
+	"defer-before-error-check",
+	"defer-in-infinite-loop",
+	"errors-is-arguments",
+	"http-response-body-not-closed",
+	"identical-branches",
+	"ignored-append-result",
+	"ineffective-value-receiver-assignment",
+	"nilness",
+	"overwritten-error",
+	"resource-used-after-close",
+	"shadowed-error",
+	"subsumed-condition",
+	"suspicious-range",
+	"suspicious-string-conversion",
+	"time-duration-unit",
+	"typed-nil-error-return",
+	"unchecked-rows-error",
+	"unchecked-scanner-error",
+}
+
+// Profiles returns the canonical profile names in increasing strictness.
+func Profiles() []Profile {
+	return []Profile{ProfileDefault, ProfileRecommended, ProfileStrict, ProfilePedantic}
+}
+
+// ValidProfile reports whether value names one built-in profile.
+func ValidProfile(value Profile) bool {
+	switch value {
+	case ProfileDefault, ProfileRecommended, ProfileStrict, ProfilePedantic:
+		return true
+	default:
+		return false
+	}
+}
+
 // Severity controls whether and how a lint rule reports.
 type Severity = rules.Severity
 
@@ -118,6 +165,8 @@ func (t AnalysisTarget) ID() string {
 
 // Lint contains the selected preset groups and explicit rule policy.
 type Lint struct {
+	Profile Profile
+	ProfileRules map[string]Severity
 	Presets []Preset
 	WarningsAsErrors bool
 	Rules map[string]Severity
@@ -212,6 +261,7 @@ type analysisTargetConfig struct {
 }
 
 type lintConfig struct {
+	Profile *string `toml:"profile"`
 	Preset *string `toml:"preset"`
 	Presets []string `toml:"presets"`
 	WarningsAsErrors *bool `toml:"warnings-as-errors"`
@@ -246,7 +296,7 @@ type cacheConfig struct {
 
 // Defaults returns an independent configuration containing built-in policy.
 func Defaults() Config {
-	return Config{
+	result := Config{
 		Version: Version,
 		Format: Format{LineWidth: DefaultLineWidth, TabWidth: DefaultTabWidth},
 		Analysis: Analysis{
@@ -255,13 +305,14 @@ func Defaults() Config {
 			CGOEnabled: build.Default.CgoEnabled,
 		},
 		Lint: Lint{
-			Presets: []Preset{PresetCorrectness},
 			Rules: make(map[string]Severity),
 			RuleOptions: make(map[string]rules.OptionSet),
 			Baseline: Baseline{ReportStale: true},
 		},
 		Cache: Cache{MaxEntries: DefaultCacheMaxEntries, MaxBytes: DefaultCacheMaxBytes},
 	}
+	applyProfile(&result.Lint, ProfileDefault)
+	return result
 }
 
 // Load returns defaults or reads and parses one selected configuration.
@@ -470,13 +521,28 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 			}
 		}
 	}
+	if decoded.Lint.Profile != nil &&
+		(decoded.Lint.Preset != nil || decoded.Lint.Presets != nil) {
+		return Config{}, semanticError(
+			path,
+			"lint.profile cannot be configured with lint.preset or lint.presets",
+		)
+	}
 	if decoded.Lint.Preset != nil && decoded.Lint.Presets != nil {
 		return Config{}, semanticError(
 			path,
 			"lint.preset and lint.presets cannot both be configured",
 		)
 	}
+	if decoded.Lint.Profile != nil {
+		profile := Profile(*decoded.Lint.Profile)
+		if !ValidProfile(profile) {
+			return Config{}, semanticError(path, "unknown lint profile %q", profile)
+		}
+		applyProfile(&result.Lint, profile)
+	}
 	if decoded.Lint.Preset != nil {
+		clearProfile(&result.Lint)
 		preset := Preset(*decoded.Lint.Preset)
 		if !validSelectablePreset(preset) {
 			return Config{}, semanticError(path, "unknown lint preset %q", preset)
@@ -484,6 +550,7 @@ func Parse(path string, input []byte, options ParseOptions) (Config, error) {
 		result.Lint.Presets = []Preset{preset}
 	}
 	if decoded.Lint.Presets != nil {
+		clearProfile(&result.Lint)
 		result.Lint.Presets = make([]Preset, 0, len(decoded.Lint.Presets))
 		seen := make(map[Preset]struct{}, len(decoded.Lint.Presets))
 		for _, configured := range decoded.Lint.Presets {
@@ -808,11 +875,9 @@ func (c Config) LintForExecution() Lint {
 
 func cloneLint(value Lint) Lint {
 	result := value
+	result.ProfileRules = cloneSeverityMap(value.ProfileRules)
 	result.Presets = slices.Clone(value.Presets)
-	result.Rules = make(map[string]Severity, len(value.Rules))
-	for id, severity := range value.Rules {
-		result.Rules[id] = severity
-	}
+	result.Rules = cloneSeverityMap(value.Rules)
 	result.RuleOptions = make(map[string]rules.OptionSet, len(value.RuleOptions))
 	for id, options := range value.RuleOptions {
 		result.RuleOptions[id] = options
@@ -828,6 +893,59 @@ func cloneLint(value Lint) Lint {
 		}
 	}
 	return result
+}
+
+// EffectiveRules returns profile policy followed by explicit rule overrides.
+func (l Lint) EffectiveRules() map[string]Severity {
+	result := cloneSeverityMap(l.ProfileRules)
+	for id, severity := range l.Rules {
+		result[id] = severity
+	}
+	return result
+}
+
+func cloneSeverityMap(value map[string]Severity) map[string]Severity {
+	result := make(map[string]Severity, len(value))
+	for id, severity := range value {
+		result[id] = severity
+	}
+	return result
+}
+
+func clearProfile(lint *Lint) {
+	lint.Profile = ""
+	lint.ProfileRules = make(map[string]Severity)
+}
+
+func applyProfile(lint *Lint, profile Profile) {
+	lint.Profile = profile
+	lint.ProfileRules = make(map[string]Severity)
+	switch profile {
+	case ProfileDefault:
+		lint.Presets = []Preset{PresetCorrectness}
+	case ProfileRecommended:
+		lint.Presets = []Preset{PresetCorrectness}
+		for _, id := range recommendedProfileRules {
+			lint.ProfileRules[id] = SeverityWarn
+		}
+	case ProfileStrict:
+		lint.Presets = []Preset{
+			PresetCorrectness,
+			PresetSuspicious,
+			PresetPerformance,
+			PresetComplexity,
+			PresetStyle,
+		}
+	case ProfilePedantic:
+		lint.Presets = []Preset{
+			PresetCorrectness,
+			PresetSuspicious,
+			PresetPerformance,
+			PresetComplexity,
+			PresetStyle,
+			PresetPedantic,
+		}
+	}
 }
 
 func validateLintPathPattern(pattern string) error {

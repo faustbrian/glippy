@@ -5,6 +5,7 @@
 - v0.5 typed peak RSS gate: complete, 53% worst-sample reduction
 - v0.5 bounded incremental workspace-result reuse: complete
 - v0.5 superseded editor analysis cancellation: complete
+- v0.5 curated strictness profiles: complete
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -1666,7 +1667,7 @@ The 100-function package benchmark measured a 54.36 ms median, about 4.56 MB,
 and 53,794 allocations per run on Darwin arm64; exact-rule dogfood remained
 clean on Glippy and `go-libraries/pkg/prompts`. The catalog now contains 104
 rules. Transaction, HTTP-body, channel, and WaitGroup transition rules plus
-strictness profiles and genuine incremental LSP reuse remain active v0.5 work.
+genuine incremental LSP reuse remain active v0.5 work.
 
 The v0.5 editor scheduler now runs document analysis outside the protocol loop,
 briefly debounces replacement notifications, cancels an active superseded
@@ -1675,5 +1676,15 @@ current. Code actions wait for an in-flight matching snapshot and receive the
 standard content-modified error if a later edit supersedes it. Graceful shutdown
 drains the current analysis, while session cancellation and exit stop it. Same-
 package typed graph reuse, workspace file notifications, memory-aware eviction,
-portable editor budgets, state-transition rules, and strictness profiles remain
-active v0.5 work.
+portable editor budgets, and state-transition rules remain active v0.5 work.
+
+The v0.5 policy batch adds `default`, `recommended`, `strict`, and `pedantic`
+lint profiles over the existing group and override engine. Recommended policy
+adds a fixed low-noise suspicious set; strict and pedantic progressively add
+complete opt-in groups without enabling restriction or untargeted migration.
+Profiles remain distinct from explicit rule overrides, participate in cache
+identity, retain exact-rule and path precedence, appear with rule-level reasons
+in `config show`, and are selectable through `glippy init --profile` and shell
+completion. Same-package typed graph reuse, workspace file notifications,
+memory-aware eviction, portable editor budgets, and additional state-transition
+rules remain active v0.5 work.

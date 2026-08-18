@@ -44,7 +44,7 @@ const formatUsage = "glippy: expected 'fmt [--write|--check|--diff] [--reporter=
 
 const completionUsage = "glippy: expected 'completion <bash|zsh|fish>'\n"
 
-const initUsage = "glippy: expected 'init [directory]'\n"
+const initUsage = "glippy: expected 'init [--profile=<profile>] [directory]'\n"
 
 const configUsage = "glippy: expected 'config <check|show> [--config=<path>] [path]'\n"
 

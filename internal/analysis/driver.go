@@ -17,6 +17,8 @@ import (
 // RunOptions selects native rules and suppression policy for one source file.
 type RunOptions struct {
 	SourceGoVersion string
+	Profile config.Profile
+	ProfileRules map[string]rules.Severity
 	Preset rules.Preset
 	Presets []rules.Preset
 	WarningsAsErrors bool
@@ -162,6 +164,8 @@ func (options RunOptions) lintPolicy() (config.Config, error) {
 	}
 	return config.Config{
 		Lint: config.Lint{
+			Profile: options.Profile,
+			ProfileRules: cloneSeverityOverrides(options.ProfileRules),
 			Presets: slices.Clone(presets),
 			WarningsAsErrors: options.WarningsAsErrors,
 			Rules: cloneSeverityOverrides(options.Overrides),
@@ -174,7 +178,7 @@ func (options RunOptions) lintPolicy() (config.Config, error) {
 func (options RunOptions) ruleResolution(policy config.Lint) rules.ResolveOptions {
 	return rules.ResolveOptions{
 		Presets: slices.Clone(policy.Presets),
-		Overrides: cloneSeverityOverrides(policy.Rules),
+		Overrides: cloneSeverityOverrides(policy.EffectiveRules()),
 		RuleOptions: cloneRuleOptions(policy.RuleOptions),
 		SourceGoVersion: options.SourceGoVersion,
 		WarningsAsErrors: policy.WarningsAsErrors,

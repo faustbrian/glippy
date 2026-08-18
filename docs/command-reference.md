@@ -27,7 +27,7 @@ and no v0.2 tag or release is authorized before maintainer review.
 | `glippy check --new-from=<git-ref> [paths...]` | Check changed-line formatting and diagnostics | No |
 | `glippy check --stats[=text\|json] [paths...]` | Check while reporting opt-in analysis statistics | No |
 | `glippy lsp [flags]` | Serve live diagnostics, formatting, and validated code actions over stdio | No |
-| `glippy init [directory]` | Create a starter `.glippy.toml` without overwriting | Configuration only |
+| `glippy init [--profile=<profile>] [directory]` | Create a starter `.glippy.toml` without overwriting | Configuration only |
 | `glippy config check [path]` | Validate discovered or explicit configuration | No |
 | `glippy config show [path]` | Explain effective configuration and rule selection | No |
 | `glippy rules [filters]` | Discover compiled rule metadata | No |
@@ -440,11 +440,14 @@ Create a conservative starter policy in the current or selected directory:
 
 ```sh
 glippy init
+glippy init --profile=recommended
+glippy init --profile=strict ./module
 glippy init ./module
 ```
 
 Initialization uses exclusive atomic creation with mode `0600`. An existing
-regular file or symlink is a conflict and remains unchanged.
+regular file or symlink is a conflict and remains unchanged. Profiles are
+`default`, `recommended`, `strict`, and `pedantic`; omission selects `default`.
 
 Validate the policy selected for a path, or one exact configuration file:
 
@@ -461,12 +464,12 @@ glippy config show --config ./policy/glippy.toml ./module
 ```
 
 The deterministic text output identifies the project root, selection origin,
-source language, formatter widths, presets, warning escalation, enabled rules
-and their enablement reasons, resolved options, maximum analysis tier, file and
-type-error policies, base build selection, canonical analysis targets, project
-semantic contract files and effects, baseline status, suppression policy, and
-cache limits. The migration target is reported as unset until migration rules
-have an explicit target contract.
+source language, formatter widths, profile, presets, warning escalation,
+enabled rules and their enablement reasons, resolved options, maximum analysis
+tier, file and type-error policies, base build selection, canonical analysis
+targets, project semantic contract files and effects, baseline status,
+suppression policy, and cache limits. The migration target is reported as unset
+until migration rules have an explicit target contract.
 
 ## Exit Codes
 

@@ -22,6 +22,9 @@ target. Lint completion also exposes `--diff` for non-writing validated fix
 previews; the parser requires it to be combined with at least one fix-class
 flag.
 
+Initialization completes the `default`, `recommended`, `strict`, and `pedantic`
+values for `--profile` while retaining directory completion.
+
 ## Bash
 
 Write the script to a directory loaded by `bash-completion`:

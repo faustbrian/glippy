@@ -34,7 +34,7 @@ func TestRunInitCreatesConfigurationExclusively(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "version = 1\n\n[format]\nline-width = 100\ntab-width = 8\n\n" +
-		"[lint]\npresets = [\"correctness\"]\nwarnings-as-errors = false\n"
+		"[lint]\nprofile = \"default\"\nwarnings-as-errors = false\n"
 	if string(contents) != want {
 		t.Fatalf("initialized configuration = %q, want %q", contents, want)
 	}
@@ -486,6 +486,7 @@ max-bytes = 4096
 			"source language: go1.25 (" + modulePath + ")",
 			"migration target: unset",
 			"format: line-width=88 tab-width=4",
+			"profile: none",
 			"presets: correctness",
 			"warnings-as-errors: true",
 			"rule nilness: error (explicit override)",
@@ -533,6 +534,7 @@ func TestRunConfigShowReportsBuiltInDefaults(t *testing.T) {
 	if exitCode != ExitSuccess ||
 		stderr.Len() != 0 ||
 		!strings.Contains(stdout.String(), "configuration: built-in defaults\n") ||
+		!strings.Contains(stdout.String(), "profile: default\n") ||
 		!strings.Contains(stdout.String(), "presets: correctness\n") {
 		t.Fatalf(
 			"Run(config show defaults) = exit %d, stdout %q, stderr %q",
