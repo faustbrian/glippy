@@ -107,6 +107,7 @@ not stable release promises.
 - [unbuffered-signal-channel](#unbuffered-signal-channel)
 - [unchecked-rows-error](#unchecked-rows-error)
 - [unchecked-scanner-error](#unchecked-scanner-error)
+- [unchecked-writer-error](#unchecked-writer-error)
 - [unlock-without-lock](#unlock-without-lock)
 - [unnecessary-conversion](#unnecessary-conversion)
 - [unnecessary-format](#unnecessary-format)
@@ -344,6 +345,8 @@ None.
   policy requires a reasoned suppression for those sites.
 - Formatted-output and documented always-nil in-memory writer results excluded by discarded-error
   are excluded here as well.
+- Exact standard-library buffered-writer Flush and Close calls are owned by the default correctness
+  rule unchecked-writer-error to avoid duplicate diagnostics.
 - Blank identifiers in declarations and implicit discards outside assignment statements are not
   covered.
 - Test files are excluded by default; include-tests enables the same policy for tests.
@@ -951,6 +954,8 @@ None.
 - The rule covers direct call statements; errors explicitly assigned to a blank identifier remain
   outside this rule.
 - Known in-memory writers whose error result is documented as always nil are excluded.
+- Exact standard-library buffered-writer Flush and Close calls are owned by the default correctness
+  rule unchecked-writer-error to avoid duplicate diagnostics.
 - Test files are excluded by default because fixture-driving calls frequently discard deliberately
   injected errors; include-tests enables them.
 - Best-effort calls must be handled explicitly or suppressed with a reason.
@@ -5086,6 +5091,59 @@ return nil
 ```go
 for scanner.Scan() { consume(scanner.Bytes()) }
 return scanner.Err()
+```
+
+## unchecked-writer-error
+
+detects discarded errors from buffered writer finalization
+
+Buffered, compressed, archive, multipart, and encoded writers can report their first failed output
+or emit required trailers only from Flush or Close. Discarding that result can report success while
+leaving output truncated or structurally incomplete. The rule targets exact standard-library
+finalizers whose documented contract writes pending data or required framing.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `expr-stmt`, `assign-stmt`, `go-stmt`, `defer-stmt`
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only exact standard-library writer finalizers with an error result are covered; user-defined
+  writers and interface-dispatched finalizers remain outside the initial contract.
+- Encoders returned as io.WriteCloser by encoding/ascii85, encoding/base32, and encoding/base64
+  require acquisition tracking before their concrete finalization contract can be proven.
+- encoding/csv.Writer.Flush returns no error and requires a separate rule that proves whether
+  Writer.Error is observed after flushing.
+- No fix is offered because correct propagation from a deferred, asynchronous, or ordinary call
+  depends on the surrounding function contract.
+
+### Example: Propagate gzip finalization failures
+
+**Incorrect**
+
+```go
+defer writer.Close()
+```
+
+**Correct**
+
+```go
+if err := writer.Close(); err != nil { return err }
 ```
 
 ## unlock-without-lock

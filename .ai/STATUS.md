@@ -1923,3 +1923,19 @@ allocations per run on Darwin arm64. Exact-rule dogfood remained clean on
 Glippy and `go-libraries/pkg/prompts`, whose pre-existing bytes were unchanged.
 The catalog now contains 109 rules. Portable four-runner typed-budget evidence
 and further high-signal error-flow coverage remain active v0.5 work.
+
+The v0.5 output-integrity batch admits `unchecked-writer-error` to default
+correctness. It reports ordinary, deferred, asynchronous, and explicit
+blank-identifier discards from 17 exact standard-library Flush and Close
+methods whose contracts write buffered bytes or required framing. Exact
+declaring receiver identity includes promoted methods and method expressions
+while excluding user methods, generic closers, files, and zero-result CSV
+flushes. The specialized rule owns these calls so `discarded-error` and
+`blank-error-discard` do not duplicate its diagnostics. Five complete
+100-function benchmark samples measured a 64.82 ms median, about 3.11 MB, and
+24,754 allocations per run on Darwin arm64. Exact-rule dogfood remained clean
+on Glippy and `go-libraries/pkg/prompts`, whose pre-existing `go.sum` change was
+unchanged. The catalog now contains 110 rules. Portable four-runner
+typed-budget evidence, interface-returning encoder finalization, CSV flush
+error observation, and further high-signal interprocedural error-flow coverage
+remain active v0.5 work.

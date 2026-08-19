@@ -39,6 +39,7 @@ func (discardedErrorRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"The rule covers direct call statements; errors explicitly assigned to a blank identifier remain outside this rule.",
 			"Known in-memory writers whose error result is documented as always nil are excluded.",
+			"Exact standard-library buffered-writer Flush and Close calls are owned by the default correctness rule unchecked-writer-error to avoid duplicate diagnostics.",
 			"Test files are excluded by default because fixture-driving calls frequently discard deliberately injected errors; include-tests enables them.",
 			"Best-effort calls must be handled explicitly or suppressed with a reason.",
 		},
@@ -68,7 +69,9 @@ func (discardedErrorRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding,
 		return nil, nil
 	}
 	call, _ := ast.Unparen(statement.X).(*ast.CallExpr)
-	if call == nil || infallibleDiscardedCall(ctx.Info(), call) {
+	if call == nil ||
+		infallibleDiscardedCall(ctx.Info(), call) ||
+		isWriterFinalizer(ctx.Info(), call) {
 		return nil, nil
 	}
 	signature, _ := types.Unalias(ctx.Info().TypeOf(call.Fun)).(*types.Signature)

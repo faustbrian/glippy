@@ -38,6 +38,7 @@ func (blankErrorDiscardRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"The rule intentionally reports deliberate best-effort error discards; enable it only when project policy requires a reasoned suppression for those sites.",
 			"Formatted-output and documented always-nil in-memory writer results excluded by discarded-error are excluded here as well.",
+			"Exact standard-library buffered-writer Flush and Close calls are owned by the default correctness rule unchecked-writer-error to avoid duplicate diagnostics.",
 			"Blank identifiers in declarations and implicit discards outside assignment statements are not covered.",
 			"Test files are excluded by default; include-tests enables the same policy for tests.",
 			"Generated files and packages with type errors are excluded.",
@@ -98,7 +99,9 @@ func blankAssignmentResultTypes(info *types.Info, assignment *ast.AssignStmt) []
 	}
 	if len(assignment.Rhs) == 1 {
 		if call, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr);
-			call != nil && infallibleDiscardedCall(info, call) {
+			call != nil &&
+				(infallibleDiscardedCall(info, call) ||
+					isWriterFinalizer(info, call)) {
 			return nil
 		}
 		type_ := info.TypeOf(assignment.Rhs[0])
@@ -123,7 +126,9 @@ func blankAssignmentResultTypes(info *types.Info, assignment *ast.AssignStmt) []
 	result := make([]types.Type, len(assignment.Rhs))
 	for index, expression := range assignment.Rhs {
 		if call, _ := ast.Unparen(expression).(*ast.CallExpr);
-			call != nil && infallibleDiscardedCall(info, call) {
+			call != nil &&
+				(infallibleDiscardedCall(info, call) ||
+					isWriterFinalizer(info, call)) {
 			continue
 		}
 		result[index] = info.TypeOf(expression)

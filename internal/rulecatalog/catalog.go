@@ -99,6 +99,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewSQLTransactionUsedAfterCompletionRule(),
 		rules.NewUncheckedRowsErrorRule(),
 		rules.NewUncheckedScannerErrorRule(),
+		rules.NewUncheckedWriterErrorRule(),
 		rules.NewUnreachableCodeRule(),
 		rules.NewWaitGroupNegativeCounterRule(),
 	)

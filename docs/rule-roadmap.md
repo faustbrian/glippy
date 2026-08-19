@@ -39,6 +39,16 @@ The response and stream lifecycle track has admitted its first two CFG rules:
 terminal error on every normally returning path. Alias and interface expansion
 remains evidence-gated rather than silently increasing either rule to SSA.
 
+The output-integrity track now admits `unchecked-writer-error` as a default
+correctness rule. It reports discarded Flush and Close errors from exact
+standard-library buffered, archive, compression, encoding, multipart, and
+tabular writers whose finalizers emit pending bytes or required framing.
+Ordinary, deferred, asynchronous, and explicit blank-identifier discards share
+one diagnostic identity; the broader `discarded-error` and
+`blank-error-discard` rules delegate these calls to prevent duplicate output.
+Interface-returning base encoders and the separate `encoding/csv.Writer.Error`
+protocol remain evidence-gated follow-up work.
+
 The first restriction rule, `blank-error-discard`, provides an exact-ID policy
 for projects that prohibit explicit `_ = err` and tuple-error discards. It is
 not part of a selectable preset: deliberate best-effort operations require a
