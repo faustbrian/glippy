@@ -602,6 +602,8 @@ type ControlFlowShared struct {
 	lockState *lockStateAnalysis
 	resourceUseOnce sync.Once
 	resourceUse *resourceUseAnalysis
+	httpResponseBodyStateOnce sync.Once
+	httpResponseBodyState *httpResponseBodyStateAnalysis
 	transactionStateOnce sync.Once
 	transactionState *sqlTransactionStateAnalysis
 }

@@ -34,6 +34,7 @@ not stable release promises.
 - [http-canonical-header-key](#http-canonical-header-key)
 - [http-response-before-error](#http-response-before-error)
 - [http-response-body-not-closed](#http-response-body-not-closed)
+- [http-response-body-used-after-close](#http-response-body-used-after-close)
 - [identical-branches](#identical-branches)
 - [ignored-append-result](#ignored-append-result)
 - [impossible-comparison](#impossible-comparison)
@@ -1363,6 +1364,71 @@ response, err := http.Get(url)
 if err != nil { return err }
 defer response.Body.Close()
 return use(response.Body)
+```
+
+## http-response-body-used-after-close
+
+detects operations on definitely closed HTTP response bodies
+
+Reading or closing a net/http response body after it is definitely closed usually returns an
+unusable result and can conceal lifecycle mistakes. The rule follows direct package and Client
+acquisitions through bounded control flow, consumes proven project close effects, and reports only
+when every reaching state is closed.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The acquisition boundary matches http-response-body-not-closed: direct net/http package or Client
+  helpers followed immediately by a returning err != nil guard.
+- The rule recognizes direct Body.Read and Body.Close calls plus exact io.ReadAll, ReadAtLeast,
+  ReadFull, Copy, CopyN, and CopyBuffer reader arguments.
+- A finding requires every reaching path to have closed the body; conditional closure, aliases,
+  reassignment, ownership transfer, asynchronous or deferred execution, and unknown helpers become
+  conservative unknown state.
+- A statically resolved helper with a proven close effect establishes closed state, while a proven
+  borrow preserves state and a proven transfer stops tracking.
+- A CFG node containing multiple tracked calls becomes unknown because AST preorder does not prove
+  every nested Go evaluation order.
+- The rule remains suspicious because a custom RoundTripper can provide an io.ReadCloser with
+  implementation-specific post-close behavior.
+- Generated files and packages with type errors are excluded.
+
+### Example: Read the body before closing it
+
+**Incorrect**
+
+```go
+response, err := http.Get(url)
+if err != nil { return err }
+response.Body.Close()
+_, err = io.ReadAll(response.Body)
+```
+
+**Correct**
+
+```go
+response, err := http.Get(url)
+if err != nil { return err }
+_, err = io.ReadAll(response.Body)
+response.Body.Close()
 ```
 
 ## identical-branches

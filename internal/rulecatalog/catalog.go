@@ -38,6 +38,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewExecPipeRunRule(),
 		rules.NewHTTPCanonicalHeaderKeyRule(),
 		rules.NewHTTPResponseBodyNotClosedRule(),
+		rules.NewHTTPResponseBodyUsedAfterCloseRule(),
 		rules.NewInconsistentReceiverNameRule(),
 		rules.NewImpossibleComparisonRule(),
 		rules.NewInvalidBinaryWriteRule(),

@@ -1704,3 +1704,16 @@ allocations on Darwin arm64; exact-rule dogfood remained clean on Glippy and
 channel, and WaitGroup transitions, same-package typed graph reuse, workspace
 file notifications, memory-aware eviction, and portable budgets remain active
 v0.5 work.
+
+The v0.5 HTTP response-body state-transition batch admits
+`http-response-body-used-after-close` as an opt-in suspicious CFG rule. Direct
+package and Client acquisitions use the same successful error-guard boundary as
+the existing not-closed rule. Direct reads, selected exact `io` consumers, and
+repeated closes report only when every reaching path proves the body closed;
+exact close effects can establish or reestablish that state. Conditional close,
+aliases, reassignment, transfer, deferred or asynchronous execution, unknown
+helpers, and ambiguous multi-call nodes fail closed. The rule remains outside
+`recommended` pending broader adoption evidence. The catalog now contains 106
+rules. Channel and WaitGroup transitions, same-package typed graph reuse,
+workspace file notifications, memory-aware eviction, and portable budgets
+remain active v0.5 work.

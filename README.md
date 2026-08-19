@@ -7,7 +7,7 @@ defaults, pays only for the analysis tiers enabled rules require, and routes
 all source changes through an explicit conflict-safe transaction.
 
 Glippy v0.5 is under development and is not tagged or published. The current
-catalog contains 105 rules, including 18 rules with safe or suggestion fixes.
+catalog contains 106 rules, including 18 rules with safe or suggestion fixes.
 The existing
 v0.1.0 release remains Gox under `github.com/faustbrian/gox`; its module tags,
 binary, archives, and attestations are immutable historical identities. The
@@ -238,6 +238,14 @@ gap where `*http.Response` is not itself a closer. After a successful direct
 package or `Client` request guard, every normal return must close or transfer
 the body. Passing the body to a reader does not count as transfer, so early
 status and read-error returns before a later close still report.
+
+The opt-in `http-response-body-used-after-close` rule follows the same direct
+request boundary and reports reads, selected `io` consumers, and repeated
+closes reached only after every path has closed the body. Conditional closure,
+aliases, transfer, asynchronous or deferred execution, and unknown helpers
+remain conservative. The rule is suspicious rather than correctness because a
+custom `RoundTripper` can supply an `io.ReadCloser` with implementation-specific
+post-close behavior.
 
 The restriction catalog includes `blank-error-discard`, Glippy's Go analogue
 to Clippy's `let_underscore_must_use`. Projects can enable it by exact rule ID

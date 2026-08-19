@@ -97,6 +97,16 @@ every normal return, and does not mistake body reads for ownership transfer.
 Arbitrary helper cleanup, custom transports, and body replacement remain in
 the interprocedural investigation rather than weakening the local rule.
 
+The HTTP response state track now admits
+`http-response-body-used-after-close` as an opt-in suspicious rule. The same
+acquisition boundary seeds an open body state; direct close and guaranteed
+helper effects establish closed state, and direct reads, selected exact `io`
+consumers, and repeated closes report only from an all-path closed state.
+Conditional close, aliases, transfer, reassignment, deferred or asynchronous
+execution, and unknown helpers fail closed. The rule is intentionally absent
+from `recommended` until external positive evidence and broader negative
+dogfood justify changing that curated profile.
+
 The first shared state-transition track now admits `unlock-without-lock` as a
 default correctness rule and `lock-not-released` as an opt-in suspicious rule.
 One finite monotone worklist reaches a stable CFG entry state before any
