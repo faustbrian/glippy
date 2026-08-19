@@ -1318,6 +1318,87 @@ func TestLSPWorkspacePackageCacheRetainsMostRecentBoundedEntries(t *testing.T) {
 	}
 }
 
+func TestLSPWorkspacePackageCacheEvictsToRetainedByteBudget(t *testing.T) {
+	t.Parallel()
+
+	olderKey := lspPackageGroupKey{root: "/workspace", packageDirectory: "/workspace/older"}
+	newerKey := lspPackageGroupKey{root: "/workspace", packageDirectory: "/workspace/newer"}
+	entries := map[lspPackageGroupKey]lspWorkspacePackageEntry{
+		olderKey: {accountedBytes: maximumLSPWorkspaceAccountedBytes * 3 / 4, used: 1},
+		newerKey: {accountedBytes: maximumLSPWorkspaceAccountedBytes * 3 / 4, used: 2},
+	}
+
+	bounded := boundLSPWorkspaceEntries(entries)
+	if len(bounded) != 1 {
+		t.Fatalf("bounded entries = %d, want 1 within retained-byte budget", len(bounded))
+	}
+	if _, found := bounded[newerKey]; !found {
+		t.Fatal("most-recently-used entry was evicted before an older entry")
+	}
+
+	entries[newerKey] = lspWorkspacePackageEntry{
+		accountedBytes: maximumLSPWorkspaceAccountedBytes + 1,
+		used: 2,
+	}
+	bounded = boundLSPWorkspaceEntries(entries)
+	if len(bounded) != 1 {
+		t.Fatalf("oversized bounded entries = %d, want newest entry alone", len(bounded))
+	}
+	if _, found := bounded[newerKey]; !found {
+		t.Fatal("newest oversized entry was not retained alone")
+	}
+}
+
+func TestLSPWorkspacePackageCacheAccountsIndexedSourceWeight(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = [\"style\"]\n",
+	)
+	path := filepath.Join(root, "source.go")
+	text := "package editor\n\nconst Value = 1\n"
+	writeChangedCLIFile(t, path, text)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &lspBackend{registry: registry}
+	if _, err := backend.AnalyzeWorkspace(
+		context.Background(),
+		[]lsp.Document{
+			{
+				URI: "file://" + filepath.ToSlash(path),
+				Path: path,
+				Version: 1,
+				Text: []byte(text),
+			},
+		},
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if len(backend.workspace.entries) != 1 {
+		t.Fatalf("workspace entries = %d, want 1", len(backend.workspace.entries))
+	}
+	for _, entry := range backend.workspace.entries {
+		if entry.accountedBytes <= int64(len(text)) {
+			t.Fatalf(
+				"accounted bytes = %d, want indexed source weight above %d",
+				entry.accountedBytes,
+				len(text),
+			)
+		}
+	}
+}
+
 func BenchmarkLSPWorkspaceUnrelatedDocumentChange(b *testing.B) {
 	root := b.TempDir()
 	writeChangedCLIFile(

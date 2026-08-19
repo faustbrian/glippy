@@ -33,7 +33,13 @@ const lintRuleDocumentationURL = "https://github.com/faustbrian/gox/blob/main/do
 
 const maximumLSPWorkspacePackageEntries = 8
 
+const maximumLSPWorkspaceAccountedBytes int64 = 256 << 20
+
 const maximumLSPWorkspaceChangedFiles = 4096
+
+const indexedLSPSourceMemoryFactor int64 = 16
+
+const compactLSPSourceMemoryFactor int64 = 2
 
 type lspInvocation struct {
 	configPath string
@@ -71,6 +77,7 @@ type lspWorkspacePackageEntry struct {
 	dependencyPackagePaths []string
 	filesystemFiles map[string]lspWorkspaceFileSnapshot
 	sourceDirectories map[string]cache.Digest
+	accountedBytes int64
 	used uint64
 }
 
@@ -370,6 +377,9 @@ func (b *lspBackend) AnalyzeWorkspace(
 						),
 						filesystemFiles: filesystemFiles,
 						sourceDirectories: sourceDirectories,
+						accountedBytes: lspWorkspacePackageAccountedBytes(
+							packageResult,
+						),
 						used: b.workspace.clock,
 					}
 				}
@@ -667,9 +677,6 @@ func cloneLSPDocumentDigests(input map[string]source.Digest) map[string]source.D
 func boundLSPWorkspaceEntries(
 	entries map[lspPackageGroupKey]lspWorkspacePackageEntry,
 ) map[lspPackageGroupKey]lspWorkspacePackageEntry {
-	if len(entries) <= maximumLSPWorkspacePackageEntries {
-		return entries
-	}
 	keys := make([]lspPackageGroupKey, 0, len(entries))
 	for key := range entries {
 		keys = append(keys, key)
@@ -688,10 +695,42 @@ func boundLSPWorkspaceEntries(
 		map[lspPackageGroupKey]lspWorkspacePackageEntry,
 		maximumLSPWorkspacePackageEntries,
 	)
-	for _, key := range keys[:maximumLSPWorkspacePackageEntries] {
+	var accountedBytes int64
+	for _, key := range keys {
+		if len(result) == maximumLSPWorkspacePackageEntries {
+			break
+		}
+		entry := entries[key]
+		if len(result) != 0 &&
+			(entry.accountedBytes > maximumLSPWorkspaceAccountedBytes ||
+				accountedBytes >
+					maximumLSPWorkspaceAccountedBytes - entry.accountedBytes) {
+			continue
+		}
 		result[key] = entries[key]
+		accountedBytes += entry.accountedBytes
 	}
 	return result
+}
+
+func lspWorkspacePackageAccountedBytes(result analysis.PackageResult) int64 {
+	var retained int64
+	for _, path := range result.Sources.Paths() {
+		file, found := result.Sources.Lookup(path)
+		if !found {
+			return maximumLSPWorkspaceAccountedBytes + 1
+		}
+		factor := compactLSPSourceMemoryFactor
+		if file.CanFormat() {
+			factor = indexedLSPSourceMemoryFactor
+		}
+		size := file.ByteSize()
+		if size > (maximumLSPWorkspaceAccountedBytes + 1 - retained) / factor {
+			return maximumLSPWorkspaceAccountedBytes + 1
+		}
+		retained += size * factor
+	}
+	return retained
 }
 
 func compareLSPPackageGroupKey(left, right lspPackageGroupKey) int {

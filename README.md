@@ -152,7 +152,10 @@ wait for the matching analysis; a later edit rejects the queued request as
 content-modified instead of applying stale state.
 
 Typed workspace analysis retains at most eight validated package results per
-session. An edit reloads its package and open reverse dependants while
+session within a deterministic 256 MiB accounted-memory budget. Format-capable
+source is charged at sixteen times its exact bytes and compact dependency source
+at twice its bytes; this is a stable eviction weight, not an operating-system
+RSS measurement. An edit reloads its package and open reverse dependants while
 unaffected packages reuse their exact prior result against the current complete
 overlay. Captured disk sources, Go-file directory membership, module/workspace
 control files, baselines, configuration identity, and document digests all

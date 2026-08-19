@@ -73,6 +73,13 @@ incremental type checking within the changed package. The complete contract and
 limits are recorded in
 [`../docs/research/v0.5-incremental-workspace-analysis-2026-08-16.md`](../docs/research/v0.5-incremental-workspace-analysis-2026-08-16.md).
 
+The workspace result session also enforces a deterministic 256 MiB accounted
+memory budget across at most eight entries. Three samples after adding that
+eviction policy measured 30.66-51.96 ms, 565,042-565,216 bytes, and
+3,982-3,983 allocations per operation while preserving exactly 1.000 package
+load per operation. The accounting policy is a deterministic retained-source
+weight and does not substitute for the separate process-RSS gate.
+
 ## Initial Results
 
 Recorded 2026-08-09 on an Apple M4 Max with 128 GiB RAM, macOS 27.0

@@ -237,6 +237,15 @@ func (f *File) Digest() Digest {
 	return f.digest
 }
 
+// ByteSize returns the exact number of immutable physical source bytes retained
+// by the file without cloning them.
+func (f *File) ByteSize() int64 {
+	if f == nil {
+		return 0
+	}
+	return int64(len(f.bytes))
+}
+
 // Bytes returns an independent copy of the physical source bytes.
 func (f *File) Bytes() []byte {
 	return bytes.Clone(f.bytes)

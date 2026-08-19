@@ -115,14 +115,17 @@ publish only the exact current workspace versions. A code-action request that
 arrives during analysis waits for that snapshot; another document change
 rejects it with LSP `ContentModified` instead of using stale diagnostics.
 
-One server session retains at most eight validated typed package results. A
-changed open package invalidates itself and every cached open reverse dependant;
-unrelated open packages reuse their result while code actions receive the new
-complete workspace overlay. Captured disk-source contents, Go-file directory
-membership, module and workspace control files, configured baselines, and
-configuration identity are revalidated before reuse. The edited package still
-performs a complete package load and analysis; same-package incremental type,
-CFG, and SSA reconstruction remains future work.
+One server session retains at most eight validated typed package results within
+a deterministic 256 MiB accounted-memory budget. Format-capable source is
+charged at sixteen times its exact bytes and compact dependency source at twice
+its bytes. This weight drives deterministic eviction; it is not a process RSS
+measurement. A changed open package invalidates itself and every cached open
+reverse dependant; unrelated open packages reuse their result while code actions
+receive the new complete workspace overlay. Captured disk-source contents,
+Go-file directory membership, module and workspace control files, configured
+baselines, and configuration identity are revalidated before reuse. The edited
+package still performs a complete package load and analysis; same-package
+incremental type, CFG, and SSA reconstruction remains future work.
 
 When the client advertises dynamic watched-file registration, the server
 registers `workspace/didChangeWatchedFiles` for Go sources, module and workspace

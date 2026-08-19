@@ -177,5 +177,11 @@ analyzes one new immutable snapshot of all open documents.
 The retained package graph identifies the directly affected package and open
 reverse dependants. Unrelated package results remain reusable, including when a
 notification reports unchanged bytes, while editor overlays remain
-authoritative. Same-package incremental type checking, persistent typed graphs,
-and memory-aware eviction remain separate later decisions.
+authoritative. Retained results are now bounded by both eight entries and a
+deterministic 256 MiB accounted-memory budget. Fully indexed source is charged
+at sixteen times its exact bytes and compact dependency source at twice its
+bytes, based on the distinct retention classes observed in the typed-memory
+profile. This is an eviction weight rather than a process RSS claim. The newest
+oversized entry remains available alone; older entries cannot accumulate around
+it. Same-package incremental type checking and persistent typed graphs remain
+separate later decisions.

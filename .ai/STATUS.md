@@ -6,6 +6,7 @@
 - v0.5 bounded incremental workspace-result reuse: complete
 - v0.5 superseded editor analysis cancellation: complete
 - v0.5 workspace file notifications: complete
+- v0.5 memory-aware workspace-result eviction: complete
 - v0.5 curated strictness profiles: complete
 - v0.5 transaction state transition: complete
 - Phase 0 completed: 2026-08-09
@@ -1724,8 +1725,17 @@ advertises the capability. Valid created, changed, and deleted notifications
 cancel superseded analysis, record sorted unique absolute paths in the backend
 session, and refresh one exact snapshot of all open documents. Retained
 filesystem and package-graph evidence invalidates the affected package and open
-reverse dependants without reloading
-an unrelated package; captured local dependencies outside the project root are
+reverse dependants without reloading an unrelated package; captured local
+dependencies outside the project root are
 also covered when the client reports them. Channel and WaitGroup transitions,
-same-package typed graph reuse, memory-aware eviction, and portable budgets
-remain active v0.5 work.
+same-package typed graph reuse, and portable budgets remain active v0.5 work.
+
+The v0.5 workspace-memory batch replaces count-only retention with a
+deterministic 256 MiB accounted-memory budget while preserving the existing
+eight-entry bound. Format-capable source is charged at sixteen times its exact
+bytes and compact dependency source at twice its bytes, reflecting the distinct
+retention costs observed in the typed-memory profile without claiming an RSS
+measurement. Entries are considered most-recent-first; an oversized newest
+entry remains usable alone while older entries are evicted. Channel and
+WaitGroup transitions, same-package typed graph reuse, memory-aware worker
+scheduling, and portable budgets remain active v0.5 work.
