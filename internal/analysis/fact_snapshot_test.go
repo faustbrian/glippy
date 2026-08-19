@@ -155,6 +155,59 @@ func TestPackageFactSnapshotsRestoreDependencyGraph(t *testing.T) {
 	}
 }
 
+func TestImportablePackageFactSnapshotSkipsUnavailableObjects(t *testing.T) {
+	t.Parallel()
+
+	analyzer := &goanalysis.Analyzer{
+		Name: "persistent-facts",
+		FactTypes: []goanalysis.Fact{new(snapshotFact)},
+	}
+	complete, _ := checkFactIdentityFixture(t)
+	encoded, err := populatedFactSnapshotSet(
+		t,
+		analyzer,
+		complete,
+		"complete",
+	).encodeImportablePackageFactSnapshot(analyzer, complete)
+	if err != nil {
+		t.Fatal(err)
+	}
+	partial := types.NewPackage(complete.Path(), complete.Name())
+	partial.Scope().Insert(types.NewVar(token.NoPos, partial, "Exported", types.Typ[types.Int]))
+	partial.MarkComplete()
+	strict := newAnalyzerFactSet()
+	if err := strict.restorePackageFactSnapshot(
+		analyzer,
+		&packages.Package{Types: partial},
+		encoded,
+	);
+		err == nil {
+		t.Fatal("restorePackageFactSnapshot() accepted an incomplete package scope")
+	}
+	restored := newAnalyzerFactSet()
+	if err := restored.restoreImportablePackageFactSnapshot(
+		analyzer,
+		&packages.Package{Types: partial},
+		encoded,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	fact := new(snapshotFact)
+	if !restored.importObjectFact(
+		analyzer,
+		partial,
+		partial.Scope().Lookup("Exported"),
+		fact,
+	) ||
+		fact.Value != "complete:exported variable" {
+		t.Fatalf("restored available object fact = %#v", fact)
+	}
+	if facts := restored.allObjectFacts(analyzer, partial); len(facts) != 1 {
+		t.Fatalf("restored available object facts = %#v", facts)
+	}
+}
+
 func TestPackageFactSnapshotRejectsUnstableObjects(t *testing.T) {
 	t.Parallel()
 
@@ -265,6 +318,30 @@ func TestPackageFactSnapshotRestoreIsValidatedAndTransactional(t *testing.T) {
 		err == nil {
 		t.Fatal("restorePackageFactSnapshot() accepted unordered object facts")
 	}
+	duplicateOrder := stale
+	if err := json.Unmarshal(encoded, &duplicateOrder); err != nil {
+		t.Fatal(err)
+	}
+	duplicateOrder.ObjectFacts[1].Order = duplicateOrder.ObjectFacts[0].Order
+	duplicateOrderBytes, err := json.Marshal(duplicateOrder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodePackageFactSnapshot(duplicateOrderBytes); err == nil {
+		t.Fatal("decodePackageFactSnapshot() accepted duplicate object fact order")
+	}
+	outOfRangeOrder := stale
+	if err := json.Unmarshal(encoded, &outOfRangeOrder); err != nil {
+		t.Fatal(err)
+	}
+	outOfRangeOrder.ObjectFacts[0].Order = len(outOfRangeOrder.ObjectFacts)
+	outOfRangeOrderBytes, err := json.Marshal(outOfRangeOrder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodePackageFactSnapshot(outOfRangeOrderBytes); err == nil {
+		t.Fatal("decodePackageFactSnapshot() accepted out-of-range object fact order")
+	}
 
 	wrongAnalyzer := &goanalysis.Analyzer{
 		Name: analyzer.Name,
@@ -357,7 +434,7 @@ func factSnapshotPackages() (*types.Package, *types.Package) {
 func FuzzDecodePackageFactSnapshot(f *testing.F) {
 	f.Add(
 		[]byte(
-			`{"version":1,"analyzer":"a","package":"p","packageFacts":[],"objectFacts":[]}`,
+			`{"version":2,"analyzer":"a","package":"p","packageFacts":[],"objectFacts":[]}`,
 		),
 	)
 	f.Add([]byte("corrupt"))

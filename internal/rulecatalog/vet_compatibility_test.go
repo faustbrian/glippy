@@ -280,12 +280,11 @@ func TestPrintfArgumentsUsesDependencyWrapperFacts(t *testing.T) {
 	if !found || len(rootSource.Tokens()) == 0 {
 		t.Fatalf("root source is not fully indexed")
 	}
-	dependencySource, found := result.Sources.Lookup(dependencyPath)
-	if !found {
-		t.Fatalf("dependency source %q was not retained", dependencyPath)
+	if _, found := result.Sources.Lookup(dependencyPath); found {
+		t.Fatalf("dependency source %q was retained", dependencyPath)
 	}
-	if tokens := dependencySource.Tokens(); len(tokens) != 0 {
-		t.Fatalf("dependency retained %d lexical tokens", len(tokens))
+	if paths := result.Sources.Paths(); !reflect.DeepEqual(paths, []string{path}) {
+		t.Fatalf("retained reporter sources = %q, want only %q", paths, path)
 	}
 }
 

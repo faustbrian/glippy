@@ -226,6 +226,25 @@ receive fresh package loads, with candidate bytes supplied as an exact-path
 overlay before the single-file transaction may replace source. One final fresh
 load supplies complete reporting results after every serialized transaction.
 
+An admitted fact-bearing analyzer may declare one versioned audited external
+execution mode when exact in-process fact propagation cannot satisfy the
+recorded resource budget. The first and only such mode is `printf-v1`. The CLI
+runs native and fact-free adapted consumers first, releases their package graph,
+and invokes its own executable as the exact upstream `printf` unitchecker
+through `go vet -json -p=2`. One process-wide semaphore serializes this phase.
+The runner inherits the loader's read-only, offline, local-toolchain, target,
+workspace, overlay, and cancellation policy; bounds stdout and stderr; and maps
+only exact retained root ranges and declared fixes back into the product result.
+This does not admit arbitrary executables, runtime plugins, analyzer-selected
+flags, or dependency diagnostics.
+
+The dependency-first wave and stable fact-snapshot implementation remains the
+in-process fallback when no external runner is installed. It also preserves the
+serialization boundary for a future fact-bearing analyzer, but its selection is
+not evidence that it meets the `printf-v1` 2 GiB product budget. The exact
+decision and alternative measurements are recorded in
+[`../research/v0.5-printf-fact-execution-2026-08-19.md`](../research/v0.5-printf-fact-execution-2026-08-19.md).
+
 ## Alternatives Rejected
 
 - Custom Go parser/type checker: no evidenced missing standard capability and
@@ -262,6 +281,11 @@ and digest. Fact-only dependencies avoid that second parse and formatter index
 retention while preserving exact bytes and type identity. The v0.5 sqlc probe
 records a 53.00% worst-sample peak-RSS reduction with byte-identical
 diagnostics; native dependency-source consumers retain the complete model.
+The later exact `printf-v1` boundary reduces the same production workload to
+1,306,836,992 bytes cold with an unchanged diagnostic digest and makes 2 GiB
+the durable reference-host ceiling. Native Linux and final-candidate macOS
+measurements remain required before that ceiling becomes a portable release
+claim.
 
 ## Revisit Trigger
 

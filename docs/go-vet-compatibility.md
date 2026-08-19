@@ -5,7 +5,7 @@ with one rule registry, preset model, suppression syntax, baseline format,
 deterministic reporter, and fix coordinator. It does **not** claim to replace
 the complete `go vet` command.
 
-This boundary was audited on 2026-08-15 against Go 1.26.6 and x/tools v0.48.0.
+This boundary was refreshed on 2026-08-19 against Go 1.26.6 and x/tools v0.48.0.
 It must be revisited when either dependency changes its analyzer catalog or
 behavior.
 
@@ -16,8 +16,10 @@ behavior.
 | `appends` | `append-no-values` |
 | `assign` | `self-assignment` |
 | `atomic` | `atomic-update-assignment` |
+| `buildtag` | `invalid-build-constraint` |
 | `copylocks` | `copied-lock` |
 | `defers` | `deferred-time-since` |
+| `directive` | `invalid-directive` |
 | `errorsas` | `errors-as-target` |
 | `hostport` | `unsafe-host-port` |
 | `httpresponse` | `http-response-before-error` |
@@ -25,11 +27,14 @@ behavior.
 | `nilfunc` | `nil-function-comparison` |
 | `printf` | `printf-arguments` |
 | `shift` | `oversized-shift` |
+| `sigchanyzer` | `unbuffered-signal-channel` |
 | `slog` | `invalid-slog-arguments` |
 | `stdmethods` | `standard-method-signature` |
+| `stdversion` | `standard-library-version` |
 | `stringintconv` | `suspicious-string-conversion` |
 | `structtag` | `invalid-struct-tag` |
 | `testinggoroutine` | `testing-goroutine-call` |
+| `tests` | `invalid-test-signature` |
 | `timeformat` | `time-layout` |
 | `unmarshal` | `invalid-unmarshal-target` |
 | `unusedresult` | `unused-result` |
@@ -55,18 +60,30 @@ differences rather than analyzer-equivalence claims.
 Glippy does not currently run these Go 1.26.6 default analyzers:
 
 - `asmdecl` and `framepointer`, which require Go assembly ownership;
-- `buildtag` and `directive`, whose lexical/toolchain directive contracts need
-  a dedicated source-fidelity integration;
 - `cgocall` and `unsafeptr`, whose unsafe and cgo boundaries need separate
   admission evidence;
 - `composites`, whose unkeyed-literal policy and compatibility exceptions are
-  not admitted as a default Glippy rule;
-- `sigchanyzer`, which has not completed Glippy's rule admission gate;
-- `stdversion`, because Glippy has not stabilized a migration/version-policy
-  rule for too-new standard-library symbols; and
-- `tests`, whose test/example signature catalog has not completed admission.
+  not admitted as a default Glippy rule.
 
 Run `go vet` in addition to Glippy when any unsupported analyzer is required.
+
+## Exact Printf Fact Execution
+
+`printf` is the only adapted analyzer whose dependency facts run through an
+audited external boundary. The CLI first releases its ordinary typed package
+graph, then invokes the same Glippy executable as an exact upstream unitchecker
+through `go vet -json -p=2`. The command is serialized, cancellation-aware,
+offline and read-only under the package-loading policy, and bounded to 64 MiB
+stdout plus 1 MiB stderr. Temporary overlay files are task-owned and removed.
+
+Decoded diagnostics are rebound to Glippy's exact retained source versions.
+Dependency and ineligible generated-file diagnostics remain hidden, duplicate
+test variants collapse deterministically, and suggested edits remain subject to
+the declared Glippy safety class and complete fix coordinator. Internal callers
+without the executable runner retain the bounded in-process fact scheduler.
+This is not a generic vettool, runtime plugin, or external-analyzer API. The
+decision and resource evidence are in
+[`research/v0.5-printf-fact-execution-2026-08-19.md`](research/v0.5-printf-fact-execution-2026-08-19.md).
 
 ## Behavioral Differences
 

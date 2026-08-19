@@ -516,6 +516,73 @@ exit 1
 	}
 }
 
+func TestPeakRSSProbeDefaultsTypedMemoryBudgetToTwoGiB(t *testing.T) {
+	t.Parallel()
+
+	toolDirectory := t.TempDir()
+	writeExecutable(
+		t,
+		filepath.Join(toolDirectory, "go"),
+		`#!/bin/sh
+set -eu
+case "$*" in
+	*' mod download') exit 0 ;;
+esac
+output=
+while [ "$#" -gt 0 ]; do
+	if [ "$1" = "-o" ]; then
+		output=$2
+		break
+	fi
+	shift
+done
+test -n "$output"
+printf '#!/bin/sh\nexit 1\n' >"$output"
+chmod +x "$output"
+`,
+	)
+	fakeTime := filepath.Join(toolDirectory, "time")
+	writeExecutable(
+		t,
+		fakeTime,
+		`#!/bin/sh
+set -eu
+peak=1024
+for argument in "$@"; do
+	if [ "$argument" = "lint" ]; then
+		peak=2147483649
+	fi
+done
+printf '0.001 real 0.000 user 0.000 sys\n' >&2
+printf '%s maximum resident set size\n' "$peak" >&2
+for argument in "$@"; do
+	if [ "$argument" = "true" ]; then
+		exit 0
+	fi
+done
+exit 1
+`,
+	)
+
+	command := exec.Command("sh", "peak-rss.sh")
+	command.Dir = "."
+	command.Env = append(
+		os.Environ(),
+		"PATH=" + toolDirectory + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"GLIPPY_PEAK_RSS_RUNS=1",
+		"GLIPPY_PEAK_RSS_FORMAT_ROOT=" + t.TempDir(),
+		"GLIPPY_TIME_COMMAND=" + fakeTime,
+	)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatalf("peak-rss.sh succeeded, output = %q", output)
+	}
+	want := "typed-lint peak RSS budget exceeded: 2147483649 bytes > 2147483648 bytes"
+	if !strings.Contains(string(output), want) {
+		t.Fatalf("peak-rss.sh output = %q, want %q", output, want)
+	}
+}
+
 func writeExecutable(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {

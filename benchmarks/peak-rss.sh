@@ -26,7 +26,7 @@ case "$format_budget_seconds" in
 		;;
 esac
 
-typed_budget_bytes=${GLIPPY_PEAK_RSS_TYPED_BUDGET_BYTES:-4294967296}
+typed_budget_bytes=${GLIPPY_PEAK_RSS_TYPED_BUDGET_BYTES:-2147483648}
 case "$typed_budget_bytes" in
 	''|*[!0-9]*|0)
 		printf '%s\n' 'GLIPPY_PEAK_RSS_TYPED_BUDGET_BYTES must be a positive integer' >&2

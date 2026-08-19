@@ -3,12 +3,14 @@ package analysis
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
 
 	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 	"github.com/faustbrian/glippy/internal/suppressions"
 )
 
@@ -89,16 +91,12 @@ func RunPackages(
 	}
 
 	loadOptions.Requirement = result.Requirement
-	needsFacts, err := packageAnalyzersNeedFacts(registry, selection)
-	if err != nil {
-		return result, err
-	}
 	needsNativeDependencies, err := nativePackageRulesNeedDependencies(registry, selection)
 	if err != nil {
 		return result, err
 	}
-	loadOptions.LoadDependencySyntax = needsFacts || needsNativeDependencies
-	loadOptions.compactDependencySource = needsFacts && !needsNativeDependencies
+	loadOptions.LoadDependencySyntax = needsNativeDependencies
+	loadOptions.compactDependencySource = false
 	needsNativeEffects, err := nativePackageRulesNeedEffects(registry, selection)
 	if err != nil {
 		return result, err
@@ -144,6 +142,13 @@ func RunPackages(
 	if err != nil {
 		return result, err
 	}
+	ordinaryPackageAnalyzers, factPackageAnalyzers, err := partitionFactPackageAnalyzers(
+		registry,
+		packageAnalyzerSelection,
+	)
+	if err != nil {
+		return result, err
+	}
 	controlFlowSelection := selectRequirement(selection, rules.RequireControlFlow)
 	ssaSelection := selectRequirement(selection, rules.RequireSSA)
 	nativeDiagnostics, err := runNativePackageAnalysis(
@@ -169,10 +174,43 @@ func RunPackages(
 		loadOptions,
 		cachePlan,
 		registry,
-		packageAnalyzerSelection,
+		ordinaryPackageAnalyzers,
 	)
 	if err != nil {
 		return result, err
+	}
+	if len(factPackageAnalyzers) > 0 {
+		packageErrors := len(result.LoadDiagnostics) > 0 || len(result.SourceProblems) > 0
+		factPlan, err := preparePackageFactPlan(loaded)
+		if err != nil {
+			return result, err
+		}
+		sourceFiles := make([]*source.File, len(files))
+		for index := range files {
+			sourceFiles[index] = files[index].source
+			files[index] = ownedPackageSource{}
+		}
+		files = nil
+		packages_ = nil
+		loaded = PackageLoadResult{}
+		debug.FreeOSMemory()
+		factDiagnostics, err := runPackageFactAnalyzers(
+			ctx,
+			factPlan,
+			result.Sources,
+			loadOptions,
+			cachePlan,
+			registry,
+			factPackageAnalyzers,
+			packageErrors,
+		)
+		if err != nil {
+			return result, err
+		}
+		packageAnalyzerDiagnostics = append(packageAnalyzerDiagnostics, factDiagnostics...)
+		for _, file := range sourceFiles {
+			files = append(files, ownedPackageSource{source: file})
+		}
 	}
 	if err := captureProfilePhase(ctx, ProfilePhasePackageAnalyzers); err != nil {
 		return result, err

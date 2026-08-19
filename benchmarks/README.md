@@ -60,6 +60,18 @@ workload, heap attribution, command, and limitations are
 recorded in
 [`../docs/research/v0.5-memory-reduction-2026-08-16.md`](../docs/research/v0.5-memory-reduction-2026-08-16.md).
 
+The 2026-08-19 follow-up isolates the exact upstream `printf` fact graph in a
+serialized same-binary unitchecker process. Three production-path samples used
+1,306,836,992 bytes cold and 552,550,400-555,696,128 bytes warm, completed in
+20.330 seconds cold and 1.530-1.600 seconds warm, and preserved normalized
+diagnostic SHA-256
+`030f4474aec74877307118376e77e8ad7254a46c32777242fd11e3223c7282d0`.
+The script's default typed ceiling is now 2,147,483,648 bytes; callers may set a
+lower explicit budget but must not raise a release claim without new recorded
+evidence. The execution decision and remaining portable-evidence boundary are
+in
+[`../docs/research/v0.5-printf-fact-execution-2026-08-19.md`](../docs/research/v0.5-printf-fact-execution-2026-08-19.md).
+
 ### Retained-heap phase profiles
 
 The opt-in external typed-analysis test writes one garbage-collected heap

@@ -1,9 +1,11 @@
 package analysis_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -78,6 +80,18 @@ func (f *nondeterministicPackageFact) GobEncode() ([]byte, error) {
 
 func (*nondeterministicPackageFact) GobDecode([]byte) error {
 	return nil
+}
+
+type packageFactAnalyzerRunnerFunc func(
+	context.Context,
+	analysis.PackageFactAnalyzerRequest,
+) ([]analysis.PackageFactAnalyzerDiagnostic, error)
+
+func (f packageFactAnalyzerRunnerFunc) RunPackageFactAnalyzer(
+	ctx context.Context,
+	request analysis.PackageFactAnalyzerRequest,
+) ([]analysis.PackageFactAnalyzerDiagnostic, error) {
+	return f(ctx, request)
 }
 
 func TestAdaptAnalyzerRunsOnAnIsolatedSyntaxViewAndMapsDiagnostics(t *testing.T) {
@@ -1387,7 +1401,7 @@ func TestAdaptAnalyzerRunsPackageFactsAcrossDependencies(t *testing.T) {
 	writeTypesFixture(
 		t,
 		filepath.Join(root, "dep", "dep.go"),
-		"package dep\nimport _ \"fmt\"\nconst _greeting_ = \"hello\"\n",
+		"package dep\nconst _greeting_ = \"hello\"\n",
 	)
 	path := filepath.Join(root, "adapter.go")
 	input := `package adapter
@@ -1408,10 +1422,11 @@ const _audience_ = "world"
 	if err != nil {
 		t.Fatal(err)
 	}
+	statistics := analysis.NewStatistics()
 	result, err := analysis.RunPackages(
 		context.Background(),
 		registry,
-		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.RunOptions{Preset: rules.PresetCorrectness, Statistics: statistics},
 		analysis.PackageLoadOptions{
 			Dir: root,
 			Patterns: []string{"."},
@@ -1424,6 +1439,15 @@ const _audience_ = "world"
 	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
 		t.Fatalf("RunPackages() = %#v", result)
 	}
+	if paths := result.Sources.Paths(); !reflect.DeepEqual(paths, []string{path}) {
+		t.Fatalf("retained reporter sources = %q, want only %q", paths, path)
+	}
+	if loads := statistics.Snapshot().PackageLoads.Calls; loads != 3 {
+		t.Fatalf(
+			"package loads = %d, want initial, dependency wave, and reporter reload",
+			loads,
+		)
+	}
 	diagnostic := result.Files[0].Diagnostics[0]
 	importSpec := `_ "example.com/adapter/dep"`
 	start := strings.Index(input, importSpec)
@@ -1432,6 +1456,473 @@ const _audience_ = "world"
 		diagnostic.Range != (source.Range{Start: start, End: start + len(importSpec)}) ||
 		diagnostic.Message != "greeting=\"hello\"" {
 		t.Fatalf("package fact diagnostic = %#v", diagnostic)
+	}
+}
+
+func TestAdaptAnalyzerDependencyFactFilterSkipsImpossibleExporters(t *testing.T) {
+	tests := []struct {
+		name string
+		dependency string
+		wantDependencyRuns int
+		wantDiagnostics int
+		wantPackageLoads uint64
+	}{
+		{
+			name: "no variadic declaration",
+			dependency: "package dep\nconst Value = 1\n",
+			wantPackageLoads: 3,
+		},
+		{
+			name: "variadic declaration",
+			dependency: "package dep\nfunc Wrap(values ...any) {}\n",
+			wantDependencyRuns: 1,
+			wantDiagnostics: 1,
+			wantPackageLoads: 4,
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				root := t.TempDir()
+				writeTypesFixture(
+					t,
+					filepath.Join(root, "go.mod"),
+					"module example.com/adapter\n\ngo 1.26.0\n",
+				)
+				dependencyPath := filepath.Join(root, "dep", "dep.go")
+				writeTypesFixture(t, dependencyPath, test.dependency)
+				rootPath := filepath.Join(root, "adapter.go")
+				writeTypesFixture(
+					t,
+					rootPath,
+					"package adapter\nimport _ \"example.com/adapter/dep\"\n",
+				)
+				dependencyRuns := 0
+				analyzer := &goanalysis.Analyzer{
+					Name: "filteredfacts",
+					Doc: "exports facts only from variadic declarations",
+					Run: func(pass *goanalysis.Pass) (any, error) {
+						if pass.Pkg.Path() == "example.com/adapter/dep" {
+							dependencyRuns++
+							input, err := pass.ReadFile(dependencyPath)
+							if err != nil {
+								return nil, err
+							}
+							if bytes.Contains(input, []byte("...")) {
+								pass.ExportPackageFact(
+									&packageScopeFact{
+										Value: "candidate",
+									},
+								)
+							}
+							return nil, nil
+						}
+						for _, imported := range pass.Pkg.Imports() {
+							fact := new(packageScopeFact)
+							if imported.Path() ==
+								"example.com/adapter/dep" &&
+								pass.ImportPackageFact(
+									imported,
+									fact,
+								) {
+								pass.ReportRangef(
+									pass.Files[0].Name,
+									"%s",
+									fact.Value,
+								)
+							}
+						}
+						return nil, nil
+					},
+					FactTypes: []goanalysis.Fact{new(packageScopeFact)},
+				}
+				options := adapterOptions("filtered-package-facts")
+				options.Metadata.Requirement = rules.RequireTypes
+				options.ReadOnlyAudited = true
+				options.DependencyFactFilter = &analysis.AnalyzerDependencyFactFilter{
+					Identity: "variadic-source-v1",
+					PackageMayExport: func(
+						sources []analysis.AnalyzerDependencyFactSource,
+					) (bool, error) {
+						for _, source := range sources {
+							if bytes.Contains(
+								source.Bytes,
+								[]byte("..."),
+							) {
+								return true, nil
+							}
+						}
+						return false, nil
+					},
+					Audited: true,
+				}
+				adapted, err := analysis.AdaptAnalyzer(analyzer, options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				registry, err := rules.NewRegistry(adapted)
+				if err != nil {
+					t.Fatal(err)
+				}
+				statistics := analysis.NewStatistics()
+				result, err := analysis.RunPackages(
+					context.Background(),
+					registry,
+					analysis.RunOptions{
+						Preset: rules.PresetCorrectness,
+						Statistics: statistics,
+					},
+					analysis.PackageLoadOptions{
+						Dir: root,
+						Patterns: []string{"."},
+						ModuleMode: analysis.ModuleReadonly,
+					},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if dependencyRuns != test.wantDependencyRuns ||
+					len(result.Files) != 1 ||
+					result.Files[0].Path != rootPath ||
+					len(result.Files[0].Diagnostics) != test.wantDiagnostics {
+					t.Fatalf(
+						"dependency runs = %d, result = %#v",
+						dependencyRuns,
+						result,
+					)
+				}
+				if loads := statistics.Snapshot().PackageLoads.Calls;
+					loads != test.wantPackageLoads {
+					t.Fatalf(
+						"package loads = %d, want %d",
+						loads,
+						test.wantPackageLoads,
+					)
+				}
+			},
+		)
+	}
+}
+
+func TestAdaptAnalyzerUsesAuditedExternalFactRunner(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/adapter\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "adapter.go")
+	input := "package adapter\n\nfunc run() {}\n"
+	writeTypesFixture(t, path, input)
+	start := strings.Index(input, "run")
+	analyzer := &goanalysis.Analyzer{
+		Name: "externalfacts",
+		Doc: "runs through an exact external fact driver",
+		Run: func(*goanalysis.Pass) (any, error) {
+			return nil, errors.New("in-process fact analyzer executed")
+		},
+		FactTypes: []goanalysis.Fact{new(adapterFact)},
+	}
+	options := adapterOptions("external-package-facts")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	options.ExternalFactExecution = &analysis.AnalyzerExternalFactExecution{
+		Identity: "externalfacts-v1",
+		Analyzer: "externalfacts",
+		Audited: true,
+	}
+	adapted, err := analysis.AdaptAnalyzer(analyzer, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := packageFactAnalyzerRunnerFunc(
+		func(
+			ctx context.Context,
+			request analysis.PackageFactAnalyzerRequest,
+		) ([]analysis.PackageFactAnalyzerDiagnostic, error) {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if request.Identity != "externalfacts-v1" ||
+				request.Analyzer != "externalfacts" ||
+				request.LoadOptions.Dir != root {
+				t.Fatalf("external request = %#v", request)
+			}
+			return []analysis.PackageFactAnalyzerDiagnostic{
+				{
+					Analyzer: "externalfacts",
+					Path: path,
+					Range: source.Range{Start: start, End: start + len("run")},
+					Message: "external fact diagnostic",
+				},
+			}, nil
+		},
+	)
+	ctx := analysis.WithPackageFactAnalyzerRunner(context.Background(), runner)
+	result, err := analysis.RunPackages(
+		ctx,
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 ||
+		len(result.Files[0].Diagnostics) != 1 ||
+		result.Files[0].Diagnostics[0].RuleID != "external-package-facts" ||
+		result.Files[0].Diagnostics[0].Range !=
+			(source.Range{Start: start, End: start + len("run")}) ||
+		result.Files[0].Diagnostics[0].Message != "external fact diagnostic" {
+		t.Fatalf("RunPackages() = %#v", result)
+	}
+}
+
+func TestAdaptAnalyzerFactWavesHonorRetainedSourceByteLimit(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/adapter\n\ngo 1.26.0\n",
+	)
+	dependencyInput := "package dep\nconst Value = 1\n"
+	writeTypesFixture(t, filepath.Join(root, "dep", "dep.go"), dependencyInput)
+	rootInput := "package adapter\nimport _ \"example.com/adapter/dep\"\n"
+	writeTypesFixture(t, filepath.Join(root, "adapter.go"), rootInput)
+	analyzer := &goanalysis.Analyzer{
+		Name: "boundedfacts",
+		Doc: "exports facts within the configured source budget",
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			pass.ExportPackageFact(new(adapterFact))
+			return nil, nil
+		},
+		FactTypes: []goanalysis.Fact{new(adapterFact)},
+	}
+	options := adapterOptions("bounded-package-facts")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(analyzer, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maximum := int64(len(rootInput) + len(dependencyInput) - 1)
+	_, err = analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+			MaxSourceBytes: maximum,
+		},
+	)
+	remaining := int64(len(dependencyInput) - 1)
+	if err == nil ||
+		!strings.Contains(err.Error(), "after retained roots") ||
+		!strings.Contains(
+			err.Error(),
+			fmt.Sprintf("typed source set exceeds %d-byte limit", remaining),
+		) {
+		t.Fatalf("RunPackages() error = %v, want combined source-byte refusal", err)
+	}
+	_, err = analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+			MaxSourceFiles: 1,
+		},
+	)
+	if err == nil ||
+		!strings.Contains(err.Error(), "after retained roots") ||
+		!strings.Contains(err.Error(), "package fact source set exceeds 1-file limit") {
+		t.Fatalf("RunPackages() error = %v, want combined source-file refusal", err)
+	}
+}
+
+func TestAdaptAnalyzerFactWavesHonorDependencyOverlays(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/adapter\n\ngo 1.26.0\n",
+	)
+	dependencyPath := filepath.Join(root, "dep", "dep.go")
+	writeTypesFixture(t, dependencyPath, "package dep\nconst Value = \"disk\"\n")
+	rootPath := filepath.Join(root, "adapter.go")
+	writeTypesFixture(t, rootPath, "package adapter\nimport _ \"example.com/adapter/dep\"\n")
+	overlay := []byte("package dep\nconst Value = \"overlay\"\n")
+	analyzer := &goanalysis.Analyzer{
+		Name: "overlayfacts",
+		Doc: "reports facts produced from dependency overlays",
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			if pass.Pkg.Path() == "example.com/adapter/dep" {
+				input, err := pass.ReadFile(
+					pass.Fset.Position(pass.Files[0].Pos()).Filename,
+				)
+				if err != nil {
+					return nil, err
+				}
+				value := "disk"
+				if bytes.Contains(input, []byte(`"overlay"`)) {
+					value = "overlay"
+				}
+				pass.ExportPackageFact(&packageScopeFact{Value: value})
+				return nil, nil
+			}
+			for _, imported := range pass.Pkg.Imports() {
+				if imported.Path() != "example.com/adapter/dep" {
+					continue
+				}
+				fact := new(packageScopeFact)
+				if pass.ImportPackageFact(imported, fact) {
+					pass.ReportRangef(pass.Files[0].Name, "%s", fact.Value)
+				}
+			}
+			return nil, nil
+		},
+		FactTypes: []goanalysis.Fact{new(packageScopeFact)},
+	}
+	options := adapterOptions("overlay-package-facts")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(analyzer, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+			Overlay: map[string][]byte{dependencyPath: overlay},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 ||
+		result.Files[0].Path != rootPath ||
+		len(result.Files[0].Diagnostics) != 1 ||
+		result.Files[0].Diagnostics[0].Message != "overlay" {
+		t.Fatalf("RunPackages() = %#v", result)
+	}
+}
+
+func TestAdaptAnalyzerFactSnapshotsPreserveTestVariants(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/adapter\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(t, filepath.Join(root, "adapter.go"), "package adapter\n")
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "adapter_test.go"),
+		"package adapter\nimport \"testing\"\nfunc TestInternal(t *testing.T) {}\n",
+	)
+	externalPath := filepath.Join(root, "external_test.go")
+	writeTypesFixture(
+		t,
+		externalPath,
+		"package adapter_test\nimport (\n\t_ \"example.com/adapter\"\n\t\"testing\"\n)\nfunc TestExternal(t *testing.T) {}\n",
+	)
+	analyzer := &goanalysis.Analyzer{
+		Name: "variantfacts",
+		Doc: "reports facts from the exact imported test variant",
+		Run: func(pass *goanalysis.Pass) (any, error) {
+			switch pass.Pkg.Path() {
+			case "example.com/adapter":
+				value := "base"
+				if pass.Pkg.Scope().Lookup("TestInternal") != nil {
+					value = "augmented"
+				}
+				pass.ExportPackageFact(&packageScopeFact{Value: value})
+			case "example.com/adapter_test":
+				for _, imported := range pass.Pkg.Imports() {
+					if imported.Path() != "example.com/adapter" {
+						continue
+					}
+					fact := new(packageScopeFact)
+					if pass.ImportPackageFact(imported, fact) {
+						pass.ReportRangef(
+							pass.Files[0].Name,
+							"%s",
+							fact.Value,
+						)
+					}
+				}
+			}
+			return nil, nil
+		},
+		FactTypes: []goanalysis.Fact{new(packageScopeFact)},
+	}
+	options := adapterOptions("variant-package-facts")
+	options.Metadata.Requirement = rules.RequireTypes
+	options.ReadOnlyAudited = true
+	adapted, err := analysis.AdaptAnalyzer(analyzer, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewRegistry(adapted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Tests: true,
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diagnostics := make([]rules.Diagnostic, 0)
+	for _, file := range result.Files {
+		diagnostics = append(diagnostics, file.Diagnostics...)
+	}
+	if len(diagnostics) != 1 ||
+		diagnostics[0].Path != externalPath ||
+		diagnostics[0].Message != "augmented" {
+		t.Fatalf("RunPackages() diagnostics = %#v", diagnostics)
 	}
 }
 

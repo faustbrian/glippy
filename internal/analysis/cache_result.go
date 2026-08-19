@@ -18,7 +18,7 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
-const packageAnalyzerCacheEntryVersion = 3
+const packageAnalyzerCacheEntryVersion = 4
 
 // PackageCacheOptions binds a caller-owned persistent store to the complete
 // non-source identity of one typed analysis run. Source, package, module,
@@ -549,9 +549,13 @@ func cloneAnalyzerFactSet(facts *analyzerFactSet) *analyzerFactSet {
 	for key, view := range facts.objectViews {
 		clonedView := &objectFactView{
 			values: make(map[objectFactKey][]byte, len(view.values)),
+			order: make(map[objectFactKey]int, len(view.order)),
 		}
 		for fact, value := range view.values {
 			clonedView.values[fact] = bytes.Clone(value)
+		}
+		for fact, order := range view.order {
+			clonedView.order[fact] = order
 		}
 		clone.objectViews[key] = clonedView
 	}

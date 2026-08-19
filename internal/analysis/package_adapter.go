@@ -63,6 +63,36 @@ func partitionPackageAnalyzers(
 	return native, adapted, nil
 }
 
+func partitionFactPackageAnalyzers(
+	registry *rules.Registry,
+	selection []rules.Selection,
+) ([]rules.Selection, []rules.Selection, error) {
+	ordinary := make([]rules.Selection, 0, len(selection))
+	factBearing := make([]rules.Selection, 0, len(selection))
+	for _, selected := range selection {
+		rule, found := registry.Lookup(selected.ID)
+		if !found {
+			return nil, nil, fmt.Errorf(
+				"selected unknown package analyzer %q",
+				selected.ID,
+			)
+		}
+		adapted, found := rule.(*packageAnalyzerRule)
+		if !found {
+			return nil, nil, fmt.Errorf(
+				"selected rule %q is not a package analyzer",
+				selected.ID,
+			)
+		}
+		if adapted.usesFacts() {
+			factBearing = append(factBearing, selected)
+			continue
+		}
+		ordinary = append(ordinary, selected)
+	}
+	return ordinary, factBearing, nil
+}
+
 func runPackageAnalyzers(
 	ctx context.Context,
 	loaded PackageLoadResult,
@@ -109,26 +139,10 @@ func runPackageAnalyzers(
 	diagnostics := make([]rules.Diagnostic, 0)
 	for _, analyzer := range active {
 		if analyzer.rule.usesFacts() {
-			ruleStarted := beginStatisticsMeasurement(statistics)
-			produced, err := analyzer.rule.runPackageFactGraph(
-				ctx,
-				loaded,
-				loadOptions,
-				cachePlan,
-				owners,
-				analyzer.metadata,
-				analyzer.severity,
-			)
-			statistics.recordRule(
+			return nil, fmt.Errorf(
+				"package analyzer %q requires dependency facts and a released root graph",
 				analyzer.metadata.ID,
-				analyzer.metadata.Requirement,
-				ruleStarted,
 			)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", analyzer.metadata.ID, err)
-			}
-			diagnostics = append(diagnostics, produced...)
-			continue
 		}
 		for _, pkg := range packages_ {
 			if err := ctx.Err(); err != nil {
@@ -171,6 +185,80 @@ func runPackageAnalyzers(
 			}
 			diagnostics = append(diagnostics, produced...)
 		}
+	}
+	return OrderDiagnostics(diagnostics), nil
+}
+
+func runPackageFactAnalyzers(
+	ctx context.Context,
+	plan packageFactPlan,
+	retainedSources PackageSourceSet,
+	loadOptions PackageLoadOptions,
+	cachePlan *packageCachePlan,
+	registry *rules.Registry,
+	selection []rules.Selection,
+	packageErrors bool,
+) ([]rules.Diagnostic, error) {
+	if len(selection) == 0 {
+		return []rules.Diagnostic{}, nil
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("package fact analyzer execution requires a context")
+	}
+	if registry == nil {
+		return nil, fmt.Errorf("package fact analyzer execution requires a rule registry")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	active, err := preparePackageAnalyzers(registry, selection)
+	if err != nil {
+		return nil, err
+	}
+	statistics := statisticsFromContext(ctx)
+	tierStarted := beginStatisticsMeasurement(statistics)
+	defer statistics.recordTier(rules.RequireTypes, tierStarted)
+	diagnostics := make([]rules.Diagnostic, 0)
+	for _, analyzer := range active {
+		if !analyzer.rule.usesFacts() {
+			return nil, fmt.Errorf(
+				"package analyzer %q does not declare dependency facts",
+				analyzer.metadata.ID,
+			)
+		}
+		ruleStarted := beginStatisticsMeasurement(statistics)
+		var produced []rules.Diagnostic
+		runner := packageFactAnalyzerRunnerFromContext(ctx)
+		if analyzer.rule.externalFactExecution != nil && runner != nil {
+			produced, err = analyzer.rule.runExternalFactAnalyzer(
+				ctx,
+				runner,
+				retainedSources,
+				loadOptions,
+				analyzer.metadata,
+				analyzer.severity,
+				packageErrors,
+			)
+		} else {
+			produced, err = analyzer.rule.runPackageFactGraph(
+				ctx,
+				plan,
+				retainedSources,
+				loadOptions,
+				cachePlan,
+				analyzer.metadata,
+				analyzer.severity,
+			)
+		}
+		statistics.recordRule(
+			analyzer.metadata.ID,
+			analyzer.metadata.Requirement,
+			ruleStarted,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", analyzer.metadata.ID, err)
+		}
+		diagnostics = append(diagnostics, produced...)
 	}
 	return OrderDiagnostics(diagnostics), nil
 }

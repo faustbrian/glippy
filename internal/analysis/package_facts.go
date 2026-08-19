@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
-	"errors"
 	"fmt"
 	"go/token"
 	"go/types"
 	"reflect"
+	"runtime/debug"
 	"sort"
 
 	goanalysis "golang.org/x/tools/go/analysis"
@@ -36,6 +36,7 @@ type objectFactKey struct {
 
 type objectFactView struct {
 	values map[objectFactKey][]byte
+	order map[objectFactKey]int
 }
 
 type analyzerFactSet struct {
@@ -63,138 +64,80 @@ func (r *packageAnalyzerRule) usesFacts() bool {
 
 func (r *packageAnalyzerRule) runPackageFactGraph(
 	ctx context.Context,
-	loaded PackageLoadResult,
+	plan packageFactPlan,
+	retainedSources PackageSourceSet,
 	loadOptions PackageLoadOptions,
 	cachePlan *packageCachePlan,
-	owners map[string]string,
 	metadata rules.Metadata,
 	severity rules.Severity,
 ) ([]rules.Diagnostic, error) {
-	roots := loaded.Packages
-	sources := loaded.Sources
-	facts := newAnalyzerFactSet()
-	state := make(map[*packages.Package]uint8)
-	results := make(map[*packages.Package][]rules.Diagnostic)
-	cacheKeys := make(map[*packages.Package]cache.Key)
-	baseCacheKey, cacheable := r.packageCacheBaseKey(loaded, loadOptions, cachePlan)
-	statistics := statisticsFromContext(ctx)
-	var execute func(*packages.Package) error
-	execute = func(pkg *packages.Package) error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		switch state[pkg] {
-		case 1:
-			return fmt.Errorf(
-				"package fact graph contains an import cycle at %q",
-				pkg.ID,
-			)
-		case 2:
-			return nil
-		}
-		state[pkg] = 1
-		imports := make([]string, 0, len(pkg.Imports))
-		for path := range pkg.Imports {
-			imports = append(imports, path)
-		}
-		sort.Strings(imports)
-		for _, path := range imports {
-			if err := execute(pkg.Imports[path]); err != nil {
-				return err
-			}
-		}
-		if pkg.IllTyped {
-			for _, step := range r.steps {
-				if !step.original.RunDespiteErrors {
-					return fmt.Errorf(
-						"analyzer %q cannot produce facts for ill-typed package %q",
-						step.original.Name,
-						pkg.ID,
-					)
-				}
-			}
-		}
-		files, err := packageSyntaxFiles(pkg, sources)
-		if err != nil {
-			return err
-		}
-		key, packageCacheable := r.packageCacheKey(
-			pkg,
-			cachePlan,
+	store := newRetainedPackageFactStore()
+	dependencies, err := r.prepareDependencyFactCandidates(
+		ctx,
+		plan.dependencies,
+		retainedSources,
+		loadOptions,
+		cachePlan,
+		store,
+	)
+	if err != nil {
+		return nil, err
+	}
+	for _, dependencyWave := range packageFactWaves(dependencies) {
+		if err := r.runPackageFactWave(
+			ctx,
+			dependencyWave,
+			retainedSources,
 			loadOptions,
-			baseCacheKey,
-			cacheable,
-			cacheKeys,
-		)
-		invalidHit := false
-		if packageCacheable {
-			encoded, found, err := cachePlan.options.Store.Get(ctx, key)
-			if err != nil {
-				return fmt.Errorf("read package analyzer cache: %w", err)
-			}
-			if found {
-				cached, restoreErr := r.restorePackageCacheEntry(
-					pkg,
-					sources,
-					owners,
-					severity,
-					facts,
-					encoded,
-				)
-				if restoreErr == nil {
-					statistics.recordCacheLookup(true, false)
-					results[pkg] = cached
-					cacheKeys[pkg] = key
-					state[pkg] = 2
-					return nil
-				}
-				invalidHit = true
-				statistics.recordCacheLookup(false, true)
-			} else {
-				statistics.recordCacheLookup(false, false)
-			}
+			cachePlan,
+			severity,
+			store,
+		);
+			err != nil {
+			return nil, err
 		}
-		produced, err := r.runPackage(ctx, pkg, files, owners, severity, facts)
-		if err != nil {
-			return err
+		debug.FreeOSMemory()
+	}
+	loaded, rootOptions, err := loadPackageFactRoots(ctx, loadOptions, retainedSources)
+	if err != nil {
+		return nil, err
+	}
+	rootsByID := make(map[string]*packages.Package, len(loaded.Packages))
+	for _, root := range loaded.Packages {
+		if root != nil {
+			rootsByID[root.ID] = root
 		}
-		results[pkg] = produced
-		if packageCacheable {
-			encoded, encodeErr := r.encodePackageCacheEntry(pkg, produced, facts)
-			if encodeErr == nil {
-				if err := cachePlan.options.Store.Put(ctx, key, encoded);
-					err != nil {
-					if !invalidHit || !errors.Is(err, cache.ErrConflict) {
-						return fmt.Errorf(
-							"write package analyzer cache: %w",
-							err,
-						)
-					}
-				} else {
-					statistics.recordCacheWrite()
-					cacheKeys[pkg] = key
-				}
-			}
-		}
-		state[pkg] = 2
-		return nil
 	}
 	diagnostics := make([]rules.Diagnostic, 0)
-	for _, root := range roots {
-		files, err := packageSyntaxFiles(root, sources)
+	for _, id := range plan.roots {
+		root := rootsByID[id]
+		if root == nil {
+			return nil, fmt.Errorf("package fact schedule omitted root %q", id)
+		}
+		files, err := packageSyntaxFiles(root, loaded.Sources)
 		if err != nil {
 			return nil, err
 		}
 		if root.IllTyped && !metadata.RunDespiteTypeErrors {
 			continue
 		}
-		if !packageAnalyzerOwnsEligibleFile(root.ID, files, owners, metadata) {
+		if !packageAnalyzerOwnsEligibleFile(root.ID, files, plan.owners, metadata) {
 			continue
 		}
-		if err := execute(root); err != nil {
+		produced, err := r.runRetainedFactPackage(
+			ctx,
+			root,
+			loaded,
+			rootOptions,
+			cachePlan,
+			plan.owners,
+			severity,
+			store,
+		)
+		if err != nil {
 			return nil, err
 		}
-		diagnostics = append(diagnostics, results[root]...)
+		diagnostics = append(diagnostics, produced...)
 	}
 	return diagnostics, nil
 }
@@ -205,7 +148,7 @@ func (r *packageAnalyzerRule) packageCacheKey(
 	loadOptions PackageLoadOptions,
 	base cache.Key,
 	baseCacheable bool,
-	dependencyKeys map[*packages.Package]cache.Key,
+	dependencyKeys map[string]cache.Key,
 ) (cache.Key, bool) {
 	if plan == nil || !baseCacheable {
 		return cache.Key{}, false
@@ -219,14 +162,13 @@ func (r *packageAnalyzerRule) packageCacheKey(
 			Digest: cache.Digest(base),
 		},
 	)
-	imports := make([]string, 0, len(pkg.Imports))
-	for path := range pkg.Imports {
-		imports = append(imports, path)
+	imports := make([]string, 0, len(pkg.Types.Imports()))
+	for _, imported := range pkg.Types.Imports() {
+		imports = append(imports, imported.Path())
 	}
 	sort.Strings(imports)
 	for _, path := range imports {
-		dependency := pkg.Imports[path]
-		key, found := dependencyKeys[dependency]
+		key, found := dependencyKeys[path]
 		if !found {
 			return cache.Key{}, false
 		}
@@ -234,14 +176,14 @@ func (r *packageAnalyzerRule) packageCacheKey(
 			components,
 			cache.Component{
 				Kind: cache.ComponentFact,
-				Identity: path + "=" + dependency.ID,
+				Identity: path,
 				Digest: cache.Digest(key),
 			},
 		)
 	}
 	key, err := cache.BuildKey(
 		cache.KeyInput{
-			Namespace: "typed-analyzer-v1:" + r.metadata.ID + ":" + pkg.ID,
+			Namespace: "typed-analyzer-v2:" + r.metadata.ID + ":" + pkg.ID,
 			ToolVersion: plan.options.ToolVersion,
 			BuildGoVersion: plan.options.BuildGoVersion,
 			SourceGoVersion: plan.options.SourceGoVersion,
@@ -271,7 +213,10 @@ func (r *packageAnalyzerRule) packageCacheBaseKey(
 	}
 	key, err := buildPackageCacheKey(
 		packageCacheKeyInput{
-			Namespace: "typed-analyzer-input-v1:" + r.metadata.ID,
+			Namespace: "typed-analyzer-input-v2:" +
+				r.metadata.ID +
+				":" +
+				r.dependencyFactFilterIdentity(),
 			ToolVersion: plan.options.ToolVersion,
 			BuildGoVersion: plan.options.BuildGoVersion,
 			SourceGoVersion: plan.options.SourceGoVersion,
@@ -288,6 +233,13 @@ func (r *packageAnalyzerRule) packageCacheBaseKey(
 		return cache.Key{}, false
 	}
 	return key, true
+}
+
+func (r *packageAnalyzerRule) dependencyFactFilterIdentity() string {
+	if r == nil || r.dependencyFactFilter == nil {
+		return "unfiltered"
+	}
+	return r.dependencyFactFilter.Identity
 }
 
 func (s *analyzerFactSet) importPackageFact(
@@ -379,7 +331,10 @@ func (s *analyzerFactSet) beginObjectFacts(
 		return nil
 	}
 	s.packages[pkg.Types] = pkg
-	view := &objectFactView{values: make(map[objectFactKey][]byte)}
+	view := &objectFactView{
+		values: make(map[objectFactKey][]byte),
+		order: make(map[objectFactKey]int),
+	}
 	imports := append([]*types.Package(nil), pkg.Types.Imports()...)
 	sort.Slice(
 		imports,
@@ -413,6 +368,17 @@ func (s *analyzerFactSet) beginObjectFacts(
 				)
 			}
 			view.values[factKey] = encoded
+			if ordinal, ordered := dependency.order[factKey]; ordered {
+				if previous, duplicate := view.order[factKey];
+					duplicate && previous != ordinal {
+					return fmt.Errorf(
+						"analyzer %q inherited conflicting object fact order for %s",
+						analyzer.Name,
+						types.ObjectString(factKey.object, packagePath),
+					)
+				}
+				view.order[factKey] = ordinal
+			}
 		}
 	}
 	s.objectViews[key] = view
@@ -477,7 +443,9 @@ func (s *analyzerFactSet) exportObjectFact(
 	if !found {
 		panic("object fact view was not initialized")
 	}
-	view.values[objectFactKey{object: object, type_: type_}] = encoded
+	key := objectFactKey{object: object, type_: type_}
+	view.values[key] = encoded
+	delete(view.order, key)
 }
 
 func (s *analyzerFactSet) allObjectFacts(
@@ -523,6 +491,11 @@ func (s *analyzerFactSet) lessObjectFact(
 	}
 	if leftPackage != rightPackage {
 		return leftPackage < rightPackage
+	}
+	leftOrder, leftOrdered := view.order[left]
+	rightOrder, rightOrdered := view.order[right]
+	if leftOrdered && rightOrdered && leftOrder != rightOrder {
+		return leftOrder < rightOrder
 	}
 	leftPosition := s.objectFactPosition(left.object)
 	rightPosition := s.objectFactPosition(right.object)

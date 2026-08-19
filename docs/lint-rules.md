@@ -3401,8 +3401,9 @@ value, err = second()
 detects invalid Printf-style format strings and arguments
 
 Printf-style calls can silently render malformed output when a directive is invalid, an argument is
-missing, or an argument has the wrong type. Glippy adapts the standard Go printf analyzer, including
-its wrapper facts, through the shared typed scheduler and deterministic diagnostic contract.
+missing, or an argument has the wrong type. Glippy adapts the exact standard Go printf analyzer,
+including its wrapper facts, through an audited bounded execution mode and the deterministic
+diagnostic contract.
 
 - Default severity: `warn`
 - Presets: `correctness`
@@ -3428,6 +3429,8 @@ None.
 
 - The rule follows the standard printf analyzer's recognized formatting functions and inferred
   wrappers.
+- The CLI isolates the exact upstream fact graph in one serialized same-binary unitchecker process;
+  internal callers without that runner use the bounded in-process fact scheduler.
 - The configurable upstream funcs flag is not exposed as a Glippy rule option in this release.
 - The non-constant-format repair is suggestion-only because adding %s may not reflect the caller's
   intended formatting contract.

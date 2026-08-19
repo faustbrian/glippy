@@ -35,6 +35,24 @@ type AnalyzerAdapterOptions struct {
 	SuggestedFixes []AnalyzerFixMapping
 	FlagBindings []AnalyzerFlagBinding
 	ReadOnlyAudited bool
+	DependencyFactFilter *AnalyzerDependencyFactFilter
+	ExternalFactExecution *AnalyzerExternalFactExecution
+}
+
+// AnalyzerDependencyFactFilter proves from exact dependency source bytes that
+// a fact-bearing analyzer cannot export facts for one package. Reporter roots
+// are always analyzed because they may also produce diagnostics.
+type AnalyzerDependencyFactFilter struct {
+	Identity string
+	PackageMayExport func([]AnalyzerDependencyFactSource) (bool, error)
+	Audited bool
+}
+
+// AnalyzerDependencyFactSource is one exact compiled dependency source passed
+// to an audited package-level fact-export predicate.
+type AnalyzerDependencyFactSource struct {
+	Path string
+	Bytes []byte
 }
 
 // AnalyzerFactory constructs one independent analyzer graph for a single run.
@@ -72,6 +90,8 @@ type packageAnalyzerRule struct {
 	bindings []AnalyzerFlagBinding
 	contract []analyzerContractStep
 	admission map[*goanalysis.Analyzer]struct{}
+	dependencyFactFilter *AnalyzerDependencyFactFilter
+	externalFactExecution *AnalyzerExternalFactExecution
 }
 
 type packageAnalyzerStep struct {
@@ -372,6 +392,22 @@ func adaptAnalyzer(
 			)
 		}
 	}
+	dependencyFactFilter, err := validateAnalyzerDependencyFactFilter(
+		analyzer,
+		plan,
+		options.DependencyFactFilter,
+	)
+	if err != nil {
+		return nil, err
+	}
+	externalFactExecution, err := validateAnalyzerExternalFactExecution(
+		analyzer,
+		plan,
+		options.ExternalFactExecution,
+	)
+	if err != nil {
+		return nil, err
+	}
 	if err := validateAnalyzerFlagBindings(
 		analyzer,
 		plan,
@@ -513,6 +549,8 @@ func adaptAnalyzer(
 			bindings: slices.Clone(options.FlagBindings),
 			contract: contract,
 			admission: admission,
+			dependencyFactFilter: dependencyFactFilter,
+			externalFactExecution: externalFactExecution,
 		}
 	default:
 		return nil, fmt.Errorf(
@@ -524,6 +562,89 @@ func adaptAnalyzer(
 		return nil, fmt.Errorf("adapt go/analysis %q metadata: %w", analyzer.Name, err)
 	}
 	return adapted, nil
+}
+
+func validateAnalyzerExternalFactExecution(
+	analyzer *goanalysis.Analyzer,
+	plan []*goanalysis.Analyzer,
+	execution *AnalyzerExternalFactExecution,
+) (*AnalyzerExternalFactExecution, error) {
+	if execution == nil {
+		return nil, nil
+	}
+	if strings.TrimSpace(execution.Identity) == "" ||
+		strings.TrimSpace(execution.Identity) != execution.Identity {
+		return nil, fmt.Errorf(
+			"adapt go/analysis %q: external fact execution identity is empty or not canonical",
+			analyzer.Name,
+		)
+	}
+	if execution.Analyzer != analyzer.Name {
+		return nil, fmt.Errorf(
+			"adapt go/analysis %q: external analyzer is %q",
+			analyzer.Name,
+			execution.Analyzer,
+		)
+	}
+	if !execution.Audited {
+		return nil, fmt.Errorf(
+			"adapt go/analysis %q: external fact execution requires an explicit audit",
+			analyzer.Name,
+		)
+	}
+	hasFacts := false
+	for _, step := range plan {
+		hasFacts = hasFacts || len(step.FactTypes) > 0
+	}
+	if !hasFacts {
+		return nil, fmt.Errorf(
+			"adapt go/analysis %q: external fact execution requires declared fact types",
+			analyzer.Name,
+		)
+	}
+	clone := *execution
+	return &clone, nil
+}
+
+func validateAnalyzerDependencyFactFilter(
+	analyzer *goanalysis.Analyzer,
+	plan []*goanalysis.Analyzer,
+	filter *AnalyzerDependencyFactFilter,
+) (*AnalyzerDependencyFactFilter, error) {
+	if filter == nil {
+		return nil, nil
+	}
+	if strings.TrimSpace(filter.Identity) == "" ||
+		strings.TrimSpace(filter.Identity) != filter.Identity {
+		return nil, fmt.Errorf(
+			"adapt go/analysis %q: dependency fact filter identity is empty or not canonical",
+			analyzer.Name,
+		)
+	}
+	if filter.PackageMayExport == nil {
+		return nil, fmt.Errorf(
+			"adapt go/analysis %q: dependency fact filter requires a package predicate",
+			analyzer.Name,
+		)
+	}
+	if !filter.Audited {
+		return nil, fmt.Errorf(
+			"adapt go/analysis %q: dependency fact filter requires an explicit audit",
+			analyzer.Name,
+		)
+	}
+	hasFacts := false
+	for _, step := range plan {
+		hasFacts = hasFacts || len(step.FactTypes) > 0
+	}
+	if !hasFacts {
+		return nil, fmt.Errorf(
+			"adapt go/analysis %q: dependency fact filter requires declared fact types",
+			analyzer.Name,
+		)
+	}
+	clone := *filter
+	return &clone, nil
 }
 
 func canonicalAnalyzerImportRequirements(

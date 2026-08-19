@@ -2,6 +2,9 @@ package rulecatalog
 
 import (
 	"flag"
+	"go/ast"
+	"go/parser"
+	"go/token"
 
 	goanalysis "golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/printf"
@@ -16,12 +19,12 @@ import (
 )
 
 func printfArgumentsRule() (rules.Rule, error) {
-	return adaptStandardAnalyzer(
+	return adaptStandardAnalyzerWithFactExecution(
 		analyzerWithoutFlags(printf.Analyzer),
 		rules.Metadata{
 			ID: "printf-arguments",
 			Summary: "detects invalid Printf-style format strings and arguments",
-			Documentation: "Printf-style calls can silently render malformed output when a directive is invalid, an argument is missing, or an argument has the wrong type. Glippy adapts the standard Go printf analyzer, including its wrapper facts, through the shared typed scheduler and deterministic diagnostic contract.",
+			Documentation: "Printf-style calls can silently render malformed output when a directive is invalid, an argument is missing, or an argument has the wrong type. Glippy adapts the exact standard Go printf analyzer, including its wrapper facts, through an audited bounded execution mode and the deterministic diagnostic contract.",
 			DefaultSeverity: rules.SeverityWarn,
 			Presets: []rules.Preset{rules.PresetCorrectness},
 			MinimumGoVersion: "1.25",
@@ -30,6 +33,7 @@ func printfArgumentsRule() (rules.Rule, error) {
 			Categories: []rules.Category{rules.CategoryCorrectness},
 			KnownLimitations: []string{
 				"The rule follows the standard printf analyzer's recognized formatting functions and inferred wrappers.",
+				"The CLI isolates the exact upstream fact graph in one serialized same-binary unitchecker process; internal callers without that runner use the bounded in-process fact scheduler.",
 				"The configurable upstream funcs flag is not exposed as a Glippy rule option in this release.",
 				"The non-constant-format repair is suggestion-only because adding %s may not reflect the caller's intended formatting contract.",
 			},
@@ -49,7 +53,127 @@ func printfArgumentsRule() (rules.Rule, error) {
 				Safety: rules.FixSuggestion,
 			},
 		},
+		&analysis.AnalyzerDependencyFactFilter{
+			Identity: "printf-wrapper-signature-v1",
+			PackageMayExport: printfDependencyMayExportFacts,
+			Audited: true,
+		},
+		&analysis.AnalyzerExternalFactExecution{
+			Identity: analysis.UnitcheckerPrintfIdentity,
+			Analyzer: "printf",
+			Audited: true,
+		},
 	)
+}
+
+func printfDependencyMayExportFacts(sources []analysis.AnalyzerDependencyFactSource) (bool, error) {
+	files := make([]*ast.File, 0, len(sources))
+	shadowed := make(map[string]struct{})
+	fileSet := token.NewFileSet()
+	for _, source := range sources {
+		file, err := parser.ParseFile(
+			fileSet,
+			source.Path,
+			source.Bytes,
+			parser.SkipObjectResolution,
+		)
+		if err != nil {
+			return true, nil
+		}
+		files = append(files, file)
+		for _, declaration := range file.Decls {
+			general, ok := declaration.(*ast.GenDecl)
+			if !ok || general.Tok != token.TYPE {
+				continue
+			}
+			for _, specification := range general.Specs {
+				typeSpecification, ok := specification.(*ast.TypeSpec)
+				if ok {
+					shadowed[typeSpecification.Name.Name] = struct{}{}
+				}
+			}
+		}
+	}
+	mayExport := false
+	for _, file := range files {
+		ast.Inspect(
+			file,
+			func(node ast.Node) bool {
+				function, ok := node.(*ast.FuncType)
+				if !ok || function.Params == nil || len(function.Params.List) == 0 {
+					return true
+				}
+				last := function.Params.List[len(function.Params.List) - 1]
+				variadic, ok := last.Type.(*ast.Ellipsis)
+				if ok && printfVariadicElementMayBeAny(variadic.Elt, shadowed) {
+					mayExport = true
+					return false
+				}
+				return true
+			},
+		)
+		if mayExport {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func printfVariadicElementMayBeAny(expression ast.Expr, shadowed map[string]struct{}) bool {
+	switch expression := expression.(type) {
+	case *ast.Ident:
+		if expression.Name == "any" {
+			return true
+		}
+		if _, found := shadowed[expression.Name]; found {
+			return true
+		}
+		return !printfConcretePredeclaredType(expression.Name)
+	case *ast.InterfaceType:
+		return expression.Methods == nil || len(expression.Methods.List) == 0
+	case *ast.ParenExpr:
+		return printfVariadicElementMayBeAny(expression.X, shadowed)
+	case *ast.SelectorExpr, *ast.IndexExpr, *ast.IndexListExpr, *ast.BadExpr:
+		return true
+	case *ast.ArrayType,
+		*ast.ChanType,
+		*ast.FuncType,
+		*ast.MapType,
+		*ast.StarExpr,
+		*ast.StructType:
+		return false
+	default:
+		return true
+	}
+}
+
+func printfConcretePredeclaredType(name string) bool {
+	switch name {
+	case "bool",
+		"byte",
+		"comparable",
+		"complex64",
+		"complex128",
+		"error",
+		"float32",
+		"float64",
+		"int",
+		"int8",
+		"int16",
+		"int32",
+		"int64",
+		"rune",
+		"string",
+		"uint",
+		"uint8",
+		"uint16",
+		"uint32",
+		"uint64",
+		"uintptr":
+		return true
+	default:
+		return false
+	}
 }
 
 func invalidStructTagRule() (rules.Rule, error) {

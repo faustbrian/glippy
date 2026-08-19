@@ -447,12 +447,33 @@ func adaptStandardAnalyzer(
 	metadata rules.Metadata,
 	fixes []analysis.AnalyzerFixMapping,
 ) (rules.Rule, error) {
+	return adaptStandardAnalyzerWithFactExecution(analyzer, metadata, fixes, nil, nil)
+}
+
+func adaptStandardAnalyzerWithDependencyFactFilter(
+	analyzer *goanalysis.Analyzer,
+	metadata rules.Metadata,
+	fixes []analysis.AnalyzerFixMapping,
+	filter *analysis.AnalyzerDependencyFactFilter,
+) (rules.Rule, error) {
+	return adaptStandardAnalyzerWithFactExecution(analyzer, metadata, fixes, filter, nil)
+}
+
+func adaptStandardAnalyzerWithFactExecution(
+	analyzer *goanalysis.Analyzer,
+	metadata rules.Metadata,
+	fixes []analysis.AnalyzerFixMapping,
+	filter *analysis.AnalyzerDependencyFactFilter,
+	external *analysis.AnalyzerExternalFactExecution,
+) (rules.Rule, error) {
 	adapted, err := analysis.AdaptAnalyzer(
 		analyzer,
 		analysis.AnalyzerAdapterOptions{
 			Metadata: metadata,
 			SuggestedFixes: fixes,
 			ReadOnlyAudited: true,
+			DependencyFactFilter: filter,
+			ExternalFactExecution: external,
 		},
 	)
 	if err != nil {

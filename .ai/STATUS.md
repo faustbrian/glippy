@@ -4,6 +4,7 @@
 - Active development: post-v0.1 Clippy-comparability expansion
 - v0.5 typed peak RSS gate: complete, 53% worst-sample reduction
 - v0.5 typed retained-memory attribution: complete
+- v0.5 exact printf fact isolation and 2 GiB reference-host gate: complete
 - v0.5 bounded incremental workspace-result reuse: complete
 - v0.5 superseded editor analysis cancellation: complete
 - v0.5 workspace file notifications: complete
@@ -1789,3 +1790,22 @@ implementation must produce and rebind stable analyzer fact snapshots in
 bounded dependency waves without retaining complete dependency syntax and
 type information. The attribution batch does not establish a portable release
 budget or change ordinary CLI/LSP behavior.
+
+The v0.5 exact printf fact-execution batch resolves that retained dependency
+graph without weakening the upstream analyzer contract. The ordinary process
+runs native and fact-free adapted rules first, releases their package graph,
+and then invokes the same Glippy executable as the exact upstream `printf`
+unitchecker through serialized `go vet -json -p=2`. The runner preserves the
+loader's offline, read-only, target, workspace, overlay, and cancellation
+policy; bounds output; removes task-owned overlays; rejects cross-line or stale
+positions; and rebinds only eligible root diagnostics and declared suggestions.
+The bounded in-process fact-wave scheduler remains the fallback when no
+external runner is installed.
+
+On the final local tree, pinned sqlc at
+`8a7cddfbb9088666eb981645285d7699e71dcb54` used 1,306,836,992 bytes and
+20.330 seconds cold, then 552,550,400-555,696,128 bytes and 1.530-1.600 seconds
+warm. All three samples preserve normalized diagnostic SHA-256
+`030f4474aec74877307118376e77e8ad7254a46c32777242fd11e3223c7282d0` and
+pass the durable 2 GiB/40-second reference-host gate. Portable typed budgets
+still require native Linux and final-candidate macOS evidence.
