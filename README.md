@@ -167,9 +167,11 @@ reparses and re-typechecks the complete changed root without invoking the
 primary package loader, then rebuilds required CFG and SSA state. This applies
 to nested packages as well as a package at the project root; mutable local
 dependency source and module control, including local replacements outside that
-root, are checked before reuse. Uncertain graphs, new imports, changed
-dependencies, cgo-generated sources, test variants, parse or type errors, and
-external file notifications fall back to a complete load. The ordinary
+root, are checked before reuse. Newly direct imports already present in the
+retained graph are admitted without a full load. Uncertain graphs, imports
+absent from that graph, changed dependencies, cgo-generated sources, test
+variants, parse or type errors, and external file notifications fall back to a
+complete load. The ordinary
 aggregate retained weight is therefore 256 MiB; it remains a deterministic
 eviction model rather than an RSS promise.
 

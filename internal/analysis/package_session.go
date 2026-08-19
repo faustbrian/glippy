@@ -42,6 +42,7 @@ type packageSessionKey [sha256.Size]byte
 
 type packageSessionEntry struct {
 	root packages.Package
+	availableImports map[string]*packages.Package
 	effectFacts *nativeEffectFacts
 	rootFiles map[string]struct{}
 	rootBuildConstraints map[string][]packageSessionBuildConstraint
@@ -324,6 +325,10 @@ func newPackageSessionEntry(
 	if !ok {
 		return packageSessionEntry{}, false
 	}
+	availableImports, ok := packageSessionAvailableImports(&compactRoot)
+	if !ok {
+		return packageSessionEntry{}, false
+	}
 	buildConstraints := make(map[string][]packageSessionBuildConstraint, len(rootFiles))
 	var accounted int64
 	for path := range rootFiles {
@@ -366,6 +371,7 @@ func newPackageSessionEntry(
 	}
 	return packageSessionEntry{
 		root: compactRoot,
+		availableImports: availableImports,
 		effectFacts: cloneNativeEffectFacts(loaded.effectFacts),
 		rootFiles: rootFiles,
 		rootBuildConstraints: buildConstraints,
@@ -523,6 +529,71 @@ func packageSessionDependencyIsMutable(root string, pkg *packages.Package) bool 
 	return module.Replace != nil && module.Replace.Dir != "" && module.Replace.Version == ""
 }
 
+func packageSessionAvailableImports(root *packages.Package) (map[string]*packages.Package, bool) {
+	if root == nil || root.PkgPath == "" {
+		return nil, false
+	}
+	result := make(map[string]*packages.Package)
+	seen := make(map[*packages.Package]struct{})
+	stack := []*packages.Package{root}
+	for len(stack) > 0 {
+		pkg := stack[len(stack) - 1]
+		stack = stack[:len(stack) - 1]
+		if pkg == nil {
+			return nil, false
+		}
+		if _, found := seen[pkg]; found {
+			continue
+		}
+		seen[pkg] = struct{}{}
+		paths := make([]string, 0, len(pkg.Imports))
+		for path := range pkg.Imports {
+			paths = append(paths, path)
+		}
+		slices.Sort(paths)
+		for _, path := range paths {
+			imported := pkg.Imports[path]
+			if imported == nil || imported.Types == nil || imported.PkgPath == "" {
+				return nil, false
+			}
+			if pkg == root || packageSessionImportAllowed(root.PkgPath, path) {
+				if previous := result[path];
+					previous != nil && previous.Types != imported.Types {
+					return nil, false
+				}
+				result[path] = imported
+			}
+			stack = append(stack, imported)
+		}
+	}
+	return result, true
+}
+
+func packageSessionImportAllowed(rootPath, importPath string) bool {
+	if rootPath == "" || importPath == "" || importPath == rootPath {
+		return false
+	}
+	if importPath == "vendor" ||
+		strings.HasPrefix(importPath, "vendor/") ||
+		strings.Contains(importPath, "/vendor/") ||
+		strings.HasSuffix(importPath, "/vendor") {
+		return false
+	}
+	if strings.HasPrefix(importPath, "internal/") || importPath == "internal" {
+		return false
+	}
+	marker := "/internal/"
+	index := strings.LastIndex(importPath, marker)
+	if index < 0 && strings.HasSuffix(importPath, "/internal") {
+		index = len(importPath) - len("/internal")
+	}
+	if index < 0 {
+		return true
+	}
+	parent := importPath[:index]
+	return rootPath == parent || strings.HasPrefix(rootPath, parent + "/")
+}
+
 func (entry packageSessionEntry) reload(
 	ctx context.Context,
 	sourceGoVersion string,
@@ -618,7 +689,7 @@ func (entry packageSessionEntry) reload(
 			if unquoteErr != nil || importPath == "C" {
 				return PackageLoadResult{}, false, nil
 			}
-			imported := entry.root.Imports[importPath]
+			imported := entry.availableImports[importPath]
 			if imported == nil || imported.Types == nil {
 				return PackageLoadResult{}, false, nil
 			}
@@ -637,7 +708,7 @@ func (entry packageSessionEntry) reload(
 		FileVersions: make(map[*ast.File]string),
 	}
 	configuration := types.Config{
-		Importer: packageSessionImporter{packages: entry.root.Imports},
+		Importer: packageSessionImporter{packages: entry.availableImports},
 		Sizes: entry.root.TypesSizes,
 		GoVersion: packageSessionGoVersion(sourceGoVersion),
 	}

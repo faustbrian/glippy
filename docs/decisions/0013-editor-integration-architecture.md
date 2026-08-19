@@ -209,9 +209,12 @@ outside the selected project root, while immutable toolchain and module-cache
 inputs avoid per-edit source polling. File notifications discard retained
 graphs without waiting for a package load to finish.
 
-The service falls back to the standard package loader for test variants,
-cgo-generated sources, new imports, dependency overlays, file notifications,
-source-membership, build-constraint, or project-control changes, parse/type
-failures, and every uncertain graph. This conservative fallback is part of the
-editor correctness contract. Incremental support for those cases requires
-separate evidence; it is not inferred from successful root type checking.
+The service can admit a newly direct import only when its exact package is
+already present in the retained graph and Go internal/vendor visibility permits
+the root to import it. It falls back to the standard package loader for test
+variants, cgo-generated sources, imports absent from that graph, dependency
+overlays, file notifications, source-membership, build-constraint, or
+project-control changes, parse/type failures, and every uncertain graph. This
+conservative fallback is part of the editor correctness contract. Incremental
+support for those cases requires separate evidence; it is not inferred from
+successful root type checking.

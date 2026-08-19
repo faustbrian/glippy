@@ -149,3 +149,63 @@ func TestPackageSessionRejectsTestVariantsAndGeneratedCompiledRoots(t *testing.T
 		t.Fatal("cgo-generated compiled root was retained for incremental type checking")
 	}
 }
+
+func TestPackageSessionImportAdmissionPreservesGoVisibility(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		root string
+		importPath string
+		allowed bool
+	}{
+		{
+			name: "ordinary dependency",
+			root: "example.com/project/app",
+			importPath: "example.com/dependency",
+			allowed: true,
+		},
+		{
+			name: "owned internal dependency",
+			root: "example.com/project/app",
+			importPath: "example.com/project/internal/hidden",
+			allowed: true,
+		},
+		{
+			name: "foreign internal dependency",
+			root: "example.com/project/app",
+			importPath: "example.com/dependency/internal/hidden",
+		},
+		{
+			name: "toolchain internal dependency",
+			root: "example.com/project/app",
+			importPath: "internal/abi",
+		},
+		{
+			name: "vendor path",
+			root: "example.com/project/app",
+			importPath: "example.com/project/vendor/example.com/dependency",
+		},
+		{
+			name: "self import",
+			root: "example.com/project/app",
+			importPath: "example.com/project/app",
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				if got := packageSessionImportAllowed(test.root, test.importPath);
+					got != test.allowed {
+					t.Fatalf(
+						"import admission = %t, want %t",
+						got,
+						test.allowed,
+					)
+				}
+			},
+		)
+	}
+}

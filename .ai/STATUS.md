@@ -1834,16 +1834,18 @@ proves identical self-assignment diagnostics, while dedicated regressions prove
 fresh CFG and SSA findings. Active and ignored root and mutable local dependency
 source plus module control are revalidated even when a local replacement
 resides outside the selected project root. File notifications invalidate
-retained graphs without waiting for an active load. A newly required import,
-changed dependency overlay, source-membership or build-constraint change,
-project-control change, cgo-generated source, test variant, parse/type failure,
-or uncertain graph identity falls back to the complete loader. Workspace file
-notifications invalidate retained typed graphs before analysis. The result
-cache and typed graph session now use
+retained graphs without waiting for an active load. A newly direct import is
+admitted when its exact package is already retained and Go visibility permits
+it. An import absent from that graph, changed dependency overlay,
+source-membership or build-constraint change, project-control change,
+cgo-generated source, test variant, parse/type failure, or uncertain graph
+identity falls back to the complete loader. Workspace file notifications
+invalidate retained typed graphs before analysis. The result cache and typed
+graph session now use
 separate 128 MiB stable weights, keeping their ordinary aggregate retained
 budget at 256 MiB; neither weight claims process RSS. A ten-edit owned probe
 performed zero full primary loads, one incremental load per operation, and
 measured 368-484 microseconds per edit on Darwin arm64. Multi-variant test
-package re-typechecking, incrementally admitted imports, metadata-only graph
-discovery, memory-aware worker scheduling, and portable budgets remain active
-v0.5 work.
+package re-typechecking, imports absent from the retained graph, metadata-only
+graph discovery, memory-aware worker scheduling, and portable budgets remain
+active v0.5 work.
