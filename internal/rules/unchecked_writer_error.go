@@ -54,7 +54,7 @@ func (uncheckedWriterErrorRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"Only exact standard-library writer finalizers with an error result are covered; user-defined writers and interface-dispatched finalizers remain outside the initial contract.",
 			"Encoders returned as io.WriteCloser by encoding/ascii85, encoding/base32, and encoding/base64 require acquisition tracking before their concrete finalization contract can be proven.",
-			"encoding/csv.Writer.Flush returns no error and requires a separate rule that proves whether Writer.Error is observed after flushing.",
+			"encoding/csv.Writer.Flush returns no error; unchecked-csv-writer-error owns its separate Flush then Error observation protocol.",
 			"No fix is offered because correct propagation from a deferred, asynchronous, or ordinary call depends on the surrounding function contract.",
 		},
 		Examples: []Example{

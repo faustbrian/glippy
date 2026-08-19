@@ -1939,3 +1939,17 @@ unchanged. The catalog now contains 110 rules. Portable four-runner
 typed-budget evidence, interface-returning encoder finalization, CSV flush
 error observation, and further high-signal interprocedural error-flow coverage
 remain active v0.5 work.
+
+The v0.5 CSV output-integrity batch admits `unchecked-csv-writer-error` to
+default correctness. For direct identifier-backed `encoding/csv.Writer`
+values, the CFG rule reports a `Flush` when any normally returning path fails
+to observe the matching `Error`; bare or blank-identifier `Error` calls do not
+count. Receiver replacement reports, while aliases, ownership transfer,
+closure capture, method-value transfer, fields, deferred execution, and
+asynchronous execution remain conservative boundaries. Five complete
+100-function benchmark samples measured a 62.83 ms median, about 3.22 MB, and
+27,642 allocations per run on Darwin arm64. Exact-rule dogfood remained clean
+on Glippy and `go-libraries/pkg/prompts`, whose pre-existing `go.sum` change was
+unchanged. The catalog now contains 111 rules. Portable four-runner
+typed-budget evidence, interface-returning encoder finalization, and further
+high-signal interprocedural error-flow coverage remain active v0.5 work.

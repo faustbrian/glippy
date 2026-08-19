@@ -72,8 +72,8 @@ The standard library also exposes buffered encoders from `encoding/ascii85`,
 `encoding/base32`, and `encoding/base64` only through `io.WriteCloser`. Exact
 coverage requires acquisition tracking because the selected `Close` object is
 the interface method. `encoding/csv.Writer.Flush` returns no error and instead
-requires a later `Writer.Error` observation. Both are separate future
-contracts rather than speculative additions to this direct-call rule.
+requires a later `Writer.Error` observation; the separately admitted
+`unchecked-csv-writer-error` rule now owns that path-sensitive protocol.
 
 No fix is registered. A deferred call may require a named result, an explicit
 close before return, joined body and finalization errors, logging, or a product
@@ -118,8 +118,8 @@ remained byte-identical.
 ## Revisit Trigger
 
 Add interface-returning encoders only after a bounded acquisition and alias
-contract proves concrete finalizer identity. Add CSV flushing only through a
-path-sensitive `Flush` then `Error` observation rule. Expand beyond the exact
+contract proves concrete finalizer identity. Keep CSV flushing in the separate
+path-sensitive `unchecked-csv-writer-error` rule. Expand beyond the exact
 standard-library catalog only when real defects justify a stable project
 contract or cross-package finalizer fact. Do not add a fix until one rewrite is
 semantics-preserving across ordinary and deferred return paths.

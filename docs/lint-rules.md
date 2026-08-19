@@ -105,6 +105,7 @@ not stable release promises.
 - [too-many-results](#too-many-results)
 - [typed-nil-error-return](#typed-nil-error-return)
 - [unbuffered-signal-channel](#unbuffered-signal-channel)
+- [unchecked-csv-writer-error](#unchecked-csv-writer-error)
 - [unchecked-rows-error](#unchecked-rows-error)
 - [unchecked-scanner-error](#unchecked-scanner-error)
 - [unchecked-writer-error](#unchecked-writer-error)
@@ -4977,6 +4978,63 @@ signals := make(chan os.Signal, 1)
 signal.Notify(signals, os.Interrupt)
 ```
 
+## unchecked-csv-writer-error
+
+detects CSV flushing without observing the buffered write error
+
+encoding/csv.Writer.Flush has no result even though its underlying buffered write can fail. The
+standard-library contract requires a later Writer.Error call to retrieve errors from Write or Flush.
+This rule follows direct writer values through the shared control-flow graph and reports when a
+normally returning path can leave the Flush error unobserved.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The initial contract recognizes direct identifier-backed encoding/csv.Writer.Flush and
+  Writer.Error calls; fields, containers, and indirect aliases are not tracked.
+- Passing the writer itself or one of its method values to another operation stops analysis because
+  that operation may observe the stored error.
+- Deferred and asynchronous Flush calls are excluded because proving a later Error observation
+  requires execution-order or synchronization analysis.
+- Passing Writer.Error to another call counts as observing the result; the rule does not inspect the
+  callee's behavior.
+- No fix is offered because propagation, logging, and partial-output policy depend on the
+  surrounding function contract.
+
+### Example: Check the CSV writer after flushing
+
+**Incorrect**
+
+```go
+writer.Flush()
+return nil
+```
+
+**Correct**
+
+```go
+writer.Flush()
+return writer.Error()
+```
+
 ## unchecked-rows-error
 
 detects database row iteration without a checked terminal error
@@ -5127,8 +5185,8 @@ None.
   writers and interface-dispatched finalizers remain outside the initial contract.
 - Encoders returned as io.WriteCloser by encoding/ascii85, encoding/base32, and encoding/base64
   require acquisition tracking before their concrete finalization contract can be proven.
-- encoding/csv.Writer.Flush returns no error and requires a separate rule that proves whether
-  Writer.Error is observed after flushing.
+- encoding/csv.Writer.Flush returns no error; unchecked-csv-writer-error owns its separate Flush
+  then Error observation protocol.
 - No fix is offered because correct propagation from a deferred, asynchronous, or ordinary call
   depends on the surrounding function contract.
 
