@@ -608,6 +608,8 @@ type ControlFlowShared struct {
 	httpResponseBodyState *httpResponseBodyStateAnalysis
 	transactionStateOnce sync.Once
 	transactionState *sqlTransactionStateAnalysis
+	waitGroupCounterOnce sync.Once
+	waitGroupCounter *waitGroupCounterAnalysis
 }
 
 // NewControlFlowShared constructs one function-local shared analysis cache.

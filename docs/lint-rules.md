@@ -114,6 +114,7 @@ not stable release promises.
 - [unsafe-host-port](#unsafe-host-port)
 - [unused-result](#unused-result)
 - [waitgroup-misuse](#waitgroup-misuse)
+- [waitgroup-negative-counter](#waitgroup-negative-counter)
 - [zero-regexp-match-limit](#zero-regexp-match-limit)
 - [zero-replace-count](#zero-replace-count)
 
@@ -5446,6 +5447,65 @@ go func() { wg.Add(1); defer wg.Done() }()
 ```go
 wg.Add(1)
 go func() { defer wg.Done() }()
+```
+
+## waitgroup-negative-counter
+
+detects WaitGroup operations that definitely make the counter negative
+
+sync.WaitGroup panics when Add or Done makes its task counter negative. The rule follows directly
+initialized local WaitGroups through bounded control flow and reports only when every reaching
+counter state underflows.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The initial contract tracks only direct local WaitGroup values and pointers initialized from the
+  exact zero value.
+- Only exact integer Add arguments and direct Done and Wait calls participate in counter
+  propagation.
+- Aliases, helper calls, closure capture, asynchronous operations, and uncertain evaluation order
+  become conservative unknown state.
+- Deferred counter operations are not applied at registration and are not modeled at function exit.
+- Counts above the bounded exact-state limit become unknown rather than producing a speculative
+  finding.
+- Reinitialization after an alias or other unknown use does not reestablish precise state because
+  pointers may still refer to the same WaitGroup storage.
+- Generated files and packages with type errors are excluded.
+
+### Example: Do not decrement an empty WaitGroup
+
+**Incorrect**
+
+```go
+var group sync.WaitGroup
+group.Done()
+```
+
+**Correct**
+
+```go
+var group sync.WaitGroup
+group.Add(1)
+group.Done()
 ```
 
 ## zero-regexp-match-limit

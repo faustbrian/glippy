@@ -117,6 +117,17 @@ closure capture, asynchronous execution, and ambiguous multi-operation nodes
 fail closed. Receives remain legal, deferred close is not applied at
 registration, and reacquisition establishes a new open channel.
 
+The WaitGroup state track now admits `waitgroup-negative-counter` as a default
+correctness rule alongside the existing `waitgroup-misuse` analyzer. Direct
+local `sync.WaitGroup` values and pointers initialized from the exact zero
+value carry bounded counter states through CFG joins. Constant `Add` and direct
+`Done` calls report only when every reaching counter state underflows. A
+`Wait` continuation establishes zero only when the represented path can return;
+an exact positive local counter with no escape stops propagation instead of
+creating diagnostics in unreachable code. Aliases, helpers, closure capture,
+asynchronous counter changes, dynamic deltas, and large counts fail closed.
+Deferred counter operations are not modeled at function exit.
+
 The first shared state-transition track now admits `unlock-without-lock` as a
 default correctness rule and `lock-not-released` as an opt-in suspicious rule.
 One finite monotone worklist reaches a stable CFG entry state before any

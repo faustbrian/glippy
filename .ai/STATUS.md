@@ -10,6 +10,7 @@
 - v0.5 curated strictness profiles: complete
 - v0.5 transaction state transition: complete
 - v0.5 channel state transition: complete
+- v0.5 WaitGroup counter state transition: complete
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -1756,3 +1757,21 @@ run on Darwin arm64. Exact-rule dogfood remained clean on Glippy and
 catalog now contains 107 rules. WaitGroup transitions, same-package typed graph
 reuse, memory-aware worker scheduling, and portable budgets remain active v0.5
 work.
+
+The v0.5 WaitGroup counter batch admits `waitgroup-negative-counter` to default
+correctness without duplicating the existing `waitgroup-misuse` analyzer.
+Direct local `sync.WaitGroup` values and pointers initialized from the exact
+zero value carry bounded counter sets through CFG joins. Exact constant `Add`
+and direct `Done` operations report only when every reaching state would make
+the runtime counter negative. `Wait` establishes a zero counter only on paths
+that can return; an exact positive local count with no escape terminates that
+represented path, preventing a diagnostic after an unfulfillable wait. Aliases,
+helpers, closure capture, asynchronous operations, dynamic deltas, and counts
+above the exact bound remain conservative. Deferred counter operations are not
+modeled at function exit. Five 100-function
+benchmark samples measured a 69.20 ms median, about 3.27 MB, and 30,824
+allocations per run on Darwin arm64. Exact-rule dogfood remained clean on
+Glippy and `go-libraries/pkg/prompts`, whose pre-existing `go.sum` diff and
+untracked-file state were unchanged. The catalog now contains 108 rules.
+Same-package typed graph reuse, memory-aware worker scheduling, and portable
+budgets remain active v0.5 work.

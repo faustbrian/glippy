@@ -99,6 +99,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewUncheckedRowsErrorRule(),
 		rules.NewUncheckedScannerErrorRule(),
 		rules.NewUnreachableCodeRule(),
+		rules.NewWaitGroupNegativeCounterRule(),
 	)
 	all = append(all, rules.NewAlmostSwappedRule())
 	registry, err := rules.NewRegistry(all...)
