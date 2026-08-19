@@ -93,6 +93,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewTooManyParametersRule(),
 		rules.NewTooManyResultsRule(),
 		rules.NewSQLTransactionNotCompletedRule(),
+		rules.NewSQLTransactionUsedAfterCompletionRule(),
 		rules.NewUncheckedRowsErrorRule(),
 		rules.NewUncheckedScannerErrorRule(),
 		rules.NewUnreachableCodeRule(),

@@ -71,6 +71,15 @@ call the exact transaction Commit or Rollback method or conservatively transfer
 ownership. Reassignment loses the original obligation; wrapper constructors and
 arbitrary finalizers remain outside the initial contract.
 
+The transaction state track also admits
+`sql-transaction-used-after-completion` as a default correctness CFG rule.
+After the same proven acquisition boundary, exact Commit, Rollback, and
+guaranteed helper effects establish completed state. A direct transaction
+operation or repeated completion reports only when every reaching path is
+already completed. Conditional completion, aliases, transfers, asynchronous
+use, deferred calls, and multiple transaction calls in one CFG node remain
+conservative instead of assuming order or ownership.
+
 The first shared obligation/effect layer now summarizes bounded intraprocedural
 CFG paths as open, completed, transferred, or lost. Both SQL transactions and
 local `Close() error` resources use it; `resource-not-closed` therefore reports

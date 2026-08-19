@@ -84,6 +84,7 @@ not stable release promises.
 - [self-assignment](#self-assignment)
 - [shadowed-error](#shadowed-error)
 - [sql-transaction-not-completed](#sql-transaction-not-completed)
+- [sql-transaction-used-after-completion](#sql-transaction-used-after-completion)
 - [standard-library-version](#standard-library-version)
 - [standard-method-signature](#standard-method-signature)
 - [string-range-rune-conversion](#string-range-rune-conversion)
@@ -3905,6 +3906,65 @@ if err != nil { return err }
 defer tx.Rollback()
 _, err = tx.Exec(query)
 return err
+```
+
+## sql-transaction-used-after-completion
+
+detects operations on definitely completed database transactions
+
+After database/sql Tx.Commit or Tx.Rollback, every transaction operation fails with ErrTxDone. The
+rule follows directly acquired transactions through bounded control flow, consumes proven project
+transaction-completion effects, and reports only when every reaching state is completed.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The initial contract recognizes direct database/sql DB.Begin, DB.BeginTx, and Conn.BeginTx
+  assignments followed immediately by a returning acquisition-error guard.
+- A finding requires every reaching path to have completed the transaction; conditional completion,
+  aliases, ownership transfer, reassignment, asynchronous use, and unknown helpers become
+  conservative unknown state.
+- Deferred completion is not applied at registration time, and a CFG node containing multiple
+  transaction calls becomes unknown instead of assuming nested evaluation order.
+- Generated files and packages with type errors are excluded.
+
+### Example: Do not execute after committing a transaction
+
+**Incorrect**
+
+```go
+tx, err := db.Begin()
+if err != nil { return err }
+tx.Commit()
+_, err = tx.Exec(query)
+```
+
+**Correct**
+
+```go
+tx, err := db.Begin()
+if err != nil { return err }
+_, err = tx.Exec(query)
+if err != nil { return err }
+return tx.Commit()
 ```
 
 ## standard-library-version

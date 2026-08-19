@@ -6,6 +6,7 @@
 - v0.5 bounded incremental workspace-result reuse: complete
 - v0.5 superseded editor analysis cancellation: complete
 - v0.5 curated strictness profiles: complete
+- v0.5 transaction state transition: complete
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -1665,7 +1666,7 @@ asynchronous close, aliases, arbitrary methods, multiple tracked calls in one
 CFG node, uncertain joins, generated files, and ill-typed packages fail closed.
 The 100-function package benchmark measured a 54.36 ms median, about 4.56 MB,
 and 53,794 allocations per run on Darwin arm64; exact-rule dogfood remained
-clean on Glippy and `go-libraries/pkg/prompts`. The catalog now contains 104
+clean on Glippy and `go-libraries/pkg/prompts`. The catalog then contained 104
 rules. Transaction, HTTP-body, channel, and WaitGroup transition rules plus
 genuine incremental LSP reuse remain active v0.5 work.
 
@@ -1688,3 +1689,18 @@ in `config show`, and are selectable through `glippy init --profile` and shell
 completion. Same-package typed graph reuse, workspace file notifications,
 memory-aware eviction, portable editor budgets, and additional state-transition
 rules remain active v0.5 work.
+
+The v0.5 transaction state-transition batch admits
+`sql-transaction-used-after-completion` to default correctness. Direct
+`database/sql` transactions move through open, completed, joined, and
+conservative unknown states after a proven acquisition guard. Operations and
+repeated finalization report only when every reaching path is already completed;
+exact Commit, Rollback, or a guaranteed helper effect reestablishes completed
+state after an escape. Conditional completion, aliases, transfers, asynchronous
+calls, deferred execution, and multi-call nodes fail closed. One 100-function,
+100-finding package probe measured 87.12 ms, about 7.65 MB, and 76,756
+allocations on Darwin arm64; exact-rule dogfood remained clean on Glippy and
+`go-libraries/pkg/prompts`. The catalog now contains 105 rules. HTTP-body,
+channel, and WaitGroup transitions, same-package typed graph reuse, workspace
+file notifications, memory-aware eviction, and portable budgets remain active
+v0.5 work.

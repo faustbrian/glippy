@@ -18,6 +18,7 @@ const maxStateTransitionChanges = 1_000_000
 // lint invocation consume unbounded work.
 type stateTransitionModel[S any] struct {
 	Initial S
+	Entry *cfg.Block
 	Clone func(S) S
 	Merge func(*S, S) bool
 	Transfer func(S, ast.Node) bool
@@ -44,7 +45,10 @@ func runStateTransitions[S any](
 	entries := make([]S, len(graph.Blocks))
 	present := make([]bool, len(graph.Blocks))
 	queued := make([]bool, len(graph.Blocks))
-	entry := graph.Blocks[0]
+	entry := model.Entry
+	if entry == nil {
+		entry = graph.Blocks[0]
+	}
 	if entry == nil || entry.Index < 0 || int(entry.Index) >= len(entries) {
 		return stateTransitionSnapshot[S]{}, false
 	}

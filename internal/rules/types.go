@@ -602,6 +602,8 @@ type ControlFlowShared struct {
 	lockState *lockStateAnalysis
 	resourceUseOnce sync.Once
 	resourceUse *resourceUseAnalysis
+	transactionStateOnce sync.Once
+	transactionState *sqlTransactionStateAnalysis
 }
 
 // NewControlFlowShared constructs one function-local shared analysis cache.
