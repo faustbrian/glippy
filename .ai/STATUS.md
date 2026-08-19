@@ -12,6 +12,7 @@
 - v0.5 graph-first workspace invalidation: complete
 - v0.5 same-package incremental typed analysis: complete
 - v0.5 test-package incremental typed analysis: complete
+- v0.5 import-only typed discovery: complete
 - v0.5 curated strictness profiles: complete
 - v0.5 transaction state transition: complete
 - v0.5 channel state transition: complete
@@ -1862,4 +1863,21 @@ overlays, source membership, and uncertain identities still use the complete
 loader. Focused clean-load comparison and internal/external buffer regressions
 pass; no new latency or RSS claim is made. Imports absent from the retained
 graph, metadata-only graph discovery, memory-aware worker scheduling, and
+portable budgets remain active v0.5 work.
+
+The v0.5 import-only typed-discovery batch admits imports that were not present
+in a retained package graph without reloading the primary package root. Glippy
+pre-scans the complete fresh root source, requests only the exact missing
+package paths at the types tier, merges their validated source identity, and
+injects the resolved packages into fresh type checking. Exact package queries
+use the documented `pattern=` escaping form, so import paths cannot be
+interpreted as `go/packages` metapatterns. Newly loaded local imports remain
+available across later edits. Import discovery is bounded, cancelable, excludes
+test variants, dependency syntax, and effect facts, and falls back to the
+complete loader on load errors, diagnostics, ambiguous identities, visibility
+violations, cgo, or any uncertain result. Focused LSP comparison preserves the
+same diagnostic code, range, and message as a clean load while changing the
+observed path from two full loads to one full load, one import load, and one
+incremental load. This is typed import-only discovery, not metadata-only
+package-graph discovery; the latter, memory-aware worker scheduling, and
 portable budgets remain active v0.5 work.

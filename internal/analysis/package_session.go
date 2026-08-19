@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
 	"golang.org/x/tools/go/packages"
 )
@@ -36,7 +37,14 @@ const (
 type PackageSessionStatistics struct {
 	FullLoads uint64
 	IncrementalLoads uint64
+	ImportLoads uint64
 }
+
+type packageSessionImportLoader func(
+	context.Context,
+	PackageLoadOptions,
+	[]string,
+) (PackageLoadResult, error)
 
 type packageSessionKey [sha256.Size]byte
 
@@ -82,6 +90,7 @@ type PackageSession struct {
 	generation uint64
 	statistics PackageSessionStatistics
 	loadPackages func(context.Context, PackageLoadOptions) (PackageLoadResult, error)
+	loadImports packageSessionImportLoader
 }
 
 // NewPackageSession creates one empty persistent typed-analysis session.
@@ -132,9 +141,29 @@ func (s *PackageSession) load(
 	entry, found := s.entries[key]
 	generation := s.generation
 	loadPackages := s.loadPackages
+	loadImports := s.loadImports
 	s.mu.Unlock()
 	if found {
-		loaded, reusable, reloadErr := entry.reload(ctx, sourceGoVersion, options)
+		if loadImports == nil {
+			loadImports = loadPackageSessionImports
+		}
+		resolveImports := func(
+			ctx context.Context,
+			options PackageLoadOptions,
+			paths []string,
+		) (PackageLoadResult, error) {
+			s.mu.Lock()
+			s.statistics.ImportLoads++
+			s.mu.Unlock()
+			selected := packageSessionImportLoadOptions(options, paths)
+			return loadImports(ctx, selected, paths)
+		}
+		loaded, reusable, reloadErr := entry.reload(
+			ctx,
+			sourceGoVersion,
+			options,
+			resolveImports,
+		)
 		if reloadErr != nil {
 			return PackageLoadResult{}, reloadErr
 		}
@@ -954,10 +983,63 @@ func packageSessionImportAllowed(rootPath, importPath string) bool {
 	return rootPath == parent || strings.HasPrefix(rootPath, parent + "/")
 }
 
+func loadPackageSessionImports(
+	ctx context.Context,
+	options PackageLoadOptions,
+	_ []string,
+) (PackageLoadResult, error) {
+	return LoadPackages(ctx, options)
+}
+
+func packageSessionImportLoadOptions(
+	options PackageLoadOptions,
+	paths []string,
+) PackageLoadOptions {
+	selected := clonePackageLoadOptions(options)
+	exact := slices.Clone(paths)
+	slices.Sort(exact)
+	exact = slices.Compact(exact)
+	selected.Patterns = make([]string, len(exact))
+	for index, path := range exact {
+		selected.Patterns[index] = "pattern=" + path
+	}
+	selected.Requirement = rules.RequireTypes
+	selected.Tests = false
+	selected.LoadDependencySyntax = false
+	selected.LoadEffectFacts = false
+	return selected
+}
+
+func packageSessionResolvedImports(
+	loaded PackageLoadResult,
+	paths []string,
+) (map[string]*packages.Package, bool) {
+	if len(loaded.Diagnostics) != 0 || len(loaded.Sources.problems) != 0 {
+		return nil, false
+	}
+	resolved := make(map[string]*packages.Package, len(loaded.Packages))
+	for _, pkg := range loaded.Packages {
+		if !validPackageSessionRoot(pkg) || pkg.ForTest != "" {
+			return nil, false
+		}
+		if previous := resolved[pkg.PkgPath]; previous != nil && previous.ID != pkg.ID {
+			return nil, false
+		}
+		resolved[pkg.PkgPath] = pkg
+	}
+	for _, path := range paths {
+		if resolved[path] == nil {
+			return nil, false
+		}
+	}
+	return resolved, true
+}
+
 func (entry packageSessionEntry) reload(
 	ctx context.Context,
 	sourceGoVersion string,
 	options PackageLoadOptions,
+	loadImports packageSessionImportLoader,
 ) (PackageLoadResult, bool, error) {
 	if options.LoadDependencySyntax {
 		return PackageLoadResult{}, false, nil
@@ -1028,9 +1110,65 @@ func (entry packageSessionEntry) reload(
 		paths = append(paths, path)
 	}
 	slices.Sort(paths)
+	variants := slices.Clone(entry.variants)
+	missingByVariant := make([][]string, len(variants))
+	missingSet := make(map[string]struct{})
+	for index := range variants {
+		missing, valid := variants[index].missingImports(bytesByPath)
+		if !valid {
+			return PackageLoadResult{}, false, nil
+		}
+		missingByVariant[index] = missing
+		for _, path := range missing {
+			missingSet[path] = struct{}{}
+		}
+	}
+	sources := PackageSourceSet{paths: paths, files: files}
+	if len(missingSet) > 0 {
+		if loadImports == nil {
+			return PackageLoadResult{}, false, nil
+		}
+		missing := make([]string, 0, len(missingSet))
+		for path := range missingSet {
+			missing = append(missing, path)
+		}
+		slices.Sort(missing)
+		loadedImports, importErr := loadImports(ctx, options, missing)
+		if contextErr := ctx.Err(); contextErr != nil {
+			return PackageLoadResult{}, false, contextErr
+		}
+		if importErr != nil {
+			return PackageLoadResult{}, false, nil
+		}
+		resolved, valid := packageSessionResolvedImports(loadedImports, missing)
+		if !valid {
+			return PackageLoadResult{}, false, nil
+		}
+		merged, mergeErr := MergePackageSourceSets(sources, loadedImports.Sources)
+		if mergeErr != nil {
+			return PackageLoadResult{}, false, nil
+		}
+		sources = merged
+		for index, variantMissing := range missingByVariant {
+			if len(variantMissing) == 0 {
+				continue
+			}
+			available := make(
+				map[string]*packages.Package,
+				len(variants[index].availableImports) + len(variantMissing),
+			)
+			for path, imported := range variants[index].availableImports {
+				available[path] = imported
+			}
+			for _, path := range variantMissing {
+				available[path] = resolved[path]
+			}
+			variants[index].availableImports = available
+		}
+	}
 	freshByID := make(map[string]*packages.Package, len(entry.variants))
 	packages_ := make([]*packages.Package, 0, len(entry.variants))
-	for _, variant := range entry.variants {
+	for _, variant := range variants {
 		root, reusable, err := variant.reload(ctx, sourceGoVersion, bytesByPath, freshByID)
 		if err != nil || !reusable {
 			return PackageLoadResult{}, reusable, err
@@ -1042,9 +1180,53 @@ func (entry packageSessionEntry) reload(
 		Requirement: options.Requirement,
 		Packages: packages_,
 		Diagnostics: []PackageDiagnostic{},
-		Sources: PackageSourceSet{paths: paths, files: files},
+		Sources: sources,
 		effectFacts: cloneNativeEffectFacts(entry.effectFacts),
 	}, true, nil
+}
+
+func (variant packageSessionVariant) missingImports(
+	bytesByPath map[string][]byte,
+) ([]string, bool) {
+	missing := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, path := range variant.root.CompiledGoFiles {
+		input, found := bytesByPath[path]
+		if !found {
+			return nil, false
+		}
+		parsed, err := parser.ParseFile(
+			token.NewFileSet(),
+			path,
+			input,
+			parser.ImportsOnly | parser.SkipObjectResolution,
+		)
+		if err != nil ||
+			parsed == nil ||
+			parsed.Name == nil ||
+			parsed.Name.Name != variant.root.Name {
+			return nil, false
+		}
+		for _, specification := range parsed.Imports {
+			importPath, unquoteErr := strconv.Unquote(specification.Path.Value)
+			if unquoteErr != nil || importPath == "C" {
+				return nil, false
+			}
+			if variant.availableImports[importPath] != nil {
+				continue
+			}
+			if !packageSessionImportAllowed(variant.root.PkgPath, importPath) {
+				return nil, false
+			}
+			if _, found := seen[importPath]; found {
+				continue
+			}
+			seen[importPath] = struct{}{}
+			missing = append(missing, importPath)
+		}
+	}
+	slices.Sort(missing)
+	return missing, true
 }
 
 func (variant packageSessionVariant) reload(

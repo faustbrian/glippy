@@ -807,7 +807,7 @@ func TestLSPWorkspaceRetypechecksNestedPackageWithoutFullReload(t *testing.T) {
 	}
 }
 
-func TestLSPWorkspaceFallsBackWhenEditAddsUnavailableImport(t *testing.T) {
+func TestLSPWorkspaceLoadsNewImportWithoutFullRootReload(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -854,9 +854,112 @@ func TestLSPWorkspaceFallsBackWhenEditAddsUnavailableImport(t *testing.T) {
 		t.Fatalf("changed workspace diagnostics = %#v", diagnostics)
 	}
 	statistics := backend.packageSession.Statistics()
-	if statistics.FullLoads != 2 || statistics.IncrementalLoads != 0 {
+	if statistics.FullLoads != 1 ||
+		statistics.IncrementalLoads != 1 ||
+		statistics.ImportLoads != 1 {
 		t.Fatalf(
-			"typed package session statistics = %#v, want safe full-load fallback",
+			"typed package session statistics = %#v, want incremental import load",
+			statistics,
+		)
+	}
+	clean := &lspBackend{registry: registry}
+	cleanResult, err := clean.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cleanResult) != 1 || cleanResult[0].Err != nil {
+		t.Fatalf("clean workspace analysis = %#v", cleanResult)
+	}
+	cleanDiagnostics := cleanResult[0].Analysis.Diagnostics
+	incrementalDiagnostics := result[0].Analysis.Diagnostics
+	if len(cleanDiagnostics) != len(incrementalDiagnostics) ||
+		cleanDiagnostics[0].Code != incrementalDiagnostics[0].Code ||
+		cleanDiagnostics[0].Range != incrementalDiagnostics[0].Range ||
+		cleanDiagnostics[0].Message != incrementalDiagnostics[0].Message {
+		t.Fatalf(
+			"incremental diagnostics = %#v, clean diagnostics = %#v",
+			incrementalDiagnostics,
+			cleanDiagnostics,
+		)
+	}
+}
+
+func TestLSPWorkspaceRetainsNewLocalImportAcrossEdits(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = []\n[lint.rules]\nself-assignment = \"warn\"\n",
+	)
+	helperDirectory := filepath.Join(root, "helper")
+	if err := os.MkdirAll(helperDirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(
+		t,
+		filepath.Join(helperDirectory, "helper.go"),
+		"package helper\n\nfunc Value() int { return 1 }\n",
+	)
+	path := filepath.Join(root, "source.go")
+	original := "package sample\n\nfunc run() int { return 1 }\n"
+	changed := "package sample\n\nimport \"example.com/editor/helper\"\n\nfunc run() int {\n\tvalue := helper.Value()\n\tvalue = value\n\treturn value\n}\n"
+	changedAgain := strings.Replace(
+		changed,
+		"\tvalue := helper.Value()",
+		"\t// Latest editor version.\n\tvalue := helper.Value()",
+		1,
+	)
+	writeChangedCLIFile(t, path, original)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &lspBackend{registry: registry}
+	document := lsp.Document{
+		URI: "file://" + filepath.ToSlash(path),
+		Path: path,
+		Version: 1,
+		Text: []byte(original),
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document});
+		err != nil {
+		t.Fatal(err)
+	}
+	document.Version = 2
+	document.Text = []byte(changed)
+	result, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].Err != nil {
+		t.Fatalf("changed workspace analysis = %#v", result)
+	}
+	document.Version = 3
+	document.Text = []byte(changedAgain)
+	result, err = backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].Err != nil {
+		t.Fatalf("latest workspace analysis = %#v", result)
+	}
+	if diagnostics := result[0].Analysis.Diagnostics;
+		len(diagnostics) != 1 || diagnostics[0].Code != "self-assignment" {
+		t.Fatalf("latest workspace diagnostics = %#v", diagnostics)
+	}
+	statistics := backend.packageSession.Statistics()
+	if statistics.FullLoads != 1 ||
+		statistics.IncrementalLoads != 2 ||
+		statistics.ImportLoads != 1 {
+		t.Fatalf(
+			"typed package session statistics = %#v, want retained local import",
 			statistics,
 		)
 	}

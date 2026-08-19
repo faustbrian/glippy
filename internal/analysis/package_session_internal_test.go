@@ -7,6 +7,7 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -424,6 +425,126 @@ var _ string = sample.Value()
 	if statistics.FullLoads != 2 || statistics.IncrementalLoads != 1 {
 		t.Fatalf(
 			"typed package session statistics = %#v, want dependency-overlay fallback",
+			statistics,
+		)
+	}
+}
+
+func TestPackageSessionFallsBackWhenIncrementalImportLoadFails(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	modulePath := filepath.Join(root, "go.mod")
+	path := filepath.Join(root, "sample.go")
+	writePackageSessionFixture(t, modulePath, "module example.com/sample\n\ngo 1.26.0\n")
+	original := "package sample\n\nfunc Value() int { return 1 }\n"
+	changed := "package sample\n\nimport \"strings\"\n\nfunc Value() string { return strings.TrimSpace(\" value \") }\n"
+	writePackageSessionFixture(t, path, original)
+	session := NewPackageSession()
+	loadError := errors.New("incremental import metadata unavailable")
+	session.loadImports = func(
+		_ context.Context,
+		options PackageLoadOptions,
+		paths []string,
+	) (PackageLoadResult, error) {
+		if options.Requirement != rules.RequireTypes ||
+			options.Tests ||
+			options.LoadDependencySyntax ||
+			options.LoadEffectFacts {
+			t.Fatalf("incremental import options = %#v", options)
+		}
+		if !slices.Equal(options.Patterns, []string{"pattern=strings"}) {
+			t.Fatalf("incremental import patterns = %#v", options.Patterns)
+		}
+		if len(paths) != 1 || paths[0] != "strings" {
+			t.Fatalf("incremental import paths = %#v", paths)
+		}
+		return PackageLoadResult{}, loadError
+	}
+	options := PackageLoadOptions{
+		Dir: root,
+		Patterns: []string{"."},
+		Requirement: rules.RequireTypes,
+		ModuleMode: ModuleReadonly,
+	}
+	if _, err := session.load(context.Background(), "1.26", options); err != nil {
+		t.Fatal(err)
+	}
+	options.Overlay = map[string][]byte{path: []byte(changed)}
+	loaded, err := session.load(context.Background(), "1.26", options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Diagnostics) != 0 {
+		t.Fatalf("fallback package diagnostics = %#v", loaded.Diagnostics)
+	}
+	statistics := session.Statistics()
+	if statistics.FullLoads != 2 ||
+		statistics.IncrementalLoads != 0 ||
+		statistics.ImportLoads != 1 {
+		t.Fatalf(
+			"typed package session statistics = %#v, want import-load fallback",
+			statistics,
+		)
+	}
+}
+
+func TestPackageSessionEscapesExactImportLoadPatterns(t *testing.T) {
+	t.Parallel()
+
+	selected := packageSessionImportLoadOptions(
+		PackageLoadOptions{Patterns: []string{"./..."}},
+		[]string{"file=example.com/project/value", "all", "example.com/project/...", "all"},
+	)
+	want := []string{
+		"pattern=all",
+		"pattern=example.com/project/...",
+		"pattern=file=example.com/project/value",
+	}
+	if !slices.Equal(selected.Patterns, want) {
+		t.Fatalf("incremental import patterns = %#v, want %#v", selected.Patterns, want)
+	}
+}
+
+func TestPackageSessionCancelsIncrementalImportLoad(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	modulePath := filepath.Join(root, "go.mod")
+	path := filepath.Join(root, "sample.go")
+	writePackageSessionFixture(t, modulePath, "module example.com/sample\n\ngo 1.26.0\n")
+	original := "package sample\n\nfunc Value() int { return 1 }\n"
+	changed := "package sample\n\nimport \"strings\"\n\nfunc Value() string { return strings.TrimSpace(\" value \") }\n"
+	writePackageSessionFixture(t, path, original)
+	session := NewPackageSession()
+	options := PackageLoadOptions{
+		Dir: root,
+		Patterns: []string{"."},
+		Requirement: rules.RequireTypes,
+		ModuleMode: ModuleReadonly,
+	}
+	if _, err := session.load(context.Background(), "1.26", options); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	session.loadImports = func(
+		ctx context.Context,
+		_ PackageLoadOptions,
+		_ []string,
+	) (PackageLoadResult, error) {
+		cancel()
+		return PackageLoadResult{}, ctx.Err()
+	}
+	options.Overlay = map[string][]byte{path: []byte(changed)}
+	if _, err := session.load(ctx, "1.26", options); !errors.Is(err, context.Canceled) {
+		t.Fatalf("incremental import cancellation error = %v", err)
+	}
+	statistics := session.Statistics()
+	if statistics.FullLoads != 1 ||
+		statistics.IncrementalLoads != 0 ||
+		statistics.ImportLoads != 1 {
+		t.Fatalf(
+			"typed package session statistics = %#v, want canceled import load",
 			statistics,
 		)
 	}
