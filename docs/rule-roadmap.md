@@ -107,6 +107,16 @@ execution, and unknown helpers fail closed. The rule is intentionally absent
 from `recommended` until external positive evidence and broader negative
 dogfood justify changing that curated profile.
 
+The channel state track now admits `channel-used-after-close` as a default
+correctness rule. Direct local channels initialized by the exact built-in
+`make` function move through untracked, open, closed, and conservative unknown
+states. Sends and repeated exact closes report only from an all-path closed
+state; a later exact close reestablishes closed state on its normal
+continuation. Conditional closure, nonlocal channels, aliases, helper calls,
+closure capture, asynchronous execution, and ambiguous multi-operation nodes
+fail closed. Receives remain legal, deferred close is not applied at
+registration, and reacquisition establishes a new open channel.
+
 The first shared state-transition track now admits `unlock-without-lock` as a
 default correctness rule and `lock-not-released` as an opt-in suspicious rule.
 One finite monotone worklist reaches a stable CFG entry state before any

@@ -31,6 +31,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewBlankErrorDiscardRule(),
 		rules.NewBadBitMaskRule(),
 		rules.NewBufferStringConversionRule(),
+		rules.NewChannelUsedAfterCloseRule(),
 		rules.NewContextCancelLeakRule(),
 		rules.NewDeferInLoopRule(),
 		rules.NewDiscardedErrorRule(),

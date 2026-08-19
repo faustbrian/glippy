@@ -15,6 +15,7 @@ not stable release promises.
 - [bad-bit-mask](#bad-bit-mask)
 - [blank-error-discard](#blank-error-discard)
 - [buffer-string-conversion](#buffer-string-conversion)
+- [channel-used-after-close](#channel-used-after-close)
 - [context-cancel-leak](#context-cancel-leak)
 - [context-key](#context-key)
 - [contradictory-condition](#contradictory-condition)
@@ -406,6 +407,65 @@ text := string(buffer.Bytes())
 
 ```go
 text := buffer.String()
+```
+
+## channel-used-after-close
+
+detects sends and repeated closes on definitely closed local channels
+
+Sending to or closing an already closed channel panics. The rule follows direct local channels
+initialized by the built-in make function through bounded control flow and reports only when every
+reaching state proves the channel closed.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The initial contract tracks only direct local channel variables initialized by the exact built-in
+  make function.
+- A finding requires every reaching path to prove the channel closed; conditional close, aliases,
+  escapes, helper calls, asynchronous operations, and uncertain evaluation order become conservative
+  unknown state.
+- A later exact close reestablishes closed state after an alias or escape only on the normal
+  continuation where that close returned.
+- Receiving from a closed channel is legal and is never reported.
+- Deferred close calls do not close a channel at registration time, and direct reinitialization with
+  make establishes a new open channel.
+- Generated files and packages with type errors are excluded.
+
+### Example: Do not send after closing a channel
+
+**Incorrect**
+
+```go
+updates := make(chan int)
+close(updates)
+updates <- 1
+```
+
+**Correct**
+
+```go
+updates := make(chan int)
+updates <- 1
+close(updates)
 ```
 
 ## context-cancel-leak

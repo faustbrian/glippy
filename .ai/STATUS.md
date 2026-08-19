@@ -9,6 +9,7 @@
 - v0.5 memory-aware workspace-result eviction: complete
 - v0.5 curated strictness profiles: complete
 - v0.5 transaction state transition: complete
+- v0.5 channel state transition: complete
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -1739,3 +1740,19 @@ measurement. Entries are considered most-recent-first; an oversized newest
 entry remains usable alone while older entries are evicted. Channel and
 WaitGroup transitions, same-package typed graph reuse, memory-aware worker
 scheduling, and portable budgets remain active v0.5 work.
+
+The v0.5 channel state-transition batch admits `channel-used-after-close` to
+default correctness. Direct local channels initialized by exact built-in
+`make` calls move through bounded CFG state; sends and repeated exact closes
+report only from the all-path closed state. A direct close reestablishes closed
+state on its normal continuation after aliases or helper escape, while
+conditional close, nonlocal channels, closure capture, asynchronous execution,
+and ambiguous multi-operation nodes remain conservative. Receives after close
+remain legal, deferred close is not applied at registration, and direct
+reacquisition establishes a new open channel. Five 100-function benchmark
+samples measured a 25.34 ms median, about 2.83 MB, and 30,406 allocations per
+run on Darwin arm64. Exact-rule dogfood remained clean on Glippy and
+`go-libraries/pkg/prompts`, whose pre-existing bytes were unchanged. The
+catalog now contains 107 rules. WaitGroup transitions, same-package typed graph
+reuse, memory-aware worker scheduling, and portable budgets remain active v0.5
+work.
