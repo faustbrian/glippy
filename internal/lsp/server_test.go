@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1175,6 +1176,167 @@ func TestServeCancelsAnActiveRequestWithoutEndingTheSession(t *testing.T) {
 	}
 }
 
+func TestServeReanalyzesOpenWorkspaceAfterWatchedFilesChange(t *testing.T) {
+	t.Parallel()
+
+	backend := &watchedWorkspaceBackend{
+		analyses: make(chan int, 2),
+		changes: make(chan []string, 1),
+	}
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": "file:///project/source.go",
+					"version": 1,
+					"text": "package sample\n",
+				},
+			},
+		},
+	)
+	if count := receiveVersion(t, backend.analyses); count != 1 {
+		t.Fatalf("initial workspace analysis = %d, want 1", count)
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "workspace/didChangeWatchedFiles",
+			"params": map[string]any{
+				"changes": []any{
+					map[string]any{"uri": "file:///project/z.go", "type": 1},
+					map[string]any{
+						"uri": "file:///project/helper.go",
+						"type": 2,
+					},
+					map[string]any{
+						"uri": "file:///project/removed.go",
+						"type": 3,
+					},
+					map[string]any{
+						"uri": "file:///project/helper.go",
+						"type": 2,
+					},
+				},
+			},
+		},
+	)
+	select {
+	case paths := <-backend.changes:
+		want := []string{"/project/helper.go", "/project/removed.go", "/project/z.go"}
+		if !slices.Equal(paths, want) {
+			t.Fatalf("watched paths = %q", paths)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for watched-file invalidation")
+	}
+	if count := receiveVersion(t, backend.analyses); count != 2 {
+		t.Fatalf("refreshed workspace analysis = %d, want 2", count)
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestServeRegistersWorkspaceFileWatching(t *testing.T) {
+	t.Parallel()
+
+	input := framedMessages(
+		t,
+		map[string]any{
+			"jsonrpc": "2.0",
+			"id": 1,
+			"method": "initialize",
+			"params": map[string]any{
+				"capabilities": map[string]any{
+					"workspace": map[string]any{
+						"didChangeWatchedFiles": map[string]any{
+							"dynamicRegistration": true,
+						},
+					},
+				},
+			},
+		},
+		map[string]any{"jsonrpc": "2.0", "method": "initialized"},
+		map[string]any{"jsonrpc": "2.0", "id": "glippy-watch-files", "result": nil},
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	var output bytes.Buffer
+	if err := lsp.Serve(context.Background(), bytes.NewReader(input), &output, &testBackend{});
+		err != nil {
+		t.Fatal(err)
+	}
+	messages := decodeFrames(t, output.Bytes())
+	registered := false
+	for _, message := range messages {
+		if message["id"] != "glippy-watch-files" ||
+			message["method"] != "client/registerCapability" {
+			continue
+		}
+		params := message["params"].(map[string]any)
+		registrations := params["registrations"].([]any)
+		if len(registrations) != 1 {
+			t.Fatalf("registrations = %#v", registrations)
+		}
+		registration := registrations[0].(map[string]any)
+		if registration["method"] != "workspace/didChangeWatchedFiles" {
+			t.Fatalf("file watch registration = %#v", registration)
+		}
+		registered = true
+	}
+	if !registered {
+		t.Fatalf("workspace file watching was not registered: %#v", messages)
+	}
+}
+
+func TestServeDoesNotRegisterUnsupportedWorkspaceFileWatching(t *testing.T) {
+	t.Parallel()
+
+	input := framedMessages(
+		t,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{"jsonrpc": "2.0", "method": "initialized"},
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	var output bytes.Buffer
+	if err := lsp.Serve(context.Background(), bytes.NewReader(input), &output, &testBackend{});
+		err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range decodeFrames(t, output.Bytes()) {
+		if message["method"] == "client/registerCapability" {
+			t.Fatalf("unsupported workspace file watching was registered: %#v", message)
+		}
+	}
+}
+
 type testBackend struct {
 	analysis lsp.Analysis
 	analysisFor func(lsp.Document) lsp.Analysis
@@ -1197,6 +1359,12 @@ type staleWorkspaceBackend struct {
 type delayedAnalysisBackend struct {
 	started chan struct{}
 	release chan struct{}
+}
+
+type watchedWorkspaceBackend struct {
+	analyses chan int
+	changes chan []string
+	count int
 }
 
 func (b *supersededAnalysisBackend) Analyze(
@@ -1302,6 +1470,48 @@ func (*delayedAnalysisBackend) Format(context.Context, lsp.Document) ([]byte, er
 	return nil, nil
 }
 
+func (*watchedWorkspaceBackend) Analyze(context.Context, lsp.Document) (lsp.Analysis, error) {
+	return lsp.Analysis{}, errors.New("unexpected single-document analysis")
+}
+
+func (b *watchedWorkspaceBackend) AnalyzeWorkspace(
+	_ context.Context,
+	documents []lsp.Document,
+) ([]lsp.WorkspaceAnalysis, error) {
+	b.count++
+	results := make([]lsp.WorkspaceAnalysis, len(documents))
+	for index, document := range documents {
+		file, err := source.Load(document.Path, document.Text)
+		if err != nil {
+			return nil, err
+		}
+		results[index] = lsp.WorkspaceAnalysis{
+			Document: document,
+			Analysis: lsp.Analysis{File: file},
+		}
+	}
+	b.analyses <- b.count
+	return results, nil
+}
+
+func (b *watchedWorkspaceBackend) WorkspaceFilesChanged(_ context.Context, paths []string) error {
+	b.changes <- append([]string(nil), paths...)
+	return nil
+}
+
+func (*watchedWorkspaceBackend) CodeActions(
+	context.Context,
+	lsp.Document,
+	lsp.Analysis,
+	source.Range,
+) ([]lsp.CodeAction, error) {
+	return nil, nil
+}
+
+func (*watchedWorkspaceBackend) Format(context.Context, lsp.Document) ([]byte, error) {
+	return nil, nil
+}
+
 type waitBuffer struct {
 	mu sync.Mutex
 	changed chan struct{}
@@ -1404,6 +1614,10 @@ func (b *testBackend) Analyze(_ context.Context, document lsp.Document) (lsp.Ana
 	}
 	result.File = file
 	return result, nil
+}
+
+func (*testBackend) WorkspaceFilesChanged(context.Context, []string) error {
+	return nil
 }
 
 func (b *testBackend) CodeActions(

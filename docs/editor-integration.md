@@ -124,6 +124,15 @@ configuration identity are revalidated before reuse. The edited package still
 performs a complete package load and analysis; same-package incremental type,
 CFG, and SSA reconstruction remains future work.
 
+When the client advertises dynamic watched-file registration, the server
+registers `workspace/didChangeWatchedFiles` for Go sources, module and workspace
+control files, Glippy configuration, and TOML or JSON policy inputs. A valid
+created, changed, or deleted local file notification cancels superseded
+analysis, invalidates the matching cached package and open reverse dependants
+from the retained package graph, and republishes the exact current open-document
+snapshot. Notifications are bounded, normalized to sorted unique absolute paths,
+and never replace editor overlays with disk contents.
+
 Rule diagnostics carry a documentation link to the canonical generated rule
 catalog; `glippy explain <rule>` renders the same metadata locally.
 When a declared rule fix cannot be offered safely for the exact buffer, the

@@ -33,6 +33,8 @@ const lintRuleDocumentationURL = "https://github.com/faustbrian/gox/blob/main/do
 
 const maximumLSPWorkspacePackageEntries = 8
 
+const maximumLSPWorkspaceChangedFiles = 4096
+
 type lspInvocation struct {
 	configPath string
 	fixSuggestions bool
@@ -87,6 +89,9 @@ type lspBackend struct {
 	invocation lspInvocation
 	workspaceMu sync.Mutex
 	workspace lspWorkspaceSession
+	workspaceChangesMu sync.Mutex
+	workspaceChangedFiles map[string]struct{}
+	workspaceInvalidateAll bool
 	runPackageAnalysis func(
 		context.Context,
 		*rules.Registry,
@@ -157,6 +162,13 @@ func (b *lspBackend) AnalyzeWorkspace(
 ) ([]lsp.WorkspaceAnalysis, error) {
 	b.workspaceMu.Lock()
 	defer b.workspaceMu.Unlock()
+	changedFiles, invalidateAll := b.takeWorkspaceFileChanges()
+	consumedChanges := false
+	defer func() {
+		if !consumedChanges {
+			b.restoreWorkspaceFileChanges(changedFiles, invalidateAll)
+		}
+	}()
 
 	results := make([]lsp.WorkspaceAnalysis, len(documents))
 	groups := make(map[lspPackageGroupKey]int)
@@ -231,6 +243,17 @@ func (b *lspBackend) AnalyzeWorkspace(
 		b.workspace.entries,
 		orderedGroups,
 	)
+	lspWorkspaceWatchedInvalidation(
+		b.workspace.entries,
+		changedFiles,
+		invalidatedPackages,
+		invalidateRoots,
+	)
+	if invalidateAll {
+		for _, group := range orderedGroups {
+			invalidateRoots[group.key.root] = true
+		}
+	}
 	nextEntries := make(map[lspPackageGroupKey]lspWorkspacePackageEntry)
 	type workspaceOverlay struct {
 		files map[string][]byte
@@ -358,7 +381,70 @@ func (b *lspBackend) AnalyzeWorkspace(
 		}
 	}
 	b.workspace.entries = boundLSPWorkspaceEntries(nextEntries)
+	consumedChanges = true
 	return results, nil
+}
+
+func (b *lspBackend) WorkspaceFilesChanged(ctx context.Context, paths []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	for _, path := range paths {
+		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+			return fmt.Errorf("workspace file path %q is not absolute and clean", path)
+		}
+	}
+	b.workspaceChangesMu.Lock()
+	defer b.workspaceChangesMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if b.workspaceInvalidateAll {
+		return nil
+	}
+	if b.workspaceChangedFiles == nil {
+		b.workspaceChangedFiles = make(map[string]struct{}, len(paths))
+	}
+	for _, path := range paths {
+		b.workspaceChangedFiles[path] = struct{}{}
+		if len(b.workspaceChangedFiles) > maximumLSPWorkspaceChangedFiles {
+			b.workspaceChangedFiles = nil
+			b.workspaceInvalidateAll = true
+			return nil
+		}
+	}
+	return nil
+}
+
+func (b *lspBackend) takeWorkspaceFileChanges() (map[string]struct{}, bool) {
+	b.workspaceChangesMu.Lock()
+	defer b.workspaceChangesMu.Unlock()
+	files := b.workspaceChangedFiles
+	invalidateAll := b.workspaceInvalidateAll
+	b.workspaceChangedFiles = nil
+	b.workspaceInvalidateAll = false
+	return files, invalidateAll
+}
+
+func (b *lspBackend) restoreWorkspaceFileChanges(files map[string]struct{}, invalidateAll bool) {
+	b.workspaceChangesMu.Lock()
+	defer b.workspaceChangesMu.Unlock()
+	if invalidateAll || b.workspaceInvalidateAll {
+		b.workspaceChangedFiles = nil
+		b.workspaceInvalidateAll = true
+		return
+	}
+	if b.workspaceChangedFiles == nil {
+		b.workspaceChangedFiles = make(map[string]struct{}, len(files))
+	}
+	for path := range files {
+		b.workspaceChangedFiles[path] = struct{}{}
+		if len(b.workspaceChangedFiles) > maximumLSPWorkspaceChangedFiles {
+			b.workspaceChangedFiles = nil
+			b.workspaceInvalidateAll = true
+			return
+		}
+	}
 }
 
 func captureLSPWorkspaceFilesystem(
@@ -506,6 +592,42 @@ func lspWorkspaceInvalidation(
 		}
 	}
 	return invalidated, invalidateRoots
+}
+
+func lspWorkspaceWatchedInvalidation(
+	previous map[lspPackageGroupKey]lspWorkspacePackageEntry,
+	changedFiles map[string]struct{},
+	invalidated map[string]map[string]struct{},
+	invalidateRoots map[string]bool,
+) {
+	for key, entry := range previous {
+		affected := false
+		for path := range changedFiles {
+			if _, found := entry.filesystemFiles[path]; found {
+				affected = true
+				break
+			}
+			if _, found := entry.sourceDirectories[filepath.Dir(path)]; found {
+				affected = true
+				break
+			}
+		}
+		if !affected {
+			continue
+		}
+		if len(entry.rootPackagePaths) == 0 {
+			invalidateRoots[key.root] = true
+			continue
+		}
+		paths := invalidated[key.root]
+		if paths == nil {
+			paths = make(map[string]struct{})
+			invalidated[key.root] = paths
+		}
+		for _, path := range entry.rootPackagePaths {
+			paths[path] = struct{}{}
+		}
+	}
 }
 
 func lspPackageEntryIntersects(entry lspWorkspacePackageEntry, paths map[string]struct{}) bool {

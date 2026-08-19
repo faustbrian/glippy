@@ -163,3 +163,19 @@ and keeps formatting and code actions document-local. Persistent reuse across
 successive changed snapshots, debounce, superseded-version cancellation,
 configuration watching, and reusable typed graphs remain later work under the
 same revisit trigger.
+
+## 2026-08-19 Revisit
+
+Successive package reuse still depended on polling captured filesystem inputs
+only after another document event. With clients that advertise the capability,
+the service now dynamically registers bounded
+`workspace/didChangeWatchedFiles` patterns and accepts created, changed,
+or deleted absolute local file notifications. It cancels any superseded
+analysis, records canonical changed paths in the shared backend session, and
+analyzes one new immutable snapshot of all open documents.
+
+The retained package graph identifies the directly affected package and open
+reverse dependants. Unrelated package results remain reusable, including when a
+notification reports unchanged bytes, while editor overlays remain
+authoritative. Same-package incremental type checking, persistent typed graphs,
+and memory-aware eviction remain separate later decisions.

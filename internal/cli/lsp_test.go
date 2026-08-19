@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/lsp"
@@ -890,6 +892,325 @@ func TestLSPWorkspaceInvalidatesReverseDependentAfterDiskSourceChange(t *testing
 			"package runs = %#v, want disk-changed dependency and reverse dependant invalidated",
 			runs,
 		)
+	}
+}
+
+func TestLSPWorkspaceWatchInvalidatesPackageAndReverseDependent(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = [\"style\"]\n",
+	)
+	dependencyPath := filepath.Join(root, "dependency", "dependency.go")
+	helperPath := filepath.Join(root, "dependency", "helper.go")
+	consumerPath := filepath.Join(root, "consumer", "consumer.go")
+	unrelatedPath := filepath.Join(root, "unrelated", "unrelated.go")
+	if err := os.MkdirAll(filepath.Dir(dependencyPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(consumerPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(unrelatedPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dependency := "package dependency\n\nfunc Value() int { return helper() }\n"
+	consumer := "package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc Value() int { return dependency.Value() }\n"
+	writeChangedCLIFile(t, dependencyPath, dependency)
+	writeChangedCLIFile(t, helperPath, "package dependency\n\nfunc helper() int { return 1 }\n")
+	writeChangedCLIFile(t, consumerPath, consumer)
+	writeChangedCLIFile(t, unrelatedPath, "package unrelated\n\nconst Value = 1\n")
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := make(map[string]int)
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			runs[task.patterns[0]]++
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+	}
+	documents := []lsp.Document{
+		{
+			URI: "file://" + filepath.ToSlash(dependencyPath),
+			Path: dependencyPath,
+			Version: 1,
+			Text: []byte(dependency),
+		},
+		{
+			URI: "file://" + filepath.ToSlash(consumerPath),
+			Path: consumerPath,
+			Version: 1,
+			Text: []byte(consumer),
+		},
+		{
+			URI: "file://" + filepath.ToSlash(unrelatedPath),
+			Path: unrelatedPath,
+			Version: 1,
+			Text: []byte("package unrelated\n\nconst Value = 1\n"),
+		},
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.WorkspaceFilesChanged(context.Background(), []string{helperPath});
+		err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	dependencyPattern := "file=" + dependencyPath
+	consumerPattern := "file=" + consumerPath
+	unrelatedPattern := "file=" + unrelatedPath
+	if runs[dependencyPattern] != 2 ||
+		runs[consumerPattern] != 2 ||
+		runs[unrelatedPattern] != 1 {
+		t.Fatalf(
+			"package runs = %#v, want watched dependency and reverse dependant invalidated",
+			runs,
+		)
+	}
+}
+
+func TestLSPWorkspaceWatchOverflowInvalidatesAllPackages(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = [\"style\"]\n",
+	)
+	firstPath := filepath.Join(root, "first", "first.go")
+	secondPath := filepath.Join(root, "second", "second.go")
+	if err := os.MkdirAll(filepath.Dir(firstPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(secondPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	first := "package first\n\nconst Value = 1\n"
+	second := "package second\n\nconst Value = 2\n"
+	writeChangedCLIFile(t, firstPath, first)
+	writeChangedCLIFile(t, secondPath, second)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := 0
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			runs++
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+	}
+	documents := []lsp.Document{
+		{
+			URI: "file://" + filepath.ToSlash(firstPath),
+			Path: firstPath,
+			Version: 1,
+			Text: []byte(first),
+		},
+		{
+			URI: "file://" + filepath.ToSlash(secondPath),
+			Path: secondPath,
+			Version: 1,
+			Text: []byte(second),
+		},
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	changes := make([]string, maximumLSPWorkspaceChangedFiles + 1)
+	for index := range changes {
+		changes[index] = filepath.Join(root, "changes", fmt.Sprintf("%d.go", index))
+	}
+	if err := backend.WorkspaceFilesChanged(context.Background(), changes); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	if runs != 4 {
+		t.Fatalf("package runs = %d, want every package invalidated after overflow", runs)
+	}
+}
+
+func TestLSPWorkspaceWatchRetainsChangesAfterCanceledAnalysis(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = [\"style\"]\n",
+	)
+	path := filepath.Join(root, "source.go")
+	helperPath := filepath.Join(root, "helper.go")
+	text := "package editor\n\nfunc Value() int { return helper() }\n"
+	writeChangedCLIFile(t, path, text)
+	writeChangedCLIFile(t, helperPath, "package editor\n\nfunc helper() int { return 1 }\n")
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := 0
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			runs++
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+	}
+	documents := []lsp.Document{
+		{
+			URI: "file://" + filepath.ToSlash(path),
+			Path: path,
+			Version: 1,
+			Text: []byte(text),
+		},
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.WorkspaceFilesChanged(context.Background(), []string{helperPath});
+		err != nil {
+		t.Fatal(err)
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := backend.AnalyzeWorkspace(canceled, documents);
+		!errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled workspace analysis error = %v", err)
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	if runs != 2 {
+		t.Fatalf("package runs = %d, want watched change retained after cancellation", runs)
+	}
+}
+
+func TestLSPWorkspaceWatchDoesNotWaitForCanceledAnalysis(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = [\"style\"]\n",
+	)
+	path := filepath.Join(root, "source.go")
+	text := "package editor\n\nvar Ready = true\n"
+	writeChangedCLIFile(t, path, text)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			_ *rules.Registry,
+			_ lintPackageTask,
+			_ map[string][]byte,
+		) (analysis.PackageResult, error) {
+			close(started)
+			<-ctx.Done()
+			return analysis.PackageResult{}, ctx.Err()
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	analysisDone := make(chan error, 1)
+	go func() {
+		results, analysisErr := backend.AnalyzeWorkspace(
+			ctx,
+			[]lsp.Document{
+				{
+					URI: "file://" + filepath.ToSlash(path),
+					Path: path,
+					Version: 1,
+					Text: []byte(text),
+				},
+			},
+		)
+		if analysisErr == nil && len(results) == 1 {
+			analysisErr = results[0].Err
+		}
+		analysisDone <- analysisErr
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		cancel()
+		t.Fatal("timed out waiting for package analysis")
+	}
+	changedDone := make(chan error, 1)
+	go func() {
+		changedDone <- backend.WorkspaceFilesChanged(context.Background(), []string{path})
+	}()
+	var changedErr error
+	returnedPromptly := false
+	select {
+	case changedErr = <-changedDone:
+		returnedPromptly = true
+	case <-time.After(200 * time.Millisecond):
+	}
+	cancel()
+	if analysisErr := <-analysisDone; !errors.Is(analysisErr, context.Canceled) {
+		t.Fatalf("workspace analysis error = %v", analysisErr)
+	}
+	if !returnedPromptly {
+		changedErr = <-changedDone
+	}
+	if changedErr != nil {
+		t.Fatal(changedErr)
+	}
+	if !returnedPromptly {
+		t.Fatal("watched-file invalidation waited for package analysis")
 	}
 }
 

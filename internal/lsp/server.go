@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,7 +30,11 @@ const maximumPendingCancellations = 1024
 
 const maximumPendingAnalysisRequests = 64
 
+const maximumWatchedFileChanges = 4096
+
 const documentAnalysisDebounce = 20 * time.Millisecond
+
+const watchedFilesRequestID = "glippy-watch-files"
 
 // Severity is an LSP diagnostic severity.
 type Severity int
@@ -115,6 +120,12 @@ type WorkspaceBackend interface {
 	AnalyzeWorkspace(context.Context, []Document) ([]WorkspaceAnalysis, error)
 }
 
+// WorkspaceFileBackend invalidates persistent workspace state after editor
+// filesystem notifications. Paths are absolute, cleaned, sorted, and unique.
+type WorkspaceFileBackend interface {
+	WorkspaceFilesChanged(context.Context, []string) error
+}
+
 type rpcMessage struct {
 	JSONRPC string `json:"jsonrpc"`
 	ID json.RawMessage `json:"id,omitempty"`
@@ -137,6 +148,13 @@ type rpcErrorResponse struct {
 type rpcError struct {
 	Code int `json:"code"`
 	Message string `json:"message"`
+}
+
+type rpcRequest struct {
+	JSONRPC string `json:"jsonrpc"`
+	ID string `json:"id"`
+	Method string `json:"method"`
+	Params any `json:"params"`
 }
 
 type textDocumentIdentifier struct {
@@ -173,6 +191,15 @@ type didCloseParams struct {
 	TextDocument textDocumentIdentifier `json:"textDocument"`
 }
 
+type watchedFileChange struct {
+	URI string `json:"uri"`
+	Type int `json:"type"`
+}
+
+type didChangeWatchedFilesParams struct {
+	Changes []watchedFileChange `json:"changes"`
+}
+
 type documentRequestParams struct {
 	TextDocument textDocumentIdentifier `json:"textDocument"`
 }
@@ -184,6 +211,16 @@ type codeActionParams struct {
 
 type cancelRequestParams struct {
 	ID json.RawMessage `json:"id"`
+}
+
+type initializeParams struct {
+	Capabilities struct {
+		Workspace struct {
+			DidChangeWatchedFiles struct {
+				DynamicRegistration bool `json:"dynamicRegistration"`
+			} `json:"didChangeWatchedFiles"`
+		} `json:"workspace"`
+	} `json:"capabilities"`
 }
 
 type protocolPosition struct {
@@ -263,6 +300,7 @@ type server struct {
 	requestMu sync.Mutex
 	requests map[string]context.CancelFunc
 	pendingCancellations map[string]struct{}
+	pendingClientRequests map[string]struct{}
 	analysisResults chan analysisCompletion
 	analysisGeneration uint64
 	analysisCancel context.CancelFunc
@@ -272,6 +310,8 @@ type server struct {
 	exitRequested bool
 	initialized bool
 	shutdown bool
+	watchingDynamicRegistration bool
+	watchingRegistered bool
 }
 
 type analysisCompletion struct {
@@ -300,6 +340,7 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, backend Backe
 		analyses: make(map[string]Analysis),
 		requests: make(map[string]context.CancelFunc),
 		pendingCancellations: make(map[string]struct{}),
+		pendingClientRequests: make(map[string]struct{}),
 		analysisResults: make(chan analysisCompletion, 16),
 	}
 	type readResult struct {
@@ -369,14 +410,30 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, backend Backe
 }
 
 func (s *server) handle(message rpcMessage) (bool, error) {
-	if message.JSONRPC != "2.0" || message.Method == "" {
+	if message.JSONRPC != "2.0" {
 		return false, errors.New("invalid JSON-RPC message")
+	}
+	if message.Method == "" {
+		if _, found := s.pendingClientRequests[string(message.ID)]; !found {
+			return false, errors.New("invalid JSON-RPC response")
+		}
+		delete(s.pendingClientRequests, string(message.ID))
+		return false, nil
 	}
 	switch message.Method {
 	case "initialize":
 		if len(message.ID) == 0 {
 			return false, errors.New("initialize requires a request ID")
 		}
+		var params initializeParams
+		if err := decodeParams(message.Params, &params); err != nil {
+			return false, err
+		}
+		s.watchingDynamicRegistration = params.
+			Capabilities.
+			Workspace.
+			DidChangeWatchedFiles.
+			DynamicRegistration
 		s.initialized = true
 		return false, s.respond(
 			message.ID,
@@ -389,7 +446,9 @@ func (s *server) handle(message rpcMessage) (bool, error) {
 				"serverInfo": map[string]any{"name": "Glippy"},
 			},
 		)
-	case "initialized", "$/setTrace":
+	case "initialized":
+		return false, s.registerWorkspaceFileWatching()
+	case "$/setTrace":
 		return false, nil
 	case "shutdown":
 		if len(message.ID) == 0 {
@@ -478,21 +537,40 @@ func (s *server) handle(message rpcMessage) (bool, error) {
 			err != nil {
 			return false, err
 		}
-		if _, supported := s.backend.(WorkspaceBackend);
-			supported && len(s.documents) != 0 {
-			var next Document
-			for _, open := range s.documents {
-				if next.URI == "" ||
-					open.Path < next.Path ||
-					(open.Path == next.Path && open.URI < next.URI) {
-					next = open
+		if _, supported := s.backend.(WorkspaceBackend); supported {
+			if next, found := s.firstOpenDocument(); found {
+				if err := s.scheduleAnalysis(next, false); err != nil {
+					return false, err
 				}
-			}
-			if err := s.scheduleAnalysis(next, false); err != nil {
-				return false, err
 			}
 		}
 		return false, nil
+	case "workspace/didChangeWatchedFiles":
+		var params didChangeWatchedFilesParams
+		if err := decodeParams(message.Params, &params); err != nil {
+			return false, err
+		}
+		paths, err := watchedFilePaths(params.Changes)
+		if err != nil {
+			return false, err
+		}
+		backend, supported := s.backend.(WorkspaceFileBackend)
+		if !supported || len(paths) == 0 {
+			return false, nil
+		}
+		if err := s.rejectPendingAnalysisRequests(); err != nil {
+			return false, err
+		}
+		s.cancelDocumentAnalysis()
+		clear(s.analyses)
+		if err := backend.WorkspaceFilesChanged(s.ctx, paths); err != nil {
+			return false, err
+		}
+		next, found := s.firstOpenDocument()
+		if !found {
+			return false, nil
+		}
+		return false, s.scheduleAnalysis(next, true)
 	case "textDocument/codeAction":
 		if len(message.ID) == 0 {
 			return false, errors.New("code action requires a request ID")
@@ -517,6 +595,97 @@ func (s *server) handle(message rpcMessage) (bool, error) {
 		}
 		return false, s.respondError(message.ID, -32601, "method not found")
 	}
+}
+
+func (s *server) registerWorkspaceFileWatching() error {
+	if _, supported := s.backend.(WorkspaceFileBackend); !supported {
+		return nil
+	}
+	if !s.watchingDynamicRegistration {
+		return nil
+	}
+	if s.watchingRegistered {
+		return nil
+	}
+	id, err := json.Marshal(watchedFilesRequestID)
+	if err != nil {
+		return err
+	}
+	key := string(id)
+	if _, pending := s.pendingClientRequests[key]; pending {
+		return nil
+	}
+	s.watchingRegistered = true
+	s.pendingClientRequests[key] = struct{}{}
+	return writeMessage(
+		s.writer,
+		rpcRequest{
+			JSONRPC: "2.0",
+			ID: watchedFilesRequestID,
+			Method: "client/registerCapability",
+			Params: map[string]any{
+				"registrations": []any{
+					map[string]any{
+						"id": "glippy-workspace-files",
+						"method": "workspace/didChangeWatchedFiles",
+						"registerOptions": map[string]any{
+							"watchers": []any{
+								map[string]any{
+									"globPattern": "**/*.go",
+									"kind": 7,
+								},
+								map[string]any{
+									"globPattern": "**/{go.mod,go.sum,go.work,go.work.sum,.glippy.toml}",
+									"kind": 7,
+								},
+								map[string]any{
+									"globPattern": "**/*.{toml,json}",
+									"kind": 7,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+}
+
+func watchedFilePaths(changes []watchedFileChange) ([]string, error) {
+	if len(changes) > maximumWatchedFileChanges {
+		return nil, fmt.Errorf(
+			"workspace file notification exceeds %d changes",
+			maximumWatchedFileChanges,
+		)
+	}
+	paths := make([]string, 0, len(changes))
+	for _, change := range changes {
+		if change.Type < 1 || change.Type > 3 {
+			return nil, fmt.Errorf(
+				"unsupported workspace file change type %d",
+				change.Type,
+			)
+		}
+		path, err := filePath(change.URI)
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return slices.Compact(paths), nil
+}
+
+func (s *server) firstOpenDocument() (Document, bool) {
+	var result Document
+	for _, open := range s.documents {
+		if result.URI == "" ||
+			open.Path < result.Path ||
+			(open.Path == result.Path && open.URI < result.URI) {
+			result = open
+		}
+	}
+	return result, result.URI != ""
 }
 
 func (s *server) scheduleAnalysis(document Document, debounce bool) error {

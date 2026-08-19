@@ -5,6 +5,7 @@
 - v0.5 typed peak RSS gate: complete, 53% worst-sample reduction
 - v0.5 bounded incremental workspace-result reuse: complete
 - v0.5 superseded editor analysis cancellation: complete
+- v0.5 workspace file notifications: complete
 - v0.5 curated strictness profiles: complete
 - v0.5 transaction state transition: complete
 - Phase 0 completed: 2026-08-09
@@ -1715,5 +1716,16 @@ aliases, reassignment, transfer, deferred or asynchronous execution, unknown
 helpers, and ambiguous multi-call nodes fail closed. The rule remains outside
 `recommended` pending broader adoption evidence. The catalog now contains 106
 rules. Channel and WaitGroup transitions, same-package typed graph reuse,
-workspace file notifications, memory-aware eviction, and portable budgets
+memory-aware eviction, and portable budgets remain active v0.5 work.
+
+The v0.5 workspace-watching batch dynamically registers bounded Go,
+module/workspace, configuration, and TOML/JSON file patterns when an LSP client
+advertises the capability. Valid created, changed, and deleted notifications
+cancel superseded analysis, record sorted unique absolute paths in the backend
+session, and refresh one exact snapshot of all open documents. Retained
+filesystem and package-graph evidence invalidates the affected package and open
+reverse dependants without reloading
+an unrelated package; captured local dependencies outside the project root are
+also covered when the client reports them. Channel and WaitGroup transitions,
+same-package typed graph reuse, memory-aware eviction, and portable budgets
 remain active v0.5 work.
