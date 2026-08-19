@@ -43,6 +43,7 @@ func RunPackages(
 		return PackageResult{}, err
 	}
 	ctx = withStatistics(ctx, options.Statistics)
+	ctx = withPhaseProfiler(ctx, options.Profiler)
 	resolution, err := options.RuleResolution()
 	if err != nil {
 		return PackageResult{}, fmt.Errorf("resolve package analysis rules: %w", err)
@@ -173,6 +174,9 @@ func RunPackages(
 	if err != nil {
 		return result, err
 	}
+	if err := captureProfilePhase(ctx, ProfilePhasePackageAnalyzers); err != nil {
+		return result, err
+	}
 	for _, diagnostic := range packageAnalyzerDiagnostics {
 		nativeByPath[diagnostic.Path] = append(nativeByPath[diagnostic.Path], diagnostic)
 	}
@@ -226,6 +230,9 @@ func RunPackages(
 		return result, fmt.Errorf(
 			"package diagnostics reference an unselected package source",
 		)
+	}
+	if err := captureProfilePhase(ctx, ProfilePhaseResult); err != nil {
+		return result, err
 	}
 	return result, nil
 }

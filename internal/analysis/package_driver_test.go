@@ -22,6 +22,15 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+type recordingPhaseProfiler struct {
+	phases []string
+}
+
+func (p *recordingPhaseProfiler) Capture(phase string) error {
+	p.phases = append(p.phases, phase)
+	return nil
+}
+
 func TestRunPackagesFiltersAndReseversDiagnosticsByPathPolicy(t *testing.T) {
 	t.Parallel()
 
@@ -147,6 +156,68 @@ func TestRunPackagesExposesCanonicalPackageDependencies(t *testing.T) {
 		[]string{"example.com/project/dependency"},
 	) {
 		t.Fatalf("dependency package paths = %q", result.DependencyPackagePaths)
+	}
+}
+
+func TestRunPackagesProfilesRetainedAnalysisPhasesInExecutionOrder(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/profile\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "profile.go"),
+		"package profile\n\nfunc run(value int) int { if value > 0 { return value }; return 0 }\n",
+	)
+	typed := typesRule{
+		metadata: typesMetadata("typed-profile", rules.NodeFuncDecl),
+		run: func(*rules.TypesContext, ast.Node) ([]rules.Finding, error) {
+			return nil, nil
+		},
+	}
+	controlFlow := controlFlowRule{
+		metadata: controlFlowMetadata("cfg-profile"),
+		run: func(*rules.ControlFlowContext) ([]rules.Finding, error) {
+			return nil, nil
+		},
+	}
+	ssa := ssaRule{
+		metadata: ssaMetadata("ssa-profile"),
+		run: func(*rules.SSAContext) ([]rules.Finding, error) {
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(typed, controlFlow, ssa)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profiler := &recordingPhaseProfiler{}
+
+	_, err = analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{Preset: rules.PresetCorrectness, Profiler: profiler},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		analysis.ProfilePhasePackages,
+		analysis.ProfilePhaseSourceModel,
+		analysis.ProfilePhaseEffectFacts,
+		analysis.ProfilePhaseTypes,
+		analysis.ProfilePhaseControlFlow,
+		analysis.ProfilePhaseSSA,
+		analysis.ProfilePhasePackageAnalyzers,
+		analysis.ProfilePhaseResult,
+	}
+	if !reflect.DeepEqual(profiler.phases, want) {
+		t.Fatalf("profile phases = %q, want %q", profiler.phases, want)
 	}
 }
 

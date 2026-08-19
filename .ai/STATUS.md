@@ -3,6 +3,7 @@
 - Original Phase 0-5 progress: 100%
 - Active development: post-v0.1 Clippy-comparability expansion
 - v0.5 typed peak RSS gate: complete, 53% worst-sample reduction
+- v0.5 typed retained-memory attribution: complete
 - v0.5 bounded incremental workspace-result reuse: complete
 - v0.5 superseded editor analysis cancellation: complete
 - v0.5 workspace file notifications: complete
@@ -1775,3 +1776,16 @@ Glippy and `go-libraries/pkg/prompts`, whose pre-existing `go.sum` diff and
 untracked-file state were unchanged. The catalog now contains 108 rules.
 Same-package typed graph reuse, memory-aware worker scheduling, and portable
 budgets remain active v0.5 work.
+
+The v0.5 typed retained-memory attribution batch adds an opt-in benchmark-only
+phase observer and external heap-profile harness. On pinned sqlc, package
+loading retains about 1.49 GB before Glippy promotes reporter-visible source;
+the largest flat owner is 512.08 MiB of `go/types` type-and-value records.
+Removing all SSA rules lowers ordinary peak RSS by only 4.3%, while disabling
+the fact-bearing `printf-arguments` adapter lowers it from 3.40 GB to 1.34 GB.
+One high-fanout `cmd/sqlc` root still peaks near 2.97 GB, proving that
+top-level root batching alone cannot close the scale boundary. The next memory
+implementation must produce and rebind stable analyzer fact snapshots in
+bounded dependency waves without retaining complete dependency syntax and
+type information. The attribution batch does not establish a portable release
+budget or change ordinary CLI/LSP behavior.

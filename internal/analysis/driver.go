@@ -33,6 +33,7 @@ type RunOptions struct {
 	SuppressionExpiryCutoff string
 	Cache *PackageCacheOptions
 	Statistics *Statistics
+	Profiler PhaseProfiler
 }
 
 // Result is one reporter-ready syntax analysis result over one source version.

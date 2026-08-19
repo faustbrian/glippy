@@ -322,6 +322,7 @@ precise scope.
 - [v0.4 ecosystem dogfood](docs/research/v0.4-diverse-ecosystem-dogfood-2026-08-15.md)
 - [v0.4 fixability sweep](docs/research/v0.4-catalog-fixability-sweep-2026-08-15.md)
 - [v0.5 typed-analysis memory reduction](docs/research/v0.5-memory-reduction-2026-08-16.md)
+- [v0.5 typed-analysis memory attribution](docs/research/v0.5-typed-memory-attribution-2026-08-19.md)
 - [v0.5 project semantic contracts](docs/research/v0.5-project-semantic-contracts-2026-08-16.md)
 - [Suppression reference](docs/suppressions.md)
 - [Lint engine and suppressions](docs/spec/lint-engine.md)

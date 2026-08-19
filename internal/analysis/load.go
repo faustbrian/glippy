@@ -314,12 +314,18 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 	if err != nil {
 		return PackageLoadResult{}, err
 	}
+	if err := captureProfilePhase(ctx, ProfilePhasePackages); err != nil {
+		return PackageLoadResult{}, err
+	}
 	if err := capturePackageOriginalSources(ordered, options.Overlay, sourceCollector);
 		err != nil {
 		return PackageLoadResult{}, err
 	}
 	sources, err := sourceCollector.result(options.compactDependencySource)
 	if err != nil {
+		return PackageLoadResult{}, err
+	}
+	if err := captureProfilePhase(ctx, ProfilePhaseSourceModel); err != nil {
 		return PackageLoadResult{}, err
 	}
 	diagnostics := packageDiagnostics(ordered)
@@ -335,6 +341,9 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 		if err != nil {
 			return PackageLoadResult{}, err
 		}
+	}
+	if err := captureProfilePhase(ctx, ProfilePhaseEffectFacts); err != nil {
+		return PackageLoadResult{}, err
 	}
 	return PackageLoadResult{
 		Requirement: options.Requirement,

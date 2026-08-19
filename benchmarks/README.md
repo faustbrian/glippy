@@ -60,6 +60,27 @@ workload, heap attribution, command, and limitations are
 recorded in
 [`../docs/research/v0.5-memory-reduction-2026-08-16.md`](../docs/research/v0.5-memory-reduction-2026-08-16.md).
 
+### Retained-heap phase profiles
+
+The opt-in external typed-analysis test writes one garbage-collected heap
+profile after package loading, source-model construction, effect facts, each
+analysis tier, adapted analyzers, and final result assembly. It is a diagnostic
+harness rather than a latency or peak-RSS gate because forcing garbage
+collection and writing profiles deliberately changes execution behavior.
+
+Run it against an existing pinned checkout and an empty output directory:
+
+```sh
+GLIPPY_TYPED_PROFILE_ROOT=/path/to/sqlc \
+GLIPPY_TYPED_PROFILE_DIR=/path/to/empty/profiles \
+GLIPPY_TYPED_PROFILE_GO_VERSION=go1.26 \
+go test ./benchmarks -run '^TestProfileExternalTypedAnalysis$' -count=1 -v
+```
+
+Ordinary tests skip the external workload when `GLIPPY_TYPED_PROFILE_ROOT` is
+unset. The analysis phase observer is not enabled by the CLI or LSP and cannot
+change ordinary diagnostics, caching, or runtime behavior.
+
 ## v0.5 Incremental Workspace Result Probe
 
 The owned two-package LSP benchmark changes one open package while keeping an

@@ -112,12 +112,21 @@ func runNativePackageAnalysis(
 	if err != nil {
 		return nil, err
 	}
+	if err := captureProfilePhase(ctx, ProfilePhaseTypes); err != nil {
+		return nil, err
+	}
 	controlFlowDiagnostics, err := RunControlFlow(ctx, loaded, registry, controlFlowSelection)
 	if err != nil {
 		return nil, err
 	}
+	if err := captureProfilePhase(ctx, ProfilePhaseControlFlow); err != nil {
+		return nil, err
+	}
 	ssaDiagnostics, err := RunSSA(ctx, loaded, registry, ssaSelection)
 	if err != nil {
+		return nil, err
+	}
+	if err := captureProfilePhase(ctx, ProfilePhaseSSA); err != nil {
 		return nil, err
 	}
 	diagnostics := make(
