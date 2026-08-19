@@ -115,21 +115,28 @@ physical source identity and diagnostic fields after all rule callbacks.
 
 Every native SSA-tier rule MUST NOT declare node interests and MUST NOT opt
 into type-error packages. The SSA runner MUST use `x/tools/go/ssa` through one
-`ssautil.Packages` program built from only the well-typed selected root
-packages containing a physical source eligible for at least one enabled SSA
-rule. It MUST create dependency package shells from the shared type graph.
+bounded `ssautil.Packages` program at a time, built only for well-typed selected
+root packages containing a physical source eligible for at least one enabled
+SSA rule. One program MUST contain at most 64 selected packages and at most
+8 MiB of compiled source deduplicated within each package, except that one
+package exceeding the byte limit remains eligible alone. Shared production
+files in distinct selected test variants MUST be charged once per variant. It
+MUST create dependency package shells from the shared type graph.
 Dependency bodies MUST NOT enter the SSA program. A declared effect-fact
 consumer MAY cause the separate bounded effect summarizer to load same-module
 dependency syntax; unrelated SSA rules MUST NOT trigger that work.
 
-The SSA runner MUST build that program once and run each eligible rule once for
-every source function declaration and function literal in canonical physical
-file and function-position order. All SSA rules for one invocation MUST receive
-the same program; rules for one package MUST receive the same SSA package; and
-rules for one source function MUST receive the same SSA function, typed values,
-and exact immutable physical source. An SSA rule MUST NOT mutate those shared
-values. Synthetic wrappers and range-over-function helpers MUST NOT become
-independent source-rule callbacks.
+The SSA runner MUST complete shared no-return and return-state summaries before
+building any package program. It MUST then build selected packages in canonical
+bounded waves, run each eligible rule once for every source function declaration
+and function literal in canonical physical file and function-position order,
+and drop all scheduler-owned references to one wave program before constructing
+the next. All SSA rules and functions in one wave MUST receive the same program;
+rules for one package MUST receive the same SSA package; and rules for one source
+function MUST receive the same SSA function, typed values, and exact immutable
+physical source. An SSA rule MUST NOT mutate those shared values. Synthetic
+wrappers and range-over-function helpers MUST NOT become independent source-rule
+callbacks.
 
 The scheduler MUST compute the maximum required representation across enabled
 rules and MUST NOT construct types, CFG, or SSA speculatively. Syntax rules

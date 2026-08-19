@@ -13,6 +13,7 @@
 - v0.5 same-package incremental typed analysis: complete
 - v0.5 test-package incremental typed analysis: complete
 - v0.5 import-only typed discovery: complete
+- v0.5 memory-aware SSA package waves: complete
 - v0.5 curated strictness profiles: complete
 - v0.5 transaction state transition: complete
 - v0.5 channel state transition: complete
@@ -1881,3 +1882,21 @@ observed path from two full loads to one full load, one import load, and one
 incremental load. This is typed import-only discovery, not metadata-only
 package-graph discovery; the latter, memory-aware worker scheduling, and
 portable budgets remain active v0.5 work.
+
+The v0.5 memory-aware SSA-wave batch replaces one unbounded multi-root
+`x/tools/go/ssa` program with canonical waves limited to 64 selected packages
+and 8 MiB of compiled root source, deduplicated within each package and charged
+again for each selected test variant. One package exceeding the byte budget
+remains eligible alone. Glippy still computes no-return and return-state
+summaries once across the selected typed roots, runs every enabled SSA rule over
+every eligible source function, and lets the completed wave program become
+unreachable before constructing the next. Dependency bodies remain excluded,
+debug mode is still selected once from enabled rule requirements, and final
+diagnostics keep their canonical ordering. The proving regression observed 65
+fixture packages sharing one program before the change and two bounded programs
+afterward; variant accounting includes every compiled production and test file.
+A fixed one-package wave reduced median RSS but added about 46% latency, and
+fixed 4/8/16-package studies still traded about 8-19% latency for noisy memory
+movement. The accepted adaptive boundary leaves this repository in one wave
+while bounding larger inputs. This is a deterministic lifetime contract, not a
+portable RSS claim; x/tools exposes no supported per-function build boundary.

@@ -714,7 +714,7 @@ func (c *SSAContext) ReturnState(
 	return c.effects.ReturnState(function, valueResult, errorResult)
 }
 
-// Program returns the shared read-only SSA program for the package load.
+// Program returns the shared read-only SSA program for the current package.
 func (c *SSAContext) Program() *ssa.Program {
 	if c == nil {
 		return nil

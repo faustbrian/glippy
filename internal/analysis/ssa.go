@@ -14,6 +14,11 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
+const (
+	maximumSSAPackagesPerProgram = 64
+	maximumSSAPackageWaveSourceBytes int64 = 8 << 20
+)
+
 type activeSSARule struct {
 	rule rules.SSARule
 	metadata rules.Metadata
@@ -22,7 +27,7 @@ type activeSSARule struct {
 }
 
 // RunSSA executes selected SSA-tier rules once per source function through one
-// program shared by all eligible rules and selected packages.
+// bounded package-wave program shared by all eligible rules.
 func RunSSA(
 	ctx context.Context,
 	loaded PackageLoadResult,
@@ -66,7 +71,6 @@ func RunSSA(
 	if err := validateSharedFileSet(ssaInputs); err != nil {
 		return nil, err
 	}
-	program, ssaPackages := ssautil.Packages(ssaInputs, ssaMode(activeRules))
 	noReturns := newNoReturnAnalysis(ctx, ssaInputs, loaded.effectFacts)
 	effects := cloneNativeEffectFacts(loaded.effectFacts)
 	if loaded.effectFacts != nil {
@@ -78,35 +82,156 @@ func RunSSA(
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	program.SetNoReturn(noReturns.predicate())
+	diagnostics := make([]rules.Diagnostic, 0)
+	mode := ssaMode(activeRules)
+	noReturn := noReturns.predicate()
+	filesByPackage := make(map[*packages.Package][]typedPackageFile, len(ssaInputs))
+	for _, file := range files {
+		filesByPackage[file.package_] = append(filesByPackage[file.package_], file)
+	}
+	sourceBytesByPackage, err := ssaPackageSourceBytes(ssaInputs, loaded.Sources)
+	if err != nil {
+		return nil, err
+	}
+	for _, wave := range ssaPackageWaves(ssaInputs, sourceBytesByPackage) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		produced, err := runSSAPackageWave(
+			ctx,
+			wave,
+			filesByPackage,
+			activeRules,
+			mode,
+			noReturn,
+			effects,
+		)
+		if err != nil {
+			return nil, err
+		}
+		diagnostics = append(diagnostics, produced...)
+	}
+	return OrderDiagnostics(diagnostics), nil
+}
+
+func ssaPackageSourceBytes(
+	packages_ []*packages.Package,
+	sources PackageSourceSet,
+) (map[*packages.Package]int64, error) {
+	result := make(map[*packages.Package]int64, len(packages_))
+	for _, pkg := range packages_ {
+		seen := make(map[string]struct{}, len(pkg.CompiledGoFiles))
+		for _, path := range pkg.CompiledGoFiles {
+			if _, found := seen[path]; found {
+				continue
+			}
+			seen[path] = struct{}{}
+			file, found := sources.Lookup(path)
+			if !found || file == nil {
+				return nil, fmt.Errorf(
+					"SSA package %q compiled source %q is unavailable",
+					pkg.ID,
+					path,
+				)
+			}
+			result[pkg] += file.ByteSize()
+		}
+	}
+	return result, nil
+}
+
+func ssaPackageWaves(
+	packages_ []*packages.Package,
+	sourceBytes map[*packages.Package]int64,
+) [][]*packages.Package {
+	waves := make([][]*packages.Package, 0)
+	wave := make([]*packages.Package, 0, min(len(packages_), maximumSSAPackagesPerProgram))
+	var waveBytes int64
+	flush := func() {
+		if len(wave) == 0 {
+			return
+		}
+		waves = append(waves, slices.Clone(wave))
+		wave = wave[:0]
+		waveBytes = 0
+	}
+	for _, pkg := range packages_ {
+		packageBytes := sourceBytes[pkg]
+		if len(wave) > 0 &&
+			(len(wave) >= maximumSSAPackagesPerProgram ||
+				waveBytes > maximumSSAPackageWaveSourceBytes - packageBytes) {
+			flush()
+		}
+		wave = append(wave, pkg)
+		waveBytes += packageBytes
+	}
+	flush()
+	return waves
+}
+
+func runSSAPackageWave(
+	ctx context.Context,
+	packages_ []*packages.Package,
+	filesByPackage map[*packages.Package][]typedPackageFile,
+	activeRules []activeSSARule,
+	mode ssa.BuilderMode,
+	noReturn func(*types.Func) bool,
+	effects *nativeEffectFacts,
+) ([]rules.Diagnostic, error) {
+	program, ssaPackages := ssautil.Packages(packages_, mode)
+	if len(ssaPackages) != len(packages_) {
+		return nil, fmt.Errorf(
+			"SSA package wave returned %d packages, want %d",
+			len(ssaPackages),
+			len(packages_),
+		)
+	}
+	program.SetNoReturn(noReturn)
 	program.Build()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	ssaByPackage := make(map[*packages.Package]*ssa.Package, len(ssaInputs))
-	for index, pkg := range ssaInputs {
-		ssaByPackage[pkg] = ssaPackages[index]
-	}
-	functionsByPackage := make(map[*ssa.Package]map[ast.Node]*ssa.Function)
 	diagnostics := make([]rules.Diagnostic, 0)
-	for _, work := range files {
-		if err := ctx.Err(); err != nil {
+	for index, pkg := range packages_ {
+		ssaPackage := ssaPackages[index]
+		if ssaPackage == nil {
+			return nil, fmt.Errorf("well-typed package %q has no SSA package", pkg.ID)
+		}
+		produced, err := runSSAProgramPackage(
+			ctx,
+			pkg,
+			ssaPackage,
+			program,
+			filesByPackage[pkg],
+			activeRules,
+			effects,
+		)
+		if err != nil {
 			return nil, err
 		}
-		pkg, file := work.package_, work.file
+		diagnostics = append(diagnostics, produced...)
+	}
+	return diagnostics, nil
+}
+
+func runSSAProgramPackage(
+	ctx context.Context,
+	pkg *packages.Package,
+	ssaPackage *ssa.Package,
+	program *ssa.Program,
+	files []typedPackageFile,
+	activeRules []activeSSARule,
+	effects *nativeEffectFacts,
+) ([]rules.Diagnostic, error) {
+	functionMap := sourceSSAFunctions(program, ssaPackage, pkg)
+	statistics := statisticsFromContext(ctx)
+	diagnostics := make([]rules.Diagnostic, 0)
+	for _, work := range files {
+		file := work.file
 		if pkg.IllTyped ||
 			(file.source.Metadata().Generated &&
 				!anySSARuleRunsGenerated(activeRules)) {
 			continue
-		}
-		ssaPackage := ssaByPackage[pkg]
-		if ssaPackage == nil {
-			return nil, fmt.Errorf("well-typed package %q has no SSA package", pkg.ID)
-		}
-		functionMap, found := functionsByPackage[ssaPackage]
-		if !found {
-			functionMap = sourceSSAFunctions(program, ssaPackage, pkg)
-			functionsByPackage[ssaPackage] = functionMap
 		}
 		typesContexts := make(map[string]*rules.TypesContext, len(activeRules))
 		for _, active := range activeRules {
@@ -176,7 +301,7 @@ func RunSSA(
 			}
 		}
 	}
-	return OrderDiagnostics(diagnostics), nil
+	return diagnostics, nil
 }
 
 func ssaMode(activeRules []activeSSARule) ssa.BuilderMode {

@@ -3,8 +3,10 @@ package analysis_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/types"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -173,6 +175,97 @@ func (owner) method() {}
 	for start, values := range functions {
 		if len(values) != 2 || values[0] != values[1] {
 			t.Fatalf("function at %d received SSA functions %#v", start, values)
+		}
+	}
+}
+
+func TestRunSSABoundsProgramsByPackageWave(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	packageNames := make([]string, 65)
+	for index := range packageNames {
+		packageNames[index] = fmt.Sprintf("p%02d", index)
+		packageName := packageNames[index]
+		directory := filepath.Join(root, packageName)
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeTypesFixture(
+			t,
+			filepath.Join(directory, packageName + ".go"),
+			"package " + packageName + "\n\nfunc first() {}\nfunc second() {}\n",
+		)
+	}
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"./..."},
+			Requirement: rules.RequireSSA,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	programs := make(map[string]*ssa.Program)
+	visits := make(map[string]int)
+	rule := ssaRule{
+		metadata: ssaMetadata("package-scoped-ssa"),
+		run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
+			path := ctx.Package().Path()
+			if ctx.Program().Package(ctx.Package()) != ctx.SSAPackage() {
+				t.Fatalf("package %q is not owned by its SSA program", path)
+			}
+			if previous := programs[path];
+				previous != nil && previous != ctx.Program() {
+				t.Fatalf("package %q received multiple SSA programs", path)
+			}
+			programs[path] = ctx.Program()
+			visits[path]++
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunSSA(context.Background(), loaded, registry, selection);
+		err != nil {
+		t.Fatal(err)
+	}
+	if len(programs) != len(packageNames) {
+		t.Fatalf("SSA programs = %#v, want %d packages", programs, len(packageNames))
+	}
+	first := programs["example.com/project/p00"]
+	last := programs["example.com/project/p64"]
+	if first == nil || last == nil || first == last {
+		t.Fatalf("SSA programs = %#v, want a new program after one bounded wave", programs)
+	}
+	for _, packageName := range packageNames[:64] {
+		path := "example.com/project/" + packageName
+		if programs[path] != first {
+			t.Fatalf(
+				"package %q received program %p, want %p",
+				path,
+				programs[path],
+				first,
+			)
+		}
+	}
+	for path, count := range visits {
+		if count != 2 {
+			t.Fatalf("package %q visits = %d, want 2", path, count)
 		}
 	}
 }

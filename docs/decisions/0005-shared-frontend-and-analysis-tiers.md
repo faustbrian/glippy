@@ -117,12 +117,18 @@ those contracts require SSA or a later reviewed control-flow extension.
 Native SSA-tier rules do not declare node interests or run on ill-typed
 packages. The SSA runner filters the selected roots to well-typed packages
 containing at least one physical source eligible for an enabled SSA rule, then
-uses `ssautil.Packages` to build one run-owned program. Dependencies receive
-type-backed package shells without speculative body construction. Each source
-function declaration and literal maps to its package's built `ssa.Function`;
-package initializer closures and methods are included, while synthetic wrappers
-and range-over-function helpers are not separate callbacks. Rules share the
-program, package, function, typed values, and exact source without mutation.
+uses `ssautil.Packages` to build one bounded package-wave program at a time. A
+wave admits at most 64 selected packages and 8 MiB of compiled root source,
+deduplicated within each package and conservatively charged again for each
+selected test variant; one oversized package remains eligible alone.
+Dependencies receive type-backed package shells without speculative body
+construction. Each source function declaration and literal maps to its
+package's built `ssa.Function`; package initializer closures and methods are
+included, while synthetic wrappers and range-over-function helpers are not
+separate callbacks. Rules share the program, package, function, typed values,
+and exact source within the wave without mutation. Shared effect summaries are
+completed before the first wave, and the previous wave program becomes
+unreachable before the next is constructed.
 
 When tests are enabled, `go/packages` may expose one production file through
 both its ordinary package and an augmented test variant. Glippy analyzes that

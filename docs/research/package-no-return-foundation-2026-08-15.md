@@ -48,6 +48,11 @@ Glippy's one shared multi-package SSA program. Its summaries are completed
 deterministically before the potentially parallel SSA build, so the installed
 predicate is an immutable snapshot.
 
+The v0.5 memory-aware SSA-wave follow-up preserves that immutable snapshot but
+installs it into one bounded root-package wave at a time. The unbounded
+multi-package lifetime described above is the historical boundary at this
+decision's original checkpoint.
+
 ## Evidence And Cost
 
 The direct CFG regression initially showed `target` reachable after both a
