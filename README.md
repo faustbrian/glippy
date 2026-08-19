@@ -152,15 +152,26 @@ wait for the matching analysis; a later edit rejects the queued request as
 content-modified instead of applying stale state.
 
 Typed workspace analysis retains at most eight validated package results per
-session within a deterministic 256 MiB accounted-memory budget. Format-capable
+session within a deterministic 128 MiB accounted-memory budget. Format-capable
 source is charged at sixteen times its exact bytes and compact dependency source
 at twice its bytes; this is a stable eviction weight, not an operating-system
 RSS measurement. An edit reloads its package and open reverse dependants while
 unaffected packages reuse their exact prior result against the current complete
 overlay. Captured disk sources, Go-file directory membership, module/workspace
 control files, baselines, configuration identity, and document digests all
-invalidate reuse. This removes unrelated package loads; it does not yet retain
-or incrementally update the changed package's `go/types`, CFG, or SSA graph.
+invalidate reuse. A separate eight-entry, 128 MiB typed graph session retains
+compact dependency types without dependency syntax or type-value maps. For a
+clean single non-test package whose imports, dependency overlays, source
+membership, build selection, and project controls remain compatible, Glippy
+reparses and re-typechecks the complete changed root without invoking the
+primary package loader, then rebuilds required CFG and SSA state. This applies
+to nested packages as well as a package at the project root; mutable local
+dependency source and module control, including local replacements outside that
+root, are checked before reuse. Uncertain graphs, new imports, changed
+dependencies, cgo-generated sources, test variants, parse or type errors, and
+external file notifications fall back to a complete load. The ordinary
+aggregate retained weight is therefore 256 MiB; it remains a deterministic
+eviction model rather than an RSS promise.
 
 `glippy init` creates a starter `.glippy.toml` without overwriting an existing
 path. The `default`, `recommended`, `strict`, and `pedantic` profiles provide

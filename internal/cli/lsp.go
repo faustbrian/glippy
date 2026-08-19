@@ -33,7 +33,7 @@ const lintRuleDocumentationURL = "https://github.com/faustbrian/gox/blob/main/do
 
 const maximumLSPWorkspacePackageEntries = 8
 
-const maximumLSPWorkspaceAccountedBytes int64 = 256 << 20
+const maximumLSPWorkspaceAccountedBytes int64 = 128 << 20
 
 const maximumLSPWorkspaceChangedFiles = 4096
 
@@ -99,12 +99,23 @@ type lspBackend struct {
 	workspaceChangesMu sync.Mutex
 	workspaceChangedFiles map[string]struct{}
 	workspaceInvalidateAll bool
+	packageSessionMu sync.Mutex
+	packageSession *analysis.PackageSession
 	runPackageAnalysis func(
 		context.Context,
 		*rules.Registry,
 		lintPackageTask,
 		map[string][]byte,
 	) (analysis.PackageResult, error)
+}
+
+func (b *lspBackend) typedPackageSession() *analysis.PackageSession {
+	b.packageSessionMu.Lock()
+	defer b.packageSessionMu.Unlock()
+	if b.packageSession == nil {
+		b.packageSession = analysis.NewPackageSession()
+	}
+	return b.packageSession
 }
 
 func parseLSPInvocation(arguments []string) (lspInvocation, bool) {
@@ -438,6 +449,7 @@ func (b *lspBackend) WorkspaceFilesChanged(ctx context.Context, paths []string) 
 			return fmt.Errorf("workspace file path %q is not absolute and clean", path)
 		}
 	}
+	b.typedPackageSession().InvalidateAll()
 	b.workspaceChangesMu.Lock()
 	defer b.workspaceChangesMu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -799,6 +811,7 @@ func (b *lspBackend) analyzePackage(
 	task lintPackageTask,
 	overlay map[string][]byte,
 ) (analysis.PackageResult, error) {
+	task.options.analysis.PackageSession = b.typedPackageSession()
 	if b.runPackageAnalysis != nil {
 		return b.runPackageAnalysis(ctx, b.registry, task, overlay)
 	}
@@ -863,6 +876,7 @@ func (b *lspBackend) analyzeWorkspaceDocument(
 		patterns: []string{"file=" + document.Path},
 		options: task.options,
 	}
+	packageTask.options.analysis.PackageSession = b.typedPackageSession()
 	overlay, err := editorWorkspaceOverlay(task.root, document, documents)
 	if err != nil {
 		return lsp.Analysis{}, err

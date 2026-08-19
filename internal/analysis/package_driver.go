@@ -112,7 +112,7 @@ func RunPackages(
 	}
 	statistics := statisticsFromContext(ctx)
 	loadStarted := beginStatisticsMeasurement(statistics)
-	loaded, err := LoadPackages(ctx, loadOptions)
+	loaded, err := options.PackageSession.load(ctx, options.SourceGoVersion, loadOptions)
 	if err != nil {
 		return result, err
 	}

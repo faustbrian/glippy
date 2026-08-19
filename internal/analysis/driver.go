@@ -34,6 +34,7 @@ type RunOptions struct {
 	Cache *PackageCacheOptions
 	Statistics *Statistics
 	Profiler PhaseProfiler
+	PackageSession *PackageSession
 }
 
 // Result is one reporter-ready syntax analysis result over one source version.

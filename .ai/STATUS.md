@@ -10,6 +10,7 @@
 - v0.5 workspace file notifications: complete
 - v0.5 memory-aware workspace-result eviction: complete
 - v0.5 graph-first workspace invalidation: complete
+- v0.5 same-package incremental typed analysis: complete
 - v0.5 curated strictness profiles: complete
 - v0.5 transaction state transition: complete
 - v0.5 channel state transition: complete
@@ -1821,3 +1822,28 @@ package; opening a dependency still reloads its known consumer. This does not
 retain or incrementally update the changed package's `go/types`, CFG, SSA, or
 effect graph. Same-package typed graph reuse, metadata-only graph discovery,
 memory-aware worker scheduling, and portable budgets remain active v0.5 work.
+
+The v0.5 same-package typed-session batch now reparses and re-typechecks a
+changed clean package, including one nested beneath the project root, from
+retained compact dependency types instead of invoking the primary `go/packages`
+loader again. The session reconstructs fresh AST and `go/types.Info` state from
+the complete exact overlay, then rebuilds
+selected CFG, SSA, native effects, diagnostics, suppressions, baselines, and
+code-action state through the existing engines. Clean-analysis comparison
+proves identical self-assignment diagnostics, while dedicated regressions prove
+fresh CFG and SSA findings. Active and ignored root and mutable local dependency
+source plus module control are revalidated even when a local replacement
+resides outside the selected project root. File notifications invalidate
+retained graphs without waiting for an active load. A newly required import,
+changed dependency overlay, source-membership or build-constraint change,
+project-control change, cgo-generated source, test variant, parse/type failure,
+or uncertain graph identity falls back to the complete loader. Workspace file
+notifications invalidate retained typed graphs before analysis. The result
+cache and typed graph session now use
+separate 128 MiB stable weights, keeping their ordinary aggregate retained
+budget at 256 MiB; neither weight claims process RSS. A ten-edit owned probe
+performed zero full primary loads, one incremental load per operation, and
+measured 368-484 microseconds per edit on Darwin arm64. Multi-variant test
+package re-typechecking, incrementally admitted imports, metadata-only graph
+discovery, memory-aware worker scheduling, and portable budgets remain active
+v0.5 work.

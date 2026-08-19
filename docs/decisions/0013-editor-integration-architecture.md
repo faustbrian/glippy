@@ -178,7 +178,7 @@ The retained package graph identifies the directly affected package and open
 reverse dependants. Unrelated package results remain reusable, including when a
 notification reports unchanged bytes, while editor overlays remain
 authoritative. Retained results are now bounded by both eight entries and a
-deterministic 256 MiB accounted-memory budget. Fully indexed source is charged
+deterministic 128 MiB accounted-memory budget. Fully indexed source is charged
 at sixteen times its exact bytes and compact dependency source at twice its
 bytes, based on the distinct retention classes observed in the typed-memory
 profile. This is an eviction weight rather than a process RSS claim. The newest
@@ -195,3 +195,23 @@ dependency invalidates retained reverse dependants. Failed or unidentified
 graphs preserve the conservative root-wide fallback. This changes scheduling,
 not analysis identity: same-package edits still rebuild their complete typed
 representations, and metadata-only graph discovery remains future work.
+
+The next retained-state boundary incrementally re-typechecks compatible
+same-package overlay edits. Each eligible entry keeps compact dependency package
+types but discards dependency syntax and type-value maps. A changed root is
+reparsed in full into a fresh file set, rechecked through `go/types`, and then
+passed through the ordinary CFG, SSA, effect, suppression, baseline, and action
+pipelines. Result retention and typed-graph retention each use an eight-entry,
+128 MiB stable weight, preserving a 256 MiB ordinary aggregate session budget.
+Nested packages use the same path. Mutable local dependency source and module
+control are revalidated before reuse, including local module replacements
+outside the selected project root, while immutable toolchain and module-cache
+inputs avoid per-edit source polling. File notifications discard retained
+graphs without waiting for a package load to finish.
+
+The service falls back to the standard package loader for test variants,
+cgo-generated sources, new imports, dependency overlays, file notifications,
+source-membership, build-constraint, or project-control changes, parse/type
+failures, and every uncertain graph. This conservative fallback is part of the
+editor correctness contract. Incremental support for those cases requires
+separate evidence; it is not inferred from successful root type checking.
