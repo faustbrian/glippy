@@ -744,6 +744,151 @@ func TestLSPWorkspaceReusesUnaffectedPackageAcrossDocumentSnapshots(t *testing.T
 	}
 }
 
+func TestLSPWorkspaceOpeningUnrelatedPackageReusesKnownEntry(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	leftPath := filepath.Join(root, "left", "left.go")
+	rightPath := filepath.Join(root, "right", "right.go")
+	if err := os.MkdirAll(filepath.Dir(leftPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(rightPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	left := "package left\n\nfunc Value() int { return 1 }\n"
+	right := "package right\n\nfunc Value() int { return 2 }\n"
+	writeChangedCLIFile(t, leftPath, left)
+	writeChangedCLIFile(t, rightPath, right)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := make(map[string]int)
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			runs[task.patterns[0]]++
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+	}
+	leftDocument := lsp.Document{
+		URI: "file://" + filepath.ToSlash(leftPath),
+		Path: leftPath,
+		Version: 1,
+		Text: []byte(left),
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{leftDocument});
+		err != nil {
+		t.Fatal(err)
+	}
+	rightDocument := lsp.Document{
+		URI: "file://" + filepath.ToSlash(rightPath),
+		Path: rightPath,
+		Version: 1,
+		Text: []byte(right),
+	}
+	if _, err := backend.AnalyzeWorkspace(
+		context.Background(),
+		[]lsp.Document{leftDocument, rightDocument},
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	leftPattern := "file=" + leftPath
+	rightPattern := "file=" + rightPath
+	if runs[leftPattern] != 1 || runs[rightPattern] != 1 {
+		t.Fatalf(
+			"package runs = %#v, want known left reused and new right loaded once",
+			runs,
+		)
+	}
+}
+
+func TestLSPWorkspaceOpeningDependencyInvalidatesKnownReverseDependant(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	dependencyPath := filepath.Join(root, "dependency", "dependency.go")
+	consumerPath := filepath.Join(root, "consumer", "consumer.go")
+	if err := os.MkdirAll(filepath.Dir(dependencyPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(consumerPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dependency := "package dependency\n\nfunc Value() int { return 1 }\n"
+	consumer := "package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc Value() int { return dependency.Value() }\n"
+	writeChangedCLIFile(t, dependencyPath, dependency)
+	writeChangedCLIFile(t, consumerPath, consumer)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := make(map[string]int)
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			runs[task.patterns[0]]++
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+	}
+	consumerDocument := lsp.Document{
+		URI: "file://" + filepath.ToSlash(consumerPath),
+		Path: consumerPath,
+		Version: 1,
+		Text: []byte(consumer),
+	}
+	if _, err := backend.AnalyzeWorkspace(
+		context.Background(),
+		[]lsp.Document{consumerDocument},
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	dependencyDocument := lsp.Document{
+		URI: "file://" + filepath.ToSlash(dependencyPath),
+		Path: dependencyPath,
+		Version: 1,
+		Text: []byte(dependency),
+	}
+	if _, err := backend.AnalyzeWorkspace(
+		context.Background(),
+		[]lsp.Document{consumerDocument, dependencyDocument},
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	consumerPattern := "file=" + consumerPath
+	dependencyPattern := "file=" + dependencyPath
+	if runs[consumerPattern] != 2 || runs[dependencyPattern] != 1 {
+		t.Fatalf(
+			"package runs = %#v, want new dependency to invalidate known consumer",
+			runs,
+		)
+	}
+}
+
 func TestLSPWorkspaceInvalidatesReverseDependentPackage(t *testing.T) {
 	t.Parallel()
 

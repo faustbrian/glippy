@@ -267,10 +267,7 @@ func (b *lspBackend) AnalyzeWorkspace(
 		err error
 	}
 	overlays := make(map[string]workspaceOverlay)
-	for _, group := range orderedGroups {
-		if contextErr := ctx.Err(); contextErr != nil {
-			return nil, contextErr
-		}
+	prepareGroup := func(group lspPackageGroup) (lintPackageTask, map[string][]byte, error) {
 		patterns := make([]string, 0, len(group.members))
 		for _, index := range group.members {
 			patterns = append(patterns, "file=" + documents[index].Path)
@@ -291,7 +288,51 @@ func (b *lspBackend) AnalyzeWorkspace(
 			)
 			overlays[group.task.root] = resolved
 		}
-		overlay, err := resolved.files, resolved.err
+		return packageTask, resolved.files, resolved.err
+	}
+	type packageAttempt struct {
+		result analysis.PackageResult
+		err error
+	}
+	attempts := make(map[lspPackageGroupKey]packageAttempt)
+	// Analyze cache misses before making reuse decisions. Their authoritative
+	// package paths can then invalidate only actual reverse dependants instead
+	// of every retained result under the workspace root.
+	for _, group := range orderedGroups {
+		if _, cached := b.workspace.entries[group.key]; cached {
+			continue
+		}
+		if contextErr := ctx.Err(); contextErr != nil {
+			return nil, contextErr
+		}
+		packageTask, overlay, packageErr := prepareGroup(group)
+		var packageResult analysis.PackageResult
+		if packageErr == nil {
+			packageResult, packageErr = b.analyzePackageSnapshot(
+				ctx,
+				packageTask,
+				overlay,
+			)
+		}
+		attempts[group.key] = packageAttempt{result: packageResult, err: packageErr}
+		if packageErr != nil || len(packageResult.RootPackagePaths) == 0 {
+			invalidateRoots[group.key.root] = true
+			continue
+		}
+		paths := invalidatedPackages[group.key.root]
+		if paths == nil {
+			paths = make(map[string]struct{})
+			invalidatedPackages[group.key.root] = paths
+		}
+		for _, path := range packageResult.RootPackagePaths {
+			paths[path] = struct{}{}
+		}
+	}
+	for _, group := range orderedGroups {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return nil, contextErr
+		}
+		packageTask, overlay, err := prepareGroup(group)
 		if err == nil {
 			entry, cached := b.workspace.entries[group.key]
 			reused := cached &&
@@ -303,22 +344,15 @@ func (b *lspBackend) AnalyzeWorkspace(
 				)
 			packageResult := entry.result
 			var packageErr error
-			if !reused {
-				packageResult, packageErr = b.analyzePackage(
+			if attempt, found := attempts[group.key]; found {
+				packageResult = attempt.result
+				packageErr = attempt.err
+			} else if !reused {
+				packageResult, packageErr = b.analyzePackageSnapshot(
 					ctx,
 					packageTask,
 					overlay,
 				)
-				if packageErr == nil {
-					packageErr = applyConfiguredPackageBaseline(
-						packageTask,
-						&packageResult,
-						b.registry,
-					)
-				}
-				if packageErr == nil {
-					packageErr = validateLintPackagePrerequisites(packageResult)
-				}
 			}
 			if packageErr != nil {
 				err = packageErr
@@ -588,7 +622,6 @@ func lspWorkspaceInvalidation(
 		current[group.key] = group
 		entry, found := previous[group.key]
 		if !found {
-			invalidateRoots[group.key.root] = true
 			continue
 		}
 		if !equalLSPDocumentDigests(entry.documents, group.documents) ||
@@ -770,6 +803,24 @@ func (b *lspBackend) analyzePackage(
 		return b.runPackageAnalysis(ctx, b.registry, task, overlay)
 	}
 	return runPackageAnalysisWithOverlay(ctx, b.registry, task, overlay)
+}
+
+func (b *lspBackend) analyzePackageSnapshot(
+	ctx context.Context,
+	task lintPackageTask,
+	overlay map[string][]byte,
+) (analysis.PackageResult, error) {
+	result, err := b.analyzePackage(ctx, task, overlay)
+	if err != nil {
+		return analysis.PackageResult{}, err
+	}
+	if err := applyConfiguredPackageBaseline(task, &result, b.registry); err != nil {
+		return analysis.PackageResult{}, err
+	}
+	if err := validateLintPackagePrerequisites(result); err != nil {
+		return analysis.PackageResult{}, err
+	}
+	return result, nil
 }
 
 func (b *lspBackend) analyzeWorkspaceDocument(

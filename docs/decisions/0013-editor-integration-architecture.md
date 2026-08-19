@@ -185,3 +185,13 @@ profile. This is an eviction weight rather than a process RSS claim. The newest
 oversized entry remains available alone; older entries cannot accumulate around
 it. Same-package incremental type checking and persistent typed graphs remain
 separate later decisions.
+
+Previously, opening a package group without a retained result invalidated every
+cached package beneath the same workspace root because the new import identity
+was not yet known. The session now analyzes cache-miss groups first and uses
+their validated root package paths for the subsequent reuse decision. An
+unrelated new package leaves known results reusable, while a newly opened
+dependency invalidates retained reverse dependants. Failed or unidentified
+graphs preserve the conservative root-wide fallback. This changes scheduling,
+not analysis identity: same-package edits still rebuild their complete typed
+representations, and metadata-only graph discovery remains future work.

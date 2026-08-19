@@ -9,6 +9,7 @@
 - v0.5 superseded editor analysis cancellation: complete
 - v0.5 workspace file notifications: complete
 - v0.5 memory-aware workspace-result eviction: complete
+- v0.5 graph-first workspace invalidation: complete
 - v0.5 curated strictness profiles: complete
 - v0.5 transaction state transition: complete
 - v0.5 channel state transition: complete
@@ -1809,3 +1810,14 @@ warm. All three samples preserve normalized diagnostic SHA-256
 `030f4474aec74877307118376e77e8ad7254a46c32777242fd11e3223c7282d0` and
 pass the durable 2 GiB/40-second reference-host gate. Portable typed budgets
 still require native Linux and final-candidate macOS evidence.
+
+The v0.5 graph-first workspace batch removes project-wide invalidation when an
+editor opens a package that has no retained result. Glippy analyzes each new
+package group before making cache-reuse decisions, uses the exact returned root
+package paths to invalidate only retained reverse dependants, and falls back to
+root-wide invalidation when the new graph cannot be validated. Opening an
+unrelated package now performs one new package analysis while reusing the known
+package; opening a dependency still reloads its known consumer. This does not
+retain or incrementally update the changed package's `go/types`, CFG, SSA, or
+effect graph. Same-package typed graph reuse, metadata-only graph discovery,
+memory-aware worker scheduling, and portable budgets remain active v0.5 work.
