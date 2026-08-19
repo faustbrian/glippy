@@ -38,6 +38,12 @@ jobs:
           repository: faustbrian/golib
           ref: f28f85133ac6d13169745807fc39e2d5ef6bf780
           path: corpus
+      - name: Check out immutable typed corpus
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: sqlc-dev/sqlc
+          ref: 8a7cddfbb9088666eb981645285d7699e71dcb54
+          path: typed-corpus
       - name: Install the recorded Go toolchain
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
@@ -53,6 +59,11 @@ jobs:
           GLIPPY_PEAK_RSS_FORMAT_REVISION: f28f85133ac6d13169745807fc39e2d5ef6bf780
           GLIPPY_PEAK_RSS_FORMAT_ROOT: ${{ github.workspace }}/corpus
           GLIPPY_PEAK_RSS_RUNS: "5"
+          GLIPPY_PEAK_RSS_TYPED_BUDGET_BYTES: "2147483648"
+          GLIPPY_PEAK_RSS_TYPED_BUDGET_SECONDS: "40"
+          GLIPPY_PEAK_RSS_TYPED_OUTPUT_SHA256: ${{ matrix.goos == 'darwin' && matrix.goarch == 'arm64' && '030f4474aec74877307118376e77e8ad7254a46c32777242fd11e3223c7282d0' || '' }}
+          GLIPPY_PEAK_RSS_TYPED_REVISION: 8a7cddfbb9088666eb981645285d7699e71dcb54
+          GLIPPY_PEAK_RSS_TYPED_ROOT: ${{ github.workspace }}/typed-corpus
           GLIPPY_RELEASE_EXPECTED_GOARCH: ${{ matrix.goarch }}
           GLIPPY_RELEASE_EXPECTED_GOOS: ${{ matrix.goos }}
           GLIPPY_RELEASE_GLIPPY_REVISION: ${{ github.sha }}

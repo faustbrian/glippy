@@ -1900,3 +1900,12 @@ fixed 4/8/16-package studies still traded about 8-19% latency for noisy memory
 movement. The accepted adaptive boundary leaves this repository in one wave
 while bounding larger inputs. This is a deterministic lifetime contract, not a
 portable RSS claim; x/tools exposes no supported per-function build boundary.
+
+The v0.5 portable typed-budget preparation now binds the existing four-runner
+native macOS/Linux workflow to pinned sqlc revision
+`8a7cddfbb9088666eb981645285d7699e71dcb54`. Every runner will enforce the
+40-second and 2-GiB typed ceilings, while Darwin arm64 additionally requires the
+known normalized diagnostic digest. This prepares portable evidence but does
+not establish it: the workflow has not run against this revision, and no Linux
+or cross-architecture v0.5 budget claim is complete until its retained evidence
+is reviewed.

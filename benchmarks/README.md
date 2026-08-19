@@ -552,6 +552,15 @@ assertion. Its existence is not evidence that the four jobs passed; the
 recorded run URL, job conclusions, runner image versions, and raw artifacts
 remain required before the provisional limits become stable release budgets.
 
+The v0.5 workflow also checks out `sqlc-dev/sqlc` at
+`8a7cddfbb9088666eb981645285d7699e71dcb54` and runs the default correctness
+policy plus `-Wsuspicious` within a 40-second and 2-GiB ceiling on every native
+runner. Darwin arm64 additionally binds the known normalized diagnostic digest;
+the other native targets intentionally retain their raw result until a first
+four-runner campaign establishes whether build-selected findings are identical.
+Configured portable limits remain provisional until that campaign passes and
+its evidence is reviewed against the exact Glippy revision.
+
 The first native run, [`31611144933`](https://github.com/faustbrian/glippy/actions/runs/31611144933),
 rejected the original 15-second maximum. Its first repository-scale samples
 completed in 17.370 seconds on Linux arm64, 20.470 seconds on Linux amd64,
