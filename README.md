@@ -161,19 +161,21 @@ overlay. Captured disk sources, Go-file directory membership, module/workspace
 control files, baselines, configuration identity, and document digests all
 invalidate reuse. A separate eight-entry, 128 MiB typed graph session retains
 compact dependency types without dependency syntax or type-value maps. For a
-clean single non-test package whose imports, dependency overlays, source
-membership, build selection, and project controls remain compatible, Glippy
-reparses and re-typechecks the complete changed root without invoking the
-primary package loader, then rebuilds required CFG and SSA state. This applies
-to nested packages as well as a package at the project root; mutable local
-dependency source and module control, including local replacements outside that
-root, are checked before reuse. Newly direct imports already present in the
-retained graph are admitted without a full load. Uncertain graphs, imports
-absent from that graph, changed dependencies, cgo-generated sources, test
-variants, parse or type errors, and external file notifications fall back to a
-complete load. The ordinary
-aggregate retained weight is therefore 256 MiB; it remains a deterministic
-eviction model rather than an RSS promise.
+clean package or coherent base, internal-test, and external-test package family
+whose imports, dependency overlays, source membership, build selection, and
+project controls remain compatible, Glippy reparses and re-typechecks every
+retained variant without invoking the primary package loader, then rebuilds
+required CFG and SSA state. External tests bind to the freshly checked internal
+variant rather than stale retained types. This applies to nested packages as
+well as a package at the project root; mutable local dependency source and
+module control, including local replacements outside that root, are checked
+before reuse. Newly direct imports already present in the retained graph are
+admitted without a full load. Uncertain or malformed test package families,
+imports absent from that graph, changed dependencies, cgo-generated sources,
+changed build selection, parse or type errors, and external file notifications
+fall back to a complete load. The ordinary aggregate retained weight is
+therefore 256 MiB; it remains a deterministic eviction model rather than an RSS
+promise.
 
 `glippy init` creates a starter `.glippy.toml` without overwriting an existing
 path. The `default`, `recommended`, `strict`, and `pedantic` profiles provide

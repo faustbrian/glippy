@@ -11,6 +11,7 @@
 - v0.5 memory-aware workspace-result eviction: complete
 - v0.5 graph-first workspace invalidation: complete
 - v0.5 same-package incremental typed analysis: complete
+- v0.5 test-package incremental typed analysis: complete
 - v0.5 curated strictness profiles: complete
 - v0.5 transaction state transition: complete
 - v0.5 channel state transition: complete
@@ -1838,14 +1839,27 @@ retained graphs without waiting for an active load. A newly direct import is
 admitted when its exact package is already retained and Go visibility permits
 it. An import absent from that graph, changed dependency overlay,
 source-membership or build-constraint change, project-control change,
-cgo-generated source, test variant, parse/type failure, or uncertain graph
+cgo-generated source, parse/type failure, or uncertain graph
 identity falls back to the complete loader. Workspace file notifications
 invalidate retained typed graphs before analysis. The result cache and typed
 graph session now use
 separate 128 MiB stable weights, keeping their ordinary aggregate retained
 budget at 256 MiB; neither weight claims process RSS. A ten-edit owned probe
 performed zero full primary loads, one incremental load per operation, and
-measured 368-484 microseconds per edit on Darwin arm64. Multi-variant test
-package re-typechecking, imports absent from the retained graph, metadata-only
-graph discovery, memory-aware worker scheduling, and portable budgets remain
-active v0.5 work.
+measured 368-484 microseconds per edit on Darwin arm64. Imports absent from the
+retained graph, metadata-only package-graph discovery, memory-aware worker
+scheduling, and portable budgets remain active v0.5 work.
+
+The v0.5 test-package typed-session batch extends retained re-typechecking to
+coherent base, internal-test, and external-test package families and to isolated
+internal or external test roots. Families rebuild in dependency order, and an
+external test imports the freshly checked internal variant rather than stale
+retained types. Repeated external-test edits remain incremental instead of
+degrading after one reuse. Root source is deduplicated across variants, retained
+weights are recomputed after each edit, and malformed families or generated
+compiled roots are rejected. Changed test build constraints, dependency
+overlays, source membership, and uncertain identities still use the complete
+loader. Focused clean-load comparison and internal/external buffer regressions
+pass; no new latency or RSS claim is made. Imports absent from the retained
+graph, metadata-only graph discovery, memory-aware worker scheduling, and
+portable budgets remain active v0.5 work.

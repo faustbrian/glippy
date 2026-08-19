@@ -40,9 +40,14 @@ type PackageSessionStatistics struct {
 
 type packageSessionKey [sha256.Size]byte
 
-type packageSessionEntry struct {
+type packageSessionVariant struct {
 	root packages.Package
 	availableImports map[string]*packages.Package
+	rootFiles map[string]struct{}
+}
+
+type packageSessionEntry struct {
+	variants []packageSessionVariant
 	effectFacts *nativeEffectFacts
 	rootFiles map[string]struct{}
 	rootBuildConstraints map[string][]packageSessionBuildConstraint
@@ -51,7 +56,7 @@ type packageSessionEntry struct {
 	dependencyDirs map[string]struct{}
 	dependencyInputs map[string]packageSessionFileIdentity
 	dependencyNames map[string][]string
-	directoryNames []string
+	directoryNames map[string][]string
 	controlFiles map[string]packageSessionFileIdentity
 	accountedBytes int64
 	used uint64
@@ -141,7 +146,10 @@ func (s *PackageSession) load(
 				s.mu.Unlock()
 			} else {
 				s.mu.Unlock()
-				retained, retain := newPackageSessionEntry(loaded, options)
+				retained, retain := entry.refreshed(loaded, options.Dir)
+				if !retain {
+					retained, retain = newPackageSessionEntry(loaded, options)
+				}
 				s.mu.Lock()
 				if s.generation == generation {
 					s.statistics.IncrementalLoads++
@@ -282,52 +290,69 @@ func newPackageSessionEntry(
 	loaded PackageLoadResult,
 	options PackageLoadOptions,
 ) (packageSessionEntry, bool) {
-	if len(loaded.Packages) != 1 ||
-		len(loaded.Diagnostics) != 0 ||
-		len(loaded.Sources.problems) != 0 {
+	if len(loaded.Diagnostics) != 0 || len(loaded.Sources.problems) != 0 {
 		return packageSessionEntry{}, false
 	}
-	root := loaded.Packages[0]
-	if root == nil ||
-		root.ForTest != "" ||
-		root.IllTyped ||
-		root.Types == nil ||
-		root.TypesInfo == nil ||
-		root.TypesSizes == nil ||
-		root.Fset == nil ||
-		len(root.Errors) != 0 ||
-		len(root.TypeErrors) != 0 {
-		return packageSessionEntry{}, false
-	}
-	rootFiles := make(map[string]struct{}, len(root.GoFiles))
-	compiled := make(map[string]struct{}, len(root.CompiledGoFiles))
-	for _, path := range root.GoFiles {
-		path = filepath.Clean(path)
-		if !filepath.IsAbs(path) || filepath.Dir(path) != root.Dir {
-			return packageSessionEntry{}, false
-		}
-		rootFiles[path] = struct{}{}
-	}
-	for _, path := range root.CompiledGoFiles {
-		path = filepath.Clean(path)
-		if _, found := rootFiles[path]; !found {
-			return packageSessionEntry{}, false
-		}
-		compiled[path] = struct{}{}
-	}
-	if len(compiled) == 0 {
-		return packageSessionEntry{}, false
-	}
-	compactRoot, dependencyFiles, dependencyDirs, mutableDependencyFiles, mutableDependencyIgnoredFiles, mutableDependencyDirs, packageCount, ok := compactPackageSessionRoot(
-			root,
-			options.Dir,
-		)
+	roots, ok := packageSessionRootFamily(loaded.Packages)
 	if !ok {
 		return packageSessionEntry{}, false
 	}
-	availableImports, ok := packageSessionAvailableImports(&compactRoot)
-	if !ok {
+	rootFiles := make(map[string]struct{})
+	allRootFiles := make(map[string]struct{})
+	rootIgnoredFiles := make(map[string]struct{})
+	rootDirectories := make(map[string]struct{})
+	loadedNames := make(map[string]map[string]struct{})
+	familyDirectory := ""
+	for _, root := range roots {
+		if !validPackageSessionRoot(root) {
+			return packageSessionEntry{}, false
+		}
+		if familyDirectory == "" {
+			familyDirectory = root.Dir
+		} else if root.Dir != familyDirectory {
+			return packageSessionEntry{}, false
+		}
+		variantFiles := make(map[string]struct{}, len(root.GoFiles))
+		for _, path := range root.GoFiles {
+			path = filepath.Clean(path)
+			if !filepath.IsAbs(path) || filepath.Dir(path) != root.Dir {
+				return packageSessionEntry{}, false
+			}
+			variantFiles[path] = struct{}{}
+			rootFiles[path] = struct{}{}
+			allRootFiles[path] = struct{}{}
+		}
+		for _, path := range root.IgnoredFiles {
+			path = filepath.Clean(path)
+			if !filepath.IsAbs(path) || filepath.Dir(path) != root.Dir {
+				return packageSessionEntry{}, false
+			}
+			rootIgnoredFiles[path] = struct{}{}
+			allRootFiles[path] = struct{}{}
+		}
+		if len(root.CompiledGoFiles) == 0 {
+			return packageSessionEntry{}, false
+		}
+		for _, path := range root.CompiledGoFiles {
+			if _, found := variantFiles[filepath.Clean(path)]; !found {
+				return packageSessionEntry{}, false
+			}
+		}
+		rootDirectories[root.Dir] = struct{}{}
+		names := loadedNames[root.Dir]
+		if names == nil {
+			names = make(map[string]struct{})
+			loadedNames[root.Dir] = names
+		}
+		for _, name := range packageSessionLoadedGoNames(root) {
+			names[name] = struct{}{}
+		}
+	}
+	if !validPackageSessionVariantImports(roots) {
 		return packageSessionEntry{}, false
+	}
+	for path := range rootFiles {
+		delete(rootIgnoredFiles, path)
 	}
 	buildConstraints := make(map[string][]packageSessionBuildConstraint, len(rootFiles))
 	var accounted int64
@@ -343,22 +368,88 @@ func newPackageSessionEntry(
 		}
 		accounted += size * packageSessionSourceFactor
 	}
+	variants := make([]packageSessionVariant, 0, len(roots))
+	dependencyFiles := make(map[string]struct{})
+	dependencyDirs := make(map[string]struct{})
+	mutableDependencyFiles := make(map[string]struct{})
+	mutableDependencyIgnoredFiles := make(map[string]struct{})
+	mutableDependencyDirs := make(map[string][]string)
+	packageCount := 0
+	for _, root := range roots {
+		compactRoot, variantDependencyFiles, variantDependencyDirs, variantMutableFiles, variantMutableIgnoredFiles, variantMutableDirs, variantPackageCount, ok := compactPackageSessionRoot(
+				root,
+				options.Dir,
+			)
+		if !ok {
+			return packageSessionEntry{}, false
+		}
+		availableImports, ok := packageSessionAvailableImports(&compactRoot)
+		if !ok {
+			return packageSessionEntry{}, false
+		}
+		variantFiles := make(map[string]struct{}, len(root.GoFiles))
+		for _, path := range root.GoFiles {
+			variantFiles[filepath.Clean(path)] = struct{}{}
+		}
+		variants = append(
+			variants,
+			packageSessionVariant{
+				root: compactRoot,
+				availableImports: availableImports,
+				rootFiles: variantFiles,
+			},
+		)
+		mergePackageSessionSet(dependencyFiles, variantDependencyFiles)
+		mergePackageSessionSet(dependencyDirs, variantDependencyDirs)
+		mergePackageSessionSet(mutableDependencyFiles, variantMutableFiles)
+		mergePackageSessionSet(mutableDependencyIgnoredFiles, variantMutableIgnoredFiles)
+		if !mergePackageSessionNames(mutableDependencyDirs, variantMutableDirs) {
+			return packageSessionEntry{}, false
+		}
+		packageCount += variantPackageCount
+	}
 	if int64(packageCount) >
 		(maximumPackageSessionBytes - accounted) / packageSessionPackageWeight {
 		return packageSessionEntry{}, false
 	}
 	accounted += int64(packageCount) * packageSessionPackageWeight
-	directoryNames, err := packageSessionGoNames(root.Dir)
-	if err != nil || !slices.Equal(directoryNames, packageSessionLoadedGoNames(root)) {
-		return packageSessionEntry{}, false
+	for path := range allRootFiles {
+		delete(dependencyFiles, path)
+		delete(mutableDependencyFiles, path)
+		delete(mutableDependencyIgnoredFiles, path)
 	}
-	controlFiles, err := capturePackageSessionControlFiles(options.Dir, root.Dir)
-	if err != nil {
-		return packageSessionEntry{}, false
+	for directory := range rootDirectories {
+		names := loadedNames[directory]
+		for _, name := range mutableDependencyDirs[directory] {
+			names[name] = struct{}{}
+		}
+		delete(dependencyDirs, directory)
+		delete(mutableDependencyDirs, directory)
 	}
-	rootIgnoredInputs, err := capturePackageSessionFiles(root.Dir, root.IgnoredFiles)
-	if err != nil {
-		return packageSessionEntry{}, false
+	directoryNames := make(map[string][]string, len(rootDirectories))
+	controlFiles := make(map[string]packageSessionFileIdentity)
+	for directory := range rootDirectories {
+		current, err := packageSessionGoNames(directory)
+		if err != nil || !equalPackageSessionNameSet(current, loadedNames[directory]) {
+			return packageSessionEntry{}, false
+		}
+		directoryNames[directory] = current
+		controls, err := capturePackageSessionControlFiles(options.Dir, directory)
+		if err != nil || !mergePackageSessionFileIdentities(controlFiles, controls) {
+			return packageSessionEntry{}, false
+		}
+	}
+	ignoredByDirectory := make(map[string][]string)
+	for path := range rootIgnoredFiles {
+		directory := filepath.Dir(path)
+		ignoredByDirectory[directory] = append(ignoredByDirectory[directory], path)
+	}
+	rootIgnoredInputs := make(map[string]packageSessionFileIdentity)
+	for directory, paths := range ignoredByDirectory {
+		captured, err := capturePackageSessionFiles(directory, paths)
+		if err != nil || !mergePackageSessionFileIdentities(rootIgnoredInputs, captured) {
+			return packageSessionEntry{}, false
+		}
 	}
 	dependencyInputs, dependencyNames, err := capturePackageSessionDependencies(
 		loaded.Sources,
@@ -370,8 +461,7 @@ func newPackageSessionEntry(
 		return packageSessionEntry{}, false
 	}
 	return packageSessionEntry{
-		root: compactRoot,
-		availableImports: availableImports,
+		variants: variants,
 		effectFacts: cloneNativeEffectFacts(loaded.effectFacts),
 		rootFiles: rootFiles,
 		rootBuildConstraints: buildConstraints,
@@ -384,6 +474,276 @@ func newPackageSessionEntry(
 		controlFiles: controlFiles,
 		accountedBytes: accounted,
 	}, true
+}
+
+func (entry packageSessionEntry) refreshed(
+	loaded PackageLoadResult,
+	projectRoot string,
+) (packageSessionEntry, bool) {
+	if len(loaded.Diagnostics) != 0 || len(loaded.Sources.problems) != 0 {
+		return packageSessionEntry{}, false
+	}
+	roots, ok := packageSessionRootFamily(loaded.Packages)
+	if !ok || len(roots) != len(entry.variants) {
+		return packageSessionEntry{}, false
+	}
+	variants := make([]packageSessionVariant, 0, len(roots))
+	dependencyFiles := make(map[string]struct{})
+	dependencyDirs := make(map[string]struct{})
+	packageCount := 0
+	for index, root := range roots {
+		previous := entry.variants[index]
+		if !validPackageSessionRoot(root) ||
+			root.ID != previous.root.ID ||
+			root.PkgPath != previous.root.PkgPath ||
+			root.Name != previous.root.Name ||
+			root.ForTest != previous.root.ForTest ||
+			root.Dir != previous.root.Dir ||
+			len(root.CompiledGoFiles) == 0 {
+			return packageSessionEntry{}, false
+		}
+		rootFiles := make(map[string]struct{}, len(root.GoFiles))
+		for _, path := range root.GoFiles {
+			rootFiles[filepath.Clean(path)] = struct{}{}
+		}
+		if !equalPackageSessionSet(rootFiles, previous.rootFiles) {
+			return packageSessionEntry{}, false
+		}
+		for _, path := range root.CompiledGoFiles {
+			if _, found := rootFiles[filepath.Clean(path)]; !found {
+				return packageSessionEntry{}, false
+			}
+		}
+		compactRoot, variantDependencyFiles, variantDependencyDirs, _, _, _, variantPackageCount, ok := compactPackageSessionRoot(
+				root,
+				projectRoot,
+			)
+		if !ok {
+			return packageSessionEntry{}, false
+		}
+		availableImports, ok := packageSessionAvailableImports(&compactRoot)
+		if !ok {
+			return packageSessionEntry{}, false
+		}
+		variants = append(
+			variants,
+			packageSessionVariant{
+				root: compactRoot,
+				availableImports: availableImports,
+				rootFiles: rootFiles,
+			},
+		)
+		mergePackageSessionSet(dependencyFiles, variantDependencyFiles)
+		mergePackageSessionSet(dependencyDirs, variantDependencyDirs)
+		packageCount += variantPackageCount
+	}
+	if !validPackageSessionVariantImports(roots) {
+		return packageSessionEntry{}, false
+	}
+	for path := range entry.rootFiles {
+		delete(dependencyFiles, path)
+	}
+	for directory := range entry.directoryNames {
+		delete(dependencyDirs, directory)
+	}
+	if !equalPackageSessionSet(dependencyFiles, entry.dependencyFiles) ||
+		!equalPackageSessionSet(dependencyDirs, entry.dependencyDirs) {
+		return packageSessionEntry{}, false
+	}
+	var accounted int64
+	for path := range entry.rootFiles {
+		file, found := loaded.Sources.Lookup(path)
+		if !found || file == nil || !file.CanFormat() {
+			return packageSessionEntry{}, false
+		}
+		size := file.ByteSize()
+		if size > (maximumPackageSessionBytes - accounted) / packageSessionSourceFactor {
+			return packageSessionEntry{}, false
+		}
+		accounted += size * packageSessionSourceFactor
+	}
+	if int64(packageCount) >
+		(maximumPackageSessionBytes - accounted) / packageSessionPackageWeight {
+		return packageSessionEntry{}, false
+	}
+	accounted += int64(packageCount) * packageSessionPackageWeight
+	entry.variants = variants
+	entry.effectFacts = cloneNativeEffectFacts(loaded.effectFacts)
+	entry.accountedBytes = accounted
+	return entry, true
+}
+
+func validPackageSessionRoot(root *packages.Package) bool {
+	return root != nil &&
+		!root.IllTyped &&
+		root.ID != "" &&
+		root.Name != "" &&
+		root.PkgPath != "" &&
+		root.Dir != "" &&
+		filepath.IsAbs(root.Dir) &&
+		filepath.Clean(root.Dir) == root.Dir &&
+		root.Types != nil &&
+		root.TypesInfo != nil &&
+		root.TypesSizes != nil &&
+		root.Fset != nil &&
+		len(root.Errors) == 0 &&
+		len(root.TypeErrors) == 0
+}
+
+func equalPackageSessionSet(left, right map[string]struct{}) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for value := range left {
+		if _, found := right[value]; !found {
+			return false
+		}
+	}
+	return true
+}
+
+func packageSessionRootFamily(roots []*packages.Package) ([]*packages.Package, bool) {
+	if len(roots) == 0 || len(roots) > 3 {
+		return nil, false
+	}
+	testPath, baseName, ok := packageSessionRootIdentity(roots[0])
+	if !ok {
+		return nil, false
+	}
+	result := slices.Clone(roots)
+	seenRanks := make(map[int]struct{})
+	seenIDs := make(map[string]struct{})
+	for _, root := range result {
+		rank := packageSessionRootRank(testPath, baseName, root)
+		if rank < 0 || root.ID == "" {
+			return nil, false
+		}
+		if _, duplicate := seenRanks[rank]; duplicate {
+			return nil, false
+		}
+		seenRanks[rank] = struct{}{}
+		if _, duplicate := seenIDs[root.ID]; duplicate {
+			return nil, false
+		}
+		seenIDs[root.ID] = struct{}{}
+	}
+	sort.Slice(
+		result,
+		func(left, right int) bool {
+			leftRank := packageSessionRootRank(testPath, baseName, result[left])
+			rightRank := packageSessionRootRank(testPath, baseName, result[right])
+			if leftRank != rightRank {
+				return leftRank < rightRank
+			}
+			return result[left].ID < result[right].ID
+		},
+	)
+	return result, true
+}
+
+func validPackageSessionVariantImports(roots []*packages.Package) bool {
+	if len(roots) < 2 {
+		return true
+	}
+	testPath, baseName, ok := packageSessionRootIdentity(roots[0])
+	if !ok {
+		return false
+	}
+	rootIDs := make(map[string]struct{}, len(roots))
+	for _, root := range roots {
+		rootIDs[root.ID] = struct{}{}
+	}
+	for _, root := range roots {
+		if packageSessionRootRank(testPath, baseName, root) != 2 {
+			continue
+		}
+		imported := root.Imports[testPath]
+		if imported == nil {
+			continue
+		}
+		if _, selected := rootIDs[imported.ID]; !selected {
+			return false
+		}
+	}
+	return true
+}
+
+func packageSessionRootIdentity(root *packages.Package) (string, string, bool) {
+	if root == nil || root.PkgPath == "" || root.Name == "" {
+		return "", "", false
+	}
+	if root.ForTest == "" {
+		return root.PkgPath, root.Name, true
+	}
+	if root.PkgPath == root.ForTest {
+		return root.ForTest, root.Name, true
+	}
+	if root.PkgPath == root.ForTest + "_test" &&
+		strings.HasSuffix(root.Name, "_test") &&
+		len(root.Name) > len("_test") {
+		return root.ForTest, strings.TrimSuffix(root.Name, "_test"), true
+	}
+	return "", "", false
+}
+
+func packageSessionRootRank(testPath, baseName string, root *packages.Package) int {
+	if root == nil {
+		return -1
+	}
+	if root.ForTest == "" && root.PkgPath == testPath && root.Name == baseName {
+		return 0
+	}
+	if root.ForTest != testPath {
+		return -1
+	}
+	if root.PkgPath == testPath && root.Name == baseName {
+		return 1
+	}
+	if root.PkgPath == testPath + "_test" && root.Name == baseName + "_test" {
+		return 2
+	}
+	return -1
+}
+
+func mergePackageSessionSet(target, source_ map[string]struct{}) {
+	for value := range source_ {
+		target[value] = struct{}{}
+	}
+}
+
+func mergePackageSessionNames(target, source_ map[string][]string) bool {
+	for directory, names := range source_ {
+		if previous, found := target[directory]; found && !slices.Equal(previous, names) {
+			return false
+		}
+		target[directory] = slices.Clone(names)
+	}
+	return true
+}
+
+func mergePackageSessionFileIdentities(
+	target map[string]packageSessionFileIdentity,
+	source_ map[string]packageSessionFileIdentity,
+) bool {
+	for path, identity := range source_ {
+		if previous, found := target[path]; found && previous != identity {
+			return false
+		}
+		target[path] = identity
+	}
+	return true
+}
+
+func equalPackageSessionNameSet(names []string, expected map[string]struct{}) bool {
+	if len(names) != len(expected) {
+		return false
+	}
+	for _, name := range names {
+		if _, found := expected[name]; !found {
+			return false
+		}
+	}
+	return true
 }
 
 func compactPackageSessionRoot(
@@ -605,12 +965,18 @@ func (entry packageSessionEntry) reload(
 	if err := ctx.Err(); err != nil {
 		return PackageLoadResult{}, false, err
 	}
-	currentNames, err := packageSessionGoNames(entry.root.Dir)
-	if err != nil || !slices.Equal(currentNames, entry.directoryNames) {
-		return PackageLoadResult{}, false, nil
+	currentControls := make(map[string]packageSessionFileIdentity)
+	for directory, expected := range entry.directoryNames {
+		currentNames, err := packageSessionGoNames(directory)
+		if err != nil || !slices.Equal(currentNames, expected) {
+			return PackageLoadResult{}, false, nil
+		}
+		controls, err := capturePackageSessionControlFiles(options.Dir, directory)
+		if err != nil || !mergePackageSessionFileIdentities(currentControls, controls) {
+			return PackageLoadResult{}, false, nil
+		}
 	}
-	currentControls, err := capturePackageSessionControlFiles(options.Dir, entry.root.Dir)
-	if err != nil || !equalPackageSessionControlFiles(currentControls, entry.controlFiles) {
+	if !equalPackageSessionControlFiles(currentControls, entry.controlFiles) {
 		return PackageLoadResult{}, false, nil
 	}
 	if !packageSessionDependenciesCurrent(entry.dependencyInputs, entry.dependencyNames) {
@@ -626,7 +992,7 @@ func (entry packageSessionEntry) reload(
 		if _, dependency := entry.dependencyDirs[filepath.Dir(path)]; dependency {
 			return PackageLoadResult{}, false, nil
 		}
-		if filepath.Dir(path) == entry.root.Dir {
+		if _, rootDirectory := entry.directoryNames[filepath.Dir(path)]; rootDirectory {
 			if _, rootFile := entry.rootFiles[path]; !rootFile {
 				return PackageLoadResult{}, false, nil
 			}
@@ -641,8 +1007,9 @@ func (entry packageSessionEntry) reload(
 		}
 		input, overlaid := options.Overlay[path]
 		if !overlaid {
-			input, err = source.ReadFile(path)
-			if err != nil {
+			var readErr error
+			input, readErr = source.ReadFile(path)
+			if readErr != nil {
 				return PackageLoadResult{}, false, nil
 			}
 		}
@@ -661,16 +1028,42 @@ func (entry packageSessionEntry) reload(
 		paths = append(paths, path)
 	}
 	slices.Sort(paths)
+	freshByID := make(map[string]*packages.Package, len(entry.variants))
+	packages_ := make([]*packages.Package, 0, len(entry.variants))
+	for _, variant := range entry.variants {
+		root, reusable, err := variant.reload(ctx, sourceGoVersion, bytesByPath, freshByID)
+		if err != nil || !reusable {
+			return PackageLoadResult{}, reusable, err
+		}
+		freshByID[root.ID] = root
+		packages_ = append(packages_, root)
+	}
+	return PackageLoadResult{
+		Requirement: options.Requirement,
+		Packages: packages_,
+		Diagnostics: []PackageDiagnostic{},
+		Sources: PackageSourceSet{paths: paths, files: files},
+		effectFacts: cloneNativeEffectFacts(entry.effectFacts),
+	}, true, nil
+}
+
+func (variant packageSessionVariant) reload(
+	ctx context.Context,
+	sourceGoVersion string,
+	bytesByPath map[string][]byte,
+	freshByID map[string]*packages.Package,
+) (*packages.Package, bool, error) {
 	fileSet := token.NewFileSet()
-	syntax := make([]*ast.File, 0, len(entry.root.CompiledGoFiles))
+	syntax := make([]*ast.File, 0, len(variant.root.CompiledGoFiles))
 	usedImports := make(map[string]*packages.Package)
-	for _, path := range entry.root.CompiledGoFiles {
+	importer := packageSessionImporter{packages: variant.availableImports, freshByID: freshByID}
+	for _, path := range variant.root.CompiledGoFiles {
 		if err := ctx.Err(); err != nil {
-			return PackageLoadResult{}, false, err
+			return nil, false, err
 		}
 		input, found := bytesByPath[path]
 		if !found {
-			return PackageLoadResult{}, false, nil
+			return nil, false, nil
 		}
 		parsed, parseErr := parser.ParseFile(
 			fileSet,
@@ -681,17 +1074,17 @@ func (entry packageSessionEntry) reload(
 		if parseErr != nil ||
 			parsed == nil ||
 			parsed.Name == nil ||
-			parsed.Name.Name != entry.root.Name {
-			return PackageLoadResult{}, false, nil
+			parsed.Name.Name != variant.root.Name {
+			return nil, false, nil
 		}
 		for _, specification := range parsed.Imports {
 			importPath, unquoteErr := strconv.Unquote(specification.Path.Value)
 			if unquoteErr != nil || importPath == "C" {
-				return PackageLoadResult{}, false, nil
+				return nil, false, nil
 			}
-			imported := entry.availableImports[importPath]
+			imported := importer.packageFor(importPath)
 			if imported == nil || imported.Types == nil {
-				return PackageLoadResult{}, false, nil
+				return nil, false, nil
 			}
 			usedImports[importPath] = imported
 		}
@@ -708,18 +1101,18 @@ func (entry packageSessionEntry) reload(
 		FileVersions: make(map[*ast.File]string),
 	}
 	configuration := types.Config{
-		Importer: packageSessionImporter{packages: entry.availableImports},
-		Sizes: entry.root.TypesSizes,
+		Importer: importer,
+		Sizes: variant.root.TypesSizes,
 		GoVersion: packageSessionGoVersion(sourceGoVersion),
 	}
-	checked, typeErr := configuration.Check(entry.root.PkgPath, fileSet, syntax, information)
+	checked, typeErr := configuration.Check(variant.root.PkgPath, fileSet, syntax, information)
 	if err := ctx.Err(); err != nil {
-		return PackageLoadResult{}, false, err
+		return nil, false, err
 	}
 	if typeErr != nil || checked == nil {
-		return PackageLoadResult{}, false, nil
+		return nil, false, nil
 	}
-	root := entry.root
+	root := variant.root
 	root.Types = checked
 	root.Fset = fileSet
 	root.Syntax = syntax
@@ -728,13 +1121,7 @@ func (entry packageSessionEntry) reload(
 	root.Errors = nil
 	root.TypeErrors = nil
 	root.IllTyped = false
-	return PackageLoadResult{
-		Requirement: options.Requirement,
-		Packages: []*packages.Package{&root},
-		Diagnostics: []PackageDiagnostic{},
-		Sources: PackageSourceSet{paths: paths, files: files},
-		effectFacts: cloneNativeEffectFacts(entry.effectFacts),
-	}, true, nil
+	return &root, true, nil
 }
 
 func packageSessionBuildConstraints(file *source.File) []packageSessionBuildConstraint {
@@ -758,6 +1145,18 @@ func packageSessionBuildConstraints(file *source.File) []packageSessionBuildCons
 
 type packageSessionImporter struct {
 	packages map[string]*packages.Package
+	freshByID map[string]*packages.Package
+}
+
+func (i packageSessionImporter) packageFor(path string) *packages.Package {
+	imported := i.packages[path]
+	if imported == nil {
+		return nil
+	}
+	if fresh := i.freshByID[imported.ID]; fresh != nil {
+		return fresh
+	}
+	return imported
 }
 
 func (i packageSessionImporter) Import(path string) (*types.Package, error) {
@@ -769,7 +1168,7 @@ func (i packageSessionImporter) ImportFrom(
 	directory string,
 	mode types.ImportMode,
 ) (*types.Package, error) {
-	if imported := i.packages[path]; imported != nil && imported.Types != nil {
+	if imported := i.packageFor(path); imported != nil && imported.Types != nil {
 		return imported.Types, nil
 	}
 	return nil, fmt.Errorf("incremental package import %q is unavailable", path)

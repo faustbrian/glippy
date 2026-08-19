@@ -211,10 +211,17 @@ graphs without waiting for a package load to finish.
 
 The service can admit a newly direct import only when its exact package is
 already present in the retained graph and Go internal/vendor visibility permits
-the root to import it. It falls back to the standard package loader for test
-variants, cgo-generated sources, imports absent from that graph, dependency
-overlays, file notifications, source-membership, build-constraint, or
-project-control changes, parse/type failures, and every uncertain graph. This
-conservative fallback is part of the editor correctness contract. Incremental
-support for those cases requires separate evidence; it is not inferred from
-successful root type checking.
+the root to import it. Base, internal-test, and external-test variants may be
+retained as one bounded family and are rechecked in that order. An external
+test import of the package under test resolves to the freshly checked internal
+variant. A single internal or external test root is also reusable when its
+closed dependencies remain unchanged. Repeated edits refresh the retained
+family instead of degrading to a later full load.
+
+The service falls back to the standard package loader for malformed or
+ambiguous test families, cgo-generated sources, imports absent from the retained
+graph, dependency overlays, file notifications, source-membership,
+build-constraint, or project-control changes, parse/type failures, and every
+uncertain graph. This conservative fallback is part of the editor correctness
+contract. Incremental support for those cases requires separate evidence; it is
+not inferred from successful root type checking.
