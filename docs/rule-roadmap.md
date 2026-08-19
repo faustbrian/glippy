@@ -49,7 +49,10 @@ identity; the broader `discarded-error` and `blank-error-discard` rules
 delegate these calls to prevent duplicate output. The CSV rule separately
 proves that every normally returning path after a direct
 `encoding/csv.Writer.Flush` observes the matching `Writer.Error`. Interface-
-returning base encoders remain evidence-gated follow-up work.
+returning streaming encoders from `encoding/ascii85`, `encoding/base32`, and
+`encoding/base64` are also covered when an exact constructor result remains in
+a stable direct binding through `Close`. Indirect acquisition and reassigned
+interface bindings remain evidence-gated follow-up work.
 
 The first restriction rule, `blank-error-discard`, provides an exact-ID policy
 for projects that prohibit explicit `_ = err` and tuple-error discards. It is

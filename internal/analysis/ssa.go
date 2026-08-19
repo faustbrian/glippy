@@ -237,6 +237,7 @@ func runSSAProgramPackage(
 		for _, active := range activeRules {
 			typesContexts[active.metadata.ID] = rules.NewTypesContext(
 				file.source,
+				file.syntax,
 				pkg.Fset,
 				pkg.ID,
 				pkg.Types,

@@ -130,6 +130,7 @@ func RunTypes(
 					if ruleContext == nil {
 						ruleContext = rules.NewTypesContext(
 							file.source,
+							file.syntax,
 							pkg.Fset,
 							pkg.ID,
 							pkg.Types,

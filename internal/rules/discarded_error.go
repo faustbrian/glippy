@@ -71,7 +71,7 @@ func (discardedErrorRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding,
 	call, _ := ast.Unparen(statement.X).(*ast.CallExpr)
 	if call == nil ||
 		infallibleDiscardedCall(ctx.Info(), call) ||
-		isWriterFinalizer(ctx.Info(), call) {
+		isWriterFinalizer(ctx, call) {
 		return nil, nil
 	}
 	signature, _ := types.Unalias(ctx.Info().TypeOf(call.Fun)).(*types.Signature)

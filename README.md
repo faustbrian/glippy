@@ -339,6 +339,7 @@ precise scope.
 - [v0.5 typed-analysis memory reduction](docs/research/v0.5-memory-reduction-2026-08-16.md)
 - [v0.5 typed-analysis memory attribution](docs/research/v0.5-typed-memory-attribution-2026-08-19.md)
 - [v0.5 exact printf fact execution](docs/research/v0.5-printf-fact-execution-2026-08-19.md)
+- [v0.5 interface encoder finalization](docs/research/unchecked-writer-interface-encoder-expansion-2026-08-19.md)
 - [v0.5 incremental workspace analysis](docs/research/v0.5-incremental-workspace-analysis-2026-08-16.md)
 - [v0.5 memory-aware SSA package waves](docs/research/v0.5-memory-aware-ssa-waves-2026-08-19.md)
 - [v0.5 project semantic contracts](docs/research/v0.5-project-semantic-contracts-2026-08-16.md)

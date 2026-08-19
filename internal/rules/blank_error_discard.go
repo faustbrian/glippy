@@ -68,7 +68,7 @@ func (blankErrorDiscardRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Findi
 	if !includeTests && strings.HasSuffix(filepath.Base(ctx.File().Path()), "_test.go") {
 		return nil, nil
 	}
-	resultTypes := blankAssignmentResultTypes(ctx.Info(), assignment)
+	resultTypes := blankAssignmentResultTypes(ctx, assignment)
 	findings := make([]Finding, 0)
 	for index, expression := range assignment.Lhs {
 		if !blankIdentifier(expression) ||
@@ -93,15 +93,16 @@ func (blankErrorDiscardRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Findi
 	return findings, nil
 }
 
-func blankAssignmentResultTypes(info *types.Info, assignment *ast.AssignStmt) []types.Type {
-	if info == nil || assignment == nil || len(assignment.Lhs) == 0 {
+func blankAssignmentResultTypes(ctx *TypesContext, assignment *ast.AssignStmt) []types.Type {
+	if ctx == nil || ctx.Info() == nil || assignment == nil || len(assignment.Lhs) == 0 {
 		return nil
 	}
+	info := ctx.Info()
 	if len(assignment.Rhs) == 1 {
 		if call, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr);
 			call != nil &&
 				(infallibleDiscardedCall(info, call) ||
-					isWriterFinalizer(info, call)) {
+					isWriterFinalizer(ctx, call)) {
 			return nil
 		}
 		type_ := info.TypeOf(assignment.Rhs[0])
@@ -128,7 +129,7 @@ func blankAssignmentResultTypes(info *types.Info, assignment *ast.AssignStmt) []
 		if call, _ := ast.Unparen(expression).(*ast.CallExpr);
 			call != nil &&
 				(infallibleDiscardedCall(info, call) ||
-					isWriterFinalizer(info, call)) {
+					isWriterFinalizer(ctx, call)) {
 			continue
 		}
 		result[index] = info.TypeOf(expression)

@@ -239,6 +239,7 @@ func NewContext(file *source.File, options OptionSet) *Context {
 // TypesContext binds one package AST to its exact immutable physical source.
 type TypesContext struct {
 	file *source.File
+	syntax *ast.File
 	fileSet *token.FileSet
 	packageID string
 	package_ *types.Package
@@ -1089,6 +1090,7 @@ func (c *ControlFlowContext) StringsOption(name string) ([]string, bool) {
 // NewTypesContext constructs one read-only typed rule context.
 func NewTypesContext(
 	file *source.File,
+	syntax *ast.File,
 	fileSet *token.FileSet,
 	packageID string,
 	package_ *types.Package,
@@ -1098,6 +1100,7 @@ func NewTypesContext(
 ) *TypesContext {
 	return &TypesContext{
 		file: file,
+		syntax: syntax,
 		fileSet: fileSet,
 		packageID: packageID,
 		package_: package_,
@@ -1105,6 +1108,15 @@ func NewTypesContext(
 		illTyped: illTyped,
 		options: options,
 	}
+}
+
+// Syntax returns the package-loaded syntax tree whose nodes are indexed by
+// Info. Callers must treat it as immutable.
+func (c *TypesContext) Syntax() *ast.File {
+	if c == nil {
+		return nil
+	}
+	return c.syntax
 }
 
 // IllTyped reports whether package loading encountered type errors.

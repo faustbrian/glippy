@@ -137,6 +137,81 @@ func ignored(
 	}
 }
 
+func TestUncheckedWriterErrorTracksStandardLibraryEncoderAcquisitions(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"encoding/ascii85"
+	"encoding/base32"
+	"encoding/base64"
+	"io"
+)
+
+func discarded(output io.Writer) {
+	ascii := ascii85.NewEncoder(output)
+	ascii.Close()
+	base32Writer := base32.NewEncoder(base32.StdEncoding, output)
+	defer base32Writer.Close()
+	base64Writer := base64.NewEncoder(base64.StdEncoding, output)
+	go base64Writer.Close()
+	var declared = base64.NewEncoder(base64.RawStdEncoding, output)
+	_ = declared.Close()
+	base64.NewEncoder(base64.URLEncoding, output).Close()
+}
+
+func handled(output io.Writer) error {
+	writer := base64.NewEncoder(base64.StdEncoding, output)
+	return writer.Close()
+}
+
+func reassigned(output io.Writer, replacement io.WriteCloser) {
+	writer := base64.NewEncoder(base64.StdEncoding, output)
+	writer = replacement
+	writer.Close()
+}
+
+func unproven(writer io.WriteCloser) { writer.Close() }
+
+type localEncoder struct{}
+func (*localEncoder) Write(value []byte) (int, error) { return len(value), nil }
+func (*localEncoder) Close() error { return nil }
+func NewEncoder(io.Writer) io.WriteCloser { return &localEncoder{} }
+func lookalike(output io.Writer) { NewEncoder(output).Close() }
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedencodererror\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", false)
+	want := []string{
+		"ascii.Close()",
+		"base32Writer.Close()",
+		"base64Writer.Close()",
+		"declared.Close()",
+		"base64.NewEncoder(base64.URLEncoding, output).Close()",
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
+		t.Fatalf("unchecked encoder result = %#v", result)
+	}
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		content := input[diagnostic.Range.Start:diagnostic.Range.End]
+		if content != want[index] || diagnostic.RuleID != "unchecked-writer-error" {
+			t.Fatalf(
+				"encoder diagnostic[%d] = %#v for %q, want %q",
+				index,
+				diagnostic,
+				content,
+				want[index],
+			)
+		}
+	}
+}
+
 func TestUncheckedWriterErrorOwnsOverlappingErrorDiscardDiagnostics(t *testing.T) {
 	t.Parallel()
 
@@ -155,12 +230,25 @@ import (
 	"archive/zip"
 	"bufio"
 	"compress/gzip"
+	"encoding/base64"
+	"io"
 )
 
-func run(buffer *bufio.Writer, zipWriter *zip.Writer, gzipWriter *gzip.Writer) {
+func run(
+	buffer *bufio.Writer,
+	zipWriter *zip.Writer,
+	gzipWriter *gzip.Writer,
+	output io.Writer,
+) {
 	buffer.Flush()
 	defer zipWriter.Close()
 	_ = gzipWriter.Close()
+	encoder := base64.NewEncoder(base64.StdEncoding, output)
+	encoder.Close()
+	blankEncoder := base64.NewEncoder(base64.RawStdEncoding, output)
+	_ = blankEncoder.Close()
+	deferredEncoder := base64.NewEncoder(base64.URLEncoding, output)
+	defer deferredEncoder.Close()
 }
 `,
 	)
@@ -187,7 +275,7 @@ func run(buffer *bufio.Writer, zipWriter *zip.Writer, gzipWriter *gzip.Writer) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 3 {
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 6 {
 		t.Fatalf("overlapping writer diagnostics = %#v", result.Files)
 	}
 	for _, diagnostic := range result.Files[0].Diagnostics {
@@ -438,6 +526,46 @@ func BenchmarkUncheckedWriterErrorPackageAnalysis(b *testing.B) {
 		fmt.Fprintf(
 			&input,
 			"func run%d(writer *gzip.Writer) { defer writer.Close() }\n",
+			index,
+		)
+	}
+	writeFixture(b, filepath.Join(root, "sample.go"), input.String())
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		b.Fatal(err)
+	}
+	benchmarkPackageRuns(
+		b,
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"unchecked-writer-error": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+		100,
+	)
+}
+
+func BenchmarkUncheckedWriterErrorEncoderAcquisition(b *testing.B) {
+	root := b.TempDir()
+	writeFixture(
+		b,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedencoderbenchmark\n\ngo 1.25.0\n",
+	)
+	var input strings.Builder
+	input.WriteString("package sample\nimport (\"encoding/base64\"; \"io\")\n")
+	for index := range 100 {
+		fmt.Fprintf(
+			&input,
+			"func run%d(output io.Writer) { writer := base64.NewEncoder(base64.StdEncoding, output); defer writer.Close() }\n",
 			index,
 		)
 	}

@@ -1953,3 +1953,19 @@ on Glippy and `go-libraries/pkg/prompts`, whose pre-existing `go.sum` change was
 unchanged. The catalog now contains 111 rules. Portable four-runner
 typed-budget evidence, interface-returning encoder finalization, and further
 high-signal interprocedural error-flow coverage remain active v0.5 work.
+
+The v0.5 interface-encoder output-integrity batch extends
+`unchecked-writer-error` without adding a rule or raising its types-tier cost.
+Inline results and stable direct bindings from the exact
+`encoding/ascii85.NewEncoder`, `encoding/base32.NewEncoder`, and
+`encoding/base64.NewEncoder` functions now retain their concrete finalization
+identity through the returned `io.WriteCloser`; discarded ordinary, deferred,
+asynchronous, and blank-identifier `Close` errors report under the existing
+specialized rule. Reassigned bindings, method values, indirect constructors,
+and unproven interface closers remain excluded. Five complete 100-function
+acquisition benchmark samples measured a 79.54 ms median, about 3.34 MB, and
+29,716 allocations per run on Darwin arm64. Exact-rule dogfood remained clean
+on Glippy and `go-libraries/pkg/prompts`, whose pre-existing `go.sum` change was
+unchanged. The catalog remains at 111 rules. Portable four-runner typed-budget
+evidence and further high-signal interprocedural error-flow coverage remain
+active v0.5 work.

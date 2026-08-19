@@ -5158,7 +5158,8 @@ detects discarded errors from buffered writer finalization
 Buffered, compressed, archive, multipart, and encoded writers can report their first failed output
 or emit required trailers only from Flush or Close. Discarding that result can report success while
 leaving output truncated or structurally incomplete. The rule targets exact standard-library
-finalizers whose documented contract writes pending data or required framing.
+finalizers whose documented contract writes pending data or required framing, including direct
+stable values returned by the streaming encoder constructors.
 
 - Default severity: `warn`
 - Presets: `correctness`
@@ -5182,9 +5183,10 @@ None.
 ### Known limitations
 
 - Only exact standard-library writer finalizers with an error result are covered; user-defined
-  writers and interface-dispatched finalizers remain outside the initial contract.
-- Encoders returned as io.WriteCloser by encoding/ascii85, encoding/base32, and encoding/base64
-  require acquisition tracking before their concrete finalization contract can be proven.
+  writers and unproven interface-dispatched finalizers remain outside the contract.
+- Streaming encoder coverage requires a direct constructor result or a direct identifier initialized
+  by encoding/ascii85, encoding/base32, or encoding/base64 NewEncoder and not reassigned before
+  Close.
 - encoding/csv.Writer.Flush returns no error; unchecked-csv-writer-error owns its separate Flush
   then Error observation protocol.
 - No fix is offered because correct propagation from a deferred, asynchronous, or ordinary call

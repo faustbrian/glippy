@@ -89,6 +89,7 @@ func RunControlFlow(
 		for _, active := range eligible {
 			typesContexts[active.metadata.ID] = rules.NewTypesContext(
 				file.source,
+				file.syntax,
 				pkg.Fset,
 				pkg.ID,
 				pkg.Types,

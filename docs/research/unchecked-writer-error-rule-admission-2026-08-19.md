@@ -3,12 +3,15 @@
 ## Decision
 
 Admit `unchecked-writer-error` to default `correctness` at warning severity.
-The native types rule reports discarded errors from 17 exact standard-library
-`Flush` and `Close` methods whose contracts write buffered bytes or required
-framing. It covers ordinary call statements, deferred calls, asynchronous
-calls, and explicit assignment to the blank identifier. Generated files and
-ill-typed packages are excluded, test files remain eligible, and no fix is
-offered.
+The native types rule originally reported discarded errors from 17 exact
+standard-library `Flush` and `Close` methods whose contracts write buffered
+bytes or required framing. The later
+[interface encoder expansion](unchecked-writer-interface-encoder-expansion-2026-08-19.md)
+adds three exact `NewEncoder` acquisition contracts under the same diagnostic
+identity. The rule covers ordinary call statements, deferred calls,
+asynchronous calls, and explicit assignment to the blank identifier. Generated
+files and ill-typed packages are excluded, test files remain eligible, and no
+fix is offered.
 
 ## Defect And Existing Tools
 
@@ -69,11 +72,14 @@ calls to this rule so strict policies produce one diagnostic rather than
 overlapping generic and specialized findings.
 
 The standard library also exposes buffered encoders from `encoding/ascii85`,
-`encoding/base32`, and `encoding/base64` only through `io.WriteCloser`. Exact
-coverage requires acquisition tracking because the selected `Close` object is
-the interface method. `encoding/csv.Writer.Flush` returns no error and instead
-requires a later `Writer.Error` observation; the separately admitted
-`unchecked-csv-writer-error` rule now owns that path-sensitive protocol.
+`encoding/base32`, and `encoding/base64` only through `io.WriteCloser`. The
+rule now proves their concrete finalization contract through an inline exact
+`NewEncoder` result or a direct constructor-initialized binding that is not
+reassigned before `Close`. Indirect constructors, method-value calls, and
+reassigned interface bindings remain excluded. `encoding/csv.Writer.Flush`
+returns no error and instead requires a later `Writer.Error` observation; the
+separately admitted `unchecked-csv-writer-error` rule owns that path-sensitive
+protocol.
 
 No fix is registered. A deferred call may require a named result, an explicit
 close before return, joined body and finalization errors, logging, or a product
@@ -117,9 +123,10 @@ remained byte-identical.
 
 ## Revisit Trigger
 
-Add interface-returning encoders only after a bounded acquisition and alias
-contract proves concrete finalizer identity. Keep CSV flushing in the separate
-path-sensitive `unchecked-csv-writer-error` rule. Expand beyond the exact
-standard-library catalog only when real defects justify a stable project
-contract or cross-package finalizer fact. Do not add a fix until one rewrite is
+Expand interface-returning encoder coverage beyond inline or stable direct
+constructor bindings only after bounded acquisition and alias tracking proves
+concrete finalizer identity. Keep CSV flushing in the separate path-sensitive
+`unchecked-csv-writer-error` rule. Expand beyond the exact standard-library
+catalog only when real defects justify a stable project contract or
+cross-package finalizer fact. Do not add a fix until one rewrite is
 semantics-preserving across ordinary and deferred return paths.

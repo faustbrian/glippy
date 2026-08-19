@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"go/ast"
 	"go/types"
+
+	"golang.org/x/tools/go/types/typeutil"
 )
 
 type uncheckedWriterErrorRule struct{}
@@ -12,6 +14,7 @@ type writerFinalizerSpec struct {
 	packagePath string
 	typeName string
 	methodName string
+	constructor string
 }
 
 var writerFinalizerSpecs = []writerFinalizerSpec{
@@ -34,6 +37,12 @@ var writerFinalizerSpecs = []writerFinalizerSpec{
 	{packagePath: "text/tabwriter", typeName: "Writer", methodName: "Flush"},
 }
 
+var writerEncoderSpecs = []writerFinalizerSpec{
+	{packagePath: "encoding/ascii85", methodName: "Close", constructor: "NewEncoder"},
+	{packagePath: "encoding/base32", methodName: "Close", constructor: "NewEncoder"},
+	{packagePath: "encoding/base64", methodName: "Close", constructor: "NewEncoder"},
+}
+
 // NewUncheckedWriterErrorRule constructs the buffered-writer finalization rule
 // for product registry composition.
 func NewUncheckedWriterErrorRule() Rule {
@@ -44,7 +53,7 @@ func (uncheckedWriterErrorRule) Metadata() Metadata {
 	return Metadata{
 		ID: "unchecked-writer-error",
 		Summary: "detects discarded errors from buffered writer finalization",
-		Documentation: "Buffered, compressed, archive, multipart, and encoded writers can report their first failed output or emit required trailers only from Flush or Close. Discarding that result can report success while leaving output truncated or structurally incomplete. The rule targets exact standard-library finalizers whose documented contract writes pending data or required framing.",
+		Documentation: "Buffered, compressed, archive, multipart, and encoded writers can report their first failed output or emit required trailers only from Flush or Close. Discarding that result can report success while leaving output truncated or structurally incomplete. The rule targets exact standard-library finalizers whose documented contract writes pending data or required framing, including direct stable values returned by the streaming encoder constructors.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetCorrectness},
 		MinimumGoVersion: "1.25",
@@ -52,8 +61,8 @@ func (uncheckedWriterErrorRule) Metadata() Metadata {
 		NodeInterests: []NodeKind{NodeExprStmt, NodeAssignStmt, NodeGoStmt, NodeDeferStmt},
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
-			"Only exact standard-library writer finalizers with an error result are covered; user-defined writers and interface-dispatched finalizers remain outside the initial contract.",
-			"Encoders returned as io.WriteCloser by encoding/ascii85, encoding/base32, and encoding/base64 require acquisition tracking before their concrete finalization contract can be proven.",
+			"Only exact standard-library writer finalizers with an error result are covered; user-defined writers and unproven interface-dispatched finalizers remain outside the contract.",
+			"Streaming encoder coverage requires a direct constructor result or a direct identifier initialized by encoding/ascii85, encoding/base32, or encoding/base64 NewEncoder and not reassigned before Close.",
 			"encoding/csv.Writer.Flush returns no error; unchecked-csv-writer-error owns its separate Flush then Error observation protocol.",
 			"No fix is offered because correct propagation from a deferred, asynchronous, or ordinary call depends on the surrounding function contract.",
 		},
@@ -75,7 +84,7 @@ func (uncheckedWriterErrorRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Fi
 	if !discarded {
 		return nil, nil
 	}
-	spec, matched := writerFinalizer(ctx.Info(), call)
+	spec, matched := writerFinalizer(ctx, call)
 	if !matched {
 		return nil, nil
 	}
@@ -87,10 +96,8 @@ func (uncheckedWriterErrorRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Fi
 		{
 			MessageKey: "unchecked-writer-error",
 			Message: fmt.Sprintf(
-				"error returned by %s.%s.%s is discarded; buffered output may be incomplete",
-				spec.packagePath,
-				spec.typeName,
-				spec.methodName,
+				"error returned by %s is discarded; buffered output may be incomplete",
+				spec.target(),
 			),
 			Range: range_,
 			Help: "observe and propagate the finalization error before reporting success",
@@ -120,10 +127,18 @@ func discardedCall(node ast.Node) (*ast.CallExpr, bool) {
 	}
 }
 
-func writerFinalizer(info *types.Info, call *ast.CallExpr) (writerFinalizerSpec, bool) {
-	if info == nil || call == nil {
+func (s writerFinalizerSpec) target() string {
+	if s.constructor != "" {
+		return fmt.Sprintf("%s.%s result %s", s.packagePath, s.constructor, s.methodName)
+	}
+	return fmt.Sprintf("%s.%s.%s", s.packagePath, s.typeName, s.methodName)
+}
+
+func writerFinalizer(ctx *TypesContext, call *ast.CallExpr) (writerFinalizerSpec, bool) {
+	if ctx == nil || ctx.Info() == nil || call == nil {
 		return writerFinalizerSpec{}, false
 	}
+	info := ctx.Info()
 	selector, _ := ast.Unparen(call.Fun).(*ast.SelectorExpr)
 	if selector == nil {
 		return writerFinalizerSpec{}, false
@@ -147,10 +162,128 @@ func writerFinalizer(info *types.Info, call *ast.CallExpr) (writerFinalizerSpec,
 			return spec, true
 		}
 	}
+	if spec, matched := acquiredEncoderFinalizer(info, ctx.Syntax(), call, selector); matched {
+		return spec, true
+	}
 	return writerFinalizerSpec{}, false
 }
 
-func isWriterFinalizer(info *types.Info, call *ast.CallExpr) bool {
-	_, matched := writerFinalizer(info, call)
+func acquiredEncoderFinalizer(
+	info *types.Info,
+	syntax *ast.File,
+	call *ast.CallExpr,
+	selector *ast.SelectorExpr,
+) (writerFinalizerSpec, bool) {
+	if info == nil || syntax == nil || call == nil || selector == nil || len(call.Args) != 0 {
+		return writerFinalizerSpec{}, false
+	}
+	selection := info.Selections[selector]
+	if selection == nil {
+		return writerFinalizerSpec{}, false
+	}
+	method, _ := selection.Obj().(*types.Func)
+	if method == nil || method.Name() != "Close" {
+		return writerFinalizerSpec{}, false
+	}
+	if constructor, _ := ast.Unparen(selector.X).(*ast.CallExpr); constructor != nil {
+		return writerEncoderConstructor(info, constructor)
+	}
+	receiver := directObject(info, selector.X)
+	if receiver == nil {
+		return writerFinalizerSpec{}, false
+	}
+	return stableWriterEncoderAcquisition(info, syntax, receiver, call)
+}
+
+func stableWriterEncoderAcquisition(
+	info *types.Info,
+	syntax *ast.File,
+	receiver types.Object,
+	finalizer ast.Node,
+) (writerFinalizerSpec, bool) {
+	var spec writerFinalizerSpec
+	acquired := false
+	stable := true
+	ast.Inspect(
+		syntax,
+		func(node ast.Node) bool {
+			if node == nil || !stable || node.Pos() >= finalizer.Pos() {
+				return stable
+			}
+			switch node := node.(type) {
+			case *ast.AssignStmt:
+				if len(node.Lhs) != len(node.Rhs) {
+					return true
+				}
+				for index, left := range node.Lhs {
+					if directObject(info, left) != receiver {
+						continue
+					}
+					identifier, _ := left.(*ast.Ident)
+					constructor, _ := ast.Unparen(
+						node.Rhs[index],
+					).(*ast.CallExpr)
+					candidate, matched := writerEncoderConstructor(
+						info,
+						constructor,
+					)
+					if !acquired &&
+						identifier != nil &&
+						info.Defs[identifier] == receiver &&
+						matched {
+						spec = candidate
+						acquired = true
+						continue
+					}
+					stable = false
+					return false
+				}
+			case *ast.ValueSpec:
+				if len(node.Names) != len(node.Values) {
+					return true
+				}
+				for index, name := range node.Names {
+					if info.Defs[name] != receiver {
+						continue
+					}
+					constructor, _ := ast.Unparen(
+						node.Values[index],
+					).(*ast.CallExpr)
+					candidate, matched := writerEncoderConstructor(
+						info,
+						constructor,
+					)
+					if acquired || !matched {
+						stable = false
+						return false
+					}
+					spec = candidate
+					acquired = true
+				}
+			}
+			return true
+		},
+	)
+	return spec, acquired && stable
+}
+
+func writerEncoderConstructor(info *types.Info, call *ast.CallExpr) (writerFinalizerSpec, bool) {
+	if info == nil || call == nil {
+		return writerFinalizerSpec{}, false
+	}
+	function := typeutil.StaticCallee(info, call)
+	if function == nil || function.Pkg() == nil || function.Name() != "NewEncoder" {
+		return writerFinalizerSpec{}, false
+	}
+	for _, spec := range writerEncoderSpecs {
+		if function.Pkg().Path() == spec.packagePath {
+			return spec, true
+		}
+	}
+	return writerFinalizerSpec{}, false
+}
+
+func isWriterFinalizer(ctx *TypesContext, call *ast.CallExpr) bool {
+	_, matched := writerFinalizer(ctx, call)
 	return matched
 }
