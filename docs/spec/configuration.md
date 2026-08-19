@@ -99,11 +99,11 @@ Omitting `lint.profile`, `lint.preset`, and `lint.presets` MUST select the
 `default` profile. The `recommended` exact-rule set is `almost-swapped`,
 `defer-before-error-check`, `defer-in-infinite-loop`, `errors-is-arguments`,
 `http-response-body-not-closed`, `identical-branches`,
-`ignored-append-result`, `ineffective-value-receiver-assignment`, `nilness`,
-`overwritten-error`, `resource-used-after-close`, `shadowed-error`,
-`subsumed-condition`, `suspicious-range`, `suspicious-string-conversion`,
-`time-duration-unit`, `typed-nil-error-return`, `unchecked-rows-error`, and
-`unchecked-scanner-error`.
+`ignored-append-result`, `ineffective-value-receiver-assignment`,
+`nil-error-wrap`, `nilness`, `overwritten-error`,
+`resource-used-after-close`, `shadowed-error`, `subsumed-condition`,
+`suspicious-range`, `suspicious-string-conversion`, `time-duration-unit`,
+`typed-nil-error-return`, `unchecked-rows-error`, and `unchecked-scanner-error`.
 
 A configuration MUST NOT combine `lint.profile` with `lint.preset` or
 `lint.presets`. Selecting either preset field explicitly disables profile

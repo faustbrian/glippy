@@ -68,6 +68,7 @@ not stable release promises.
 - [needless-blank-identifier](#needless-blank-identifier)
 - [net-ip-bytes-equal](#net-ip-bytes-equal)
 - [nil-context](#nil-context)
+- [nil-error-wrap](#nil-error-wrap)
 - [nil-function-comparison](#nil-function-comparison)
 - [nil-map-write](#nil-map-write)
 - [nilness](#nilness)
@@ -3068,6 +3069,58 @@ client.Do(nil, request)
 
 ```go
 client.Do(context.TODO(), request)
+```
+
+## nil-error-wrap
+
+detects fmt.Errorf calls that wrap an error proven nil
+
+Wrapping nil with fmt.Errorf's %w directive returns a non-nil formatting error that does not wrap
+the intended failure. The rule reports literal nil and built-in error values whose nil outcome edge
+dominates the exact fmt.Errorf call.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: SSA
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only exact fmt.Errorf calls with a compile-time format string and sequential non-star directives
+  are analyzed; explicit argument indexes and star width or precision remain conservative.
+- Path proof covers literal nil, direct nil SSA values, and exact nil comparisons whose nil outcome
+  edge dominates the call.
+- Only values with the exact built-in error interface type are tracked; typed nil pointers and
+  application-specific error interfaces are excluded because converting them to an interface can
+  produce a non-nil interface value.
+- Generated files and packages with type errors are excluded.
+
+### Example: Do not wrap an error in its nil branch
+
+**Incorrect**
+
+```go
+if err == nil { return fmt.Errorf("operation: %w", err) }
+```
+
+**Correct**
+
+```go
+if err != nil { return fmt.Errorf("operation: %w", err) }
 ```
 
 ## nil-function-comparison

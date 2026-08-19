@@ -1909,3 +1909,17 @@ known normalized diagnostic digest. This prepares portable evidence but does
 not establish it: the workflow has not run against this revision, and no Linux
 or cross-architecture v0.5 budget claim is complete until its retained evidence
 is reviewed.
+
+The v0.5 error-flow batch admits `nil-error-wrap` to the opt-in suspicious
+preset and the curated recommended profile. Exact `fmt.Errorf` calls with
+compile-time sequential formats report a literal nil or exact built-in error
+value only when the nil comparison's control-flow edge dominates the call.
+Exact edge dominance excludes a loop back-edge false positive that
+successor-block dominance produced during self-dogfood. Indexed and star
+formats, typed nil pointers, dynamic values, generated files, and ill-typed
+packages remain conservative, and no fix is offered. Five 100-function
+benchmark samples measured a 63.48 ms median, about 5.30 MB, and 54,914
+allocations per run on Darwin arm64. Exact-rule dogfood remained clean on
+Glippy and `go-libraries/pkg/prompts`, whose pre-existing bytes were unchanged.
+The catalog now contains 109 rules. Portable four-runner typed-budget evidence
+and further high-signal error-flow coverage remain active v0.5 work.

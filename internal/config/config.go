@@ -80,6 +80,7 @@ var recommendedProfileRules = []string{
 	"identical-branches",
 	"ignored-append-result",
 	"ineffective-value-receiver-assignment",
+	"nil-error-wrap",
 	"nilness",
 	"overwritten-error",
 	"resource-used-after-close",
