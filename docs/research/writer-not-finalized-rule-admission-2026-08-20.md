@@ -21,8 +21,9 @@ do not require those lifecycle calls.
 
 The existing default `unchecked-writer-error` rule detects a discarded error
 from a finalizer that was called. It cannot detect an absent finalizer. The new
-rule owns that separate path-sensitive defect and supersedes an exact-range
-`resource-not-closed` diagnostic when both rules are selected.
+rule owns that separate path-sensitive defect. The generic
+`resource-not-closed` rule delegates these exact constructors instead of
+applying a competing close-on-every-return contract.
 
 The exact contracts were checked against the Go 1.26.6 documentation for
 [`archive/tar.Writer.Close`](https://pkg.go.dev/archive/tar#Writer.Close),
@@ -80,6 +81,15 @@ arm64, and an Apple M4 Max measured:
 Exact-rule runs produced no findings on Glippy,
 `go-libraries/pkg/prompts`, or `go-libraries/pkg/http-client`. The external
 repositories retained their pre-existing bytes and status.
+
+A follow-up ownership regression proved that the generic
+`resource-not-closed` rule still reported both an unfinalized gzip writer and a
+multipart writer used only to validate a boundary. Delegating the four exact
+constructors removes that competing contract. On the same `http-client`
+revision, the generic finding count falls from ten to seven by removing exactly
+the three multipart writer diagnostics, while `writer-not-finalized` remains
+clean. Five one-operation `resource-not-closed` benchmark samples measured
+73.00-110.71 ms, 2.13-2.72 MB, and 17,037-17,494 allocations on Darwin arm64.
 
 ## Revisit Trigger
 

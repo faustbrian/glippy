@@ -3901,6 +3901,8 @@ None.
 
 - Only direct resource == nil and resource != nil conditions discharge the nil branch; compound
   nilness, aliases, and indirect comparisons remain conservative.
+- Exact tar, gzip, and multipart writer constructors belong to writer-not-finalized and are excluded
+  from this generic closer rule.
 - A statically resolved helper in a selected local-source module that provably borrows the resource
   leaves the obligation open; guaranteed closure or transfer must cover every normally returning
   helper path.

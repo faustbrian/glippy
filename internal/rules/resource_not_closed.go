@@ -38,6 +38,7 @@ func (resourceNotClosedRule) Metadata() Metadata {
 		Categories: []Category{CategoryCorrectness, CategorySafety, CategorySuspicious},
 		KnownLimitations: []string{
 			"Only direct resource == nil and resource != nil conditions discharge the nil branch; compound nilness, aliases, and indirect comparisons remain conservative.",
+			"Exact tar, gzip, and multipart writer constructors belong to writer-not-finalized and are excluded from this generic closer rule.",
 			"A statically resolved helper in a selected local-source module that provably borrows the resource leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
 			"An exact returned-alias contract preserves the obligation when the result is assigned back to the same resource variable; new alias bindings remain outside the tracked ownership identity.",
 			"Cleanup-managed results require one stable direct local result, an exact testing.T Cleanup call on a pointer receiver with a function-literal callback, and direct, parameter-effect, or receiver-effect proven Close on every normally returning callback path. Copied testing.T values, conditional registration or closure, asynchronous or nested closure, reassignment, aliases, and non-testing cleanup APIs remain conservative.",
@@ -187,7 +188,10 @@ func localCloserCandidates(
 					continue
 				}
 				call, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
-				if call == nil || commandManagedPipe(info, call) {
+				_, _, specializedWriter := writerLifecycleConstructor(info, call)
+				if call == nil ||
+					commandManagedPipe(info, call) ||
+					specializedWriter {
 					continue
 				}
 				signature, _ := types.Unalias(

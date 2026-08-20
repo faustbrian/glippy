@@ -76,8 +76,9 @@ tar, gzip, and multipart writer acquisitions. Exact output-producing method
 calls start the obligation; direct or deferred `Close` completes it. Only
 normal returns with no error result or an explicit nil built-in error result
 count as success. Transfers, aliases, asynchronous calls, and unknown error
-results remain conservative, and the writer-specific diagnostic owns an exact
-overlapping `resource-not-closed` finding.
+results remain conservative. The generic `resource-not-closed` rule delegates
+these exact constructors so configuration-only writers and failed output paths
+do not receive a competing close-on-every-return diagnostic.
 
 The first restriction rule, `blank-error-discard`, provides an exact-ID policy
 for projects that prohibit explicit `_ = err` and tuple-error discards. It is

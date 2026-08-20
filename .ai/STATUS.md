@@ -2146,3 +2146,16 @@ Five 100-function samples measured 83.66-86.69 ms, 4.47-5.05 MB, and
 contains 113 rules. Portable four-runner typed-budget evidence and further
 high-signal interprocedural error-flow and ownership coverage remain active
 v0.5 work.
+
+The v0.5 writer-lifecycle ownership follow-up makes the generic
+`resource-not-closed` rule delegate the four exact tar, gzip, and multipart
+constructors to `writer-not-finalized`. The focused red regression initially
+reported both an unfinalized gzip writer and a multipart writer used only for
+boundary validation under the generic rule. After delegation, exact-rule
+dogfood remains clean on Glippy and `go-libraries/pkg/http-client`, while the
+same-revision generic `http-client` findings fall from ten to seven by removing
+exactly the three multipart writer diagnostics. Five one-operation generic-rule
+samples measured 73.00-110.71 ms, 2.13-2.72 MB, and 17,037-17,494 allocations
+on Darwin arm64. Portable four-runner typed-budget evidence and further
+high-signal interprocedural error-flow and ownership coverage remain active
+v0.5 work.

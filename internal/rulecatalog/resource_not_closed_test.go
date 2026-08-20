@@ -1032,6 +1032,89 @@ func TestResourceNotClosedMetadata(t *testing.T) {
 	}
 }
 
+func TestResourceNotClosedDelegatesSpecializedWriterLifecycles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/resourcewriterownership\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "sample.go"),
+		`package sample
+
+import (
+	"archive/tar"
+	"compress/gzip"
+	"io"
+	"io/fs"
+	"mime/multipart"
+)
+
+func archive(output io.Writer, input fs.FS) error {
+	writer := tar.NewWriter(output)
+	if err := writer.AddFS(input); err != nil {
+		return err
+	}
+	return nil
+}
+
+func encode(output io.Writer) error {
+	writer := gzip.NewWriter(output)
+	if _, err := writer.Write([]byte("payload")); err != nil {
+		return err
+	}
+	return nil
+}
+
+func encodeLevel(output io.Writer) error {
+	writer, err := gzip.NewWriterLevel(output, gzip.BestSpeed)
+	if err != nil {
+		return err
+	}
+	if _, err := writer.Write([]byte("payload")); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateBoundary(output io.Writer) error {
+	writer := multipart.NewWriter(output)
+	return writer.SetBoundary("fixture-boundary")
+}
+`,
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"resource-not-closed": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 0 {
+		t.Fatalf("generic writer lifecycle diagnostics = %#v", result)
+	}
+}
+
 func BenchmarkResourceNotClosedPackageAnalysis(b *testing.B) {
 	root := b.TempDir()
 	writeFixture(
