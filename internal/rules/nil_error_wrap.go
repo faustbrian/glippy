@@ -22,15 +22,17 @@ func (nilErrorWrapRule) Metadata() Metadata {
 	return Metadata{
 		ID: "nil-error-wrap",
 		Summary: "detects fmt.Errorf calls that wrap an error proven nil",
-		Documentation: "Wrapping nil with fmt.Errorf's %w directive returns a non-nil formatting error that does not wrap the intended failure. The rule reports literal nil and built-in error values whose nil outcome edge dominates the exact fmt.Errorf call.",
+		Documentation: "Wrapping nil with fmt.Errorf's %w directive returns a non-nil formatting error that does not wrap the intended failure. The rule reports literal nil and built-in error values proven nil by direct control flow or by an exact selected-helper sibling result relationship.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
 		Requirement: RequireSSA,
+		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness},
 		KnownLimitations: []string{
 			"Only exact fmt.Errorf calls with a compile-time format string and sequential non-star directives are analyzed; explicit argument indexes and star width or precision remain conservative.",
-			"Path proof covers literal nil, direct nil SSA values, and exact nil comparisons whose nil outcome edge dominates the call.",
+			"Path proof covers literal nil, direct nil SSA values, exact nil comparisons whose nil outcome edge dominates the call, and exact sibling-result states that contradict every non-nil-error return from a selected local helper.",
+			"Return-state proof requires a direct tuple result and an exact sibling nil comparison; phis, delegated results, dynamic calls, conflicting returns, and unavailable dependency facts remain conservative.",
 			"Only values with the exact built-in error interface type are tracked; typed nil pointers and application-specific error interfaces are excluded because converting them to an interface can produce a non-nil interface value.",
 			"Generated files and packages with type errors are excluded.",
 		},
@@ -96,6 +98,11 @@ func (nilErrorWrapRule) RunSSA(ctx *SSAContext) ([]Finding, error) {
 						ctx.Function(),
 						value,
 						instruction.Block(),
+					) &&
+					!returnStateProvesErrorNilAt(
+						ctx,
+						value,
+						instruction.Block(),
 					) {
 					continue
 				}
@@ -120,6 +127,49 @@ func (nilErrorWrapRule) RunSSA(ctx *SSAContext) ([]Finding, error) {
 		return nil, runErr
 	}
 	return findings, nil
+}
+
+func returnStateProvesErrorNilAt(
+	ctx *SSAContext,
+	errorValue ssa.Value,
+	target *ssa.BasicBlock,
+) bool {
+	if ctx == nil || errorValue == nil || target == nil {
+		return false
+	}
+	errorExtract, _ := errorValue.(*ssa.Extract)
+	if errorExtract == nil {
+		return false
+	}
+	call, _ := errorExtract.Tuple.(*ssa.Call)
+	if call == nil {
+		return false
+	}
+	callee := call.Call.StaticCallee()
+	if callee == nil {
+		return false
+	}
+	function, _ := callee.Object().(*types.Func)
+	if function == nil {
+		return false
+	}
+	for valueIndex, valueExtract := range callResultExtracts(call) {
+		if valueIndex == errorExtract.Index {
+			continue
+		}
+		summary := ctx.ReturnState(function, valueIndex, errorExtract.Index)
+		switch summary.WhenErrorNonNil {
+		case NilStateNil:
+			if ssaValueDefinitelyNonNilAt(ctx.Function(), valueExtract, target) {
+				return true
+			}
+		case NilStateNonNil:
+			if ssaValueDefinitelyNilAt(ctx.Function(), valueExtract, target) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func exactFmtErrorfCall(info *types.Info, call *ast.CallExpr) bool {
@@ -231,11 +281,28 @@ func literalNilExpression(info *types.Info, expression ast.Expr) bool {
 }
 
 func ssaValueDefinitelyNilAt(function *ssa.Function, value ssa.Value, target *ssa.BasicBlock) bool {
+	return ssaValueDefinitelyStateAt(function, value, target, NilStateNil)
+}
+
+func ssaValueDefinitelyNonNilAt(
+	function *ssa.Function,
+	value ssa.Value,
+	target *ssa.BasicBlock,
+) bool {
+	return ssaValueDefinitelyStateAt(function, value, target, NilStateNonNil)
+}
+
+func ssaValueDefinitelyStateAt(
+	function *ssa.Function,
+	value ssa.Value,
+	target *ssa.BasicBlock,
+	state NilState,
+) bool {
 	if function == nil || value == nil || target == nil {
 		return false
 	}
 	if constant, ok := value.(*ssa.Const); ok {
-		return constant.IsNil()
+		return state == NilStateNil && constant.IsNil()
 	}
 	for _, block := range function.Blocks {
 		for _, instruction := range block.Instrs {
@@ -253,10 +320,17 @@ func ssaValueDefinitelyNilAt(function *ssa.Function, value ssa.Value, target *ss
 			if comparison.Op == token.NEQ {
 				nilSuccessor = branch.Block().Succs[1]
 			}
+			provenSuccessor := nilSuccessor
+			if state == NilStateNonNil {
+				provenSuccessor = branch.Block().Succs[0]
+				if provenSuccessor == nilSuccessor {
+					provenSuccessor = branch.Block().Succs[1]
+				}
+			}
 			if ssaControlFlowEdgeDominates(
 				function,
 				branch.Block(),
-				nilSuccessor,
+				provenSuccessor,
 				target,
 			) {
 				return true

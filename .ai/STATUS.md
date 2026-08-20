@@ -2110,3 +2110,20 @@ the ten unrelated findings and the external repository bytes. Five directional
 `resource-used-after-close`, on Darwin arm64. Portable four-runner typed-budget
 evidence and further high-signal interprocedural error-flow and ownership
 coverage remain active v0.5 work.
+
+The v0.5 nil-error return-fact batch connects `nil-error-wrap` to the shared
+versioned return-state summaries already consumed by `nilness`. For an exact
+direct tuple call, a sibling result proven nil or non-nil on the `%w` path now
+proves the error nil only when that sibling state contradicts every non-nil
+error return from the selected local helper. The exact control-flow edge must
+dominate the formatting call. Dynamic calls, phis, delegated results,
+conflicting return summaries, unavailable dependency facts, and typed nil
+errors remain conservative. The focused red regression initially produced no
+diagnostics for two cross-package defects and now reports both while retaining
+the ambiguous and conflicting cases. Exact-rule dogfood remained clean on
+Glippy, `go-libraries/pkg/prompts`, and `go-libraries/pkg/http-client`; the
+external repositories' pre-existing bytes remained unchanged. Five
+100-function samples measured 64.95-65.94 ms, approximately 5.45 MB, and
+56,972-56,987 allocations per operation on Darwin arm64. Portable four-runner
+typed-budget evidence and further high-signal interprocedural error-flow and
+ownership coverage remain active v0.5 work.

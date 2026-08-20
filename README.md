@@ -240,10 +240,13 @@ every normally returning path after a direct `database/sql.Rows.Next` or
 results and checks against a reassigned iterator do not satisfy the contract.
 
 The opt-in error-flow catalog includes `overwritten-error`,
-`typed-nil-error-return`, and `shadowed-error`. The shadow rule deliberately
-does not warn about ordinary nested `if err := ...` handling: it reports only
-stale outer errors carried out of loops and deferred assignments that update a
-shadowing error instead of the named result.
+`typed-nil-error-return`, `shadowed-error`, and `nil-error-wrap`. The shadow
+rule deliberately does not warn about ordinary nested `if err := ...`
+handling: it reports only stale outer errors carried out of loops and deferred
+assignments that update a shadowing error instead of the named result.
+`nil-error-wrap` reports `%w` operands proven nil directly or through an exact
+selected-module sibling result relationship whose dominated state makes a
+non-nil error impossible.
 
 The default correctness catalog checks direct `database/sql` transaction
 lifecycles. After a conventional successful `DB.Begin`, `DB.BeginTx`, or
@@ -355,6 +358,7 @@ precise scope.
 - [v0.5 project semantic contracts](docs/research/v0.5-project-semantic-contracts-2026-08-16.md)
 - [v0.5 cancellation returned-alias obligations](docs/research/v0.5-returned-alias-cancellation-obligations-2026-08-20.md)
 - [v0.5 receiver terminal effects](docs/research/v0.5-receiver-terminal-effects-2026-08-20.md)
+- [v0.5 nil-error return facts](docs/research/v0.5-nil-error-return-facts-2026-08-20.md)
 - [Suppression reference](docs/suppressions.md)
 - [Lint engine and suppressions](docs/spec/lint-engine.md)
 - [Fix safety model](docs/spec/fix-safety.md)

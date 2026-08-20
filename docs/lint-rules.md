@@ -3139,8 +3139,8 @@ client.Do(context.TODO(), request)
 detects fmt.Errorf calls that wrap an error proven nil
 
 Wrapping nil with fmt.Errorf's %w directive returns a non-nil formatting error that does not wrap
-the intended failure. The rule reports literal nil and built-in error values whose nil outcome edge
-dominates the exact fmt.Errorf call.
+the intended failure. The rule reports literal nil and built-in error values proven nil by direct
+control flow or by an exact selected-helper sibling result relationship.
 
 - Default severity: `warn`
 - Presets: `suspicious`
@@ -3148,7 +3148,7 @@ dominates the exact fmt.Errorf call.
 - Analysis tier: SSA
 - Node interests: none
 - Dependency syntax: not required
-- Effect facts: not required
+- Effect facts: required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`
@@ -3165,8 +3165,12 @@ None.
 
 - Only exact fmt.Errorf calls with a compile-time format string and sequential non-star directives
   are analyzed; explicit argument indexes and star width or precision remain conservative.
-- Path proof covers literal nil, direct nil SSA values, and exact nil comparisons whose nil outcome
-  edge dominates the call.
+- Path proof covers literal nil, direct nil SSA values, exact nil comparisons whose nil outcome edge
+  dominates the call, and exact sibling-result states that contradict every non-nil-error return
+  from a selected local helper.
+- Return-state proof requires a direct tuple result and an exact sibling nil comparison; phis,
+  delegated results, dynamic calls, conflicting returns, and unavailable dependency facts remain
+  conservative.
 - Only values with the exact built-in error interface type are tracked; typed nil pointers and
   application-specific error interfaces are excluded because converting them to an interface can
   produce a non-nil interface value.

@@ -124,7 +124,7 @@ func typedNil() error {
 	if !found ||
 		metadata.DefaultSeverity != rules.SeverityWarn ||
 		metadata.Requirement != rules.RequireSSA ||
-		metadata.RequiresEffectFacts ||
+		!metadata.RequiresEffectFacts ||
 		!slices.Equal(metadata.Presets, []rules.Preset{rules.PresetSuspicious}) ||
 		metadata.MinimumGoVersion != "1.25" ||
 		metadata.RunOnGenerated ||
@@ -181,6 +181,128 @@ func typedNil() error {
 			diagnostic.MessageKey != "nil-error-wrap" ||
 			len(diagnostic.Fixes) != 0 {
 			t.Fatalf("nil-error-wrap diagnostic[%d] = %#v", index, diagnostic)
+		}
+	}
+}
+
+func TestNilErrorWrapConsumesImportedReturnStateFacts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/nilwrapfacts\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "helper", "helper.go"),
+		`package helper
+
+import "errors"
+
+type Value struct{}
+
+func Lookup(found bool) (*Value, error) {
+	if found { return &Value{}, nil }
+	return nil, errors.New("missing")
+}
+
+func Reverse(found bool) (*Value, error) {
+	if found { return nil, nil }
+	return &Value{}, errors.New("unexpected")
+}
+
+func Ambiguous(found bool) (*Value, error) {
+	if found { return &Value{}, nil }
+	return &Value{}, errors.New("missing")
+}
+
+func Conflicting(found bool) (*Value, error) {
+	if found { return nil, errors.New("missing") }
+	return &Value{}, errors.New("also missing")
+}
+`,
+	)
+	input := `package sample
+
+import (
+	"fmt"
+
+	"example.com/nilwrapfacts/helper"
+)
+
+func nonNilSibling(found bool) error {
+	value, err := helper.Lookup(found)
+	if value != nil {
+		return fmt.Errorf("lookup succeeded: %w", err)
+	}
+	return err
+}
+
+func nilSibling(found bool) error {
+	value, err := helper.Reverse(found)
+	if value == nil {
+		return fmt.Errorf("reverse succeeded: %w", err)
+	}
+	return err
+}
+
+func ambiguous(found bool) error {
+	value, err := helper.Ambiguous(found)
+	if value != nil {
+		return fmt.Errorf("ambiguous result: %w", err)
+	}
+	return err
+}
+
+func conflicting(found bool) error {
+	value, err := helper.Conflicting(found)
+	if value != nil {
+		return fmt.Errorf("conflicting result: %w", err)
+	}
+	return err
+}
+`
+	path := filepath.Join(root, "sample.go")
+	writeFixture(t, path, input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"nil-error-wrap": rules.SeverityWarn},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 ||
+		result.Files[0].Path != path ||
+		len(result.Files[0].Diagnostics) != 2 {
+		t.Fatalf("return-state nil-error-wrap result = %#v", result)
+	}
+	want := []string{
+		`fmt.Errorf("lookup succeeded: %w", err)`,
+		`fmt.Errorf("reverse succeeded: %w", err)`,
+	}
+	for index, snippet := range want {
+		start := strings.Index(input, snippet) + strings.LastIndex(snippet, "err")
+		diagnostic := result.Files[0].Diagnostics[index]
+		if diagnostic.RuleID != "nil-error-wrap" ||
+			diagnostic.Range.Start != start ||
+			diagnostic.Range.End != start + len("err") {
+			t.Fatalf("return-state diagnostic[%d] = %#v", index, diagnostic)
 		}
 	}
 }

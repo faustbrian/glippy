@@ -95,6 +95,14 @@ is limited to two stale flows: breaking from a loop on an inner error before
 observing the unchanged outer error, and deferred assignment to an inner error
 that hides a named result. General lexical shadowing remains out of scope.
 
+The `nil-error-wrap` SSA rule now also consumes the shared return-state facts
+used by `nilness`. For one direct tuple call, a sibling result's exact nil or
+non-nil branch can prove the error nil only when that state contradicts every
+non-nil-error return summarized for the selected local helper. Exact edge
+dominance keeps loop back-edges conservative. Dynamic calls, phis, delegated
+results, conflicting summaries, and unavailable dependency facts do not
+report.
+
 The lifecycle track now admits `sql-transaction-not-completed` as a default
 correctness CFG rule for direct `database/sql` transactions. After a
 conventional successful acquisition guard, every normally returning path must

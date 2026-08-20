@@ -65,11 +65,12 @@ findings while excluding ordinary `if err := operation(); err != nil` returns
 inside loops.
 
 Typed nil pointers, named error-like interfaces, values forwarded through
-aliases or phis without an exact proof, dynamic formats, indexed directives,
-and star operands remain conservative. The rule does not infer cross-package
-return state. No fix is registered because the intended repair may return nil,
-remove wrapping, select a different error, construct a new error, or alter the
-surrounding branch.
+phis without an exact proof, dynamic formats, indexed directives, and star
+operands remain conservative. The later v0.5 extension consumes already proven
+selected-module return-state facts for direct tuple results; it does not infer
+new relationships inside the rule. No fix is registered because the intended
+repair may return nil, remove wrapping, select a different error, construct a
+new error, or alter the surrounding branch.
 
 ## Behavioral And Cost Evidence
 
@@ -112,6 +113,6 @@ byte-for-byte.
 
 Revisit default correctness admission after multi-repository dogfood proves
 near-zero noise and portable measurement shows that default SSA debug mappings
-fit the stable latency and memory budgets. Extend value forwarding or
-cross-package return facts only when reviewed defects justify the added state
-contract. Do not add a fix without one canonical semantics-preserving repair.
+fit the stable latency and memory budgets. Extend value forwarding beyond the
+direct tuple and dominated sibling-state contract only when reviewed defects
+justify it. Do not add a fix without one canonical semantics-preserving repair.
