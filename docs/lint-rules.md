@@ -5793,9 +5793,9 @@ group.Done()
 
 detects successful output paths that omit required writer finalization
 
-Archive, compression, and multipart writers can buffer bytes or require trailing framing that is
-emitted only by Close. This rule follows exact standard-library writer acquisitions and reports a
-used writer when a successfully returning path neither finalizes nor transfers it.
+Archive, compression, encoded, and multipart writers can buffer bytes or require trailing framing
+that is emitted only by Close. This rule follows exact standard-library writer acquisitions and
+reports a used writer when a successfully returning path neither finalizes nor transfers it.
 
 - Default severity: `warn`
 - Presets: `correctness`
@@ -5818,8 +5818,9 @@ None.
 
 ### Known limitations
 
-- The initial contract covers direct local values from archive/tar.NewWriter,
-  compress/gzip.NewWriter or NewWriterLevel, and mime/multipart.NewWriter.
+- The exact contract covers direct local values from archive/tar.NewWriter, compress/gzip.NewWriter
+  or NewWriterLevel, encoding/ascii85.NewEncoder, encoding/base32.NewEncoder,
+  encoding/base64.NewEncoder, and mime/multipart.NewWriter.
 - Only exact output-producing receiver methods establish use; construction and configuration alone
   do not require finalization.
 - For functions returning error, only an explicit nil error result is classified as success; named,

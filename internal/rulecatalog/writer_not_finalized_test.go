@@ -21,6 +21,9 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"encoding/ascii85"
+	"encoding/base32"
+	"encoding/base64"
 	"errors"
 	"io"
 	"io/fs"
@@ -29,6 +32,30 @@ import (
 
 func missingGzip(output io.Writer) error {
 	writer := gzip.NewWriter(output)
+	if _, err := writer.Write([]byte("payload")); err != nil {
+		return err
+	}
+	return nil
+}
+
+func missingBase64(output io.Writer) error {
+	writer := base64.NewEncoder(base64.StdEncoding, output)
+	if _, err := writer.Write([]byte("payload")); err != nil {
+		return err
+	}
+	return nil
+}
+
+func missingAscii85(output io.Writer) error {
+	writer := ascii85.NewEncoder(output)
+	if _, err := writer.Write([]byte("payload")); err != nil {
+		return err
+	}
+	return nil
+}
+
+func missingBase32(output io.Writer) error {
+	writer := base32.NewEncoder(base32.StdEncoding, output)
 	if _, err := writer.Write([]byte("payload")); err != nil {
 		return err
 	}
@@ -84,6 +111,14 @@ func finalized(output io.Writer) error {
 	return writer.Close()
 }
 
+func finalizedBase64(output io.Writer) error {
+	writer := base64.NewEncoder(base64.StdEncoding, output)
+	if _, err := writer.Write([]byte("payload")); err != nil {
+		return err
+	}
+	return writer.Close()
+}
+
 func deferred(output io.Writer) {
 	writer := gzip.NewWriter(output)
 	defer writer.Close()
@@ -98,12 +133,16 @@ func failureOnly(output io.Writer) error {
 
 func unused(output io.Writer) {
 	_ = gzip.NewWriter(output)
+	_ = base64.NewEncoder(base64.StdEncoding, output)
 }
 
 func transferred(output io.Writer) {
 	writer := gzip.NewWriter(output)
 	_, _ = writer.Write([]byte("payload"))
 	consume(writer)
+	encoder := base64.NewEncoder(base64.StdEncoding, output)
+	_, _ = encoder.Write([]byte("payload"))
+	consume(encoder)
 }
 
 func returned(output io.Writer) io.WriteCloser {
@@ -185,6 +224,9 @@ func consume(io.Writer) {}
 	}
 	want := []string{
 		"writer := gzip.NewWriter(output)",
+		"writer := base64.NewEncoder(base64.StdEncoding, output)",
+		"writer := ascii85.NewEncoder(output)",
+		"writer := base32.NewEncoder(base32.StdEncoding, output)",
 		"writer := multipart.NewWriter(output)",
 		"writer := tar.NewWriter(output)",
 		"writer := gzip.NewWriter(output)",
@@ -229,12 +271,15 @@ func TestWriterNotFinalizedOwnsGenericResourceDiagnostic(t *testing.T) {
 
 import (
 	"compress/gzip"
+	"encoding/base64"
 	"io"
 )
 
 func encode(output io.Writer) {
 	writer := gzip.NewWriter(output)
 	_, _ = writer.Write([]byte("payload"))
+	encoder := base64.NewEncoder(base64.StdEncoding, output)
+	_, _ = encoder.Write([]byte("payload"))
 }
 `,
 	)
@@ -286,10 +331,13 @@ func encode(output io.Writer) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 1 ||
-		len(result.Files[0].Diagnostics) != 1 ||
-		result.Files[0].Diagnostics[0].RuleID != "writer-not-finalized" {
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 2 {
 		t.Fatalf("writer finalization ownership = %#v", result.Files)
+	}
+	for _, diagnostic := range result.Files[0].Diagnostics {
+		if diagnostic.RuleID != "writer-not-finalized" {
+			t.Fatalf("writer finalization ownership = %#v", result.Files)
+		}
 	}
 }
 

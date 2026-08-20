@@ -11,6 +11,11 @@ The initial exact catalog covers `archive/tar.NewWriter`,
 `compress/gzip.NewWriter`, `compress/gzip.NewWriterLevel`, and
 `mime/multipart.NewWriter`. Their required finalizer is `Close`.
 
+The streaming-encoder expansion on 2026-08-20 adds exact direct results from
+`encoding/ascii85.NewEncoder`, `encoding/base32.NewEncoder`, and
+`encoding/base64.NewEncoder`. Their `Write` method starts the same obligation,
+and their required finalizer is also `Close`.
+
 ## Defect And Existing Tools
 
 These writers can buffer output or require framing that `Close` emits. A
@@ -18,6 +23,15 @@ function can therefore return success after earlier writes succeeded while
 leaving a tar stream unpadded, a gzip stream without its footer, or multipart
 output without its trailing boundary. The compiler and default Go vet catalog
 do not require those lifecycle calls.
+
+The three streaming encoders buffer partial blocks until `Close`. Public
+defects recorded by
+[`tobischo/gokeepasslib#86`](https://github.com/tobischo/gokeepasslib/issues/86)
+and [`formancehq/auth#136`](https://github.com/formancehq/auth/pull/136) show
+zero-byte attachments and truncated base64 output when callers omit that
+finalizer. Their constructors return only `io.WriteCloser`, so exact
+constructor identity is required to distinguish these data-integrity APIs from
+arbitrary interface closers.
 
 The existing default `unchecked-writer-error` rule detects a discarded error
 from a finalizer that was called. It cannot detect an absent finalizer. The new
@@ -30,8 +44,13 @@ The exact contracts were checked against the Go 1.26.6 documentation for
 [`compress/gzip.Writer.Close`](https://pkg.go.dev/compress/gzip#Writer.Close),
 and
 [`mime/multipart.Writer.Close`](https://pkg.go.dev/mime/multipart#Writer.Close).
-The compiler and default vet boundary was checked through the same Go 1.26.6
-toolchain used by the admission tests.
+The encoder expansion uses the Go 1.26.7 documentation and implementations for
+[`encoding/ascii85.NewEncoder`](https://pkg.go.dev/encoding/ascii85#NewEncoder),
+[`encoding/base32.NewEncoder`](https://pkg.go.dev/encoding/base32#NewEncoder),
+and
+[`encoding/base64.NewEncoder`](https://pkg.go.dev/encoding/base64#NewEncoder).
+The compiler and default vet boundary was checked with Go 1.26.6 for the
+initial admission and Go 1.26.7 for the encoder expansion.
 
 ## Precision Contract
 
@@ -40,6 +59,7 @@ writer becomes obligated only after an exact output-producing receiver method:
 
 - tar `AddFS`, `Write`, or `WriteHeader`;
 - gzip `Write` or `Flush`; or
+- ascii85, base32, or base64 `Write`; or
 - multipart `CreateFormField`, `CreateFormFile`, `CreatePart`, or `WriteField`.
 
 Construction and configuration alone do not report. Direct or deferred
@@ -61,11 +81,18 @@ first implementation then missed implicit success returns from functions with
 no results. A separate transfer regression initially reported returned, sent,
 stored, and method-value-transferred writers. Final review also found that the
 exact tar catalog omitted `Writer.AddFS`; its regression failed before the
-method was admitted. The corrected dataflow preserves six exact
+method was admitted. The corrected dataflow preserves six original exact
 missing-finalization findings while excluding handled, deferred,
 failure-only, unused, transferred, asynchronous, local-lookalike, generated,
 and ill-typed cases. Suppression, severity, minimum-version, exact-range, and
 diagnostic-ownership behavior are covered.
+
+The streaming-encoder regression then produced only those six original
+diagnostics before constructor identity was added. The final focused fixture
+adds one exact missing-finalization diagnostic for each encoder while accepting
+finalized, unused, and transferred interface values. A combined correctness
+run reports only `writer-not-finalized`; the generic resource rule delegates
+all seven exact constructor functions instead of duplicating the findings.
 
 Five complete 100-function package-analysis samples on Go 1.26.6, Darwin
 arm64, and an Apple M4 Max measured:
@@ -90,6 +117,14 @@ revision, the generic finding count falls from ten to seven by removing exactly
 the three multipart writer diagnostics, while `writer-not-finalized` remains
 clean. Five one-operation `resource-not-closed` benchmark samples measured
 73.00-110.71 ms, 2.13-2.72 MB, and 17,037-17,494 allocations on Darwin arm64.
+
+The streaming-encoder expansion remained clean under exact-rule dogfood on
+Glippy, `go-libraries/pkg/prompts`, and `go-libraries/pkg/http-client` at
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`. Both external checks were
+non-mutating and preserved their pre-existing status. Five complete
+100-function package-analysis samples on Go 1.26.7, Darwin arm64, and an Apple
+M4 Max measured `84,827,083-93,625,292 ns/op`,
+`4,471,880-5,060,424 B/op`, and `40,232-40,690 allocs/op`.
 
 ## Revisit Trigger
 

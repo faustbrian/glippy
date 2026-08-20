@@ -2200,3 +2200,21 @@ samples measured 72.96-75.88 ms, 2.13-2.71 MB, and 17,043-17,487 allocations
 on Darwin arm64. Portable four-runner typed-budget evidence and further
 high-signal interprocedural error-flow and ownership coverage remain active
 v0.5 work.
+
+The v0.5 streaming-encoder finalization expansion extends
+`writer-not-finalized` to exact direct results from
+`encoding/ascii85.NewEncoder`, `encoding/base32.NewEncoder`, and
+`encoding/base64.NewEncoder`. A successful path that writes encoded data but
+neither closes nor transfers the encoder now reports under default correctness;
+finalized, unused, and transferred interface values remain accepted. The
+focused red regression produced only the six original writer diagnostics
+before the three encoder constructors were admitted. The generic
+`resource-not-closed` rule delegates all seven exact writer constructor
+functions, preventing duplicate lifecycle diagnostics. Exact-rule dogfood
+remained clean on Glippy, `go-libraries/pkg/prompts`, and
+`go-libraries/pkg/http-client` at
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`; both external repositories were
+unchanged. Five 100-function samples measured 84.83-93.63 ms, 4.47-5.06 MB,
+and 40,232-40,690 allocations on Darwin arm64. Portable four-runner
+typed-budget evidence and further high-signal interprocedural error-flow and
+ownership coverage remain active v0.5 work.

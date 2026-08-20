@@ -7,7 +7,7 @@ defaults, pays only for the analysis tiers enabled rules require, and routes
 all source changes through an explicit conflict-safe transaction.
 
 Glippy v0.5 is under development and is not tagged or published. The current
-catalog contains 112 rules, including 18 rules with safe or suggestion fixes.
+catalog contains 113 rules, including 18 rules with safe or suggestion fixes.
 The existing
 v0.1.0 release remains Gox under `github.com/faustbrian/gox`; its module tags,
 binary, archives, and attestations are immutable historical identities. The
@@ -250,8 +250,9 @@ non-nil error impossible.
 
 The default output-integrity catalog distinguishes three writer failures:
 discarded `Flush` or `Close` errors, CSV flushing without observing
-`Writer.Error`, and successful tar, gzip, or multipart output paths that use a
-directly acquired writer without finalizing or transferring it.
+`Writer.Error`, and successful tar, gzip, multipart, ascii85, base32, or base64
+output paths that use a directly acquired writer without finalizing or
+transferring it.
 
 The default correctness catalog checks direct `database/sql` transaction
 lifecycles. After a conventional successful `DB.Begin`, `DB.BeginTx`, or
