@@ -94,6 +94,48 @@ func pass() error {
 	return nil
 }
 
+func nilResult() error {
+	file, err := os.Open("input")
+	if err != nil { return err }
+	if file == nil { return nil }
+	return file.Close()
+}
+
+func reversedNilResult() error {
+	file, err := os.Open("input")
+	if err != nil { return err }
+	if nil == file { return nil }
+	return file.Close()
+}
+
+func nilResultUnreleased() error {
+	file, err := os.Open("input")
+	if err != nil { return err }
+	if file == nil { return nil }
+	_ = file.Name()
+	return nil
+}
+
+func nonNilResult() error {
+	file, err := os.Open("input")
+	if err != nil { return err }
+	if file != nil { return file.Close() }
+	return nil
+}
+
+func explicitElseResult() error {
+	file, err := os.Open("input")
+	if err != nil { return err }
+	if file != nil { return file.Close() } else { return nil }
+}
+
+func nonNilResultUnreleased() error {
+	file, err := os.Open("input")
+	if err != nil { return err }
+	if file != nil { _ = file.Name() }
+	return nil
+}
+
 func consume(*os.File) {}
 `
 	root := t.TempDir()
@@ -126,7 +168,7 @@ func consume(*os.File) {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 7 {
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 9 {
 		t.Fatalf("resource-not-closed result = %#v", result)
 	}
 	expected := []struct {
@@ -140,6 +182,8 @@ func consume(*os.File) {}
 		{function: "func completedBranches(", acquisition: "file, err := os.Open"},
 		{function: "func overwritten()", acquisition: "file, err := os.Open"},
 		{function: "func pass()", acquisition: "file, err := os.Open"},
+		{function: "func nilResultUnreleased()", acquisition: "file, err := os.Open"},
+		{function: "func nonNilResultUnreleased()", acquisition: "file, err := os.Open"},
 	}
 	expectedStarts := make(map[int]bool, len(expected))
 	for index, location := range expected {

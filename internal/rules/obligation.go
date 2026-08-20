@@ -49,6 +49,14 @@ func obligationReachesOpenReturn(
 	start obligationStart,
 	classify func(ast.Node) obligationEffect,
 ) bool {
+	return obligationReachesOpenReturnWithEdgeDischarge(start, classify, nil)
+}
+
+func obligationReachesOpenReturnWithEdgeDischarge(
+	start obligationStart,
+	classify func(ast.Node) obligationEffect,
+	discharged func(*cfg.Block, *cfg.Block) bool,
+) bool {
 	if start.block == nil || classify == nil {
 		return false
 	}
@@ -81,6 +89,9 @@ func obligationReachesOpenReturn(
 			return true
 		}
 		for _, successor := range current.block.Succs {
+			if discharged != nil && discharged(current.block, successor) {
+				continue
+			}
 			work = append(work, obligationWork{block: successor})
 		}
 	}

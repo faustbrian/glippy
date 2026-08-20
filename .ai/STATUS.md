@@ -2026,3 +2026,14 @@ clean on Glippy and `go-libraries/pkg/prompts` at `5925270`, whose pre-existing
 dirty state and `go.sum` bytes were unchanged. Portable four-runner typed-budget
 evidence and further high-signal interprocedural error-flow and ownership
 coverage remain active v0.5 work.
+
+The v0.5 resource nil-edge batch removes a repeated ownership false positive
+from `resource-not-closed`. Exact `resource == nil` and `resource != nil` CFG
+edges now discharge only the proven nil path; every non-nil path must still
+close or transfer the resource. Focused regressions preserve diagnostics when
+the non-nil branch merely observes the value. Read-only dogfood on
+`go-libraries/pkg/http-client` removes the motivating request-body-wrapper
+diagnostic and two equivalent nil-result findings while retaining 22 other
+findings for separate ownership review. The external repository remained
+unmodified. Portable four-runner typed-budget evidence and further high-signal
+interprocedural error-flow and ownership coverage remain active v0.5 work.

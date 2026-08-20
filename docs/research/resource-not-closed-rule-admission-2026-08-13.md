@@ -43,6 +43,11 @@ transfer. It uses the shared CFG's no-return policy and visits each block state
 at most once per candidate. `sql-transaction-not-completed` uses the same
 engine with exact `Commit` and `Rollback` completion effects.
 
+The 2026-08-20 nil-result refinement discharges only the exact CFG edge where
+`resource == nil` or `resource != nil` proves that no owned resource exists.
+The non-nil edge must still close or transfer the value. Compound conditions,
+aliases, and indirect comparisons remain conservative.
+
 The rule remains `suspicious`, not `correctness`, because ownership may be
 transferred through conventions it cannot prove. No fix is offered because the
 correct cleanup point and error policy are contextual.
@@ -59,10 +64,22 @@ Five complete-load iterations on Go 1.26.6, Darwin arm64, Apple M4 Max averaged
 CFG fixture. Imports and package loading dominate the measurement; this is
 proportional admission evidence rather than a stable latency budget.
 
+After the nil-edge refinement, five one-iteration samples on the same runtime
+and host measured `71,115,750-75,769,167 ns/op`,
+`2,103,768-2,675,120 B/op`, and `16,835-17,277 allocs/op`. The range remains
+proportional rule evidence rather than a release latency or allocation budget.
+
 Non-mutating dogfood completed without findings over Glippy and
 `go-libraries/pkg/prompts` at
 `6aa246ba6cd9e8bcb4d94d4ad156635285cc2f22`; the prompts repository head and
 pre-existing dirty status were unchanged.
+
+The nil-result refinement was reproduced against
+`go-libraries/pkg/http-client`: an `io.ReadCloser` result guarded against nil
+before transfer into a request-body wrapper previously reported as leaked.
+The corrected analyzer removes that diagnostic and two equivalent nil-result
+false positives while retaining the other 22 findings for separate ownership
+review. The external repository remained unmodified.
 
 ## Revisit Trigger
 

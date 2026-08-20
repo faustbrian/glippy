@@ -3867,8 +3867,9 @@ detects locally owned closers that are neither closed nor transferred
 A call result with a conventional Close method usually owns a file, connection, compressor, or
 similar resource. A locally owned result that reaches a normal return without being closed or
 transferred can retain descriptors, connections, buffers, or other external state until process
-termination or garbage collection. Versioned parameter-effect and returned-alias summaries
-distinguish retained obligations from guaranteed closure or ownership transfer.
+termination or garbage collection. Exact nil-result branches carry no ownership obligation.
+Versioned parameter-effect and returned-alias summaries distinguish retained obligations from
+guaranteed closure or ownership transfer.
 
 - Default severity: `warn`
 - Presets: `suspicious`
@@ -3891,6 +3892,8 @@ None.
 
 ### Known limitations
 
+- Only direct resource == nil and resource != nil conditions discharge the nil branch; compound
+  nilness, aliases, and indirect comparisons remain conservative.
 - A statically resolved same-module helper that provably borrows the resource leaves the obligation
   open; guaranteed closure or transfer must cover every normally returning helper path.
 - An exact returned-alias contract preserves the obligation when the result is assigned back to the

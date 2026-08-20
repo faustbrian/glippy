@@ -29,7 +29,7 @@ func (resourceNotClosedRule) Metadata() Metadata {
 	return Metadata{
 		ID: "resource-not-closed",
 		Summary: "detects locally owned closers that are neither closed nor transferred",
-		Documentation: "A call result with a conventional Close method usually owns a file, connection, compressor, or similar resource. A locally owned result that reaches a normal return without being closed or transferred can retain descriptors, connections, buffers, or other external state until process termination or garbage collection. Versioned parameter-effect and returned-alias summaries distinguish retained obligations from guaranteed closure or ownership transfer.",
+		Documentation: "A call result with a conventional Close method usually owns a file, connection, compressor, or similar resource. A locally owned result that reaches a normal return without being closed or transferred can retain descriptors, connections, buffers, or other external state until process termination or garbage collection. Exact nil-result branches carry no ownership obligation. Versioned parameter-effect and returned-alias summaries distinguish retained obligations from guaranteed closure or ownership transfer.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
@@ -37,6 +37,7 @@ func (resourceNotClosedRule) Metadata() Metadata {
 		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySafety, CategorySuspicious},
 		KnownLimitations: []string{
+			"Only direct resource == nil and resource != nil conditions discharge the nil branch; compound nilness, aliases, and indirect comparisons remain conservative.",
 			"A statically resolved same-module helper that provably borrows the resource leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
 			"An exact returned-alias contract preserves the obligation when the result is assigned back to the same resource variable; new alias bindings remain outside the tracked ownership identity.",
 			"Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules retain the conservative ownership-transfer behavior when no summary is available.",
@@ -65,7 +66,7 @@ func (resourceNotClosedRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding,
 		localCloserCandidates(ctx.Info(), ctx.Body(), ctx.ReturnAliasesArgument) {
 		start, found := localCloserObligationStart(ctx.Graph(), ctx.Info(), candidate)
 		if !found ||
-			!obligationReachesOpenReturn(
+			!obligationReachesOpenReturnWithEdgeDischarge(
 				start,
 				func(node ast.Node) obligationEffect {
 					return objectObligationEffect(
@@ -82,6 +83,14 @@ func (resourceNotClosedRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding,
 						ctx.ParameterEffect,
 						ParameterEffectClose | ParameterEffectTransfer,
 						ctx.ReturnAliasesArgument,
+					)
+				},
+				func(from, to *cfg.Block) bool {
+					return edgeProvesResourceNil(
+						ctx.Info(),
+						from,
+						to,
+						candidate.object,
 					)
 				},
 			) {
@@ -105,6 +114,41 @@ func (resourceNotClosedRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding,
 		)
 	}
 	return findings, nil
+}
+
+func edgeProvesResourceNil(
+	info *types.Info,
+	from *cfg.Block,
+	to *cfg.Block,
+	resourceObject types.Object,
+) bool {
+	if info == nil ||
+		from == nil ||
+		to == nil ||
+		resourceObject == nil ||
+		len(from.Nodes) == 0 {
+		return false
+	}
+	guard, _ := to.Stmt.(*ast.IfStmt)
+	if guard == nil || from.Nodes[len(from.Nodes) - 1] != guard.Cond {
+		return false
+	}
+	comparison, _ := ast.Unparen(guard.Cond).(*ast.BinaryExpr)
+	if comparison == nil || (comparison.Op != token.EQL && comparison.Op != token.NEQ) {
+		return false
+	}
+	nilObject := types.Universe.Lookup("nil")
+	comparesResourceToNil := directObject(info, comparison.X) == resourceObject &&
+		directObject(info, comparison.Y) == nilObject ||
+		directObject(info, comparison.Y) == resourceObject &&
+			directObject(info, comparison.X) == nilObject
+	if !comparesResourceToNil {
+		return false
+	}
+	if comparison.Op == token.EQL {
+		return to.Kind == cfg.KindIfThen
+	}
+	return to.Kind == cfg.KindIfElse || to.Kind == cfg.KindIfDone
 }
 
 func localCloserCandidates(
