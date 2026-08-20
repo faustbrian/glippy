@@ -46,6 +46,25 @@ func missingBase64(output io.Writer) error {
 	return nil
 }
 
+func missingDeclaredBase64(output io.Writer) error {
+	var writer = base64.NewEncoder(base64.StdEncoding, output)
+	if _, err := writer.Write([]byte("payload")); err != nil {
+		return err
+	}
+	return nil
+}
+
+func missingDeclaredGzipLevel(output io.Writer) error {
+	var writer, err = gzip.NewWriterLevel(output, gzip.BestSpeed)
+	if err != nil {
+		return err
+	}
+	if _, err = writer.Write([]byte("payload")); err != nil {
+		return err
+	}
+	return nil
+}
+
 func missingAscii85(output io.Writer) error {
 	writer := ascii85.NewEncoder(output)
 	if _, err := writer.Write([]byte("payload")); err != nil {
@@ -113,6 +132,14 @@ func finalized(output io.Writer) error {
 
 func finalizedBase64(output io.Writer) error {
 	writer := base64.NewEncoder(base64.StdEncoding, output)
+	if _, err := writer.Write([]byte("payload")); err != nil {
+		return err
+	}
+	return writer.Close()
+}
+
+func finalizedDeclaredBase64(output io.Writer) error {
+	var writer = base64.NewEncoder(base64.StdEncoding, output)
 	if _, err := writer.Write([]byte("payload")); err != nil {
 		return err
 	}
@@ -225,6 +252,8 @@ func consume(io.Writer) {}
 	want := []string{
 		"writer := gzip.NewWriter(output)",
 		"writer := base64.NewEncoder(base64.StdEncoding, output)",
+		"var writer = base64.NewEncoder(base64.StdEncoding, output)",
+		"var writer, err = gzip.NewWriterLevel(output, gzip.BestSpeed)",
 		"writer := ascii85.NewEncoder(output)",
 		"writer := base32.NewEncoder(base32.StdEncoding, output)",
 		"writer := multipart.NewWriter(output)",

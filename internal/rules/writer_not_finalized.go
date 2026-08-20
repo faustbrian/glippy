@@ -103,10 +103,11 @@ func (writerNotFinalizedRule) Metadata() Metadata {
 		Requirement: RequireControlFlow,
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
-			"The exact contract covers direct local values from archive/tar.NewWriter, compress/gzip.NewWriter or NewWriterLevel, encoding/ascii85.NewEncoder, encoding/base32.NewEncoder, encoding/base64.NewEncoder, and mime/multipart.NewWriter.",
+			"The exact contract covers direct local assignment results and initialized variable declarations from archive/tar.NewWriter, compress/gzip.NewWriter or NewWriterLevel, encoding/ascii85.NewEncoder, encoding/base32.NewEncoder, encoding/base64.NewEncoder, and mime/multipart.NewWriter.",
 			"Only exact output-producing receiver methods establish use; construction and configuration alone do not require finalization.",
 			"For functions returning error, only an explicit nil error result is classified as success; named, delegated, or otherwise unknown results remain conservative.",
 			"Aliases, fields, containers, closures, method values, asynchronous calls, and transfers stop analysis because exact ownership or execution order is unavailable.",
+			"One constructor call must supply the declaration or assignment values; parallel multi-expression acquisitions remain outside the direct mapping contract.",
 			"No fix is offered because correct finalization and error joining depend on the surrounding return contract.",
 		},
 		Examples: []Example{
@@ -155,36 +156,68 @@ func writerLifecycleCandidates(ctx *ControlFlowContext) []writerLifecycleCandida
 			if _, nested := node.(*ast.FuncLit); nested {
 				return false
 			}
-			assignment, _ := node.(*ast.AssignStmt)
-			if assignment == nil || len(assignment.Rhs) != 1 {
-				return true
-			}
-			call, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
-			spec, resultIndex, matched := writerLifecycleConstructor(ctx.Info(), call)
-			if !matched || resultIndex >= len(assignment.Lhs) {
-				return true
-			}
-			identifier, _ := assignment.Lhs[resultIndex].(*ast.Ident)
-			if identifier == nil || identifier.Name == "_" {
-				return true
-			}
-			object := ctx.Info().ObjectOf(identifier)
-			start, found := obligationStartAfter(ctx.Graph(), assignment)
-			if object != nil && found {
-				result = append(
-					result,
-					writerLifecycleCandidate{
-						identifier: identifier,
-						object: object,
-						spec: spec,
-						start: start,
-					},
-				)
+			candidate, found := writerLifecycleCandidateAt(ctx, node)
+			if found {
+				result = append(result, candidate)
 			}
 			return true
 		},
 	)
 	return result
+}
+
+func writerLifecycleCandidateAt(
+	ctx *ControlFlowContext,
+	node ast.Node,
+) (writerLifecycleCandidate, bool) {
+	if ctx == nil || ctx.Info() == nil || ctx.Graph() == nil || node == nil {
+		return writerLifecycleCandidate{}, false
+	}
+	var (
+		identifier *ast.Ident
+		call *ast.CallExpr
+		spec writerLifecycleSpec
+	)
+	switch node := node.(type) {
+	case *ast.AssignStmt:
+		if len(node.Rhs) != 1 {
+			return writerLifecycleCandidate{}, false
+		}
+		call, _ = ast.Unparen(node.Rhs[0]).(*ast.CallExpr)
+		candidate, resultIndex, matched := writerLifecycleConstructor(ctx.Info(), call)
+		if !matched || resultIndex >= len(node.Lhs) {
+			return writerLifecycleCandidate{}, false
+		}
+		spec = candidate
+		identifier, _ = node.Lhs[resultIndex].(*ast.Ident)
+	case *ast.ValueSpec:
+		if len(node.Values) != 1 {
+			return writerLifecycleCandidate{}, false
+		}
+		call, _ = ast.Unparen(node.Values[0]).(*ast.CallExpr)
+		candidate, resultIndex, matched := writerLifecycleConstructor(ctx.Info(), call)
+		if !matched || resultIndex >= len(node.Names) {
+			return writerLifecycleCandidate{}, false
+		}
+		spec = candidate
+		identifier = node.Names[resultIndex]
+	default:
+		return writerLifecycleCandidate{}, false
+	}
+	if identifier == nil || identifier.Name == "_" {
+		return writerLifecycleCandidate{}, false
+	}
+	object := ctx.Info().ObjectOf(identifier)
+	start, found := obligationStartAfter(ctx.Graph(), node)
+	if object == nil || !found {
+		return writerLifecycleCandidate{}, false
+	}
+	return writerLifecycleCandidate{
+		identifier: identifier,
+		object: object,
+		spec: spec,
+		start: start,
+	}, true
 }
 
 func writerLifecycleConstructor(

@@ -2218,3 +2218,18 @@ unchanged. Five 100-function samples measured 84.83-93.63 ms, 4.47-5.06 MB,
 and 40,232-40,690 allocations on Darwin arm64. Portable four-runner
 typed-budget evidence and further high-signal interprocedural error-flow and
 ownership coverage remain active v0.5 work.
+
+The v0.5 initialized-writer precision follow-up makes
+`writer-not-finalized` recognize exact constructor results declared through a
+local `var` specification as well as assignments. Single-result encoder
+declarations and multi-result `gzip.NewWriterLevel` declarations now enter the
+same CFG lifecycle, while finalized declared encoders remain accepted and
+parallel multi-expression mappings stay conservative. The focused red
+regression missed the unclosed declared base64 encoder before CFG `ValueSpec`
+acquisitions were admitted. Exact-rule dogfood remained clean on Glippy,
+`go-libraries/pkg/prompts`, and `go-libraries/pkg/http-client` at
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`; both external repositories were
+unchanged. Five 100-function samples measured 86.18-95.41 ms, 4.47-5.06 MB,
+and 40,219-40,695 allocations on Darwin arm64. Portable four-runner
+typed-budget evidence and further high-signal interprocedural error-flow and
+ownership coverage remain active v0.5 work.

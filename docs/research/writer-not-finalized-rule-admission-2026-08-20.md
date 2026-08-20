@@ -54,8 +54,11 @@ initial admission and Go 1.26.7 for the encoder expansion.
 
 ## Precision Contract
 
-The acquisition must be a direct assignment from one exact constructor. The
-writer becomes obligated only after an exact output-producing receiver method:
+The acquisition must be a direct assignment or initialized local variable
+declaration from one exact constructor. Multi-result constructors map their
+declared result index; parallel multi-expression acquisitions remain outside
+the direct mapping contract. The writer becomes obligated only after an exact
+output-producing receiver method:
 
 - tar `AddFS`, `Write`, or `WriteHeader`;
 - gzip `Write` or `Flush`; or
@@ -94,6 +97,13 @@ finalized, unused, and transferred interface values. A combined correctness
 run reports only `writer-not-finalized`; the generic resource rule delegates
 all seven exact constructor functions instead of duplicating the findings.
 
+The initialized-declaration follow-up reproduced a missed base64 obligation:
+`var writer = base64.NewEncoder(...)` wrote output and returned success without
+closing, but produced no diagnostic. The shared acquisition mapping now accepts
+CFG `ValueSpec` nodes as well as assignment nodes. Focused coverage includes the
+single-result encoder form, multi-result `gzip.NewWriterLevel`, and a finalized
+declared encoder without broadening to parallel expression mapping.
+
 Five complete 100-function package-analysis samples on Go 1.26.6, Darwin
 arm64, and an Apple M4 Max measured:
 
@@ -125,6 +135,14 @@ non-mutating and preserved their pre-existing status. Five complete
 100-function package-analysis samples on Go 1.26.7, Darwin arm64, and an Apple
 M4 Max measured `84,827,083-93,625,292 ns/op`,
 `4,471,880-5,060,424 B/op`, and `40,232-40,690 allocs/op`.
+
+The initialized-declaration follow-up remained clean under exact-rule dogfood
+on Glippy, `go-libraries/pkg/prompts`, and `go-libraries/pkg/http-client` at
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`; both external repositories
+retained their pre-existing state. Five complete 100-function samples on the
+same Go 1.26.7 Darwin arm64 host measured
+`86,175,917-95,411,916 ns/op`, `4,469,480-5,059,128 B/op`, and
+`40,219-40,695 allocs/op`.
 
 ## Revisit Trigger
 

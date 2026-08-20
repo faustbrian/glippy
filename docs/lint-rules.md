@@ -5818,15 +5818,18 @@ None.
 
 ### Known limitations
 
-- The exact contract covers direct local values from archive/tar.NewWriter, compress/gzip.NewWriter
-  or NewWriterLevel, encoding/ascii85.NewEncoder, encoding/base32.NewEncoder,
-  encoding/base64.NewEncoder, and mime/multipart.NewWriter.
+- The exact contract covers direct local assignment results and initialized variable declarations
+  from archive/tar.NewWriter, compress/gzip.NewWriter or NewWriterLevel,
+  encoding/ascii85.NewEncoder, encoding/base32.NewEncoder, encoding/base64.NewEncoder, and
+  mime/multipart.NewWriter.
 - Only exact output-producing receiver methods establish use; construction and configuration alone
   do not require finalization.
 - For functions returning error, only an explicit nil error result is classified as success; named,
   delegated, or otherwise unknown results remain conservative.
 - Aliases, fields, containers, closures, method values, asynchronous calls, and transfers stop
   analysis because exact ownership or execution order is unavailable.
+- One constructor call must supply the declaration or assignment values; parallel multi-expression
+  acquisitions remain outside the direct mapping contract.
 - No fix is offered because correct finalization and error joining depend on the surrounding return
   contract.
 
