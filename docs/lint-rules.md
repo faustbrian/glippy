@@ -3903,6 +3903,9 @@ None.
   nilness, aliases, and indirect comparisons remain conservative.
 - Exact tar, gzip, and multipart writer constructors belong to writer-not-finalized and are excluded
   from this generic closer rule.
+- A direct function-literal constructor argument, or the final direct same-block value of a local
+  argument, that captures the assigned resource conservatively transfers ownership because callback
+  retention and execution are unknown; conditional or nested assignments do not prove transfer.
 - A statically resolved helper in a selected local-source module that provably borrows the resource
   leaves the obligation open; guaranteed closure or transfer must cover every normally returning
   helper path.

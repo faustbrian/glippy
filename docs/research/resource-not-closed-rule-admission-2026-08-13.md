@@ -67,6 +67,21 @@ parameter helpers. Reachable active-workspace and local filesystem replacement
 modules now join root modules inside the selected local-source boundary;
 downloaded dependencies and unrelated workspace modules remain excluded.
 
+The constructor-callback refinement on 2026-08-20 applies the same conservative
+closure-capture boundary when a direct function-literal argument references the
+result being assigned by that constructor call. It also resolves the final
+direct assignment to a local argument in the acquisition block, covering stable
+callback containers passed through a configuration value. The callback may be
+retained and later own or close the resource, so the generic rule treats the
+acquisition as transferred. A callback that captures only another value, a
+replaced container, or a capture assigned only through conditional or nested
+control flow does not discharge the new resource obligation.
+
+The transfer classification applies only to the leak rule: the shared closer
+acquisition remains eligible for `resource-used-after-close`, so an explicit
+local close followed by an operation still reports even when a constructor
+callback also captures the value.
+
 The rule remains `suspicious`, not `correctness`, because ownership may be
 transferred through conventions it cannot prove. No fix is offered because the
 correct cleanup point and error policy are contextual.
@@ -79,7 +94,8 @@ transfer, exact ranges, suppressions, generated and type-error policy, source
 versions, CLI output, baselines, absence of fixes, same-package and imported
 cleanup-managed results, disagreeing package variants, and conservative
 conditional, asynchronous, nested, replacement, and copied-test-handle
-boundaries.
+boundaries, plus direct and stable-container constructor callbacks and their
+same-block dominance boundary.
 
 Five complete-load iterations on Go 1.26.6, Darwin arm64, Apple M4 Max averaged
 `106,638,825 ns/op`, `1,969,809 B/op`, and `15,669 allocs/op` for the one-file
@@ -102,6 +118,21 @@ before transfer into a request-body wrapper previously reported as leaked.
 The corrected analyzer removes that diagnostic and two equivalent nil-result
 false positives while retaining the other 22 findings for separate ownership
 review. The external repository remained unmodified.
+
+The constructor-callback refinement was reproduced against
+`go-libraries/pkg/http-client` at
+`b2bcdc33836d6800db0f51ebf9b816e5d5fb33ee`. Direct and stable-container
+captures remove the two false positives in `client_test.go` and
+`session_test.go`. The five retained findings are one response body in
+`compression_test.go` and four fake files in `resume_test.go`. Exact-rule
+dogfood remained clean on Glippy and `go-libraries/pkg/prompts` at the same
+revision. These were non-mutating lint runs; unrelated concurrent dirty changes
+in the shared external repository remain outside this batch.
+
+Five one-iteration samples on Go 1.26.7, Darwin arm64, Apple M4 Max measured
+`72,107,625-80,146,375 ns/op`, `2,133,768-2,704,144 B/op`, and
+`17,039-17,473 allocs/op`. This remains proportional rule evidence rather than
+a portable latency or allocation budget.
 
 ## Revisit Trigger
 

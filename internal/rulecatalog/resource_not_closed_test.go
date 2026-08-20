@@ -1115,6 +1115,132 @@ func validateBoundary(output io.Writer) error {
 	}
 }
 
+func TestResourceNotClosedTransfersConstructorCallbackCaptures(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/resourceconstructorcapture\n\ngo 1.26.0\n",
+	)
+	input := `package sample
+
+type resource struct{}
+type callbacks struct{ run func() }
+
+func (*resource) Close() error { return nil }
+func open(any) (*resource, error) { return &resource{}, nil }
+
+func captured() error {
+	var value *resource
+	value, err := open(func() { _ = value.Close() })
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func unrelatedCapture() error {
+	other := &resource{}
+	value, err := open(func() { _ = other.Close() })
+	if err != nil {
+		return err
+	}
+	_ = value
+	return nil
+}
+
+func indirectCapture() error {
+	var value *resource
+	hooks := callbacks{run: func() { _ = value.Close() }}
+	value, err := open(hooks)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func replacedCapture() error {
+	var value *resource
+	hooks := callbacks{run: func() { _ = value.Close() }}
+	hooks = callbacks{}
+	value, err := open(hooks)
+	if err != nil {
+		return err
+	}
+	_ = value
+	return nil
+}
+
+func conditionalCapture(enabled bool) error {
+	var value *resource
+	hooks := callbacks{}
+	if enabled {
+		hooks = callbacks{run: func() { _ = value.Close() }}
+	}
+	value, err := open(hooks)
+	if err != nil {
+		return err
+	}
+	_ = value
+	return nil
+}
+`
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"resource-not-closed": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 3 {
+		t.Fatalf("constructor callback capture diagnostics = %#v", result)
+	}
+	wantOffsets := make(map[int]struct{})
+	for _, function := range
+		[]string{"unrelatedCapture", "replacedCapture", "conditionalCapture"} {
+		functionOffset := strings.Index(input, "func " + function)
+		if functionOffset < 0 {
+			t.Fatalf("missing fixture function %q", function)
+		}
+		valueOffset := strings.Index(input[functionOffset:], "value, err := open")
+		if valueOffset < 0 {
+			t.Fatalf("missing acquisition in fixture function %q", function)
+		}
+		wantOffsets[functionOffset + valueOffset] = struct{}{}
+	}
+	for _, diagnostic := range result.Files[0].Diagnostics {
+		if diagnostic.RuleID != "resource-not-closed" {
+			t.Fatalf("constructor callback diagnostic = %#v", diagnostic)
+		}
+		if _, expected := wantOffsets[diagnostic.Range.Start]; !expected {
+			t.Fatalf("unexpected constructor callback diagnostic = %#v", diagnostic)
+		}
+		delete(wantOffsets, diagnostic.Range.Start)
+	}
+	if len(wantOffsets) != 0 {
+		t.Fatalf("missing constructor callback diagnostic offsets = %#v", wantOffsets)
+	}
+}
+
 func BenchmarkResourceNotClosedPackageAnalysis(b *testing.B) {
 	root := b.TempDir()
 	writeFixture(

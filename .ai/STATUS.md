@@ -2159,3 +2159,26 @@ samples measured 73.00-110.71 ms, 2.13-2.72 MB, and 17,037-17,494 allocations
 on Darwin arm64. Portable four-runner typed-budget evidence and further
 high-signal interprocedural error-flow and ownership coverage remain active
 v0.5 work.
+
+The v0.5 constructor-callback ownership refinement makes
+`resource-not-closed` treat direct function-literal arguments and the final
+direct same-block value of local constructor arguments as conservative
+ownership transfers when their callbacks capture the acquired resource.
+Conditional or nested assignments do not dominate the constructor and retain
+the leak diagnostic. The focused red regression initially suppressed that
+conditional leak and now reports exactly the unrelated, replaced, and
+conditional containers while accepting the direct and stable-container
+captures. The shared acquisition remains tracked by
+`resource-used-after-close`, preserving definite post-close diagnostics after
+constructor callback capture. Exact same-revision dogfood on
+`go-libraries/pkg/http-client` at
+`b2bcdc33836d6800db0f51ebf9b816e5d5fb33ee` reduces generic findings from
+seven to five by removing the callback-owned `client_test.go` and
+`session_test.go` resources; the retained findings are one compression body
+and four resume fake files. Exact-rule dogfood remains clean on Glippy and
+`go-libraries/pkg/prompts`. All external checks were non-mutating; unrelated
+concurrent dirty changes in the shared external repository remain outside this
+batch. Five one-operation samples measured 72.11-80.15 ms, 2.13-2.70 MB, and
+17,039-17,473 allocations on Darwin arm64. Portable four-runner typed-budget
+evidence and further high-signal interprocedural error-flow and ownership
+coverage remain active v0.5 work.

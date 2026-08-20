@@ -22,11 +22,13 @@ func TestResourceUsedAfterCloseReportsDefinitelyClosedOperations(t *testing.T) {
 type resource struct{}
 
 func open() (*resource, error) { return &resource{}, nil }
+func openWithCallback(any) (*resource, error) { return &resource{}, nil }
 func (*resource) Close() error { return nil }
 func (*resource) Read([]byte) (int, error) { return 0, nil }
 func (*resource) Write([]byte) (int, error) { return 0, nil }
 func (*resource) ReadByte() (byte, error) { return 0, nil }
 func (*resource) Sync() error { return nil }
+func (*resource) Stat() error { return nil }
 var escapedResource *resource
 
 func direct() error {
@@ -65,6 +67,14 @@ func afterDeferredHelper() error {
 	return err
 }
 
+func callbackOwned() error {
+	var value *resource
+	value, err := openWithCallback(func() { _ = value.Close() })
+	if err != nil { return err }
+	_ = value.Close()
+	return value.Stat()
+}
+
 func closeDeferred(value *resource) { defer value.Close() }
 `
 	result := runResourceUsedAfterClose(t, input, contracts.Set{})
@@ -76,6 +86,7 @@ func closeDeferred(value *resource) { defer value.Close() }
 		{operation: "value.Write(nil)", close: ""},
 		{operation: "value.Sync()", close: "value.Close()"},
 		{operation: "value.ReadByte()", close: "closeDeferred(value)"},
+		{operation: "value.Stat()", close: "value.Close()"},
 	}
 	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
 		t.Fatalf("resource-used-after-close result = %#v", result)

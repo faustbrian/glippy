@@ -39,6 +39,7 @@ func (resourceNotClosedRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"Only direct resource == nil and resource != nil conditions discharge the nil branch; compound nilness, aliases, and indirect comparisons remain conservative.",
 			"Exact tar, gzip, and multipart writer constructors belong to writer-not-finalized and are excluded from this generic closer rule.",
+			"A direct function-literal constructor argument, or the final direct same-block value of a local argument, that captures the assigned resource conservatively transfers ownership because callback retention and execution are unknown; conditional or nested assignments do not prove transfer.",
 			"A statically resolved helper in a selected local-source module that provably borrows the resource leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
 			"An exact returned-alias contract preserves the obligation when the result is assigned back to the same resource variable; new alias bindings remain outside the tracked ownership identity.",
 			"Cleanup-managed results require one stable direct local result, an exact testing.T Cleanup call on a pointer receiver with a function-literal callback, and direct, parameter-effect, or receiver-effect proven Close on every normally returning callback path. Copied testing.T values, conditional registration or closure, asynchronous or nested closure, reassignment, aliases, and non-testing cleanup APIs remain conservative.",
@@ -76,6 +77,7 @@ func (resourceNotClosedRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding,
 			ctx.Body(),
 			ctx.ReturnAliasesArgument,
 			ctx.CleanupManagedResult,
+			true,
 		) {
 		start, found := localCloserObligationStart(ctx.Graph(), ctx.Info(), candidate)
 		if !found ||
@@ -170,6 +172,7 @@ func localCloserCandidates(
 	body *ast.BlockStmt,
 	returnsAlias func(*ast.CallExpr, int, int) bool,
 	cleanupManaged func(*ast.CallExpr, int) bool,
+	constructorCallbacksTransfer bool,
 ) []localCloserCandidate {
 	result := make([]localCloserCandidate, 0)
 	ast.Inspect(
@@ -219,7 +222,14 @@ func localCloserCandidates(
 						continue
 					}
 					object := info.ObjectOf(identifier)
-					if object != nil {
+					if object != nil &&
+						(!constructorCallbacksTransfer ||
+							!constructorCallbackCapturesObject(
+								info,
+								block,
+								call,
+								object,
+							)) {
 						acquisitionGuard := immediateFollowingGuard(
 							block.List,
 							statementIndex,
@@ -246,6 +256,98 @@ func localCloserCandidates(
 		},
 	)
 	return result
+}
+
+func constructorCallbackCapturesObject(
+	info *types.Info,
+	body *ast.BlockStmt,
+	call *ast.CallExpr,
+	object types.Object,
+) bool {
+	if info == nil || body == nil || call == nil || object == nil {
+		return false
+	}
+	for _, argument := range call.Args {
+		if expressionContainsCapturingCallback(info, argument, object) {
+			return true
+		}
+	}
+	references := make(map[types.Object]struct{})
+	for _, argument := range call.Args {
+		ast.Inspect(
+			argument,
+			func(node ast.Node) bool {
+				identifier, found := node.(*ast.Ident)
+				if !found {
+					return true
+				}
+				reference := info.ObjectOf(identifier)
+				if _, local := reference.(*types.Var);
+					local && reference != object {
+					references[reference] = struct{}{}
+				}
+				return true
+			},
+		)
+	}
+	for reference := range references {
+		expression := finalLocalValueBefore(info, body, reference, call.Pos())
+		if expressionContainsCapturingCallback(info, expression, object) {
+			return true
+		}
+	}
+	return false
+}
+
+func expressionContainsCapturingCallback(
+	info *types.Info,
+	expression ast.Expr,
+	object types.Object,
+) bool {
+	if info == nil || expression == nil || object == nil {
+		return false
+	}
+	captured := false
+	ast.Inspect(
+		expression,
+		func(node ast.Node) bool {
+			literal, nested := node.(*ast.FuncLit)
+			if !nested {
+				return true
+			}
+			if expressionUsesObject(info, literal.Body, object) {
+				captured = true
+			}
+			return false
+		},
+	)
+	return captured
+}
+
+func finalLocalValueBefore(
+	info *types.Info,
+	body *ast.BlockStmt,
+	object types.Object,
+	before token.Pos,
+) ast.Expr {
+	if info == nil || body == nil || object == nil || !before.IsValid() {
+		return nil
+	}
+	var expression ast.Expr
+	for _, statement := range body.List {
+		assignment, assigned := statement.(*ast.AssignStmt)
+		if !assigned ||
+			assignment.Pos() >= before ||
+			len(assignment.Lhs) != len(assignment.Rhs) {
+			continue
+		}
+		for index, target := range assignment.Lhs {
+			if directObject(info, target) == object {
+				expression = assignment.Rhs[index]
+			}
+		}
+	}
+	return expression
 }
 
 func callResultAliasesArgument(
