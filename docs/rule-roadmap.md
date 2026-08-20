@@ -33,6 +33,14 @@ Work proceeds in this order:
 Formatter-owned layout never enters this queue. A semantic transformation is
 considered through the fix coordinator, not hidden inside formatting.
 
+The project-contract track now admits `must-use-result` as a default
+correctness rule. Exact configured function or method results report when a
+call statement, `go` or `defer` statement, or blank destination discards them.
+Ordinary assignments, returns, and arguments count as consumption. When the
+contract rule is selected, its exact call diagnostic owns and supersedes the
+broader `discarded-error` diagnostic before suppression or baselining. Dynamic
+calls and unconfigured APIs stay outside this exact policy boundary.
+
 The response and stream lifecycle track has admitted its first two CFG rules:
 `unchecked-rows-error` and `unchecked-scanner-error` prove that direct
 `database/sql.Rows.Next` and `bufio.Scanner.Scan` loops check the matching

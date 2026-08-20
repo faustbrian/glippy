@@ -64,6 +64,7 @@ not stable release promises.
 - [loop-capture](#loop-capture)
 - [manual-min-max](#manual-min-max)
 - [mixed-receiver-type](#mixed-receiver-type)
+- [must-use-result](#must-use-result)
 - [nan-comparison](#nan-comparison)
 - [needless-blank-identifier](#needless-blank-identifier)
 - [net-ip-bytes-equal](#net-ip-bytes-equal)
@@ -2882,6 +2883,59 @@ func (v *Value) Write() {}
 ```go
 func (v *Value) Read() {}
 func (v *Value) Write() {}
+```
+
+## must-use-result
+
+detects results discarded contrary to a project contract
+
+A project semantic contract can mark exact function or method results as required when discarding
+them loses an application-specific failure, resource, token, or state transition that Go's type
+system cannot identify. Glippy reports a statically resolved call when any configured must-use
+result is discarded by a call statement, go or defer statement, or blank assignment.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only exact statically resolved calls with a validated project semantic contract are covered;
+  dynamic calls, function values, and interface dispatch remain outside the contract.
+- A result assigned to a non-blank destination, returned, or passed to another call counts as
+  consumed; this rule does not prove that the later use is meaningful.
+- Generated files and packages with type errors are excluded.
+- Contract authors are responsible for the runtime truth of must-use declarations; Glippy validates
+  identities and result indexes but cannot prove application policy.
+
+### Example: Consume every result required by the configured API contract
+
+**Incorrect**
+
+```go
+value, _ := openResource()
+```
+
+**Correct**
+
+```go
+value, err := openResource()
+if err != nil { return err }
 ```
 
 ## nan-comparison

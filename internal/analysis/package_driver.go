@@ -249,6 +249,7 @@ func RunPackages(
 				ExpiryCutoff: options.SuppressionExpiryCutoff,
 			},
 		)
+		diagnostics = preferSpecificDiagnostics(diagnostics)
 		application := index.Apply(diagnostics)
 		result.Files = append(
 			result.Files,
@@ -273,6 +274,46 @@ func RunPackages(
 		return result, err
 	}
 	return result, nil
+}
+
+func preferSpecificDiagnostics(diagnostics []rules.Diagnostic) []rules.Diagnostic {
+	type diagnosticLocation struct {
+		path string
+		digest source.Digest
+		start int
+		end int
+	}
+	mustUseLocations := make(map[diagnosticLocation]struct{})
+	for _, diagnostic := range diagnostics {
+		if diagnostic.RuleID != "must-use-result" {
+			continue
+		}
+		mustUseLocations[diagnosticLocation{
+			path: diagnostic.Path,
+			digest: diagnostic.Digest,
+			start: diagnostic.Range.Start,
+			end: diagnostic.Range.End,
+		}] = struct{}{}
+	}
+	if len(mustUseLocations) == 0 {
+		return diagnostics
+	}
+	result := make([]rules.Diagnostic, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		if diagnostic.RuleID == "discarded-error" {
+			_, superseded := mustUseLocations[diagnosticLocation{
+				path: diagnostic.Path,
+				digest: diagnostic.Digest,
+				start: diagnostic.Range.Start,
+				end: diagnostic.Range.End,
+			}]
+			if superseded {
+				continue
+			}
+		}
+		result = append(result, diagnostic)
+	}
+	return result
 }
 
 func packageGraphPaths(roots []*packages.Package) ([]string, []string, error) {

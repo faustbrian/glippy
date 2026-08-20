@@ -1,0 +1,452 @@
+package rulecatalog_test
+
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/contracts"
+	"github.com/faustbrian/glippy/internal/rulecatalog"
+	"github.com/faustbrian/glippy/internal/rules"
+)
+
+func TestMustUseResultReportsConfiguredDiscardedResults(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+func single() int { return 1 }
+func pair() (string, error) { return "", nil }
+func consume(int) {}
+type Resource struct{}
+func (Resource) Required() int { return 1 }
+
+func discarded() {
+	single()
+	Resource{}.Required()
+	_ = single()
+	pair()
+	go single()
+	defer single()
+	_, err := pair()
+	_ = err
+	value, _ := pair()
+	_ = value
+	_, _ = pair()
+}
+
+func consumed() (string, error) {
+	consume(single())
+	value, err := pair()
+	if err != nil { return "", err }
+	_ = value
+	return pair()
+}
+`
+	set, err := contracts.ParseFiles(
+		[]contracts.File{
+			{
+				Path: "contracts.toml",
+				Bytes: []byte(
+					`version = 1
+[[functions]]
+symbol = "example.com/mustuseresult.single"
+must-use = [0]
+
+[[functions]]
+symbol = "example.com/mustuseresult.pair"
+must-use = [0, 1]
+
+[[functions]]
+symbol = "example.com/mustuseresult.Resource.Required"
+must-use = [0]
+`,
+				),
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := runMustUseResult(t, input, set)
+	want := []struct {
+		target string
+		message string
+	}{
+		{target: "single()", message: "result 0"},
+		{target: "Resource{}.Required()", message: "result 0"},
+		{target: "single()", message: "result 0"},
+		{target: "pair()", message: "results 0 and 1"},
+		{target: "single()", message: "result 0"},
+		{target: "single()", message: "result 0"},
+		{target: "pair()", message: "result 0"},
+		{target: "pair()", message: "result 1"},
+		{target: "pair()", message: "results 0 and 1"},
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
+		t.Fatalf("must-use-result result = %#v", result)
+	}
+	searchFrom := strings.Index(input, "func discarded")
+	for index, expected := range want {
+		relative := strings.Index(input[searchFrom:], expected.target)
+		if relative < 0 {
+			t.Fatalf("missing target %q after byte %d", expected.target, searchFrom)
+		}
+		start := searchFrom + relative
+		diagnostic := result.Files[0].Diagnostics[index]
+		if diagnostic.RuleID != "must-use-result" ||
+			diagnostic.MessageKey != "must-use-result" ||
+			diagnostic.Range.Start != start ||
+			diagnostic.Range.End != start + len(expected.target) ||
+			!strings.Contains(diagnostic.Message, expected.message) ||
+			len(diagnostic.Fixes) != 0 {
+			t.Fatalf("diagnostic[%d] = %#v", index, diagnostic)
+		}
+		searchFrom = start + len(expected.target)
+	}
+}
+
+func TestMustUseResultMetadata(t *testing.T) {
+	t.Parallel()
+
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, found := registry.Metadata("must-use-result")
+	if !found ||
+		metadata.DefaultSeverity != rules.SeverityWarn ||
+		!reflect.DeepEqual(metadata.Presets, []rules.Preset{rules.PresetCorrectness}) ||
+		metadata.MinimumGoVersion != "1.25" ||
+		metadata.Requirement != rules.RequireControlFlow ||
+		!metadata.RequiresEffectFacts ||
+		metadata.RunOnGenerated ||
+		metadata.RunDespiteTypeErrors ||
+		!reflect.DeepEqual(
+			metadata.Categories,
+			[]rules.Category{rules.CategoryCorrectness, rules.CategorySafety},
+		) ||
+		len(metadata.Fixes) != 0 ||
+		len(metadata.Examples) == 0 ||
+		len(metadata.KnownLimitations) == 0 {
+		t.Fatalf("must-use-result metadata = %#v, found = %v", metadata, found)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := false
+	for _, rule := range selection {
+		if rule.ID == "must-use-result" {
+			selected = true
+			break
+		}
+	}
+	if !selected {
+		t.Fatalf("correctness selection does not contain must-use-result: %#v", selection)
+	}
+}
+
+func TestMustUseResultHonorsContractAndSourcePolicies(t *testing.T) {
+	t.Parallel()
+
+	set, err := contracts.ParseFiles(
+		[]contracts.File{
+			{
+				Path: "contracts.toml",
+				Bytes: []byte(
+					"version = 1\n[[functions]]\nsymbol = \"example.com/mustuseresult.required\"\nmust-use = [0]\n",
+				),
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		input string
+		contracts contracts.Set
+		wantDiagnostics int
+		wantSuppressed int
+		wantLoadProblems bool
+	}{
+		{
+			name: "unconfigured",
+			input: "package sample\nfunc required() int { return 1 }\nfunc run() { required() }\n",
+			contracts: contracts.Set{},
+		},
+		{
+			name: "suppressed",
+			input: `package sample
+func required() int { return 1 }
+func run() {
+	//glippy:ignore must-use-result -- legacy API intentionally discards the token
+	required()
+}
+`,
+			contracts: set,
+			wantSuppressed: 1,
+		},
+		{
+			name: "generated",
+			input: "// Code generated by fixture. DO NOT EDIT.\npackage sample\nfunc required() int { return 1 }\nfunc run() { required() }\n",
+			contracts: set,
+		},
+		{
+			name: "type-error",
+			input: "package sample\nfunc required() int { return 1 }\nfunc run() { required(); var invalid string = 1; _ = invalid }\n",
+			contracts: set,
+			wantLoadProblems: true,
+		},
+		{
+			name: "function-value",
+			input: "package sample\nfunc required() int { return 1 }\nfunc run() { callback := required; callback() }\n",
+			contracts: set,
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				result := runMustUseResult(t, test.input, test.contracts)
+				if len(result.Files) != 1 ||
+					len(result.Files[0].Diagnostics) != test.wantDiagnostics ||
+					len(result.Files[0].Suppressed) != test.wantSuppressed ||
+					(len(result.LoadDiagnostics) != 0) !=
+						test.wantLoadProblems {
+					t.Fatalf("%s result = %#v", test.name, result)
+				}
+			},
+		)
+	}
+}
+
+func TestMustUseResultSupersedesGenericDiscardWhenSelected(t *testing.T) {
+	t.Parallel()
+
+	set, err := contracts.ParseFiles(
+		[]contracts.File{
+			{
+				Path: "contracts.toml",
+				Bytes: []byte(
+					"version = 1\n[[functions]]\nsymbol = \"example.com/mustuseresult.required\"\nmust-use = [0]\n",
+				),
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	overrides := map[string]rules.Severity{
+		"discarded-error": rules.SeverityWarn,
+		"must-use-result": rules.SeverityWarn,
+	}
+	visible := runMustUseResultWithOverrides(
+		t,
+		"package sample\nfunc required() error { return nil }\nfunc run() { required() }\n",
+		set,
+		overrides,
+	)
+	if len(visible.Files) != 1 ||
+		len(visible.Files[0].Diagnostics) != 1 ||
+		visible.Files[0].Diagnostics[0].RuleID != "must-use-result" {
+		t.Fatalf("visible specific result = %#v", visible)
+	}
+
+	suppressed := runMustUseResultWithOverrides(
+		t,
+		`package sample
+func required() error { return nil }
+func run() {
+	//glippy:ignore must-use-result -- legacy caller intentionally ignores this contract
+	required()
+}
+`,
+		set,
+		overrides,
+	)
+	if len(suppressed.Files) != 1 ||
+		len(suppressed.Files[0].Diagnostics) != 0 ||
+		len(suppressed.Files[0].Suppressed) != 1 ||
+		suppressed.Files[0].Suppressed[0].Diagnostic.RuleID != "must-use-result" {
+		t.Fatalf("suppressed specific result = %#v", suppressed)
+	}
+}
+
+func TestMustUseResultAppliesExternalExportContractWithoutLintingDependency(t *testing.T) {
+	t.Parallel()
+
+	dependency := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(dependency, "go.mod"),
+		"module example.com/dependency\n\ngo 1.25.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(dependency, "dependency.go"),
+		"package dependency\nfunc Required() string { return \"token\" }\n",
+	)
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.25.0\n\nrequire example.com/dependency v0.0.0\nreplace example.com/dependency => " +
+			dependency +
+			"\n",
+	)
+	input := `package project
+import "example.com/dependency"
+func run() { dependency.Required() }
+`
+	path := filepath.Join(root, "project.go")
+	writeFixture(t, path, input)
+	set, err := contracts.ParseFiles(
+		[]contracts.File{
+			{
+				Path: "contracts.toml",
+				Bytes: []byte(
+					"version = 1\n[[functions]]\nsymbol = \"example.com/dependency.Required\"\nmust-use = [0]\n",
+				),
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"must-use-result": rules.SeverityWarn},
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+			Contracts: set,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantStart := strings.Index(input, "dependency.Required()")
+	if len(result.Files) != 1 ||
+		result.Files[0].Path != path ||
+		len(result.Files[0].Diagnostics) != 1 ||
+		result.Files[0].Diagnostics[0].RuleID != "must-use-result" ||
+		result.Files[0].Diagnostics[0].Range.Start != wantStart ||
+		result.Files[0].Diagnostics[0].Range.End !=
+			wantStart + len("dependency.Required()") {
+		t.Fatalf("external must-use result = %#v", result)
+	}
+}
+
+func BenchmarkMustUseResultPackageAnalysis(b *testing.B) {
+	root := b.TempDir()
+	writeFixture(
+		b,
+		filepath.Join(root, "go.mod"),
+		"module example.com/mustusebenchmark\n\ngo 1.25.0\n",
+	)
+	var input strings.Builder
+	input.WriteString("package sample\nfunc required() int { return 1 }\n")
+	for index := range 100 {
+		fmt.Fprintf(&input, "func run%d() { required() }\n", index)
+	}
+	writeFixture(b, filepath.Join(root, "sample.go"), input.String())
+	set, err := contracts.ParseFiles(
+		[]contracts.File{
+			{
+				Path: "contracts.toml",
+				Bytes: []byte(
+					"version = 1\n[[functions]]\nsymbol = \"example.com/mustusebenchmark.required\"\nmust-use = [0]\n",
+				),
+			},
+		},
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		b.Fatal(err)
+	}
+	benchmarkPackageRuns(
+		b,
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"must-use-result": rules.SeverityWarn},
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+			Contracts: set,
+		},
+		100,
+	)
+}
+
+func runMustUseResult(t testing.TB, input string, set contracts.Set) analysis.PackageResult {
+	t.Helper()
+	return runMustUseResultWithOverrides(
+		t,
+		input,
+		set,
+		map[string]rules.Severity{"must-use-result": rules.SeverityWarn},
+	)
+}
+
+func runMustUseResultWithOverrides(
+	t testing.TB,
+	input string,
+	set contracts.Set,
+	overrides map[string]rules.Severity,
+) analysis.PackageResult {
+	t.Helper()
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/mustuseresult\n\ngo 1.25.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: overrides,
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+			Contracts: set,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}

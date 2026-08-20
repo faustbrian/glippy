@@ -54,6 +54,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewLoopCaptureRule(),
 		rules.NewManualMinMaxRule(),
 		rules.NewMixedReceiverTypeRule(),
+		rules.NewMustUseResultRule(),
 		rules.NewNeedlessBlankIdentifierRule(),
 		rules.NewNilContextRule(),
 		rules.NewNilErrorWrapRule(),

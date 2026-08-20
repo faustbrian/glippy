@@ -7,7 +7,7 @@ defaults, pays only for the analysis tiers enabled rules require, and routes
 all source changes through an explicit conflict-safe transaction.
 
 Glippy v0.5 is under development and is not tagged or published. The current
-catalog contains 111 rules, including 18 rules with safe or suggestion fixes.
+catalog contains 112 rules, including 18 rules with safe or suggestion fixes.
 The existing
 v0.1.0 release remains Gox under `github.com/faustbrian/gox`; its module tags,
 binary, archives, and attestations are immutable historical identities. The
@@ -61,6 +61,9 @@ inside formatting, and layout policy is not duplicated as lint noise.
   contracts without repeating propagation per rule. Closed-resource analysis
   uses the same bounded worklist contract and consumes proven close effects
   without treating ownership borrowing as proof of unchanged resource state.
+  Exact project contracts can also require individual call results to be used;
+  ignored contracted results report without duplicating the broader
+  `discarded-error` diagnostic.
 - **Safe source changes:** fixes carry source identity and safety class;
   conflicts, stale ranges, and failed validation cannot silently write source.
   Accepted fixes may declare exact required imports, while the coordinator

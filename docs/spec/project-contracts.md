@@ -119,7 +119,7 @@ returns-alias = [{ result = 0, argument = 0 }]
 | Field | Contract |
 | --- | --- |
 | `noreturn` | The call has no normal continuation when `true` |
-| `must-use` | Each listed zero-based result must be consumed |
+| `must-use` | Each listed zero-based result must be consumed; `must-use-result` diagnoses an exact discarded result |
 | `closes` | Every normally returning path closes the listed zero-based parameter |
 | `takes-ownership` | Every normally returning path transfers ownership of the listed parameter away from the caller |
 | `completes-transaction` | Every normally returning path commits or rolls back the listed parameter |
@@ -161,6 +161,16 @@ unstated records. No-return, must-use, blocking, and alias records are additive
 exact facts. External dependency contracts resolve through export type
 information and MUST NOT require dependency source loading solely for contract
 resolution.
+
+The default-correctness `must-use-result` rule MUST treat call statements,
+`go` and `defer` calls, and blank assignment or declaration destinations as
+discarding the corresponding configured results. Direct non-blank assignment,
+return, and argument use count as consumption. Dynamic calls and function
+values MUST remain unmatched because their exact contracted identity is not
+statically proven. When selected `must-use-result` and `discarded-error` rules
+produce diagnostics with the same source identity and exact call range, the
+contract-specific diagnostic MUST own the condition and supersede the generic
+diagnostic before suppression or baseline policy is applied.
 
 The base `[analysis]` build selection and the LSP use the same contract
 snapshot. Every `[[analysis.targets]]` package run uses that snapshot while

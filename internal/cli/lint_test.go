@@ -8195,6 +8195,58 @@ func TestRunLintUsesConfiguredNoReturnContract(t *testing.T) {
 	}
 }
 
+func TestRunLintUsesConfiguredMustUseContract(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "project.go")
+	input := "package project\n\nfunc required() string { return \"token\" }\nfunc run() { required() }\n"
+	writeChangedCLIFile(t, path, input)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy-contracts.toml"),
+		"version = 1\n[[functions]]\nsymbol = \"example.com/project.required\"\nmust-use = [0]\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, config.Filename),
+		"version = 1\n[analysis]\ncontract-files = [\".glippy-contracts.toml\"]\n[lint]\npresets = []\n[lint.rules]\nmust-use-result = \"warn\"\n",
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run(
+		[]string{"lint", "--reporter=short", path},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		!strings.Contains(
+			stdout.String(),
+			"warn[must-use-result]: project contract requires result 0",
+		) {
+		t.Fatalf(
+			"Run(lint configured must-use) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != input {
+		t.Fatalf("configured must-use lint mutated source: %q", got)
+	}
+}
+
 func TestRunLintKeepsProjectContractsSyntaxOnlyUntilAnEffectConsumerNeedsThem(t *testing.T) {
 	t.Parallel()
 

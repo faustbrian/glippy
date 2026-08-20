@@ -1969,3 +1969,21 @@ on Glippy and `go-libraries/pkg/prompts`, whose pre-existing `go.sum` change was
 unchanged. The catalog remains at 111 rules. Portable four-runner typed-budget
 evidence and further high-signal interprocedural error-flow coverage remain
 active v0.5 work.
+
+The v0.5 required-result contract batch admits `must-use-result` to default
+correctness, making the existing schema-version-1 `must-use` facts observable
+for exact configured functions and methods. Call statements, `go` and `defer`
+calls, and blank tuple destinations report the exact ignored result indexes;
+assignments, returns, and argument uses count as consumption. External export
+contracts work without making dependency source a lint target, while function
+values, dynamic calls, generated files, and ill-typed packages remain
+conservative. When selected, the contract-specific diagnostic owns and
+supersedes an exact-range `discarded-error` before suppression or baseline
+policy. Five complete 100-function benchmark samples measured a 39.77 ms
+median, about 1.49 MB, and 11,868
+allocations per run on Darwin arm64. Exact-rule dogfood remained clean on
+Glippy and `go-libraries/pkg/prompts` at `29e46a9`; the prompts repository's
+pre-existing changes, including its `go.sum` bytes, remained unchanged. The
+catalog now contains 112 rules. Portable four-runner typed-budget evidence and
+further high-signal interprocedural error-flow and ownership coverage remain
+active v0.5 work.
