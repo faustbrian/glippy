@@ -278,6 +278,7 @@ func (b *sqlTransactionStateBuilder) transfer(flow sqlTransactionFlowState, node
 		node,
 		b.candidate.object,
 		nil,
+		nil,
 		b.ctx.ParameterEffect,
 		ParameterEffectTransactionComplete,
 		nil,

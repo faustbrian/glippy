@@ -338,6 +338,68 @@ closes = [0]
 	}
 }
 
+func TestResourceUsedAfterCloseConsumesGuaranteedReceiverEffects(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+type resource struct{}
+
+func open() (*resource, error) { return &resource{}, nil }
+func (*resource) Close() error { return nil }
+func (*resource) Read([]byte) (int, error) { return 0, nil }
+func (value *resource) Shutdown() error { return value.Close() }
+func (value *resource) MaybeShutdown(closeNow bool) error {
+	if closeNow { return value.Close() }
+	return nil
+}
+
+func direct() error {
+	value, err := open()
+	if err != nil { return err }
+	_ = value.Shutdown()
+	_, err = value.Read(nil)
+	return err
+}
+
+func methodExpression() error {
+	value, err := open()
+	if err != nil { return err }
+	_ = (*resource).Shutdown(value)
+	_, err = value.Read(nil)
+	return err
+}
+
+func conditional(closeNow bool) error {
+	value, err := open()
+	if err != nil { return err }
+	_ = value.MaybeShutdown(closeNow)
+	_, err = value.Read(nil)
+	return err
+}
+`
+	result := runResourceUsedAfterClose(t, input, contracts.Set{})
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 2 {
+		t.Fatalf("receiver effect resource-used-after-close result = %#v", result)
+	}
+	want := []string{"value.Read(nil)", "value.Read(nil)"}
+	searchFrom := 0
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		relative := strings.Index(input[searchFrom:], want[index])
+		if relative < 0 {
+			t.Fatalf("missing receiver effect operation %d", index)
+		}
+		start := searchFrom + relative
+		if diagnostic.RuleID != "resource-used-after-close" ||
+			diagnostic.Range.Start != start ||
+			diagnostic.Range.End != start + len(want[index]) ||
+			len(diagnostic.Related) != 1 {
+			t.Fatalf("receiver effect diagnostic[%d] = %#v", index, diagnostic)
+		}
+		searchFrom = start + len(want[index])
+	}
+}
+
 func TestResourceUsedAfterCloseStopsTrackingAfterProjectTransfer(t *testing.T) {
 	t.Parallel()
 

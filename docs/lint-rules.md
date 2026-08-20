@@ -3962,8 +3962,8 @@ detects direct operations on definitely closed local resources
 
 Calling an operational method after a resource has definitely been closed usually returns a
 closed-handle error, loses work, or panics. The rule follows locally acquired Close() error values
-through the shared control-flow graph, consumes proven project close effects, and reports only when
-every reaching state is closed.
+through the shared control-flow graph, consumes proven parameter and receiver close effects, and
+reports only when every reaching state is closed.
 
 - Default severity: `warn`
 - Presets: `suspicious`
@@ -3993,8 +3993,11 @@ None.
   finding.
 - A CFG node containing multiple tracked calls becomes unknown because AST preorder does not by
   itself prove Go evaluation order for every nested call shape.
-- A statically resolved helper with a proven close effect establishes closed state; every other
-  helper use becomes unknown because ownership borrowing does not prove resource state preservation.
+- A statically resolved helper parameter or direct method receiver with a proven close effect
+  establishes closed state; every other helper use becomes unknown because ownership borrowing does
+  not prove resource state preservation.
+- Receiver effects require a direct method selection; dynamic dispatch and promoted methods on an
+  outer receiver remain unknown.
 - Deferred close calls do not close the resource at registration time and therefore do not affect
   later statements in the same function.
 - The rule remains suspicious because a conventional Close method does not standardize every

@@ -97,7 +97,7 @@ func (resourceUsedAfterCloseRule) Metadata() Metadata {
 	return Metadata{
 		ID: "resource-used-after-close",
 		Summary: "detects direct operations on definitely closed local resources",
-		Documentation: "Calling an operational method after a resource has definitely been closed usually returns a closed-handle error, loses work, or panics. The rule follows locally acquired Close() error values through the shared control-flow graph, consumes proven project close effects, and reports only when every reaching state is closed.",
+		Documentation: "Calling an operational method after a resource has definitely been closed usually returns a closed-handle error, loses work, or panics. The rule follows locally acquired Close() error values through the shared control-flow graph, consumes proven parameter and receiver close effects, and reports only when every reaching state is closed.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
@@ -108,7 +108,8 @@ func (resourceUsedAfterCloseRule) Metadata() Metadata {
 			"The initial contract tracks direct local call results whose static type has Close() error and a curated set of I/O, file, deadline, synchronization, and accept operations.",
 			"An open/closed branch join, alias, escape, asynchronous close, unknown helper, reassignment, reinitializer, observer, or arbitrary method becomes unknown instead of producing a speculative finding.",
 			"A CFG node containing multiple tracked calls becomes unknown because AST preorder does not by itself prove Go evaluation order for every nested call shape.",
-			"A statically resolved helper with a proven close effect establishes closed state; every other helper use becomes unknown because ownership borrowing does not prove resource state preservation.",
+			"A statically resolved helper parameter or direct method receiver with a proven close effect establishes closed state; every other helper use becomes unknown because ownership borrowing does not prove resource state preservation.",
+			"Receiver effects require a direct method selection; dynamic dispatch and promoted methods on an outer receiver remain unknown.",
 			"Deferred close calls do not close the resource at registration time and therefore do not affect later statements in the same function.",
 			"The rule remains suspicious because a conventional Close method does not standardize every concrete resource's post-close behavior.",
 		},
@@ -356,6 +357,7 @@ func (b *resourceUseBuilder) transferObject(
 		node,
 		object,
 		nil,
+		b.ctx.ReceiverEffect,
 		b.ctx.ParameterEffect,
 		ParameterEffectClose | ParameterEffectTransfer,
 		nil,
@@ -387,6 +389,23 @@ func (b *resourceUseBuilder) callEffects(node ast.Node, object types.Object) []r
 				resourceCallEffect{kind: resourceCallClose, call: call},
 			)
 			continue
+		}
+		if receiver, _ := staticReceiverArgument(b.ctx.Info(), call); receiver == object {
+			summary := b.ctx.ReceiverEffect(call)
+			switch {
+			case summary.GuaranteesAny(ParameterEffectClose):
+				result = append(
+					result,
+					resourceCallEffect{kind: resourceCallClose, call: call},
+				)
+				continue
+			case summary.GuaranteesAny(ParameterEffectTransfer):
+				result = append(
+					result,
+					resourceCallEffect{kind: resourceCallUnknown, call: call},
+				)
+				continue
+			}
 		}
 		if method := resourceMethodName(b.ctx.Info(), call, object); method != "" {
 			if _, operational := closedResourceOperationNames[method]; operational {
@@ -468,6 +487,7 @@ func collectResourceCloseCalls(
 			}
 			for _, object := range objects {
 				if closeCallUsesObject(ctx.Info(), call, object) ||
+					receiverGuaranteesResourceClose(ctx, call, object) ||
 					helperGuaranteesResourceClose(ctx, call, object) {
 					result[object] = append(result[object], call)
 				}
@@ -490,6 +510,15 @@ func deferredOrAsynchronousCall(call *ast.CallExpr, stack []ast.Node) bool {
 	default:
 		return false
 	}
+}
+
+func receiverGuaranteesResourceClose(
+	ctx *ControlFlowContext,
+	call *ast.CallExpr,
+	object types.Object,
+) bool {
+	receiver, _ := staticReceiverArgument(ctx.Info(), call)
+	return receiver == object && ctx.ReceiverEffect(call).GuaranteesAny(ParameterEffectClose)
 }
 
 func helperGuaranteesResourceClose(

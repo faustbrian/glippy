@@ -119,7 +119,12 @@ function. Shared CFG and SSA construction now propagates no-return behavior
 through statically called functions and methods in the loaded package and exact
 terminal APIs from `os`, `runtime`, `syscall`, `log`, and `testing`. Same-module
 facts and configured project contracts now provide exact completion, transfer,
-and no-return behavior; speculative third-party inference remains excluded.
+and no-return behavior. Direct static receiver summaries now discharge generic
+resource obligations and establish closed state for later use-after-close
+analysis, including method expressions without treating the receiver as an
+ordinary parameter. Dynamic dispatch, conditional effects, and promoted
+methods remain conservative; speculative third-party inference remains
+excluded.
 
 The response lifecycle track now also admits
 `http-response-body-not-closed`. It follows exact `net/http` package and Client
@@ -177,7 +182,7 @@ The state-transition track now also admits `resource-used-after-close` as an
 opt-in suspicious rule. It follows locally acquired `Close() error` results,
 reports curated direct operations only when every reaching CFG state is proven
 closed, and consumes exact selected local-source module or configured close
-effects. Proven
+effects on parameters and direct receivers. Proven
 ownership transfer and every helper without an exact close effect stop state
 tracking: an ownership borrow does not prove that a helper left the resource's
 internal state unchanged. Deferred or asynchronous closes do not establish an

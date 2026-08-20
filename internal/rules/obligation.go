@@ -122,6 +122,7 @@ func objectObligationEffect(
 	node ast.Node,
 	object types.Object,
 	complete func(*ast.CallExpr) bool,
+	receiverEffect func(*ast.CallExpr) ParameterEffectSummary,
 	parameterEffect func(*ast.CallExpr, int) ParameterEffectSummary,
 	acceptedEffects ParameterEffectKind,
 	returnsAlias func(*ast.CallExpr, int, int) bool,
@@ -147,8 +148,24 @@ func objectObligationEffect(
 					effect = obligationCompleted
 					return false
 				}
+				receiverObject, receiverArgument := staticReceiverArgument(
+					info,
+					current,
+				)
+				if receiverObject == object && receiverEffect != nil {
+					summary := receiverEffect(current)
+					if summary.GuaranteesAny(acceptedEffects) {
+						effect = obligationCompleted
+						return false
+					}
+				}
 				for index, argument := range current.Args {
 					if directObject(info, argument) == object {
+						if receiverEffect != nil &&
+							receiverObject == object &&
+							receiverArgument == index {
+							continue
+						}
 						aliasReturned := assignmentReturnsObjectAlias(
 							info,
 							assignment,
@@ -248,6 +265,29 @@ func objectObligationEffect(
 		}
 	}
 	return obligationOpen
+}
+
+func staticReceiverArgument(info *types.Info, call *ast.CallExpr) (types.Object, int) {
+	if info == nil || call == nil {
+		return nil, -1
+	}
+	selector, _ := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if selector == nil {
+		return nil, -1
+	}
+	selection := info.Selections[selector]
+	if selection == nil || len(selection.Index()) != 1 {
+		return nil, -1
+	}
+	switch selection.Kind() {
+	case types.MethodVal:
+		return directObject(info, selector.X), -1
+	case types.MethodExpr:
+		if len(call.Args) != 0 {
+			return directObject(info, call.Args[0]), 0
+		}
+	}
+	return nil, -1
 }
 
 func assignmentReturnsFinalObjectAlias(

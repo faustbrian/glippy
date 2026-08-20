@@ -213,6 +213,7 @@ func sqlTransactionReturnsOpen(candidate sqlTransactionCandidate, ctx *ControlFl
 						candidate.object,
 					)
 				},
+				nil,
 				ctx.ParameterEffect,
 				ParameterEffectTransactionComplete | ParameterEffectTransfer,
 				ctx.ReturnAliasesArgument,

@@ -818,6 +818,122 @@ func use(t *testing.T) {
 	}
 }
 
+func TestResourceNotClosedUsesGuaranteedDirectReceiverEffects(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+type resource struct{}
+
+func open() (*resource, error) { return &resource{}, nil }
+func (*resource) Close() error { return nil }
+func (value *resource) Shutdown() error { return value.Close() }
+func (value *resource) MaybeShutdown(closeNow bool) error {
+	if closeNow { return value.Close() }
+	return nil
+}
+
+type dynamicResource interface {
+	Close() error
+	Shutdown() error
+}
+
+type innerResource struct{}
+func (*innerResource) Shutdown() error { return nil }
+type promotedResource struct{ *innerResource }
+func (*promotedResource) Close() error { return nil }
+func openPromoted() (*promotedResource, error) {
+	return &promotedResource{innerResource: &innerResource{}}, nil
+}
+
+func direct() error {
+	value, err := open()
+	if err != nil { return err }
+	return value.Shutdown()
+}
+
+func methodExpression() error {
+	value, err := open()
+	if err != nil { return err }
+	return (*resource).Shutdown(value)
+}
+
+func conditional(closeNow bool) error {
+	value, err := open()
+	if err != nil { return err }
+	return value.MaybeShutdown(closeNow)
+}
+
+func dynamic() error {
+	var value dynamicResource
+	var err error
+	value, err = open()
+	if err != nil { return err }
+	return value.Shutdown()
+}
+
+func promoted() error {
+	value, err := openPromoted()
+	if err != nil { return err }
+	return value.Shutdown()
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/directreceivereffects\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"resource-not-closed": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 3 {
+		t.Fatalf("direct receiver effect diagnostics = %#v", result)
+	}
+	want := map[int]string{
+		strings.Index(
+			input,
+			"value, err := open()\n\tif err != nil { return err }\n\treturn value.MaybeShutdown",
+		): "value",
+		strings.Index(
+			input,
+			"value, err = open()\n\tif err != nil { return err }\n\treturn value.Shutdown",
+		): "value",
+		strings.Index(input, "value, err := openPromoted()"): "value",
+	}
+	for _, diagnostic := range result.Files[0].Diagnostics {
+		name, found := want[diagnostic.Range.Start]
+		if !found || diagnostic.Range.End != diagnostic.Range.Start + len(name) {
+			t.Fatalf("direct receiver effect diagnostic = %#v", diagnostic)
+		}
+		delete(want, diagnostic.Range.Start)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing direct receiver effect diagnostics = %#v", want)
+	}
+}
+
 func TestResourceNotClosedUsesReachableWorkspaceModuleReceiverEffects(t *testing.T) {
 	t.Parallel()
 

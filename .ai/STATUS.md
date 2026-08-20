@@ -2092,3 +2092,21 @@ uses the proven cross-workspace `Breaker.Shutdown` method. The external head and
 pre-existing dirty state remained unchanged. Portable four-runner typed-budget
 evidence and further high-signal interprocedural error-flow and ownership
 coverage remain active v0.5 work.
+
+The v0.5 direct receiver-consumption batch connects the versioned receiver
+terminal summaries to ordinary resource obligations and closed-resource state.
+A statically resolved receiver method or method expression whose summary
+guarantees close now discharges `resource-not-closed`; the same call establishes
+closed state for `resource-used-after-close`. The method-expression receiver is
+not reprocessed as an ordinary parameter. Conditional summaries, dynamic
+dispatch, promoted methods on an outer receiver, aliases, and unknown facts
+remain conservative. The focused red regressions initially retained the direct
+leaks and missed both post-shutdown uses. Exact same-revision dogfood on
+`go-libraries/pkg/http-client` reduced `resource-not-closed` findings from 12
+to 10 by removing the two directly shut down circuit breakers while preserving
+the ten unrelated findings and the external repository bytes. Five directional
+100-function samples measured 59.57-85.96 ms and 2.11 MB for
+`resource-not-closed`, plus 26.24-40.54 ms and 5.39 MB for
+`resource-used-after-close`, on Darwin arm64. Portable four-runner typed-budget
+evidence and further high-signal interprocedural error-flow and ownership
+coverage remain active v0.5 work.

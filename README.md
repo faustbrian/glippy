@@ -255,7 +255,11 @@ path.
 The opt-in `resource-not-closed` rule applies the same bounded obligation model
 to local values with `Close() error`. Cleanup or ownership transfer must cover
 every normally returning path, so a close on only one branch and reassignment
-before cleanup both report.
+before cleanup both report. Exact receiver summaries also recognize direct
+terminal methods such as a locally proven `Shutdown` that closes the same
+receiver; dynamic, conditional, and promoted receiver behavior remains
+conservative. The same receiver facts establish closed state for
+`resource-used-after-close`.
 
 The opt-in `http-response-body-not-closed` rule covers the standard-library
 gap where `*http.Response` is not itself a closer. After a successful direct

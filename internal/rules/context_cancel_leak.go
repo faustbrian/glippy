@@ -372,6 +372,7 @@ func contextCancelNodeUses(
 				func(call *ast.CallExpr) bool {
 					return directObject(info, call.Fun) == variable
 				},
+				nil,
 				ctx.ParameterEffect,
 				ParameterEffectCancelInvoke | ParameterEffectTransfer,
 				ctx.ReturnAliasesArgument,

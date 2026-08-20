@@ -92,6 +92,7 @@ func (resourceNotClosedRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding,
 								candidate.object,
 							)
 						},
+						ctx.ReceiverEffect,
 						ctx.ParameterEffect,
 						ParameterEffectClose | ParameterEffectTransfer,
 						ctx.ReturnAliasesArgument,
