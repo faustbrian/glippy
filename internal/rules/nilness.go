@@ -28,7 +28,7 @@ func (nilnessRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"Control-flow joins may lose nilness facts, so the rule intentionally misses some defects rather than guessing.",
 			"The shared SSA program propagates no-return behavior and explicit nil/error return relationships through selected local-source modules. Third-party helpers outside those modules remain conservative unless they match an exact standard-library terminal API.",
-			"Return relationships require explicit results with exact nil, definitely non-nil allocation forms, errors.New, or fmt.Errorf. Bare returns, delegated or recursive results, &*x expressions, unknown error construction, aliases, and conflicting returns remain unknown.",
+			"Return relationships require explicit results with exact nil, definitely non-nil allocation forms, errors.New, or fmt.Errorf. Exact static same-arity delegation may reuse a selected local-source relationship through a bounded recursion-rejecting summary. Bare returns, dynamic or recursive results, &*x expressions, unknown error construction, aliases, and conflicting returns remain unknown.",
 			"Functions marked with //go:cgo_unsafe_args are excluded because their runtime behavior is not represented faithfully in SSA.",
 			"Generated files and packages with type errors are excluded.",
 		},
@@ -177,6 +177,7 @@ func appendReturnStateFindings(ctx *SSAContext, findings []Finding) ([]Finding, 
 								findings,
 								deduplicated,
 								valueExtract,
+								condition.branch.Block(),
 								successors[index],
 								state,
 							)
@@ -260,14 +261,16 @@ func addDominatedReturnStateFindings(
 	findings []Finding,
 	deduplicated map[string]struct{},
 	value ssa.Value,
-	dominator *ssa.BasicBlock,
+	from *ssa.BasicBlock,
+	to *ssa.BasicBlock,
 	state NilState,
 ) ([]Finding, error) {
-	if value == nil || value.Referrers() == nil || dominator == nil {
+	if value == nil || value.Referrers() == nil || from == nil || to == nil {
 		return findings, nil
 	}
 	for _, reference := range *value.Referrers() {
-		if reference.Block() == nil || !dominator.Dominates(reference.Block()) {
+		if reference.Block() == nil ||
+			!ssaControlFlowEdgeDominates(ctx.Function(), from, to, reference.Block()) {
 			continue
 		}
 		var finding Finding

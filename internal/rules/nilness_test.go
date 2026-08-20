@@ -254,10 +254,10 @@ func TestNilnessUsesImportedReturnStateFacts(t *testing.T) {
 		t,
 		`package sample
 
-import "example.com/nilness/helper"
+import "example.com/nilness/delegate"
 
 func inspect(found bool) {
-	value, err := helper.Lookup(found)
+	value, err := delegate.Lookup(found)
 	if err != nil {
 		_ = *value
 		if value == nil { println("always") }
@@ -266,6 +266,13 @@ func inspect(found bool) {
 	if err == nil {
 		if value == nil { println("impossible") }
 		if value != nil { println("always") }
+	}
+}
+
+func compound(found bool, report bool) {
+	value, err := delegate.Lookup(found)
+	if value != nil || err == nil || report {
+		println(value != nil)
 	}
 }
 
@@ -287,6 +294,24 @@ func Lookup(found bool) (*Value, error) {
 	if !found { return nil, errors.New("missing") }
 	return &Value{}, nil
 }
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "delegate"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "delegate", "delegate.go"),
+		[]byte(
+			`package delegate
+
+import "example.com/nilness/helper"
+
+func Lookup(found bool) (*helper.Value, error) { return helper.Lookup(found) }
 `,
 		),
 		0o600,

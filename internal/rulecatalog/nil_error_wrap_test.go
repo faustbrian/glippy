@@ -224,11 +224,25 @@ func Conflicting(found bool) (*Value, error) {
 }
 `,
 	)
+	writeFixture(
+		t,
+		filepath.Join(root, "delegate", "delegate.go"),
+		`package delegate
+
+import "example.com/nilwrapfacts/helper"
+
+func Lookup(found bool) (*helper.Value, error) { return helper.Lookup(found) }
+func Reverse(found bool) (*helper.Value, error) { return helper.Reverse(found) }
+func Ambiguous(found bool) (*helper.Value, error) { return helper.Ambiguous(found) }
+func Conflicting(found bool) (*helper.Value, error) { return helper.Conflicting(found) }
+`,
+	)
 	input := `package sample
 
 import (
 	"fmt"
 
+	"example.com/nilwrapfacts/delegate"
 	"example.com/nilwrapfacts/helper"
 )
 
@@ -263,6 +277,38 @@ func conflicting(found bool) error {
 	}
 	return err
 }
+
+func delegatedNonNilSibling(found bool) error {
+	value, err := delegate.Lookup(found)
+	if value != nil {
+		return fmt.Errorf("delegated lookup succeeded: %w", err)
+	}
+	return err
+}
+
+func delegatedNilSibling(found bool) error {
+	value, err := delegate.Reverse(found)
+	if value == nil {
+		return fmt.Errorf("delegated reverse succeeded: %w", err)
+	}
+	return err
+}
+
+func delegatedAmbiguous(found bool) error {
+	value, err := delegate.Ambiguous(found)
+	if value != nil {
+		return fmt.Errorf("delegated ambiguous result: %w", err)
+	}
+	return err
+}
+
+func delegatedConflicting(found bool) error {
+	value, err := delegate.Conflicting(found)
+	if value != nil {
+		return fmt.Errorf("delegated conflicting result: %w", err)
+	}
+	return err
+}
 `
 	path := filepath.Join(root, "sample.go")
 	writeFixture(t, path, input)
@@ -289,12 +335,14 @@ func conflicting(found bool) error {
 	}
 	if len(result.Files) != 1 ||
 		result.Files[0].Path != path ||
-		len(result.Files[0].Diagnostics) != 2 {
+		len(result.Files[0].Diagnostics) != 4 {
 		t.Fatalf("return-state nil-error-wrap result = %#v", result)
 	}
 	want := []string{
 		`fmt.Errorf("lookup succeeded: %w", err)`,
 		`fmt.Errorf("reverse succeeded: %w", err)`,
+		`fmt.Errorf("delegated lookup succeeded: %w", err)`,
+		`fmt.Errorf("delegated reverse succeeded: %w", err)`,
 	}
 	for index, snippet := range want {
 		start := strings.Index(input, snippet) + strings.LastIndex(snippet, "err")
@@ -661,6 +709,48 @@ func BenchmarkDelegatedResultStatePackageAnalysis(b *testing.B) {
 		fmt.Fprintf(
 			&input,
 			"func base%d() error { return nil }; func delegate%d() error { return base%d() }; func run%d() error { return fmt.Errorf(\"operation: %%w\", delegate%d()) }\n",
+			index,
+			index,
+			index,
+			index,
+			index,
+		)
+	}
+	writeFixture(b, filepath.Join(root, "sample.go"), input.String())
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		b.Fatal(err)
+	}
+	benchmarkPackageRuns(
+		b,
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"nil-error-wrap": rules.SeverityWarn},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+		100,
+	)
+}
+
+func BenchmarkDelegatedReturnRelationshipPackageAnalysis(b *testing.B) {
+	root := b.TempDir()
+	writeFixture(
+		b,
+		filepath.Join(root, "go.mod"),
+		"module example.com/delegatedreturnbenchmark\n\ngo 1.26.0\n",
+	)
+	var input strings.Builder
+	input.WriteString("package sample\nimport (\"errors\"; \"fmt\")\ntype Value struct{}\n")
+	for index := range 100 {
+		fmt.Fprintf(
+			&input,
+			"func base%d(found bool) (*Value, error) { if found { return &Value{}, nil }; return nil, errors.New(\"missing\") }; func delegate%d(found bool) (*Value, error) { return base%d(found) }; func run%d(found bool) error { value, err := delegate%d(found); if value != nil { return fmt.Errorf(\"operation: %%w\", err) }; return err }\n",
 			index,
 			index,
 			index,

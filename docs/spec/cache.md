@@ -108,14 +108,16 @@ native execution. A valid warm entry MAY bypass native callbacks and CFG or SSA
 construction because the key and payload bind every selected rule and
 loaded-graph input.
 
-An effect-aware native entry MUST include the `native-effects-v9` component.
+An effect-aware native entry MUST include the `native-effects-v10` component.
 Its digest binds the effect schema version, canonically ordered no-return
 identities, and every exported parameter-effect identity, parameter index,
 known/always state, possible effect-kind bitset, and independently guaranteed
 effect-kind bitset, plus every receiver-effect method identity and the same
 summary fields. It also binds every returned-state function identity, value
-and error result index, and nilness under nil and non-nil error states, plus
-every unconditionally proven nil-capable result identity, result index, and
+and error result index, and nilness under nil and non-nil error states,
+including exact bounded static tuple delegation through selected local-source
+packages. It also binds every unconditionally proven nil-capable result
+identity, result index, and
 nilness across all explicit normal returns whose named binding is neither
 captured nor address-taken, including exact bounded static delegation through
 selected local-source packages. It also binds configured must-use

@@ -39,6 +39,26 @@ func Formatted(found bool) (*Value, error) {
 	return new(Value), nil
 }
 
+func DelegatedKnown(found bool) (*Value, error) { return Known(found) }
+func DelegatedFormatted(found bool) (*Value, error) { return Formatted(found) }
+func MutualKnownA(found bool) (*Value, error) { return MutualKnownB(found) }
+func MutualKnownB(found bool) (*Value, error) { return MutualKnownA(found) }
+func DynamicKnown(operation func(bool) (*Value, error), found bool) (*Value, error) {
+	return operation(found)
+}
+func DeferredKnown(found bool) (*Value, error) {
+	defer func() { panic("deferred") }()
+	return Known(found)
+}
+func DeferredHelperKnown(found bool) (*Value, error) {
+	defer stopDeferredReturn()
+	return Known(found)
+}
+func UnreachableKnown(found bool) (*Value, error) {
+	stopDeferredReturn()
+	return Known(found)
+}
+
 func Nested() (*Value, error) {
 	_ = func() (*Value, error) { return nil, errors.New("nested") }
 	return &Value{}, nil
@@ -118,7 +138,8 @@ func Conflicting(found bool) (*Value, error) {
 		WhenErrorNil: rules.NilStateNonNil,
 		WhenErrorNonNil: rules.NilStateNil,
 	}
-	for _, name := range []string{"Known", "Formatted"} {
+	for _, name := range
+		[]string{"Known", "Formatted", "DelegatedKnown", "DelegatedFormatted"} {
 		if got := returnStateForTest(analysis, package_, name); got != wantKnown {
 			t.Fatalf("%s summary = %#v, want %#v", name, got, wantKnown)
 		}
@@ -128,7 +149,20 @@ func Conflicting(found bool) (*Value, error) {
 			got.WhenErrorNonNil != rules.NilStateUnknown {
 		t.Fatalf("Nested summary = %#v", got)
 	}
-	for _, name := range []string{"Bare", "Unknown", "Recursive", "Indirect", "Conflicting"} {
+	for _, name := range
+		[]string{
+			"Bare",
+			"Unknown",
+			"Recursive",
+			"MutualKnownA",
+			"MutualKnownB",
+			"DynamicKnown",
+			"DeferredKnown",
+			"DeferredHelperKnown",
+			"UnreachableKnown",
+			"Indirect",
+			"Conflicting",
+		} {
 		if got := returnStateForTest(analysis, package_, name);
 			got != (rules.ReturnStateSummary{}) {
 			t.Fatalf("%s summary = %#v, want unknown", name, got)

@@ -23,6 +23,7 @@
 - v0.5 unconditional result-state facts and delegated writer success: complete
 - v0.5 unconditional nil-error wrapping facts: complete
 - v0.5 bounded delegated result-state facts: complete
+- v0.5 bounded delegated return-relationship facts: complete
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -2356,3 +2357,27 @@ and pre-existing state remain unchanged. Five 100-chain samples measured
 88.29-92.73 ms, 7.69-8.31 MB, and 78,919-79,415 allocations on Darwin arm64.
 Portable four-runner typed-budget evidence and further high-signal
 interprocedural error-flow and ownership coverage remain active v0.5 work.
+
+The v0.5 delegated return-relationship batch advances the versioned effect
+component to `native-effects-v10`. A sole exact static multi-value return now
+reuses nil/error relationships through the same bounded 4,096-definition,
+recursion-rejecting selected-package traversal as unconditional result states.
+Same-layer definitions resolve lazily; dependency layers consume only stable
+facts already intersected across package variants. Dynamic calls, recursive
+cycles, result-count or exact-type mismatches, no-return paths, and unavailable
+facts remain conservative. The focused unit regression initially retained
+unknown relationships for direct wrappers; cross-package `nil-error-wrap`
+reported only two direct defects instead of four, and delegated `nilness`
+reported none of five proven operations. All three boundaries now consume the
+exact delegated relationship. Self-dogfood then exposed a false positive inside
+a compound short-circuit failure guard because one shared successor block was
+mistaken for proof of one incoming edge. Nilness now reuses exact control-flow
+edge dominance, and the focused regression rejects the sixth false diagnostic
+while preserving the five proven findings. Exact `nil-error-wrap` and `nilness`
+dogfood is clean on Glippy, `go-libraries/pkg/prompts`, and
+`go-libraries/pkg/http-client` at external revision
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`; external bytes and pre-existing
+state remain unchanged. Five 100-function samples measured 102.62-105.21 ms,
+13.07-13.69 MB, and 155,080-155,600 allocations on Darwin arm64. Portable
+four-runner typed-budget evidence and further high-signal interprocedural
+error-flow and ownership coverage remain active v0.5 work.

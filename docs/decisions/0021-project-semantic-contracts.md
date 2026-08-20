@@ -74,6 +74,12 @@ same-arity tuples may consume those source-derived summaries through a bounded,
 recursion-rejecting selected-package traversal. Project contracts still cannot
 declare these inferred result states.
 
+Exact delegated return-relationship inference later advances the active
+representation to version 10 and `native-effects-v10`. A same-arity exact
+static tuple delegate may consume the source-derived nil/error relationship
+through the same bounded recursion-rejecting traversal. Project contracts still
+cannot declare these inferred relationships.
+
 Contract files are data only. They do not execute code, provide replacement Go
 types, load runtime plugins, or grant write authority. Syntax-only lint does
 not load type state because contracts are configured. External contracts use

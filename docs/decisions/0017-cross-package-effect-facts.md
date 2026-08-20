@@ -96,6 +96,15 @@ variants. Recursive cycles, dynamic calls, type mismatches, unavailable facts,
 functions or deferred calls proven not to return, and every previously unknown
 result remain unknown.
 
+The 2026-08-20 delegated return-relationship refinement advances the active
+schema and cache component to `native-effects-v10`. A sole exact static
+multi-value return may reuse an already proven nil/error relationship when the
+caller and callee have the same arity and exact types at both related result
+indexes. It uses the same bounded, lazy, recursion-rejecting selected-package
+traversal and stable dependency-layer facts as unconditional result-state
+delegation. Dynamic calls, cycles, type mismatches, unavailable facts, and
+functions or deferred calls proven not to return remain unknown.
+
 ## Alternatives
 
 - Load the complete dependency syntax closure with `packages.NeedDeps`:

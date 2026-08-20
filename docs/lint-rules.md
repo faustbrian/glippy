@@ -3176,7 +3176,8 @@ None.
   may cross selected local-source packages through a bounded recursion-rejecting summary. Phis,
   dynamic calls, recursive helper cycles, typed nil errors, captured or address-taken named results,
   conflicting returns, and unavailable dependency facts remain conservative. Relational return-state
-  proof still requires a direct tuple result and an exact sibling nil comparison.
+  proof requires an exact sibling nil comparison; the relationship may cross the same bounded static
+  delegation boundary.
 - Only values with the exact built-in error interface type are tracked; typed nil pointers and
   application-specific error interfaces are excluded because converting them to an interface can
   produce a non-nil interface value.
@@ -3326,8 +3327,10 @@ None.
   through selected local-source modules. Third-party helpers outside those modules remain
   conservative unless they match an exact standard-library terminal API.
 - Return relationships require explicit results with exact nil, definitely non-nil allocation forms,
-  errors.New, or fmt.Errorf. Bare returns, delegated or recursive results, &*x expressions, unknown
-  error construction, aliases, and conflicting returns remain unknown.
+  errors.New, or fmt.Errorf. Exact static same-arity delegation may reuse a selected local-source
+  relationship through a bounded recursion-rejecting summary. Bare returns, dynamic or recursive
+  results, &*x expressions, unknown error construction, aliases, and conflicting returns remain
+  unknown.
 - Functions marked with //go:cgo_unsafe_args are excluded because their runtime behavior is not
   represented faithfully in SSA.
 - Generated files and packages with type errors are excluded.

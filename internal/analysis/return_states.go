@@ -11,7 +11,7 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 )
 
-const maxResultStateBuildDepth = 4096
+const maxReturnStateBuildDepth = 4096
 
 type returnStateAnalysis struct {
 	ctx context.Context
@@ -21,9 +21,12 @@ type returnStateAnalysis struct {
 	resultStates map[*types.Func]map[int]rules.NilState
 	definitions []returnStateDefinition
 	definitionsByFunction map[*types.Func]*returnStateDefinition
+	summariesBuilt map[*types.Func]bool
+	summariesStarted map[*types.Func]bool
 	resultStatesBuilt map[*types.Func]bool
 	resultStatesStarted map[*types.Func]bool
-	buildDepth int
+	summaryBuildDepth int
+	resultStateBuildDepth int
 }
 
 type returnStateDefinition struct {
@@ -47,6 +50,8 @@ func newReturnStateAnalysis(
 		resultStates: make(map[*types.Func]map[int]rules.NilState),
 		definitions: make([]returnStateDefinition, 0),
 		definitionsByFunction: make(map[*types.Func]*returnStateDefinition),
+		summariesBuilt: make(map[*types.Func]bool),
+		summariesStarted: make(map[*types.Func]bool),
 		resultStatesBuilt: make(map[*types.Func]bool),
 		resultStatesStarted: make(map[*types.Func]bool),
 	}
@@ -103,16 +108,48 @@ func (a *returnStateAnalysis) buildAll() {
 			return
 		}
 		definition := &a.definitions[index]
-		summaries := summarizeReturnStates(
-			definition.declaration,
-			definition.signature,
-			definition.info,
-		)
-		if len(summaries) != 0 {
-			a.summaries[definition.function] = summaries
-		}
+		a.buildDefinitionReturnStates(definition)
 		a.buildDefinitionResultStates(definition)
 	}
+}
+
+func (a *returnStateAnalysis) buildDefinitionReturnStates(
+	definition *returnStateDefinition,
+) map[returnStateKey]rules.ReturnStateSummary {
+	if a == nil ||
+		definition == nil ||
+		definition.function == nil ||
+		a.ctx == nil ||
+		a.ctx.Err() != nil ||
+		a.summaryBuildDepth >= maxReturnStateBuildDepth {
+		return nil
+	}
+	if a.summariesBuilt[definition.function] {
+		return a.summaries[definition.function]
+	}
+	if a.noReturns != nil && a.noReturns.noReturn(definition.function) {
+		a.summariesBuilt[definition.function] = true
+		return nil
+	}
+	if a.summariesStarted[definition.function] {
+		return nil
+	}
+	a.summariesStarted[definition.function] = true
+	a.summaryBuildDepth++
+	defer func() {
+		a.summaryBuildDepth--
+		delete(a.summariesStarted, definition.function)
+	}()
+	summaries := a.summarizeReturnStates(
+		definition.declaration,
+		definition.signature,
+		definition.info,
+	)
+	if len(summaries) != 0 {
+		a.summaries[definition.function] = summaries
+	}
+	a.summariesBuilt[definition.function] = true
+	return summaries
 }
 
 func (a *returnStateAnalysis) buildResultStates() {
@@ -135,7 +172,7 @@ func (a *returnStateAnalysis) buildDefinitionResultStates(
 		definition.function == nil ||
 		a.ctx == nil ||
 		a.ctx.Err() != nil ||
-		a.buildDepth >= maxResultStateBuildDepth {
+		a.resultStateBuildDepth >= maxReturnStateBuildDepth {
 		return nil
 	}
 	if a.resultStatesBuilt[definition.function] {
@@ -149,9 +186,9 @@ func (a *returnStateAnalysis) buildDefinitionResultStates(
 		return nil
 	}
 	a.resultStatesStarted[definition.function] = true
-	a.buildDepth++
+	a.resultStateBuildDepth++
 	defer func() {
-		a.buildDepth--
+		a.resultStateBuildDepth--
 		delete(a.resultStatesStarted, definition.function)
 	}()
 	states := a.summarizeResultStates(
@@ -233,7 +270,7 @@ func (a *returnStateAnalysis) resultStateCallMayReturn(
 	info *types.Info,
 	depth int,
 ) bool {
-	if call == nil || info == nil || depth >= maxResultStateBuildDepth {
+	if call == nil || info == nil || depth >= maxReturnStateBuildDepth {
 		return true
 	}
 	if literal, ok := ast.Unparen(call.Fun).(*ast.FuncLit); ok {
@@ -414,13 +451,16 @@ func classifyResultExpression(
 	return classifyNilExpression(expression, info)
 }
 
-func summarizeReturnStates(
+func (a *returnStateAnalysis) summarizeReturnStates(
 	function *ast.FuncDecl,
 	signature *types.Signature,
 	info *types.Info,
 ) map[returnStateKey]rules.ReturnStateSummary {
 	results := signature.Results()
 	if function == nil || function.Body == nil || results == nil || info == nil {
+		return nil
+	}
+	if a.hasDeferredNoReturn(function.Body, info) {
 		return nil
 	}
 	valueIndexes := make([]int, 0, results.Len())
@@ -448,11 +488,23 @@ func summarizeReturnStates(
 			if valueIndex == errorIndex {
 				continue
 			}
-			whenNil := aggregateReturnState(returns, valueIndex, errorIndex, true, info)
-			whenNonNil := aggregateReturnState(
+			whenNil := a.aggregateReturnState(
 				returns,
+				results.Len(),
 				valueIndex,
 				errorIndex,
+				results.At(valueIndex).Type(),
+				results.At(errorIndex).Type(),
+				true,
+				info,
+			)
+			whenNonNil := a.aggregateReturnState(
+				returns,
+				results.Len(),
+				valueIndex,
+				errorIndex,
+				results.At(valueIndex).Type(),
+				results.At(errorIndex).Type(),
 				false,
 				info,
 			)
@@ -485,29 +537,53 @@ func explicitFunctionReturns(body *ast.BlockStmt) []*ast.ReturnStmt {
 	return returns
 }
 
-func aggregateReturnState(
+func (a *returnStateAnalysis) aggregateReturnState(
 	returns []*ast.ReturnStmt,
+	resultCount int,
 	valueIndex int,
 	errorIndex int,
+	valueType types.Type,
+	errorType types.Type,
 	errorIsNil bool,
 	info *types.Info,
 ) rules.NilState {
 	state := rules.NilStateUnknown
 	found := false
 	for _, returned := range returns {
-		if returned == nil ||
-			len(returned.Results) <= valueIndex ||
-			len(returned.Results) <= errorIndex {
+		if returned == nil || len(returned.Results) == 0 {
 			return rules.NilStateUnknown
 		}
-		errorState := classifyErrorExpression(returned.Results[errorIndex], info)
-		if errorState == rules.NilStateUnknown {
+		valueState := rules.NilStateUnknown
+		switch {
+		case len(returned.Results) == resultCount &&
+			len(returned.Results) > valueIndex &&
+			len(returned.Results) > errorIndex:
+			errorState := classifyErrorExpression(returned.Results[errorIndex], info)
+			if errorState == rules.NilStateUnknown {
+				return rules.NilStateUnknown
+			}
+			if (errorState == rules.NilStateNil) != errorIsNil {
+				continue
+			}
+			valueState = classifyNilExpression(returned.Results[valueIndex], info)
+		case len(returned.Results) == 1:
+			summary := a.delegatedReturnState(
+				returned.Results[0],
+				resultCount,
+				valueIndex,
+				errorIndex,
+				valueType,
+				errorType,
+				info,
+			)
+			if errorIsNil {
+				valueState = summary.WhenErrorNil
+			} else {
+				valueState = summary.WhenErrorNonNil
+			}
+		default:
 			return rules.NilStateUnknown
 		}
-		if (errorState == rules.NilStateNil) != errorIsNil {
-			continue
-		}
-		valueState := classifyNilExpression(returned.Results[valueIndex], info)
 		if valueState == rules.NilStateUnknown {
 			return rules.NilStateUnknown
 		}
@@ -521,6 +597,50 @@ func aggregateReturnState(
 		return rules.NilStateUnknown
 	}
 	return state
+}
+
+func (a *returnStateAnalysis) delegatedReturnState(
+	expression ast.Expr,
+	wantResults int,
+	valueIndex int,
+	errorIndex int,
+	wantValueType types.Type,
+	wantErrorType types.Type,
+	info *types.Info,
+) rules.ReturnStateSummary {
+	call, _ := ast.Unparen(expression).(*ast.CallExpr)
+	if call == nil ||
+		info == nil ||
+		wantResults <= 0 ||
+		valueIndex < 0 ||
+		errorIndex < 0 ||
+		wantValueType == nil ||
+		wantErrorType == nil {
+		return rules.ReturnStateSummary{}
+	}
+	function := typeutil.StaticCallee(info, call)
+	if function == nil {
+		return rules.ReturnStateSummary{}
+	}
+	signature, _ := types.Unalias(function.Type()).(*types.Signature)
+	if signature == nil ||
+		signature.Results() == nil ||
+		signature.Results().Len() != wantResults ||
+		valueIndex >= signature.Results().Len() ||
+		errorIndex >= signature.Results().Len() ||
+		!types.Identical(signature.Results().At(valueIndex).Type(), wantValueType) ||
+		!types.Identical(signature.Results().At(errorIndex).Type(), wantErrorType) {
+		return rules.ReturnStateSummary{}
+	}
+	if definition := a.definitionsByFunction[function]; definition != nil {
+		return a.buildDefinitionReturnStates(
+			definition,
+		)[returnStateKey{value: valueIndex, error: errorIndex}]
+	}
+	if a.effects == nil {
+		return rules.ReturnStateSummary{}
+	}
+	return a.effects.ReturnState(function, valueIndex, errorIndex)
 }
 
 func classifyErrorExpression(expression ast.Expr, info *types.Info) rules.NilState {
