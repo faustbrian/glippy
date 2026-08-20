@@ -77,6 +77,7 @@ func RunSSA(
 		returnStates := newReturnStateAnalysis(ctx, ssaInputs)
 		returnStates.buildAll()
 		effects.addReturnStates(returnStates)
+		effects.addResultStates(returnStates)
 	}
 	noReturns.buildAll()
 	if err := ctx.Err(); err != nil {

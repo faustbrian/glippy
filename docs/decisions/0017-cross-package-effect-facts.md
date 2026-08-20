@@ -80,9 +80,12 @@ The 2026-08-20 unconditional result-state refinement advances the active schema
 and cache component to `native-effects-v8`. Exact function and result indexes
 record nilness only when every explicit normal return proves the same state.
 Bare, delegated, recursive, dynamic, typed-nil, unknown, or conflicting returns
-remain absent. Package variants must agree on the exact state or the fact is
-discarded. This lets an exact static caller classify a delegated error result
-without retaining dependency syntax or process-local type identity.
+remain absent. A named result also remains absent when its address is taken or a
+function literal captures it because deferred or asynchronous execution can
+replace the explicit return value. Package variants must agree on the exact
+state or the fact is discarded. This lets an exact static caller classify a
+delegated error result without retaining dependency syntax or process-local
+type identity.
 
 ## Alternatives
 

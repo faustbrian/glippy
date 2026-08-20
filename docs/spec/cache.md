@@ -116,7 +116,8 @@ effect-kind bitset, plus every receiver-effect method identity and the same
 summary fields. It also binds every returned-state function identity, value
 and error result index, and nilness under nil and non-nil error states, plus
 every unconditionally proven nil-capable result identity, result index, and
-nilness across all explicit normal returns. It also binds configured must-use
+nilness across all explicit normal returns whose named binding is neither
+captured nor address-taken. It also binds configured must-use
 result indexes, blocking identities, result-to-argument
 aliases, and exact cleanup-managed function result indexes inferred from
 selected local-source modules. A dependency or project-contract change that

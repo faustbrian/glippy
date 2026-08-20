@@ -307,6 +307,157 @@ func conflicting(found bool) error {
 	}
 }
 
+func TestNilErrorWrapConsumesExactUnconditionalResultStates(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/nilwrapresultfacts\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "helper", "helper.go"),
+		`package helper
+
+import "errors"
+
+func Nil() error { return nil }
+func TupleNil() (int, error) { return 1, nil }
+func Failure() error { return errors.New("failed") }
+func Unknown(err error) error { return err }
+func Deferred() (err error) {
+	defer func() { err = errors.New("deferred") }()
+	return nil
+}
+`,
+	)
+	input := `package sample
+
+import (
+	"fmt"
+
+	"example.com/nilwrapresultfacts/helper"
+)
+
+type typedError struct{}
+func (*typedError) Error() string { return "typed" }
+
+func localNil() error { return nil }
+func localRecursive() error { return localRecursive() }
+func localTypedNil() error {
+	var err *typedError
+	return err
+}
+
+func directLocal() error {
+	return fmt.Errorf("local: %w", localNil())
+}
+
+func assignedImported() error {
+	err := helper.Nil()
+	return fmt.Errorf("imported: %w", err)
+}
+
+func directImported() error {
+	return fmt.Errorf("direct imported: %w", helper.Nil())
+}
+
+func tupleImported() error {
+	_, err := helper.TupleNil()
+	return fmt.Errorf("tuple: %w", err)
+}
+
+func failure() error {
+	err := helper.Failure()
+	return fmt.Errorf("failure: %w", err)
+}
+
+func unknown(err error) error {
+	err = helper.Unknown(err)
+	return fmt.Errorf("unknown: %w", err)
+}
+
+func deferred() error {
+	err := helper.Deferred()
+	return fmt.Errorf("deferred: %w", err)
+}
+
+func dynamic(operation func() error) error {
+	err := operation()
+	return fmt.Errorf("dynamic: %w", err)
+}
+
+func recursive() error {
+	err := localRecursive()
+	return fmt.Errorf("recursive: %w", err)
+}
+
+func typedNil() error {
+	err := localTypedNil()
+	return fmt.Errorf("typed nil: %w", err)
+}
+
+func merged(selectLocal bool) error {
+	var err error
+	if selectLocal {
+		err = localNil()
+	} else {
+		err = helper.Nil()
+	}
+	return fmt.Errorf("merged: %w", err)
+}
+`
+	path := filepath.Join(root, "sample.go")
+	writeFixture(t, path, input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"nil-error-wrap": rules.SeverityWarn},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []struct {
+		call string
+		argument string
+	}{
+		{call: `fmt.Errorf("local: %w", localNil())`, argument: "localNil()"},
+		{call: `fmt.Errorf("imported: %w", err)`, argument: "err"},
+		{call: `fmt.Errorf("direct imported: %w", helper.Nil())`, argument: "helper.Nil()"},
+		{call: `fmt.Errorf("tuple: %w", err)`, argument: "err"},
+	}
+	if len(result.Files) != 1 ||
+		result.Files[0].Path != path ||
+		len(result.Files[0].Diagnostics) != len(want) {
+		t.Fatalf("result-state nil-error-wrap result = %#v", result)
+	}
+	for index, expected := range want {
+		start := strings.Index(input, expected.call) +
+			strings.LastIndex(expected.call, expected.argument)
+		diagnostic := result.Files[0].Diagnostics[index]
+		if diagnostic.RuleID != "nil-error-wrap" ||
+			diagnostic.Range.Start != start ||
+			diagnostic.Range.End != start + len(expected.argument) {
+			t.Fatalf("result-state diagnostic[%d] = %#v", index, diagnostic)
+		}
+	}
+}
+
 func TestNilErrorWrapHonorsSharedPolicies(t *testing.T) {
 	t.Parallel()
 

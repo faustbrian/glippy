@@ -58,6 +58,23 @@ func TypedNilError() error {
 	return err
 }
 
+func DeferredNilError() (err error) {
+	defer func() { err = errors.New("deferred") }()
+	return nil
+}
+
+func AddressEscapedNilError() (err error) {
+	captureError(&err)
+	return nil
+}
+
+func HarmlessDeferredNilError() (err error) {
+	defer func() {}()
+	return nil
+}
+
+func captureError(*error) {}
+
 func ConflictingError(found bool) error {
 	if found { return nil }
 	return errors.New("failed")
@@ -103,11 +120,22 @@ func Conflicting(found bool) (*Value, error) {
 		t.Fatalf("Known error result state = %v, want unknown", got)
 	}
 	for _, name := range
-		[]string{"UnknownError", "RecursiveError", "TypedNilError", "ConflictingError"} {
+		[]string{
+			"UnknownError",
+			"RecursiveError",
+			"TypedNilError",
+			"DeferredNilError",
+			"AddressEscapedNilError",
+			"ConflictingError",
+		} {
 		if got := resultStateForTest(analysis, package_, name, 0);
 			got != rules.NilStateUnknown {
 			t.Fatalf("%s result state = %v, want unknown", name, got)
 		}
+	}
+	if got := resultStateForTest(analysis, package_, "HarmlessDeferredNilError", 0);
+		got != rules.NilStateNil {
+		t.Fatalf("HarmlessDeferredNilError result state = %v, want nil", got)
 	}
 }
 

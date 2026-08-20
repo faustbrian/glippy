@@ -210,7 +210,8 @@ identities.
 
 The version-8 component additionally binds inferred receiver effects,
 cleanup-managed result indexes, and unconditional nilness for nil-capable
-results across every explicit normal return. Project contracts do not declare
+results across every explicit normal return whose named binding is neither
+captured nor address-taken. Project contracts do not declare
 those relationships; they are proven only from selected local-source modules
 and exact source or control-flow behavior.
 

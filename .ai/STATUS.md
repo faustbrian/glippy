@@ -21,6 +21,7 @@
 - v0.5 WaitGroup counter state transition: complete
 - v0.5 receiver terminal effects and reachable local-module facts: complete
 - v0.5 unconditional result-state facts and delegated writer success: complete
+- v0.5 unconditional nil-error wrapping facts: complete
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -2312,3 +2313,22 @@ their exact revisions and pre-existing state. Five 100-function samples
 measured 98.43-112.11 ms, 5.95-6.53 MB, and 66,052-66,484 allocations on Darwin
 arm64. Portable four-runner typed-budget evidence and further high-signal
 interprocedural error-flow and ownership coverage remain active v0.5 work.
+
+The v0.5 unconditional nil-error wrapping batch connects the version-8
+per-result facts to `nil-error-wrap`. Direct same-package and imported static
+calls, plus their exact tuple extractions, now prove a `%w` operand nil when
+every explicit normal helper return agrees. Phis, dynamic calls, recursion,
+typed nil errors, unknown or conflicting returns, and unavailable facts remain
+conservative. Initial exact-rule dogfood exposed three false positives from
+named error results overwritten by deferred panic recovery. Result inference
+now rejects any named binding captured by a function literal or exposed by
+address, while retaining harmless unrelated defers. The focused regression
+initially produced no diagnostics for four exact helper results, then reproduced
+the deferred-mutation safety defect, and now reports only the four proven cases.
+Exact-rule dogfood is clean on Glippy, `go-libraries/pkg/prompts`, and
+`go-libraries/pkg/http-client` at external revision
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`; external bytes and pre-existing
+status remain unchanged. Five 100-function samples measured 88.29-91.71 ms,
+5.55-6.14 MB, and 58,212-58,662 allocations on Darwin arm64. Portable
+four-runner typed-budget evidence and further high-signal interprocedural
+error-flow and ownership coverage remain active v0.5 work.

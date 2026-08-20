@@ -291,6 +291,7 @@ func inspect() { _, _ = lookup() }
 	)
 	metadata := ssaMetadata("return-state-demand")
 	var summary rules.ReturnStateSummary
+	var resultState rules.NilState
 	rule := ssaRule{
 		metadata: metadata,
 		run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
@@ -305,6 +306,7 @@ func inspect() { _, _ = lookup() }
 					}
 					function, _ := call.Call.StaticCallee().Object().(*types.Func)
 					summary = ctx.ReturnState(function, 0, 1)
+					resultState = ctx.ResultState(function, 1)
 				}
 			}
 			return nil, nil
@@ -318,9 +320,10 @@ func inspect() { _, _ = lookup() }
 	if err != nil {
 		t.Fatal(err)
 	}
-	run := func(loadEffects bool) rules.ReturnStateSummary {
+	run := func(loadEffects bool) (rules.ReturnStateSummary, rules.NilState) {
 		t.Helper()
 		summary = rules.ReturnStateSummary{}
+		resultState = rules.NilStateUnknown
 		loaded, err := analysis.LoadPackages(
 			context.Background(),
 			analysis.PackageLoadOptions{
@@ -337,13 +340,15 @@ func inspect() { _, _ = lookup() }
 			err != nil {
 			t.Fatal(err)
 		}
-		return summary
+		return summary, resultState
 	}
-	if got := run(false); got != (rules.ReturnStateSummary{}) {
+	if got, state := run(false);
+		got != (rules.ReturnStateSummary{}) || state != rules.NilStateUnknown {
 		t.Fatalf("return state without effect requirement = %#v", got)
 	}
-	if got := run(true); got.WhenErrorNil != rules.NilStateNonNil {
-		t.Fatalf("return state with effect requirement = %#v", got)
+	if got, state := run(true);
+		got.WhenErrorNil != rules.NilStateNonNil || state != rules.NilStateNil {
+		t.Fatalf("return facts with effect requirement = %#v, result %v", got, state)
 	}
 }
 

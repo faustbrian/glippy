@@ -723,6 +723,14 @@ func (c *SSAContext) ReturnState(
 	return c.effects.ReturnState(function, valueResult, errorResult)
 }
 
+// ResultState returns the proven unconditional nilness of one function result.
+func (c *SSAContext) ResultState(function *types.Func, result int) NilState {
+	if c == nil || c.effects == nil || function == nil || result < 0 {
+		return NilStateUnknown
+	}
+	return c.effects.ResultState(function, result)
+}
+
 // Program returns the shared read-only SSA program for the current package.
 func (c *SSAContext) Program() *ssa.Program {
 	if c == nil {

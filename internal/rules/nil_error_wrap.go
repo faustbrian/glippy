@@ -22,7 +22,7 @@ func (nilErrorWrapRule) Metadata() Metadata {
 	return Metadata{
 		ID: "nil-error-wrap",
 		Summary: "detects fmt.Errorf calls that wrap an error proven nil",
-		Documentation: "Wrapping nil with fmt.Errorf's %w directive returns a non-nil formatting error that does not wrap the intended failure. The rule reports literal nil and built-in error values proven nil by direct control flow or by an exact selected-helper sibling result relationship.",
+		Documentation: "Wrapping nil with fmt.Errorf's %w directive returns a non-nil formatting error that does not wrap the intended failure. The rule reports literal nil and built-in error values proven nil by direct control flow, an exact helper result state, or an exact selected-helper sibling result relationship.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
@@ -31,8 +31,8 @@ func (nilErrorWrapRule) Metadata() Metadata {
 		Categories: []Category{CategoryCorrectness},
 		KnownLimitations: []string{
 			"Only exact fmt.Errorf calls with a compile-time format string and sequential non-star directives are analyzed; explicit argument indexes and star width or precision remain conservative.",
-			"Path proof covers literal nil, direct nil SSA values, exact nil comparisons whose nil outcome edge dominates the call, and exact sibling-result states that contradict every non-nil-error return from a selected local helper.",
-			"Return-state proof requires a direct tuple result and an exact sibling nil comparison; phis, delegated results, dynamic calls, conflicting returns, and unavailable dependency facts remain conservative.",
+			"Path proof covers literal nil, direct nil SSA values, exact nil comparisons whose nil outcome edge dominates the call, exact static helper results proven nil on every explicit normal return, and exact sibling-result states that contradict every non-nil-error return from a selected local helper.",
+			"Unconditional result proof requires a direct SSA call or tuple extraction; phis, dynamic calls, recursive or delegated helper results, typed nil errors, captured or address-taken named results, conflicting returns, and unavailable dependency facts remain conservative. Relational return-state proof still requires a direct tuple result and an exact sibling nil comparison.",
 			"Only values with the exact built-in error interface type are tracked; typed nil pointers and application-specific error interfaces are excluded because converting them to an interface can produce a non-nil interface value.",
 			"Generated files and packages with type errors are excluded.",
 		},
@@ -103,7 +103,8 @@ func (nilErrorWrapRule) RunSSA(ctx *SSAContext) ([]Finding, error) {
 						ctx,
 						value,
 						instruction.Block(),
-					) {
+					) &&
+					!resultStateProvesErrorNil(ctx, value) {
 					continue
 				}
 				range_, err := ctx.Range(argument)
@@ -127,6 +128,39 @@ func (nilErrorWrapRule) RunSSA(ctx *SSAContext) ([]Finding, error) {
 		return nil, runErr
 	}
 	return findings, nil
+}
+
+func resultStateProvesErrorNil(ctx *SSAContext, value ssa.Value) bool {
+	if ctx == nil || value == nil {
+		return false
+	}
+	resultIndex := 0
+	var call *ssa.Call
+	switch value := value.(type) {
+	case *ssa.Call:
+		call = value
+	case *ssa.Extract:
+		call, _ = value.Tuple.(*ssa.Call)
+		resultIndex = value.Index
+	default:
+		return false
+	}
+	if call == nil || call.Call.StaticCallee() == nil {
+		return false
+	}
+	function, _ := call.Call.StaticCallee().Object().(*types.Func)
+	if function == nil {
+		return false
+	}
+	signature, _ := types.Unalias(function.Type()).(*types.Signature)
+	if signature == nil ||
+		signature.Results() == nil ||
+		resultIndex < 0 ||
+		resultIndex >= signature.Results().Len() ||
+		!isBuiltinErrorType(signature.Results().At(resultIndex).Type()) {
+		return false
+	}
+	return ctx.ResultState(function, resultIndex) == NilStateNil
 }
 
 func returnStateProvesErrorNilAt(

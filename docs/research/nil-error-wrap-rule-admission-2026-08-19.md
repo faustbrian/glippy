@@ -68,9 +68,14 @@ Typed nil pointers, named error-like interfaces, values forwarded through
 phis without an exact proof, dynamic formats, indexed directives, and star
 operands remain conservative. The later v0.5 extension consumes already proven
 selected-module return-state facts for direct tuple results; it does not infer
-new relationships inside the rule. No fix is registered because the intended
-repair may return nil, remove wrapping, select a different error, construct a
-new error, or alter the surrounding branch.
+new relationships inside the rule. The later unconditional-result extension
+also accepts one exact static call or tuple extraction when every explicit
+normal return proves that built-in error result nil. Phis, dynamic calls,
+recursive or delegated helper results, typed nil errors, conflicting package
+variants, and named results captured or exposed by address remain conservative.
+No fix is registered because the intended repair may return nil, remove
+wrapping, select a different error, construct a new error, or alter the
+surrounding branch.
 
 ## Behavioral And Cost Evidence
 
@@ -108,6 +113,23 @@ Non-mutating exact-rule dogfood completed without findings on Glippy and on
 `go-libraries/pkg/prompts` with its standalone module selected. The prompts
 run preserved its pre-existing `go.sum` diff and untracked-file state
 byte-for-byte.
+
+The unconditional-result extension initially produced no diagnostics for four
+same-package or imported exact nil-error helpers. After consumption was added,
+self-dogfood exposed three false positives from helpers whose explicit nil
+return was replaced by deferred panic recovery. A focused fact regression then
+failed with a known nil state for both deferred mutation and address escape.
+The final inference rejects captured or address-exposed named results while
+retaining an unrelated harmless defer. The four exact direct and tuple cases
+report; failure, unknown, dynamic, recursive, typed-nil, deferred, and phi cases
+remain silent.
+
+Exact-rule dogfood is clean on Glippy, `go-libraries/pkg/prompts`, and
+`go-libraries/pkg/http-client` at external revision
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`. Five complete 100-function samples
+on Go 1.26.7, Darwin arm64, and an Apple M4 Max measured
+`88,287,792-91,708,500 ns/op`, `5,553,048-6,137,360 B/op`, and
+`58,212-58,662 allocations/op`.
 
 ## Revisit Trigger
 
