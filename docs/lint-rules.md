@@ -5810,7 +5810,7 @@ reports a used writer when a successfully returning path neither finalizes nor t
 - Analysis tier: control flow
 - Node interests: none
 - Dependency syntax: not required
-- Effect facts: not required
+- Effect facts: required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -5833,8 +5833,10 @@ None.
   do not require finalization.
 - A function with one named error result may classify a bare return or that exact result as
   successful only while CFG dataflow proves nil from zero initialization, direct nil or self
-  assignment, or an exact == nil or != nil edge; compound conditions, address escape, closure
-  capture, multiple error results, delegated values, and unknown joins remain conservative.
+  assignment, or an exact == nil or != nil edge. An exact statically resolved delegated call is
+  successful only when every explicit normal return of the selected local helper proves that error
+  result nil. Compound conditions, address escape, closure capture, multiple errors, dynamic or
+  recursive delegation, typed nil errors, and unknown joins remain conservative.
 - Aliases, fields, containers, closures, method values, asynchronous calls, and transfers stop
   analysis because exact ownership or execution order is unavailable.
 - One constructor call must supply the declaration or assignment values; parallel multi-expression

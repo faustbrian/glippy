@@ -518,6 +518,163 @@ func externalError() error { return nil }
 	}
 }
 
+func TestWriterNotFinalizedRecognizesExactDelegatedSuccessfulReturns(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/writerdelegatedreturn\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "helper", "helper.go"),
+		`package helper
+
+import "errors"
+
+func Success() error { return nil }
+func TupleSuccess() (int, error) { return 1, nil }
+func Failure() error { return errors.New("failed") }
+func Unknown(err error) error { return err }
+`,
+	)
+	input := `package sample
+
+import (
+	"compress/gzip"
+	"errors"
+	"io"
+
+	"example.com/writerdelegatedreturn/helper"
+)
+
+type typedError struct{}
+func (*typedError) Error() string { return "typed" }
+
+func localSuccess() error { return nil }
+func localTupleSuccess() (int, error) { return 1, nil }
+func localFailure() error { return errors.New("failed") }
+func localUnknown(err error) error { return err }
+func localRecursive() error { return localRecursive() }
+func localTypedNil() error {
+	var err *typedError
+	return err
+}
+
+func delegatedLocal(output io.Writer) error {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return localSuccess()
+}
+
+func delegatedLocalTuple(output io.Writer) (int, error) {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return localTupleSuccess()
+}
+
+func delegatedImported(output io.Writer) error {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return helper.Success()
+}
+
+func delegatedImportedTuple(output io.Writer) (int, error) {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return helper.TupleSuccess()
+}
+
+func delegatedFailure(output io.Writer) error {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return localFailure()
+}
+
+func delegatedImportedFailure(output io.Writer) error {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return helper.Failure()
+}
+
+func delegatedUnknown(output io.Writer, err error) error {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return localUnknown(err)
+}
+
+func delegatedImportedUnknown(output io.Writer, err error) error {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return helper.Unknown(err)
+}
+
+func delegatedDynamic(output io.Writer) error {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	complete := localSuccess
+	return complete()
+}
+
+func delegatedRecursive(output io.Writer) error {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return localRecursive()
+}
+
+func delegatedTypedNil(output io.Writer) error {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return localTypedNil()
+}
+`
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"writer-not-finalized": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"func delegatedLocal",
+		"func delegatedLocalTuple",
+		"func delegatedImported",
+		"func delegatedImportedTuple",
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
+		t.Fatalf("delegated writer finalization result = %#v", result)
+	}
+	for index, prefix := range want {
+		function := strings.Index(input, prefix)
+		writer := strings.Index(input[function:], "writer :=") + function
+		diagnostic := result.Files[0].Diagnostics[index]
+		if diagnostic.RuleID != "writer-not-finalized" ||
+			diagnostic.Range.Start != writer ||
+			diagnostic.Range.End != writer + len("writer") {
+			t.Fatalf("delegated writer diagnostic[%d] = %#v", index, diagnostic)
+		}
+	}
+}
+
 func TestWriterNotFinalizedOwnsGenericResourceDiagnostic(t *testing.T) {
 	t.Parallel()
 
@@ -554,6 +711,7 @@ func encode(output io.Writer) {
 	if !found ||
 		metadata.DefaultSeverity != rules.SeverityWarn ||
 		metadata.Requirement != rules.RequireControlFlow ||
+		!metadata.RequiresEffectFacts ||
 		len(metadata.Presets) != 1 ||
 		metadata.Presets[0] != rules.PresetCorrectness ||
 		metadata.MinimumGoVersion != "1.25" ||

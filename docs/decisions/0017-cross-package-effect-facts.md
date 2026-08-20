@@ -76,6 +76,14 @@ plus reachable active-workspace modules and reachable local filesystem
 replacements. Downloaded dependencies and workspace modules outside the root
 import graph remain excluded.
 
+The 2026-08-20 unconditional result-state refinement advances the active schema
+and cache component to `native-effects-v8`. Exact function and result indexes
+record nilness only when every explicit normal return proves the same state.
+Bare, delegated, recursive, dynamic, typed-nil, unknown, or conflicting returns
+remain absent. Package variants must agree on the exact state or the fact is
+discarded. This lets an exact static caller classify a delegated error result
+without retaining dependency syntax or process-local type identity.
+
 ## Alternatives
 
 - Load the complete dependency syntax closure with `packages.NeedDeps`:

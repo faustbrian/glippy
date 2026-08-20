@@ -79,7 +79,10 @@ the reaching state proves nil through direct nil or self assignments or an
 exact `err == nil` or `err != nil` CFG edge. Exact guards can refine an unknown
 unescaped value; compound conditions, address escape, closure capture, and
 disagreeing joins remain conservative. Multiple error results, tuple
-delegation, and other unknown error expressions remain conservative. No fix is
+delegation without an exact static result-state fact, and other unknown error
+expressions remain conservative. An exact static helper call, including a
+tuple return, is successful only when every explicit normal return and every
+selected package variant proves that exact built-in error result nil. No fix is
 registered because correct close placement and error joining depend on the
 surrounding return contract.
 
@@ -127,6 +130,14 @@ and resource ownership and writer success consume one exact object-to-nil edge
 classifier. Reversed operands are accepted. Compound guards, the proven
 non-nil branch, escaped results, and reassignment after a guard remain
 conservative.
+
+The unconditional result-state follow-up reproduced four missed defects where
+a used writer returned through an exact same-package or imported helper whose
+single error or tuple error result was nil on every explicit normal return.
+Stable per-result facts now classify those delegated returns without retaining
+dependency source as a lint target. Failure, unknown, dynamic, recursive, and
+typed-nil helpers remain non-diagnostics, and disagreeing package variants
+discard the fact.
 
 Five complete 100-function package-analysis samples on Go 1.26.6, Darwin
 arm64, and an Apple M4 Max measured:
@@ -183,6 +194,14 @@ their exact revisions and pre-existing status. Five complete 100-function
 guarded named-result samples on the same Go 1.26.7 Darwin arm64 host measured
 `91,629,334-150,022,458 ns/op`, `5,475,544-6,064,000 B/op`, and
 `59,533-60,019 allocs/op`.
+
+The unconditional result-state follow-up remained clean under the same three
+exact-rule dogfood runs at external revision
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`; both external repositories kept
+their exact revisions and pre-existing status. Five complete 100-function
+samples on Go 1.26.7, Darwin arm64, and an Apple M4 Max measured
+`98,426,917-112,111,542 ns/op`, `5,948,192-6,526,016 B/op`, and
+`66,052-66,484 allocations/op`.
 
 ## Revisit Trigger
 

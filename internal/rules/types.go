@@ -673,6 +673,7 @@ type EffectFacts interface {
 	ParameterEffect(*types.Func, int) ParameterEffectSummary
 	ReceiverEffect(*types.Func) ParameterEffectSummary
 	ReturnState(*types.Func, int, int) ReturnStateSummary
+	ResultState(*types.Func, int) NilState
 	MustUseResult(*types.Func, int) bool
 	Blocking(*types.Func) bool
 	ReturnAliasesArgument(*types.Func, int, int) bool
@@ -999,6 +1000,16 @@ func (c *ControlFlowContext) ReturnState(
 		return ReturnStateSummary{}
 	}
 	return c.effects.ReturnState(callee, valueResult, errorResult)
+}
+
+// ResultState returns the proven unconditional nilness of one statically
+// resolved call result.
+func (c *ControlFlowContext) ResultState(call *ast.CallExpr, result int) NilState {
+	callee := c.staticCallee(call)
+	if callee == nil || result < 0 {
+		return NilStateUnknown
+	}
+	return c.effects.ResultState(callee, result)
 }
 
 func (c *ControlFlowContext) staticCallee(call *ast.CallExpr) *types.Func {

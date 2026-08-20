@@ -15,7 +15,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const nativeEffectFactSchemaVersion = 7
+const nativeEffectFactSchemaVersion = 8
 
 type returnStateKey struct {
 	value int
@@ -34,6 +34,7 @@ type nativeEffectFacts struct {
 	parameters map[string]map[int]rules.ParameterEffectSummary
 	receivers map[string]rules.ParameterEffectSummary
 	returns map[string]map[returnStateKey]rules.ReturnStateSummary
+	results map[string]map[int]rules.NilState
 	mustUse map[string]map[int]struct{}
 	blocking map[string]struct{}
 	aliases map[string]map[returnAliasKey]struct{}
@@ -46,6 +47,7 @@ func newNativeEffectFacts() *nativeEffectFacts {
 		parameters: make(map[string]map[int]rules.ParameterEffectSummary),
 		receivers: make(map[string]rules.ParameterEffectSummary),
 		returns: make(map[string]map[returnStateKey]rules.ReturnStateSummary),
+		results: make(map[string]map[int]rules.NilState),
 		mustUse: make(map[string]map[int]struct{}),
 		blocking: make(map[string]struct{}),
 		aliases: make(map[string]map[returnAliasKey]struct{}),
@@ -77,6 +79,13 @@ func cloneNativeEffectFacts(facts *nativeEffectFacts) *nativeEffectFacts {
 			cloned[key] = summary
 		}
 		result.returns[identity] = cloned
+	}
+	for identity, states := range facts.results {
+		cloned := make(map[int]rules.NilState, len(states))
+		for index, state := range states {
+			cloned[index] = state
+		}
+		result.results[identity] = cloned
 	}
 	for identity, indexes := range facts.mustUse {
 		cloned := make(map[int]struct{}, len(indexes))
@@ -117,6 +126,14 @@ func (f *nativeEffectFacts) ReturnState(
 	return f.returns[stableFunctionIdentity(
 		function,
 	)][returnStateKey{value: valueResult, error: errorResult}]
+}
+
+// ResultState implements rules.EffectFacts across independent package loads.
+func (f *nativeEffectFacts) ResultState(function *types.Func, result int) rules.NilState {
+	if f == nil || function == nil || result < 0 {
+		return rules.NilStateUnknown
+	}
+	return f.results[stableFunctionIdentity(function)][result]
 }
 
 func (f *nativeEffectFacts) noReturn(function *types.Func) bool {
@@ -397,6 +414,54 @@ func (f *nativeEffectFacts) addReturnStates(analysis *returnStateAnalysis) {
 	}
 }
 
+func (f *nativeEffectFacts) addResultStates(analysis *returnStateAnalysis) {
+	if f == nil || analysis == nil {
+		return
+	}
+	aggregated := make(map[string]map[int]rules.NilState)
+	seen := make(map[string]struct{})
+	for _, definition := range analysis.definitions {
+		identity := stableFunctionIdentity(definition.function)
+		if identity == "" {
+			continue
+		}
+		states := analysis.resultStates[definition.function]
+		if _, found := seen[identity]; !found {
+			seen[identity] = struct{}{}
+			cloned := make(map[int]rules.NilState, len(states))
+			for index, state := range states {
+				cloned[index] = state
+			}
+			aggregated[identity] = cloned
+			continue
+		}
+		for index, state := range aggregated[identity] {
+			if candidate, found := states[index]; !found || candidate != state {
+				delete(aggregated[identity], index)
+			}
+		}
+	}
+	for identity, states := range aggregated {
+		if len(states) == 0 {
+			delete(f.results, identity)
+			continue
+		}
+		existing := f.results[identity]
+		if existing == nil {
+			f.results[identity] = states
+			continue
+		}
+		for index, state := range existing {
+			if candidate, found := states[index]; !found || candidate != state {
+				delete(existing, index)
+			}
+		}
+		if len(existing) == 0 {
+			delete(f.results, identity)
+		}
+	}
+}
+
 func (f *nativeEffectFacts) addCleanupManagedResults(analysis *managedResultAnalysis) {
 	if f == nil || analysis == nil {
 		return
@@ -579,6 +644,42 @@ func (f *nativeEffectFacts) digest() cache.Digest {
 		_, _ = digest.Write(version[:])
 		_, _ = digest.Write([]byte{byte(returned.summary.WhenErrorNil)})
 		_, _ = digest.Write([]byte{byte(returned.summary.WhenErrorNonNil)})
+	}
+	type resultRecord struct {
+		identity string
+		index int
+		state rules.NilState
+	}
+	results := make([]resultRecord, 0)
+	if f != nil {
+		for identity, states := range f.results {
+			for index, state := range states {
+				results = append(
+					results,
+					resultRecord{
+						identity: identity,
+						index: index,
+						state: state,
+					},
+				)
+			}
+		}
+	}
+	sort.Slice(
+		results,
+		func(left, right int) bool {
+			if results[left].identity != results[right].identity {
+				return results[left].identity < results[right].identity
+			}
+			return results[left].index < results[right].index
+		},
+	)
+	for _, result := range results {
+		_, _ = digest.Write([]byte{8})
+		writeEffectIdentity(digest, version[:], result.identity)
+		binary.BigEndian.PutUint64(version[:], uint64(result.index))
+		_, _ = digest.Write(version[:])
+		_, _ = digest.Write([]byte{byte(result.state)})
 	}
 	type indexedRecord struct {
 		identity string
@@ -827,6 +928,7 @@ func loadNativeEffectFacts(
 		returnStates := newReturnStateAnalysis(ctx, layers[index])
 		returnStates.buildAll()
 		facts.addReturnStates(returnStates)
+		facts.addResultStates(returnStates)
 	}
 	return facts, nil
 }

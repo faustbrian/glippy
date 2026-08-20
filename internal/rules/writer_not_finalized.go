@@ -117,11 +117,12 @@ func (writerNotFinalizedRule) Metadata() Metadata {
 		Presets: []Preset{PresetCorrectness},
 		MinimumGoVersion: "1.25",
 		Requirement: RequireControlFlow,
+		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"The exact contract covers direct local assignment results and initialized variable declarations from archive/tar.NewWriter, compress/gzip.NewWriter or NewWriterLevel, encoding/ascii85.NewEncoder, encoding/base32.NewEncoder, encoding/base64.NewEncoder, and mime/multipart.NewWriter.",
 			"Only exact output-producing receiver methods establish use; construction and configuration alone do not require finalization.",
-			"A function with one named error result may classify a bare return or that exact result as successful only while CFG dataflow proves nil from zero initialization, direct nil or self assignment, or an exact == nil or != nil edge; compound conditions, address escape, closure capture, multiple error results, delegated values, and unknown joins remain conservative.",
+			"A function with one named error result may classify a bare return or that exact result as successful only while CFG dataflow proves nil from zero initialization, direct nil or self assignment, or an exact == nil or != nil edge. An exact statically resolved delegated call is successful only when every explicit normal return of the selected local helper proves that error result nil. Compound conditions, address escape, closure capture, multiple errors, dynamic or recursive delegation, typed nil errors, and unknown joins remain conservative.",
 			"Aliases, fields, containers, closures, method values, asynchronous calls, and transfers stop analysis because exact ownership or execution order is unavailable.",
 			"One constructor call must supply the declaration or assignment values; parallel multi-expression acquisitions remain outside the direct mapping contract.",
 			"No fix is offered because correct finalization and error joining depend on the surrounding return contract.",
@@ -518,6 +519,9 @@ func writerReturnIsSuccessful(
 	if len(returned.Results) == 0 {
 		return namedError != nil && errorState.provenNil()
 	}
+	if delegatedErrorResultIsNil(ctx, returned, signature, errorIndex) {
+		return true
+	}
 	if len(returned.Results) != signature.Results().Len() {
 		return false
 	}
@@ -528,6 +532,52 @@ func writerReturnIsSuccessful(
 	return namedError != nil &&
 		errorState.provenNil() &&
 		directObject(ctx.Info(), errorExpression) == namedError
+}
+
+func delegatedErrorResultIsNil(
+	ctx *ControlFlowContext,
+	returned *ast.ReturnStmt,
+	signature *types.Signature,
+	errorIndex int,
+) bool {
+	if ctx == nil ||
+		returned == nil ||
+		signature == nil ||
+		signature.Results() == nil ||
+		errorIndex < 0 {
+		return false
+	}
+	resultIndex := 0
+	var expression ast.Expr
+	switch {
+	case len(returned.Results) == 1:
+		expression = returned.Results[0]
+		resultIndex = errorIndex
+	case len(returned.Results) == signature.Results().Len():
+		expression = returned.Results[errorIndex]
+	default:
+		return false
+	}
+	call, _ := ast.Unparen(expression).(*ast.CallExpr)
+	if call == nil {
+		return false
+	}
+	callee := typeutil.StaticCallee(ctx.Info(), call)
+	if callee == nil {
+		return false
+	}
+	calleeSignature, _ := types.Unalias(callee.Type()).(*types.Signature)
+	if calleeSignature == nil ||
+		calleeSignature.Results() == nil ||
+		resultIndex >= calleeSignature.Results().Len() {
+		return false
+	}
+	if len(returned.Results) == 1 &&
+		calleeSignature.Results().Len() != signature.Results().Len() {
+		return false
+	}
+	return isBuiltinErrorType(calleeSignature.Results().At(resultIndex).Type()) &&
+		ctx.ResultState(call, resultIndex) == NilStateNil
 }
 
 func writerNamedErrorResult(ctx *ControlFlowContext) types.Object {

@@ -65,6 +65,14 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 		Kinds: rules.ParameterEffectClose,
 		GuaranteedKinds: rules.ParameterEffectClose,
 	}
+	first.results["function"] = map[int]rules.NilState{
+		1: rules.NilStateNil,
+		0: rules.NilStateNonNil,
+	}
+	second.results["function"] = map[int]rules.NilState{
+		0: rules.NilStateNonNil,
+		1: rules.NilStateNil,
+	}
 	first.cleanupManaged["function"] = map[int]struct{}{1: {}, 0: {}}
 	second.cleanupManaged["function"] = map[int]struct{}{0: {}, 1: {}}
 	changed := newNativeEffectFacts()
@@ -106,6 +114,11 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	}
 	if first.digest() == changed.digest() {
 		t.Fatal("effect fact digest ignored a return-state change")
+	}
+	changed = cloneNativeEffectFacts(first)
+	changed.results["function"] = map[int]rules.NilState{0: rules.NilStateNil}
+	if first.digest() == changed.digest() {
+		t.Fatal("effect fact digest ignored a result-state change")
 	}
 	changed = cloneNativeEffectFacts(first)
 	changed.mustUse["function"] = map[int]struct{}{0: {}}
@@ -234,6 +247,44 @@ func TestNativeReturnStatesUseStableCrossLoadFunctionIdentity(t *testing.T) {
 	}
 	if summary := facts.ReturnState(second, 1, 0); summary != (rules.ReturnStateSummary{}) {
 		t.Fatalf("return state matched another result pair: %#v", summary)
+	}
+}
+
+func TestNativeResultStatesUseStableCrossLoadFunctionIdentity(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestFunction("example.com/project/value", "Complete")
+	second := effectTestFunction("example.com/project/value", "Complete")
+	facts := newNativeEffectFacts()
+	facts.results[stableFunctionIdentity(first)] = map[int]rules.NilState{0: rules.NilStateNil}
+	if state := facts.ResultState(second, 0); state != rules.NilStateNil {
+		t.Fatalf("result state did not survive an independent type identity: %v", state)
+	}
+	if state := facts.ResultState(second, 1); state != rules.NilStateUnknown {
+		t.Fatalf("result state matched another result: %v", state)
+	}
+}
+
+func TestResultStateFactsIntersectPackageVariants(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestFunction("example.com/project/value", "Complete")
+	second := effectTestFunction("example.com/project/value", "Complete")
+	analysis := &returnStateAnalysis{
+		definitions: []returnStateDefinition{{function: first}, {function: second}},
+		resultStates: map[*types.Func]map[int]rules.NilState{first: {0: rules.NilStateNil}},
+	}
+	facts := newNativeEffectFacts()
+	facts.addResultStates(analysis)
+	if state := facts.ResultState(first, 0); state != rules.NilStateUnknown {
+		t.Fatalf("result state survived a disagreeing package variant: %v", state)
+	}
+
+	analysis.resultStates[second] = map[int]rules.NilState{0: rules.NilStateNil}
+	facts = newNativeEffectFacts()
+	facts.addResultStates(analysis)
+	if state := facts.ResultState(second, 0); state != rules.NilStateNil {
+		t.Fatalf("result state was lost across agreeing package variants: %v", state)
 	}
 }
 

@@ -26,6 +26,8 @@ import (
 )
 
 type Value struct{}
+type typedError struct{}
+func (*typedError) Error() string { return "typed" }
 
 func Known(found bool) (*Value, error) {
 	if !found { return nil, errors.New("missing") }
@@ -46,6 +48,20 @@ func Bare() (value *Value, err error) { return }
 func Unknown(value *Value, err error) (*Value, error) { return value, err }
 func Recursive() (*Value, error) { return Recursive() }
 func Indirect(value *Value) (*Value, error) { return &*value, nil }
+
+func NilError() error { return nil }
+func NonNilError() error { return errors.New("failed") }
+func UnknownError(err error) error { return err }
+func RecursiveError() error { return RecursiveError() }
+func TypedNilError() error {
+	var err *typedError
+	return err
+}
+
+func ConflictingError(found bool) error {
+	if found { return nil }
+	return errors.New("failed")
+}
 
 func Conflicting(found bool) (*Value, error) {
 	if found { return nil, nil }
@@ -76,6 +92,23 @@ func Conflicting(found bool) (*Value, error) {
 			t.Fatalf("%s summary = %#v, want unknown", name, got)
 		}
 	}
+	if got := resultStateForTest(analysis, package_, "NilError", 0); got != rules.NilStateNil {
+		t.Fatalf("NilError result state = %v, want nil", got)
+	}
+	if got := resultStateForTest(analysis, package_, "NonNilError", 0);
+		got != rules.NilStateNonNil {
+		t.Fatalf("NonNilError result state = %v, want non-nil", got)
+	}
+	if got := resultStateForTest(analysis, package_, "Known", 1); got != rules.NilStateUnknown {
+		t.Fatalf("Known error result state = %v, want unknown", got)
+	}
+	for _, name := range
+		[]string{"UnknownError", "RecursiveError", "TypedNilError", "ConflictingError"} {
+		if got := resultStateForTest(analysis, package_, name, 0);
+			got != rules.NilStateUnknown {
+			t.Fatalf("%s result state = %v, want unknown", name, got)
+		}
+	}
 }
 
 func TestReturnStateAnalysisStopsAfterCancellation(t *testing.T) {
@@ -93,8 +126,12 @@ func Lookup() (*Value, error) { return &Value{}, nil }
 	cancel()
 	analysis := newReturnStateAnalysis(ctx, []*packages.Package{package_})
 	analysis.buildAll()
-	if len(analysis.summaries) != 0 {
-		t.Fatalf("canceled return-state summaries = %#v", analysis.summaries)
+	if len(analysis.summaries) != 0 || len(analysis.resultStates) != 0 {
+		t.Fatalf(
+			"canceled return-state analysis = summaries %#v, results %#v",
+			analysis.summaries,
+			analysis.resultStates,
+		)
 	}
 }
 
@@ -134,4 +171,14 @@ func returnStateForTest(
 ) rules.ReturnStateSummary {
 	function, _ := package_.Types.Scope().Lookup(name).(*types.Func)
 	return analysis.summaries[function][returnStateKey{value: 0, error: 1}]
+}
+
+func resultStateForTest(
+	analysis *returnStateAnalysis,
+	package_ *packages.Package,
+	name string,
+	index int,
+) rules.NilState {
+	function, _ := package_.Types.Scope().Lookup(name).(*types.Func)
+	return analysis.resultStates[function][index]
 }

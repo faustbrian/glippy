@@ -20,6 +20,7 @@
 - v0.5 channel state transition: complete
 - v0.5 WaitGroup counter state transition: complete
 - v0.5 receiver terminal effects and reachable local-module facts: complete
+- v0.5 unconditional result-state facts and delegated writer success: complete
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -2291,3 +2292,23 @@ named-result samples measured 91.63-150.02 ms, 5.48-6.06 MB, and
 59,533-60,019 allocations on Darwin arm64. Portable four-runner typed-budget
 evidence and further high-signal interprocedural error-flow and ownership
 coverage remain active v0.5 work.
+
+The v0.5 unconditional result-state batch adds stable per-result nilness to the
+shared effect facts. A nil-capable result is known only when every explicit
+normal return proves the same state; bare, delegated, recursive, dynamic,
+typed-nil, unknown, and conflicting returns remain conservative. Stable
+function identities carry the summary across independent package loads, and
+disagreeing package variants discard it. `writer-not-finalized` now consumes
+only exact static error-result facts, including tuple delegation, so a locally
+or cross-package helper proven to return nil error on every normal path exposes
+the caller's missing finalizer. The native effect schema and cache component
+advance to version 8. The focused regression initially produced no diagnostics
+for four exact delegated-success paths and now reports those paths while
+retaining dynamic, recursive, typed-nil, failure, and unknown cases. Exact-rule
+dogfood remained clean on Glippy, `go-libraries/pkg/prompts`, and
+`go-libraries/pkg/http-client` at
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`; the external repositories retained
+their exact revisions and pre-existing state. Five 100-function samples
+measured 98.43-112.11 ms, 5.95-6.53 MB, and 66,052-66,484 allocations on Darwin
+arm64. Portable four-runner typed-budget evidence and further high-signal
+interprocedural error-flow and ownership coverage remain active v0.5 work.

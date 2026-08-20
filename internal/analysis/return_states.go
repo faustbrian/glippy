@@ -13,6 +13,7 @@ import (
 type returnStateAnalysis struct {
 	ctx context.Context
 	summaries map[*types.Func]map[returnStateKey]rules.ReturnStateSummary
+	resultStates map[*types.Func]map[int]rules.NilState
 	definitions []returnStateDefinition
 }
 
@@ -30,6 +31,7 @@ func newReturnStateAnalysis(
 	analysis := &returnStateAnalysis{
 		ctx: ctx,
 		summaries: make(map[*types.Func]map[returnStateKey]rules.ReturnStateSummary),
+		resultStates: make(map[*types.Func]map[int]rules.NilState),
 		definitions: make([]returnStateDefinition, 0),
 	}
 	for _, pkg := range packages_ {
@@ -90,7 +92,105 @@ func (a *returnStateAnalysis) buildAll() {
 		if len(summaries) != 0 {
 			a.summaries[definition.function] = summaries
 		}
+		states := summarizeResultStates(
+			definition.declaration,
+			definition.signature,
+			definition.info,
+		)
+		if len(states) != 0 {
+			a.resultStates[definition.function] = states
+		}
 	}
+}
+
+func (a *returnStateAnalysis) buildResultStates() {
+	if a == nil || a.ctx == nil {
+		return
+	}
+	for _, definition := range a.definitions {
+		if a.ctx.Err() != nil {
+			return
+		}
+		states := summarizeResultStates(
+			definition.declaration,
+			definition.signature,
+			definition.info,
+		)
+		if len(states) != 0 {
+			a.resultStates[definition.function] = states
+		}
+	}
+}
+
+func summarizeResultStates(
+	function *ast.FuncDecl,
+	signature *types.Signature,
+	info *types.Info,
+) map[int]rules.NilState {
+	if function == nil || function.Body == nil || signature == nil || info == nil {
+		return nil
+	}
+	results := signature.Results()
+	if results == nil || results.Len() == 0 {
+		return nil
+	}
+	returns := explicitFunctionReturns(function.Body)
+	if len(returns) == 0 {
+		return nil
+	}
+	states := make(map[int]rules.NilState)
+	for index := range results.Len() {
+		resultType := results.At(index).Type()
+		if !nilCapableType(resultType) {
+			continue
+		}
+		state := aggregateResultState(returns, results.Len(), index, resultType, info)
+		if state != rules.NilStateUnknown {
+			states[index] = state
+		}
+	}
+	return states
+}
+
+func aggregateResultState(
+	returns []*ast.ReturnStmt,
+	resultCount int,
+	resultIndex int,
+	resultType types.Type,
+	info *types.Info,
+) rules.NilState {
+	state := rules.NilStateUnknown
+	for _, returned := range returns {
+		if returned == nil ||
+			len(returned.Results) != resultCount ||
+			resultIndex >= len(returned.Results) {
+			return rules.NilStateUnknown
+		}
+		candidate := classifyResultExpression(
+			returned.Results[resultIndex],
+			resultType,
+			info,
+		)
+		if candidate == rules.NilStateUnknown {
+			return rules.NilStateUnknown
+		}
+		if state != rules.NilStateUnknown && state != candidate {
+			return rules.NilStateUnknown
+		}
+		state = candidate
+	}
+	return state
+}
+
+func classifyResultExpression(
+	expression ast.Expr,
+	resultType types.Type,
+	info *types.Info,
+) rules.NilState {
+	if isBuiltinError(resultType) {
+		return classifyErrorExpression(expression, info)
+	}
+	return classifyNilExpression(expression, info)
 }
 
 func summarizeReturnStates(

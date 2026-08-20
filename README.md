@@ -365,6 +365,7 @@ precise scope.
 - [v0.5 cancellation returned-alias obligations](docs/research/v0.5-returned-alias-cancellation-obligations-2026-08-20.md)
 - [v0.5 receiver terminal effects](docs/research/v0.5-receiver-terminal-effects-2026-08-20.md)
 - [v0.5 nil-error return facts](docs/research/v0.5-nil-error-return-facts-2026-08-20.md)
+- [v0.5 unconditional result-state facts](docs/research/v0.5-unconditional-result-state-facts-2026-08-20.md)
 - [v0.5 required writer finalization](docs/research/writer-not-finalized-rule-admission-2026-08-20.md)
 - [Suppression reference](docs/suppressions.md)
 - [Lint engine and suppressions](docs/spec/lint-engine.md)
