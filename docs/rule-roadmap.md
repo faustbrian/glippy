@@ -43,10 +43,11 @@ calls and unconfigured APIs stay outside this exact policy boundary.
 
 The project-contract track also makes `returns-alias` observable in the shared
 lifecycle obligation engine. When an exact contracted result is assigned back
-to the same tracked transaction or closer, ownership returns to the caller and
-the existing completion obligation remains live. A guaranteed close or
-transaction completion still discharges it. New alias bindings and post-close
-state remain conservative rather than inferring an unbounded alias graph.
+to the same tracked transaction, closer, or cancellation function, ownership
+returns to the caller and the existing completion obligation remains live. A
+guaranteed close, transaction completion, or cancellation invocation still
+discharges it. New alias bindings and post-close state remain conservative
+rather than inferring an unbounded alias graph.
 
 The response and stream lifecycle track has admitted its first two CFG rules:
 `unchecked-rows-error` and `unchecked-scanner-error` prove that direct

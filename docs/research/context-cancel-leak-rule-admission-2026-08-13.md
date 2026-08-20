@@ -86,3 +86,12 @@ type-error exclusion, deterministic baselines, and absence of fixes.
 Non-mutating correctness lint completed with no findings over Glippy and
 `go-libraries/pkg/prompts` at `633a5508c570d08b8976689a206f9df27e73ff90`.
 The prompts repository head and pre-existing dirty status were unchanged.
+
+## Later Precision
+
+The v0.5 returned-alias cancellation work on 2026-08-20 narrows one assignment
+case that this admission record conservatively counted as transfer. An exact
+contracted result assigned back to the same cancellation variable now preserves
+the outstanding invocation obligation. Replacement, new alias bindings, and
+uncontracted helpers retain the original conservative boundary. See
+[`v0.5-returned-alias-cancellation-obligations-2026-08-20.md`](v0.5-returned-alias-cancellation-obligations-2026-08-20.md).

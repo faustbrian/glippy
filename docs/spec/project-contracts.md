@@ -172,13 +172,14 @@ produce diagnostics with the same source identity and exact call range, the
 contract-specific diagnostic MUST own the condition and supersede the generic
 diagnostic before suppression or baseline policy is applied.
 
-An exact `returns-alias` relationship MUST preserve an outstanding resource or
-transaction obligation when the contracted result is assigned directly back
-to the same tracked object whose argument it aliases. A guaranteed close or
-transaction-completion effect still discharges the obligation. Assigning the
-result to a different object MUST remain conservative until the analysis owns
-a bounded dynamic alias model. Returned identity alone MUST NOT prove that a
-resource's open or closed state is unchanged.
+An exact `returns-alias` relationship MUST preserve an outstanding resource,
+transaction, or cancellation obligation when the contracted result is
+assigned directly back to the same tracked object whose argument it aliases. A
+guaranteed close, transaction-completion, or cancellation-invocation effect
+still discharges the obligation. Assigning the result to a different object
+MUST remain conservative until the analysis owns a bounded dynamic alias
+model. Returned identity alone MUST NOT prove that a resource's open or closed
+state is unchanged.
 
 When one configured parameter declares both a specific terminal effect and
 generic ownership transfer, the specific close, transaction completion, or

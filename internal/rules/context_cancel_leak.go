@@ -36,6 +36,7 @@ func (contextCancelLeakRule) Metadata() Metadata {
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"A statically resolved same-module helper that provably borrows the cancellation function does not discharge the obligation; guaranteed invocation or ownership transfer must cover every normally returning helper path.",
+			"An exact returned-alias contract preserves the obligation when the result is assigned back to the same cancellation variable; new alias bindings remain outside the tracked ownership identity.",
 			"Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules retain the conservative use-or-transfer behavior when no summary is available.",
 			"The shared CFG propagates no-return behavior through the selected package and same-module imported helpers. Third-party helpers outside the selected modules remain conservatively returning unless they match an exact standard-library terminal API.",
 		},
@@ -354,6 +355,33 @@ func contextCancelNodeUses(
 	variable *types.Var,
 	namedResult bool,
 ) bool {
+	var preservingAssignment *ast.AssignStmt
+	if assignment, ok := node.(*ast.AssignStmt); ok {
+		targetsCancel := false
+		for _, target := range assignment.Lhs {
+			if directObject(info, target) == variable {
+				targetsCancel = true
+				break
+			}
+		}
+		if targetsCancel {
+			effect := objectObligationEffect(
+				info,
+				assignment,
+				variable,
+				func(call *ast.CallExpr) bool {
+					return directObject(info, call.Fun) == variable
+				},
+				ctx.ParameterEffect,
+				ParameterEffectCancelInvoke | ParameterEffectTransfer,
+				ctx.ReturnAliasesArgument,
+			)
+			if effect != obligationOpen {
+				return true
+			}
+			preservingAssignment = assignment
+		}
+	}
 	used := false
 	ast.PreorderStack(
 		node,
@@ -369,6 +397,16 @@ func contextCancelNodeUses(
 			}
 			identifier, ok := current.(*ast.Ident)
 			if !ok || info.Uses[identifier] != variable {
+				return true
+			}
+			if contextCancelPreservedAssignmentIdentifier(
+				ctx,
+				info,
+				preservingAssignment,
+				variable,
+				identifier,
+				stack,
+			) {
 				return true
 			}
 			for index := len(stack) - 1; index >= 0; index-- {
@@ -400,6 +438,53 @@ func contextCancelNodeUses(
 		},
 	)
 	return used
+}
+
+func contextCancelPreservedAssignmentIdentifier(
+	ctx *ControlFlowContext,
+	info *types.Info,
+	assignment *ast.AssignStmt,
+	variable *types.Var,
+	identifier *ast.Ident,
+	stack []ast.Node,
+) bool {
+	if ctx == nil || info == nil || assignment == nil || variable == nil || identifier == nil {
+		return false
+	}
+	for _, target := range assignment.Lhs {
+		if ast.Unparen(target) == identifier {
+			return true
+		}
+	}
+	if len(assignment.Rhs) == len(assignment.Lhs) {
+		for index, expression := range assignment.Rhs {
+			if ast.Unparen(expression) == identifier &&
+				directObject(info, assignment.Lhs[index]) == variable {
+				return true
+			}
+		}
+	}
+	for index := len(stack) - 1; index >= 0; index-- {
+		call, ok := stack[index].(*ast.CallExpr)
+		if !ok {
+			continue
+		}
+		for argument, expression := range call.Args {
+			if ast.Unparen(expression) == identifier &&
+				assignmentReturnsObjectAlias(
+					info,
+					assignment,
+					variable,
+					call,
+					argument,
+					ctx.ReturnAliasesArgument,
+				) {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }
 
 func tupleContainsVariable(tuple *types.Tuple, variable *types.Var) bool {

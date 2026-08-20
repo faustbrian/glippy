@@ -510,6 +510,8 @@ None.
 - A statically resolved same-module helper that provably borrows the cancellation function does not
   discharge the obligation; guaranteed invocation or ownership transfer must cover every normally
   returning helper path.
+- An exact returned-alias contract preserves the obligation when the result is assigned back to the
+  same cancellation variable; new alias bindings remain outside the tracked ownership identity.
 - Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules
   retain the conservative use-or-transfer behavior when no summary is available.
 - The shared CFG propagates no-return behavior through the selected package and same-module imported

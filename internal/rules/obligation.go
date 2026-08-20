@@ -277,7 +277,15 @@ func assignmentReturnsFinalObjectAlias(
 	for argument, expression := range call.Args {
 		if directObject(info, expression) == object &&
 			returnsAlias(call, result, argument) {
-			return true
+			_, aliasesOther := assignmentCallAliasTargets(
+				info,
+				assignment,
+				object,
+				call,
+				argument,
+				returnsAlias,
+			)
+			return !aliasesOther
 		}
 	}
 	return false
@@ -327,28 +335,66 @@ func assignmentReturnsObjectAlias(
 		directObject(info, call.Args[argument]) != object {
 		return false
 	}
+	aliasesObject, aliasesOther := assignmentCallAliasTargets(
+		info,
+		assignment,
+		object,
+		call,
+		argument,
+		returnsAlias,
+	)
+	return aliasesObject && !aliasesOther
+}
+
+func assignmentCallAliasTargets(
+	info *types.Info,
+	assignment *ast.AssignStmt,
+	object types.Object,
+	call *ast.CallExpr,
+	argument int,
+	returnsAlias func(*ast.CallExpr, int, int) bool,
+) (bool, bool) {
+	if info == nil || assignment == nil || object == nil || call == nil || returnsAlias == nil {
+		return false, false
+	}
+	classify := func(target ast.Expr) (bool, bool) {
+		identifier, blank := ast.Unparen(target).(*ast.Ident)
+		if blank && identifier.Name == "_" {
+			return false, false
+		}
+		if directObject(info, target) == object {
+			return true, false
+		}
+		return false, true
+	}
+	aliasesObject := false
+	aliasesOther := false
 	if len(assignment.Rhs) == 1 && ast.Unparen(assignment.Rhs[0]) == call {
 		if callResultCount(info, call) != len(assignment.Lhs) {
-			return false
+			return false, false
 		}
 		for result, target := range assignment.Lhs {
-			if directObject(info, target) == object &&
-				returnsAlias(call, result, argument) {
-				return true
+			if !returnsAlias(call, result, argument) {
+				continue
 			}
+			objectTarget, otherTarget := classify(target)
+			aliasesObject = aliasesObject || objectTarget
+			aliasesOther = aliasesOther || otherTarget
 		}
-		return false
+		return aliasesObject, aliasesOther
 	}
 	if len(assignment.Rhs) != len(assignment.Lhs) || callResultCount(info, call) != 1 {
-		return false
+		return false, false
 	}
 	for result, expression := range assignment.Rhs {
-		if ast.Unparen(expression) == call &&
-			directObject(info, assignment.Lhs[result]) == object {
-			return returnsAlias(call, 0, argument)
+		if ast.Unparen(expression) != call || !returnsAlias(call, 0, argument) {
+			continue
 		}
+		objectTarget, otherTarget := classify(assignment.Lhs[result])
+		aliasesObject = aliasesObject || objectTarget
+		aliasesOther = aliasesOther || otherTarget
 	}
-	return false
+	return aliasesObject, aliasesOther
 }
 
 func returningNonNilErrorGuard(info *types.Info, guard *ast.IfStmt, errorObject types.Object) bool {

@@ -348,6 +348,7 @@ precise scope.
 - [v0.5 incremental workspace analysis](docs/research/v0.5-incremental-workspace-analysis-2026-08-16.md)
 - [v0.5 memory-aware SSA package waves](docs/research/v0.5-memory-aware-ssa-waves-2026-08-19.md)
 - [v0.5 project semantic contracts](docs/research/v0.5-project-semantic-contracts-2026-08-16.md)
+- [v0.5 cancellation returned-alias obligations](docs/research/v0.5-returned-alias-cancellation-obligations-2026-08-20.md)
 - [Suppression reference](docs/suppressions.md)
 - [Lint engine and suppressions](docs/spec/lint-engine.md)
 - [Fix safety model](docs/spec/fix-safety.md)

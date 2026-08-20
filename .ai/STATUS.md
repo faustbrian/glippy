@@ -2003,3 +2003,23 @@ Darwin arm64. Exact-rule dogfood remained clean on Glippy and
 `go.sum` bytes were unchanged. Portable four-runner typed-budget evidence and
 further high-signal interprocedural error-flow and ownership coverage remain
 active v0.5 work.
+
+The v0.5 cancellation returned-alias batch extends the same project-contract
+identity into `context-cancel-leak`. Assigning a contracted alias back to the
+same cancel variable, including tuple results, method expressions, duplicate
+targets whose final write is the alias, and direct final self-writes, now keeps
+the invocation obligation live. Guaranteed cancellation invocation still
+discharges it; uncontracted helpers, replacement bindings, and aliases assigned
+elsewhere retain the conservative transfer boundary. The initial focused red
+test produced no diagnostics for five outstanding obligations before the
+cancellation path consumed returned-alias and final-write identity. The final
+fixture reports eight obligations across both tuple-result indexes, positional
+multi-RHS assignments, imported helpers, and method expressions. A separate
+red regression protected three preserving assignments whose blank, address,
+or independent references must retain the admitted lostcancel behavior. Five
+complete 100-function samples measured a 76.75 ms median, about 4.05 MB, and
+43,300 allocations per run on Darwin arm64. Exact-rule dogfood remained
+clean on Glippy and `go-libraries/pkg/prompts` at `5925270`, whose pre-existing
+dirty state and `go.sum` bytes were unchanged. Portable four-runner typed-budget
+evidence and further high-signal interprocedural error-flow and ownership
+coverage remain active v0.5 work.
