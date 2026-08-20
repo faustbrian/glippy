@@ -162,10 +162,10 @@ returns-alias = [{ result = 0, argument = 0 }]
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir: root,
-			Patterns: []string{"."},
+			Dir:        root,
+			Patterns:   []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
-			Contracts: set,
+			Contracts:  set,
 		},
 	)
 	if err != nil {
@@ -178,26 +178,25 @@ returns-alias = [{ result = 0, argument = 0 }]
 		t.Fatalf("returned-alias lifecycle diagnostics = %#v", result.Files[0].Diagnostics)
 	}
 	wantStarts := make(map[int]bool)
-	for _, function := range
-		[]string{
-			"retainedAlias",
-			"retainedTupleAlias",
-			"overwrittenReturnedAlias",
-			"retainedMethodExpressionAlias",
-			"retainedAfterPositionalSelfAssignment",
-			"retainedAfterInferredPositionalBorrow",
-		} {
-		functionStart := strings.Index(input, "func " + function)
+	for _, function := range []string{
+		"retainedAlias",
+		"retainedTupleAlias",
+		"overwrittenReturnedAlias",
+		"retainedMethodExpressionAlias",
+		"retainedAfterPositionalSelfAssignment",
+		"retainedAfterInferredPositionalBorrow",
+	} {
+		functionStart := strings.Index(input, "func "+function)
 		acquisitionStart := strings.Index(
 			input[functionStart:],
 			"transaction, err := database.Begin()",
 		)
-		wantStarts[functionStart + acquisitionStart] = true
+		wantStarts[functionStart+acquisitionStart] = true
 	}
 	for _, diagnostic := range result.Files[0].Diagnostics {
 		if diagnostic.RuleID != "sql-transaction-not-completed" ||
 			!wantStarts[diagnostic.Range.Start] ||
-			diagnostic.Range.End != diagnostic.Range.Start + len("transaction") {
+			diagnostic.Range.End != diagnostic.Range.Start+len("transaction") {
 			t.Fatalf("returned-alias lifecycle diagnostic = %#v", diagnostic)
 		}
 		delete(wantStarts, diagnostic.Range.Start)
@@ -309,10 +308,10 @@ returns-alias = [{ result = 0, argument = 0 }]
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir: root,
-			Patterns: []string{"."},
+			Dir:        root,
+			Patterns:   []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
-			Contracts: set,
+			Contracts:  set,
 		},
 	)
 	if err != nil {
@@ -326,17 +325,17 @@ returns-alias = [{ result = 0, argument = 0 }]
 	}
 	wantStarts := make(map[int]bool)
 	for _, function := range []string{"retainedAlias", "retainedMethodExpressionAlias"} {
-		functionStart := strings.Index(input, "func " + function)
+		functionStart := strings.Index(input, "func "+function)
 		acquisitionStart := strings.Index(
 			input[functionStart:],
 			"file, err := os.Open(path)",
 		)
-		wantStarts[functionStart + acquisitionStart] = true
+		wantStarts[functionStart+acquisitionStart] = true
 	}
 	for _, diagnostic := range result.Files[0].Diagnostics {
 		if diagnostic.RuleID != "resource-not-closed" ||
 			!wantStarts[diagnostic.Range.Start] ||
-			diagnostic.Range.End != diagnostic.Range.Start + len("file") {
+			diagnostic.Range.End != diagnostic.Range.Start+len("file") {
 			t.Fatalf("returned-alias resource diagnostic = %#v", diagnostic)
 		}
 		delete(wantStarts, diagnostic.Range.Start)
@@ -356,10 +355,7 @@ func TestReturnedAliasStateUsesTheFinalAssignmentWrite(t *testing.T) {
 		"module example.com/aliasstate\n\ngo 1.25.0\n",
 	)
 	path := filepath.Join(root, "sample.go")
-	writeFixture(
-		t,
-		path,
-		`package sample
+	input := `package sample
 
 import (
 	"database/sql"
@@ -368,6 +364,12 @@ import (
 
 func completeAndRetainTransaction(transaction *sql.Tx) *sql.Tx { return transaction }
 func closeAndRetainFile(file *os.File) *os.File { return file }
+func completeAndRetainTransactionTwice(transaction *sql.Tx) (*sql.Tx, *sql.Tx) {
+	return transaction, transaction
+}
+func closeAndRetainFileTwice(file *os.File) (*os.File, *os.File) {
+	return file, file
+}
 
 func replacedTransaction(database *sql.DB, replacement *sql.Tx) error {
 	transaction, err := database.Begin()
@@ -384,8 +386,28 @@ func replacedFile(path string, replacement *os.File) error {
 	_, err = file.Read(nil)
 	return err
 }
-`,
-	)
+
+func aliasedCompletedTransaction(database *sql.DB) error {
+	transaction, err := database.Begin()
+	if err != nil { return err }
+	var other *sql.Tx
+	transaction, other = completeAndRetainTransactionTwice(transaction)
+	_ = other
+	_, err = transaction.Exec("SELECT 1")
+	return err
+}
+
+func aliasedClosedFile(path string) error {
+	file, err := os.Open(path)
+	if err != nil { return err }
+	var other *os.File
+	file, other = closeAndRetainFileTwice(file)
+	_ = other
+	_, err = file.Read(nil)
+	return err
+}
+`
+	writeFixture(t, path, input)
 	set, err := contracts.ParseFiles(
 		[]contracts.File{
 			{
@@ -403,6 +425,18 @@ symbol = "example.com/aliasstate.closeAndRetainFile"
 closes = [0]
 takes-ownership = [0]
 returns-alias = [{ result = 0, argument = 0 }]
+
+[[functions]]
+symbol = "example.com/aliasstate.completeAndRetainTransactionTwice"
+completes-transaction = [0]
+takes-ownership = [0]
+returns-alias = [{ result = 0, argument = 0 }, { result = 1, argument = 0 }]
+
+[[functions]]
+symbol = "example.com/aliasstate.closeAndRetainFileTwice"
+closes = [0]
+takes-ownership = [0]
+returns-alias = [{ result = 0, argument = 0 }, { result = 1, argument = 0 }]
 `,
 				),
 			},
@@ -421,16 +455,16 @@ returns-alias = [{ result = 0, argument = 0 }]
 		analysis.RunOptions{
 			Presets: []rules.Preset{},
 			Overrides: map[string]rules.Severity{
-				"resource-used-after-close": rules.SeverityWarn,
+				"resource-used-after-close":             rules.SeverityWarn,
 				"sql-transaction-used-after-completion": rules.SeverityWarn,
 			},
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir: root,
-			Patterns: []string{"."},
+			Dir:        root,
+			Patterns:   []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
-			Contracts: set,
+			Contracts:  set,
 		},
 	)
 	if err != nil {
@@ -439,10 +473,33 @@ returns-alias = [{ result = 0, argument = 0 }]
 	if len(result.Files) != 1 || result.Files[0].Path != path {
 		t.Fatalf("returned-alias state source ownership = %#v", result.Files)
 	}
-	if len(result.Files[0].Diagnostics) != 0 {
+	if len(result.Files[0].Diagnostics) != 2 {
 		t.Fatalf(
 			"returned-alias replacement state diagnostics = %#v",
 			result.Files[0].Diagnostics,
+		)
+	}
+	want := map[string]string{
+		"resource-used-after-close":             "file.Read(nil)",
+		"sql-transaction-used-after-completion": `transaction.Exec("SELECT 1")`,
+	}
+	for _, diagnostic := range result.Files[0].Diagnostics {
+		operation, ok := want[diagnostic.RuleID]
+		start := strings.LastIndex(input, operation)
+		if !ok || start < 0 ||
+			diagnostic.Range.Start != start ||
+			diagnostic.Range.End != start+len(operation) {
+			t.Fatalf(
+				"returned-alias state diagnostic = %#v",
+				diagnostic,
+			)
+		}
+		delete(want, diagnostic.RuleID)
+	}
+	if len(want) != 0 {
+		t.Fatalf(
+			"missing returned-alias state diagnostics for %#v",
+			want,
 		)
 	}
 }
@@ -494,10 +551,10 @@ func BenchmarkReturnedAliasObligations(b *testing.B) {
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir: root,
-			Patterns: []string{"."},
+			Dir:        root,
+			Patterns:   []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
-			Contracts: set,
+			Contracts:  set,
 		},
 		100,
 	)

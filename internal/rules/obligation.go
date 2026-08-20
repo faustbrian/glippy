@@ -277,15 +277,7 @@ func assignmentReturnsFinalObjectAlias(
 	for argument, expression := range call.Args {
 		if directObject(info, expression) == object &&
 			returnsAlias(call, result, argument) {
-			_, aliasesOther := assignmentCallAliasTargets(
-				info,
-				assignment,
-				object,
-				call,
-				argument,
-				returnsAlias,
-			)
-			return !aliasesOther
+			return true
 		}
 	}
 	return false
