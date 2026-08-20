@@ -40,10 +40,12 @@ the transaction.
 
 The rule requires typed identity for the standard `database/sql` acquisition
 and completion methods. Same-named user methods and transaction wrappers do
-not report. The transaction and error must be direct assignment identifiers,
-and the immediately following guard must compare that exact error object with
-nil and return from its body. Noncanonical acquisition and guard shapes remain
-false negatives.
+not report. The transaction and error must be direct identifiers in an
+assignment or one-spec initialized local `var` declaration, and the immediately
+following guard must compare that exact error object with nil and return from
+its body. Declarations containing multiple specifications, parallel
+multi-expression declarations, and noncanonical acquisition or guard shapes
+remain false negatives.
 
 The shared CFG begins after the successful acquisition guard. Exact Commit or
 Rollback calls discharge that path. Returning, passing, sending, storing,

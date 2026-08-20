@@ -30,11 +30,14 @@ general rule therefore adds value without duplicating either default surface.
 
 ## Precision And State Contract
 
-The rule tracks only direct local assignment results whose static type has
-`Close() error`. A bounded monotone worklist reaches stable CFG block-entry
-states before diagnostics are collected. Each tracked object is untracked,
-open, closed, or conservatively unknown; branch joins retain every reaching
-possibility, and a finding requires the exact closed state.
+The rule tracks only direct local results from one call assigned through an
+assignment or a one-spec initialized local `var` declaration whose static type
+has `Close() error`. Declarations containing multiple specifications and
+parallel multi-expression declarations remain conservative. A bounded
+monotone worklist reaches stable CFG block-entry states before diagnostics are
+collected. Each tracked object is untracked, open, closed, or conservatively
+unknown; branch joins retain every reaching possibility, and a finding requires
+the exact closed state.
 
 An exact direct `Close` establishes closed state after acquisition, including
 after an earlier escape made the state unknown. A direct reacquisition

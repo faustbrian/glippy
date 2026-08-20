@@ -2233,3 +2233,24 @@ unchanged. Five 100-function samples measured 86.18-95.41 ms, 4.47-5.06 MB,
 and 40,219-40,695 allocations on Darwin arm64. Portable four-runner
 typed-budget evidence and further high-signal interprocedural error-flow and
 ownership coverage remain active v0.5 work.
+
+The v0.5 initialized-lifecycle precision follow-up gives generic resources,
+database transactions, and HTTP response bodies one shared acquisition model
+for direct assignments and one-spec initialized local `var` declarations.
+Missing finalization and proven post-finalization use now cover declared
+resources, transactions, and responses through the same exact result-index,
+immediate error-guard, ownership-transfer, and state-transition contracts.
+Grouped single specifications are supported, finalized declarations remain
+accepted, and declarations containing multiple specifications or parallel
+multi-expression mappings stay conservative. Six focused red
+regressions produced no lifecycle diagnostics before CFG `ValueSpec`
+acquisitions were admitted. Exact-rule dogfood remained clean on Glippy and
+`go-libraries/pkg/prompts` at
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`; the same-revision
+`go-libraries/pkg/http-client` run retained exactly the expected one
+compression body and four resume fake-file suspicious findings. The
+non-mutating runs did not alter either external tree. Five one-operation
+samples across the six lifecycle benchmarks measured
+44.31-202.12 ms, 2.13-9.37 MB, and 17,026-90,785 allocations on Darwin arm64.
+Portable four-runner typed-budget evidence and further high-signal
+interprocedural error-flow and ownership coverage remain active v0.5 work.

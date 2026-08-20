@@ -1408,8 +1408,10 @@ None.
 ### Known limitations
 
 - The initial contract recognizes direct net/http Get, Head, Post, and PostForm functions plus
-  Client.Do, Get, Head, Post, and PostForm methods followed immediately by an err != nil guard whose
-  body returns.
+  Client.Do, Get, Head, Post, and PostForm methods assigned through an assignment or one-spec
+  initialized local var declaration followed immediately by an err != nil guard whose body returns;
+  declarations containing multiple specifications and parallel multi-expression declarations remain
+  conservative.
 - Returning, passing, sending, storing, or capturing the response transfers ownership. A body
   argument transfers ownership only when the destination parameter itself has Close() error; passing
   Body as an io.Reader does not discharge the obligation.
@@ -3901,6 +3903,9 @@ None.
 
 - Only direct resource == nil and resource != nil conditions discharge the nil branch; compound
   nilness, aliases, and indirect comparisons remain conservative.
+- Acquisitions recognize one call returning into an assignment or a one-spec initialized local var
+  declaration; declarations containing multiple specifications and parallel multi-expression
+  declarations remain conservative.
 - Exact tar, gzip, and multipart writer constructors belong to writer-not-finalized and are excluded
   from this generic closer rule.
 - A direct function-literal constructor argument, or the final stable direct same-block assignment
@@ -4174,7 +4179,9 @@ None.
 ### Known limitations
 
 - The initial contract recognizes direct database/sql DB.Begin, DB.BeginTx, and Conn.BeginTx
-  assignments followed immediately by an err != nil guard whose body returns.
+  assignments or one-spec initialized local var declarations followed immediately by an err != nil
+  guard whose body returns; declarations containing multiple specifications and parallel
+  multi-expression declarations remain conservative.
 - A statically resolved helper in a selected local-source module that provably borrows the
   transaction leaves the obligation open; guaranteed Commit, Rollback, or transfer must cover every
   normally returning helper path.

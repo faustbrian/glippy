@@ -14,7 +14,7 @@ type resourceNotClosedRule struct{}
 type localCloserCandidate struct {
 	identifier *ast.Ident
 	object types.Object
-	statement *ast.AssignStmt
+	acquisition ast.Node
 	acquisitionGuard *ast.IfStmt
 	guard *ast.IfStmt
 }
@@ -38,6 +38,7 @@ func (resourceNotClosedRule) Metadata() Metadata {
 		Categories: []Category{CategoryCorrectness, CategorySafety, CategorySuspicious},
 		KnownLimitations: []string{
 			"Only direct resource == nil and resource != nil conditions discharge the nil branch; compound nilness, aliases, and indirect comparisons remain conservative.",
+			"Acquisitions recognize one call returning into an assignment or a one-spec initialized local var declaration; declarations containing multiple specifications and parallel multi-expression declarations remain conservative.",
 			"Exact tar, gzip, and multipart writer constructors belong to writer-not-finalized and are excluded from this generic closer rule.",
 			"A direct function-literal constructor argument, or the final stable direct same-block assignment to a local argument, that captures the assigned resource conservatively transfers ownership because callback retention and execution are unknown; intervening mutation, call exposure, address escape, and conditional or nested assignments do not prove transfer.",
 			"A statically resolved helper in a selected local-source module that provably borrows the resource leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
@@ -186,11 +187,11 @@ func localCloserCandidates(
 				return true
 			}
 			for statementIndex, statement := range block.List {
-				assignment, ok := statement.(*ast.AssignStmt)
-				if !ok || len(assignment.Rhs) != 1 {
+				acquisition, found := localCallAcquisitionAtStatement(statement)
+				if !found {
 					continue
 				}
-				call, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
+				call := acquisition.call
 				_, _, specializedWriter := writerLifecycleConstructor(info, call)
 				if call == nil ||
 					commandManagedPipe(info, call) ||
@@ -202,11 +203,10 @@ func localCloserCandidates(
 				).(*types.Signature)
 				if signature == nil ||
 					signature.Results() == nil ||
-					signature.Results().Len() != len(assignment.Lhs) {
+					signature.Results().Len() != len(acquisition.identifiers) {
 					continue
 				}
-				for index, left := range assignment.Lhs {
-					identifier, _ := left.(*ast.Ident)
+				for index, identifier := range acquisition.identifiers {
 					if identifier == nil ||
 						identifier.Name == "_" ||
 						cleanupManaged != nil &&
@@ -237,14 +237,14 @@ func localCloserCandidates(
 						guard := followingAcquisitionErrorGuard(
 							info,
 							block.List[statementIndex + 1:],
-							assignment,
+							acquisition.node,
 						)
 						result = append(
 							result,
 							localCloserCandidate{
 								identifier: identifier,
 								object: object,
-								statement: assignment,
+								acquisition: acquisition.node,
 								acquisitionGuard: acquisitionGuard,
 								guard: guard,
 							},
@@ -476,9 +476,9 @@ func immediateFollowingGuard(statements []ast.Stmt, index int) *ast.IfStmt {
 func followingAcquisitionErrorGuard(
 	info *types.Info,
 	statements []ast.Stmt,
-	assignment *ast.AssignStmt,
+	acquisition ast.Node,
 ) *ast.IfStmt {
-	errorObject := assignmentErrorObject(info, assignment)
+	errorObject := acquisitionErrorObject(info, acquisition)
 	if errorObject == nil {
 		return nil
 	}
@@ -521,7 +521,7 @@ func localCloserObligationStart(
 	if constructionFailureProvesNil(graph, info, candidate.acquisitionGuard, candidate.object) {
 		return obligationStart{}, false
 	}
-	errorObject := assignmentErrorObject(info, candidate.statement)
+	errorObject := acquisitionErrorObject(info, candidate.acquisition)
 	if successfulAcquisitionTransfers(info, candidate.guard, errorObject, candidate.object) {
 		return obligationStart{}, false
 	}
@@ -534,7 +534,7 @@ func localCloserObligationStart(
 			}
 		}
 	}
-	return obligationStartAfter(graph, candidate.statement)
+	return obligationStartAfter(graph, candidate.acquisition)
 }
 
 func constructionFailureProvesNil(
@@ -642,20 +642,16 @@ func successfulAcquisitionTransfers(
 	return false
 }
 
-func assignmentErrorObject(info *types.Info, assignment *ast.AssignStmt) types.Object {
-	if info == nil || assignment == nil || len(assignment.Rhs) != 1 {
+func acquisitionErrorObject(info *types.Info, node ast.Node) types.Object {
+	acquisition, found := localCallAcquisitionAtNode(node)
+	if info == nil || !found {
 		return nil
 	}
-	call, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
-	if call == nil {
+	signature, _ := types.Unalias(info.TypeOf(acquisition.call.Fun)).(*types.Signature)
+	if signature == nil || signature.Results().Len() != len(acquisition.identifiers) {
 		return nil
 	}
-	signature, _ := types.Unalias(info.TypeOf(call.Fun)).(*types.Signature)
-	if signature == nil || signature.Results().Len() != len(assignment.Lhs) {
-		return nil
-	}
-	for index, left := range assignment.Lhs {
-		identifier, _ := left.(*ast.Ident)
+	for index, identifier := range acquisition.identifiers {
 		if identifier != nil &&
 			identifier.Name != "_" &&
 			isErrorType(signature.Results().At(index).Type()) {

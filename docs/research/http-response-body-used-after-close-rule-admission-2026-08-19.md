@@ -32,7 +32,12 @@ The acquisition boundary is shared with `http-response-body-not-closed`:
 
 - `http.Get`, `Head`, `Post`, and `PostForm`;
 - `Client.Do`, `Get`, `Head`, `Post`, and `PostForm`; and
+- assignment or one-spec initialized local `var` bindings for the response and
+  error;
 - an immediately following `err != nil` guard whose body returns.
+
+Declarations containing multiple specifications and parallel multi-expression
+declarations remain conservative.
 
 Analysis starts at the successful guard continuation with one open response.
 An exact `response.Body.Close()` call or a statically proven close effect moves

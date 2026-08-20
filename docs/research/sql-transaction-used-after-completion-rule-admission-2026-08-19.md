@@ -28,9 +28,11 @@ finalization.
 
 The rule reuses the exact acquisition boundary already admitted for
 `sql-transaction-not-completed`: direct `DB.Begin`, `DB.BeginTx`, or
-`Conn.BeginTx` assignment followed immediately by a returning `err != nil`
-guard. Same-named methods, wrappers, noncanonical guards, generated files, and
-ill-typed packages do not report.
+`Conn.BeginTx` assignment or one-spec initialized local `var` declaration
+followed immediately by a returning `err != nil` guard. Declarations containing
+multiple specifications, parallel multi-expression declarations, same-named
+methods, wrappers, noncanonical guards, generated files, and ill-typed packages
+do not report.
 
 A bounded monotone CFG worklist begins at the successful side of that guard.
 Each candidate is open, completed, a join of reaching states, or conservatively

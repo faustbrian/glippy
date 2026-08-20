@@ -24,10 +24,13 @@ lint boundaries.
 
 ## Precision, Policy, And Fixes
 
-The rule recognizes direct call assignments whose corresponding result has
+The rule recognizes one direct call assigned through an assignment or a
+one-spec initialized local `var` declaration whose corresponding result has
 `Close() error`. A conventional immediately following acquisition-error guard
 starts ownership on its successful continuation; other shapes start after the
-assignment. Exact `Close` calls complete the obligation. A direct argument,
+acquisition. Declarations containing multiple specifications and parallel
+multi-expression declarations remain conservative. Exact `Close` calls
+complete the obligation. A direct argument,
 return, send, assignment, composite insertion, method value, or closure capture
 transfers it conservatively. Reassignment before either effect loses the
 obligation and reports. Zero-result `Close` methods remain excluded because a

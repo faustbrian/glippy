@@ -36,7 +36,7 @@ func (httpResponseBodyNotClosedRule) Metadata() Metadata {
 		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySafety, CategorySuspicious},
 		KnownLimitations: []string{
-			"The initial contract recognizes direct net/http Get, Head, Post, and PostForm functions plus Client.Do, Get, Head, Post, and PostForm methods followed immediately by an err != nil guard whose body returns.",
+			"The initial contract recognizes direct net/http Get, Head, Post, and PostForm functions plus Client.Do, Get, Head, Post, and PostForm methods assigned through an assignment or one-spec initialized local var declaration followed immediately by an err != nil guard whose body returns; declarations containing multiple specifications and parallel multi-expression declarations remain conservative.",
 			"Returning, passing, sending, storing, or capturing the response transfers ownership. A body argument transfers ownership only when the destination parameter itself has Close() error; passing Body as an io.Reader does not discharge the obligation.",
 			"A statically resolved helper in a selected local-source module that provably borrows Body leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
 			"Dynamic calls, interface dispatch, recursion, response wrappers, middleware, and helpers outside selected modules retain the conservative transfer behavior when no summary is available.",
@@ -119,15 +119,17 @@ func httpResponseCandidates(
 				return true
 			}
 			for index := 0; index + 1 < len(block.List); index++ {
-				assignment, ok := block.List[index].(*ast.AssignStmt)
-				if !ok {
+				acquisition, found := localCallAcquisitionAtStatement(
+					block.List[index],
+				)
+				if !found {
 					continue
 				}
-				response, object, errorObject, matched := httpResponseAssignment(
+				response, object, errorObject, matched := httpResponseAcquisition(
 					info,
-					assignment,
+					acquisition,
 				)
-				guard, ok := block.List[index + 1].(*ast.IfStmt)
+				guard, _ := block.List[index + 1].(*ast.IfStmt)
 				start := doneBlocks[guard]
 				if !matched ||
 					!returningNonNilErrorGuard(info, guard, errorObject) ||
@@ -150,19 +152,16 @@ func httpResponseCandidates(
 	return result
 }
 
-func httpResponseAssignment(
+func httpResponseAcquisition(
 	info *types.Info,
-	assignment *ast.AssignStmt,
+	acquisition localCallAcquisition,
 ) (*ast.Ident, types.Object, types.Object, bool) {
-	if info == nil ||
-		assignment == nil ||
-		len(assignment.Lhs) != 2 ||
-		len(assignment.Rhs) != 1 {
+	if info == nil || acquisition.call == nil || len(acquisition.identifiers) != 2 {
 		return nil, nil, nil, false
 	}
-	response, _ := assignment.Lhs[0].(*ast.Ident)
-	errorIdentifier, _ := assignment.Lhs[1].(*ast.Ident)
-	call, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
+	response := acquisition.identifiers[0]
+	errorIdentifier := acquisition.identifiers[1]
+	call := acquisition.call
 	if response == nil ||
 		response.Name == "_" ||
 		errorIdentifier == nil ||

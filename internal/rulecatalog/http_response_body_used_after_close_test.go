@@ -513,3 +513,32 @@ func runHTTPResponseBodyUsedAfterCloseWithContracts(
 	}
 	return result
 }
+
+func TestHTTPResponseBodyUsedAfterCloseTracksInitializedLocalDeclarations(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "net/http"
+
+func use() error {
+	var response, err = http.Get("https://example.com")
+	if err != nil { return err }
+	_ = response.Body.Close()
+	_, err = response.Body.Read(nil)
+	return err
+}
+`
+	result := runHTTPResponseBodyUsedAfterClose(t, input, "go1.25")
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("initialized declaration result = %#v", result)
+	}
+	diagnostic := result.Files[0].Diagnostics[0]
+	operation := "response.Body.Read(nil)"
+	start := strings.Index(input, operation)
+	if diagnostic.RuleID != "http-response-body-used-after-close" ||
+		diagnostic.Range.Start != start ||
+		diagnostic.Range.End != start + len(operation) {
+		t.Fatalf("initialized declaration diagnostic = %#v", diagnostic)
+	}
+}

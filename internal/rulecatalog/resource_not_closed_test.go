@@ -1373,3 +1373,94 @@ func BenchmarkResourceNotClosedPackageAnalysis(b *testing.B) {
 		1,
 	)
 }
+
+func TestResourceNotClosedTracksInitializedLocalDeclarations(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "os"
+
+func missing() error {
+	var file, err = os.Open("input")
+	if err != nil { return err }
+	_ = file.Name()
+	return nil
+}
+
+func grouped() error {
+	var (
+		groupedFile, err = os.Open("input")
+	)
+	if err != nil { return err }
+	_ = groupedFile.Name()
+	return nil
+}
+
+func closed() error {
+	var file, err = os.Open("input")
+	if err != nil { return err }
+	defer file.Close()
+	return nil
+}
+
+func openOne() *os.File { return nil }
+
+func unsupportedParallel() {
+	var first, second = openOne(), openOne()
+	_, _ = first, second
+}
+
+func unsupportedMultipleSpecifications() {
+	var (
+		first = openOne()
+		second = openOne()
+	)
+	_, _ = first, second
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/resourcedeclaration\n\ngo 1.25.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"resource-not-closed": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 2 {
+		t.Fatalf("initialized declaration result = %#v", result)
+	}
+	identifiers := []string{"file, err", "groupedFile, err"}
+	for index, identifier := range identifiers {
+		diagnostic := result.Files[0].Diagnostics[index]
+		start := strings.Index(input, identifier)
+		name := strings.SplitN(identifier, ",", 2)[0]
+		if diagnostic.RuleID != "resource-not-closed" ||
+			diagnostic.Range.Start != start ||
+			diagnostic.Range.End != start + len(name) {
+			t.Fatalf("initialized declaration diagnostic %d = %#v", index, diagnostic)
+		}
+	}
+}

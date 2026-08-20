@@ -39,7 +39,7 @@ type resourceUseAnalysis struct {
 type resourceUseBuilder struct {
 	ctx *ControlFlowContext
 	objects []types.Object
-	acquisitions map[*ast.AssignStmt]map[types.Object]struct{}
+	acquisitions map[ast.Node]map[types.Object]struct{}
 	closeCalls map[types.Object][]*ast.CallExpr
 	issues map[token.Pos]resourceUseIssue
 	record bool
@@ -249,19 +249,19 @@ func collectResourceUseCandidates(
 	info *types.Info,
 	body *ast.BlockStmt,
 	returnsAlias func(*ast.CallExpr, int, int) bool,
-) ([]types.Object, map[*ast.AssignStmt]map[types.Object]struct{}) {
+) ([]types.Object, map[ast.Node]map[types.Object]struct{}) {
 	objects := make([]types.Object, 0)
 	seen := make(map[types.Object]struct{})
-	acquisitions := make(map[*ast.AssignStmt]map[types.Object]struct{})
+	acquisitions := make(map[ast.Node]map[types.Object]struct{})
 	for _, candidate := range localCloserCandidates(info, body, returnsAlias, nil, false) {
 		if _, found := seen[candidate.object]; !found {
 			seen[candidate.object] = struct{}{}
 			objects = append(objects, candidate.object)
 		}
-		set := acquisitions[candidate.statement]
+		set := acquisitions[candidate.acquisition]
 		if set == nil {
 			set = make(map[types.Object]struct{})
-			acquisitions[candidate.statement] = set
+			acquisitions[candidate.acquisition] = set
 		}
 		set[candidate.object] = struct{}{}
 	}
@@ -372,11 +372,7 @@ func (b *resourceUseBuilder) transferObject(
 }
 
 func (b *resourceUseBuilder) acquires(node ast.Node, object types.Object) bool {
-	assignment, _ := node.(*ast.AssignStmt)
-	if assignment == nil {
-		return false
-	}
-	_, found := b.acquisitions[assignment][object]
+	_, found := b.acquisitions[node][object]
 	return found
 }
 

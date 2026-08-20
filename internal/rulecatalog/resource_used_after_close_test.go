@@ -625,3 +625,36 @@ func runResourceUsedAfterClose(
 	}
 	return result
 }
+
+func TestResourceUsedAfterCloseTracksInitializedLocalDeclarations(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+type resource struct{}
+
+func open() (*resource, error) { return &resource{}, nil }
+func (*resource) Close() error { return nil }
+func (*resource) Read([]byte) (int, error) { return 0, nil }
+
+func use() error {
+	var value, err = open()
+	if err != nil { return err }
+	_ = value.Close()
+	_, err = value.Read(nil)
+	return err
+}
+`
+	result := runResourceUsedAfterClose(t, input, contracts.Set{})
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("initialized declaration result = %#v", result)
+	}
+	diagnostic := result.Files[0].Diagnostics[0]
+	operation := "value.Read(nil)"
+	start := strings.Index(input, operation)
+	if diagnostic.RuleID != "resource-used-after-close" ||
+		diagnostic.Range.Start != start ||
+		diagnostic.Range.End != start + len(operation) {
+		t.Fatalf("initialized declaration diagnostic = %#v", diagnostic)
+	}
+}

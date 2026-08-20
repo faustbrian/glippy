@@ -34,7 +34,7 @@ func (sqlTransactionNotCompletedRule) Metadata() Metadata {
 		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
-			"The initial contract recognizes direct database/sql DB.Begin, DB.BeginTx, and Conn.BeginTx assignments followed immediately by an err != nil guard whose body returns.",
+			"The initial contract recognizes direct database/sql DB.Begin, DB.BeginTx, and Conn.BeginTx assignments or one-spec initialized local var declarations followed immediately by an err != nil guard whose body returns; declarations containing multiple specifications and parallel multi-expression declarations remain conservative.",
 			"A statically resolved helper in a selected local-source module that provably borrows the transaction leaves the obligation open; guaranteed Commit, Rollback, or transfer must cover every normally returning helper path.",
 			"An exact returned-alias contract preserves the obligation when the result is assigned back to the same transaction variable; new alias bindings remain outside the tracked ownership identity.",
 			"Dynamic calls, interface dispatch, recursion, wrapper finalizers, and helpers outside selected modules retain the conservative ownership-transfer behavior when no summary is available.",
@@ -112,15 +112,17 @@ func sqlTransactionCandidates(
 				return true
 			}
 			for index := 0; index + 1 < len(block.List); index++ {
-				assignment, ok := block.List[index].(*ast.AssignStmt)
-				if !ok {
+				acquisition, found := localCallAcquisitionAtStatement(
+					block.List[index],
+				)
+				if !found {
 					continue
 				}
-				identifier, object, errorObject, matched := sqlBeginAssignment(
+				identifier, object, errorObject, matched := sqlBeginAcquisition(
 					info,
-					assignment,
+					acquisition,
 				)
-				guard, ok := block.List[index + 1].(*ast.IfStmt)
+				guard, _ := block.List[index + 1].(*ast.IfStmt)
 				start := doneBlocks[guard]
 				if !matched ||
 					!returningNonNilErrorGuard(info, guard, errorObject) ||
@@ -143,19 +145,16 @@ func sqlTransactionCandidates(
 	return result
 }
 
-func sqlBeginAssignment(
+func sqlBeginAcquisition(
 	info *types.Info,
-	assignment *ast.AssignStmt,
+	acquisition localCallAcquisition,
 ) (*ast.Ident, types.Object, types.Object, bool) {
-	if info == nil ||
-		assignment == nil ||
-		len(assignment.Lhs) != 2 ||
-		len(assignment.Rhs) != 1 {
+	if info == nil || acquisition.call == nil || len(acquisition.identifiers) != 2 {
 		return nil, nil, nil, false
 	}
-	transaction, _ := assignment.Lhs[0].(*ast.Ident)
-	errorIdentifier, _ := assignment.Lhs[1].(*ast.Ident)
-	call, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
+	transaction := acquisition.identifiers[0]
+	errorIdentifier := acquisition.identifiers[1]
+	call := acquisition.call
 	if transaction == nil ||
 		transaction.Name == "_" ||
 		errorIdentifier == nil ||

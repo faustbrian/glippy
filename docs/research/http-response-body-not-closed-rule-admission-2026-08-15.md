@@ -31,10 +31,12 @@ open paths and distinguishes reading a body from transferring its ownership.
 
 The rule recognizes the exact `net/http` package functions `Get`, `Head`,
 `Post`, and `PostForm`, plus the corresponding `Client` methods and
-`Client.Do`. The assignment must bind a direct `*http.Response` and error and
-be followed immediately by an `err != nil` guard whose body returns. Ownership
-begins on the successful continuation, avoiding redirect-error responses that
-the standard client may already have closed.
+`Client.Do`. An assignment or one-spec initialized local `var` declaration must
+bind a direct `*http.Response` and error and be followed immediately by an
+`err != nil` guard whose body returns. Declarations containing multiple
+specifications and parallel multi-expression declarations remain conservative.
+Ownership begins on the successful continuation, avoiding redirect-error
+responses that the standard client may already have closed.
 
 An exact `response.Body.Close()` completes the obligation. Returning, passing,
 sending, storing, or capturing the response transfers ownership. Returning,
