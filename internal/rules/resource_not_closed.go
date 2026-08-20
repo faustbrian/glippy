@@ -139,33 +139,8 @@ func edgeProvesResourceNil(
 	to *cfg.Block,
 	resourceObject types.Object,
 ) bool {
-	if info == nil ||
-		from == nil ||
-		to == nil ||
-		resourceObject == nil ||
-		len(from.Nodes) == 0 {
-		return false
-	}
-	guard, _ := to.Stmt.(*ast.IfStmt)
-	if guard == nil || from.Nodes[len(from.Nodes) - 1] != guard.Cond {
-		return false
-	}
-	comparison, _ := ast.Unparen(guard.Cond).(*ast.BinaryExpr)
-	if comparison == nil || (comparison.Op != token.EQL && comparison.Op != token.NEQ) {
-		return false
-	}
-	nilObject := types.Universe.Lookup("nil")
-	comparesResourceToNil := directObject(info, comparison.X) == resourceObject &&
-		directObject(info, comparison.Y) == nilObject ||
-		directObject(info, comparison.Y) == resourceObject &&
-			directObject(info, comparison.X) == nilObject
-	if !comparesResourceToNil {
-		return false
-	}
-	if comparison.Op == token.EQL {
-		return to.Kind == cfg.KindIfThen
-	}
-	return to.Kind == cfg.KindIfElse || to.Kind == cfg.KindIfDone
+	state, proven := exactObjectNilStateOnEdge(info, from, to, resourceObject)
+	return proven && state == NilStateNil
 }
 
 func localCloserCandidates(

@@ -75,12 +75,13 @@ A function with no error result treats every normal return as success. An
 explicit nil unnamed built-in error remains successful. For one named built-in
 error result, bounded CFG dataflow starts from the language-defined nil zero
 value and accepts a bare return, that exact result, or explicit nil only while
-every path reaching the acquisition and return preserves nil through direct
-nil or self assignments. An unknown assignment, address escape, closure
-capture, or disagreeing join makes the state permanently unknown. Multiple
-error results, tuple delegation, and other unknown error expressions remain
-conservative. No fix is registered because correct close placement and error
-joining depend on the surrounding return contract.
+the reaching state proves nil through direct nil or self assignments or an
+exact `err == nil` or `err != nil` CFG edge. Exact guards can refine an unknown
+unescaped value; compound conditions, address escape, closure capture, and
+disagreeing joins remain conservative. Multiple error results, tuple
+delegation, and other unknown error expressions remain conservative. No fix is
+registered because correct close placement and error joining depend on the
+surrounding return contract.
 
 ## Behavioral And Cost Evidence
 
@@ -117,6 +118,15 @@ before writer acquisition cannot be reinterpreted as the named result's zero
 value. Nearby unknown, failure, bare and explicit-nil deferred mutation,
 pre-acquisition assignment, and pre-acquisition escape cases remain
 non-diagnostics.
+
+The exact-edge follow-up reproduced three further missed defects: a named
+write error guarded after acquisition, an unknown error guarded before
+acquisition, and a nil-equality branch containing the acquisition. The shared
+bounded transition engine now isolates optional edge transfer per successor,
+and resource ownership and writer success consume one exact object-to-nil edge
+classifier. Reversed operands are accepted. Compound guards, the proven
+non-nil branch, escaped results, and reassignment after a guard remain
+conservative.
 
 Five complete 100-function package-analysis samples on Go 1.26.6, Darwin
 arm64, and an Apple M4 Max measured:
@@ -165,6 +175,14 @@ their exact pre-run revisions and pre-existing status. Five complete
 100-function named-result samples on the same Go 1.26.7 Darwin arm64 host
 measured `92,837,125-179,183,000 ns/op`, `4,961,080-5,527,936 B/op`, and
 `49,332-49,763 allocs/op`.
+
+The exact-edge follow-up remained clean under the same three exact-rule
+dogfood runs at external revision
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`; both external repositories kept
+their exact revisions and pre-existing status. Five complete 100-function
+guarded named-result samples on the same Go 1.26.7 Darwin arm64 host measured
+`91,629,334-150,022,458 ns/op`, `5,475,544-6,064,000 B/op`, and
+`59,533-60,019 allocs/op`.
 
 ## Revisit Trigger
 

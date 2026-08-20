@@ -10,8 +10,9 @@ const maxStateTransitionChanges = 1_000_000
 
 // stateTransitionModel defines one finite, monotone data-flow problem over a
 // shared Go control-flow graph. Clone isolates successor state, Merge joins an
-// incoming state into an existing block entry, and Transfer applies one CFG
-// node. Transfer returns false when the represented paths cannot continue.
+// incoming state into an existing block entry, Transfer applies one CFG node,
+// and Edge optionally refines one isolated successor state. Transfer or Edge
+// returns false when the represented paths cannot continue.
 //
 // MaxChanges is a caller-derived bound based on graph size and lattice height.
 // Reaching it fails closed so an unexpectedly non-monotone model cannot make a
@@ -22,6 +23,7 @@ type stateTransitionModel[S any] struct {
 	Clone func(S) S
 	Merge func(*S, S) bool
 	Transfer func(S, ast.Node) bool
+	Edge func(S, *cfg.Block, *cfg.Block) bool
 	MaxChanges int
 }
 
@@ -84,14 +86,24 @@ func runStateTransitions[S any](
 				int(successor.Index) >= len(entries) {
 				return stateTransitionSnapshot[S]{}, false
 			}
+			successorState := state
+			if model.Edge != nil {
+				successorState = model.Clone(state)
+				if !model.Edge(successorState, block, successor) {
+					continue
+				}
+			}
 			index := successor.Index
 			changed := false
 			if !present[index] {
-				entries[index] = model.Clone(state)
+				entries[index] = successorState
+				if model.Edge == nil {
+					entries[index] = model.Clone(successorState)
+				}
 				present[index] = true
 				changed = true
 			} else {
-				changed = model.Merge(&entries[index], state)
+				changed = model.Merge(&entries[index], successorState)
 			}
 			if !changed {
 				continue

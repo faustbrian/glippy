@@ -329,6 +329,45 @@ func selfAssigned(output io.Writer) (err error) {
 	return
 }
 
+func guardedAfterAcquisition(output io.Writer) (err error) {
+	writer := gzip.NewWriter(output)
+	_, err = writer.Write([]byte("payload"))
+	if err != nil {
+		return
+	}
+	return
+}
+
+func guardedBeforeAcquisition(output io.Writer) (err error) {
+	err = externalError()
+	if err != nil {
+		return
+	}
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return
+}
+
+func equalGuardBeforeAcquisition(output io.Writer) (err error) {
+	err = externalError()
+	if err == nil {
+		writer := gzip.NewWriter(output)
+		_, _ = writer.Write([]byte("payload"))
+		return
+	}
+	return err
+}
+
+func reverseGuardBeforeAcquisition(output io.Writer) (err error) {
+	err = externalError()
+	if nil != err {
+		return
+	}
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return
+}
+
 func unknown(output io.Writer) (err error) {
 	writer := gzip.NewWriter(output)
 	_, _ = writer.Write([]byte("payload"))
@@ -369,6 +408,49 @@ func escapedBeforeAcquisition(output io.Writer) (err error) {
 	writer := gzip.NewWriter(output)
 	_, _ = writer.Write([]byte("payload"))
 	_ = destination
+	return
+}
+
+func nonNilBranch(output io.Writer) (err error) {
+	err = externalError()
+	if err == nil {
+		return
+	}
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return
+}
+
+func escapedGuard(output io.Writer) (err error) {
+	destination := &err
+	err = externalError()
+	if err != nil {
+		return
+	}
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	_ = destination
+	return
+}
+
+func compoundGuard(output io.Writer, ready bool) (err error) {
+	err = externalError()
+	if err != nil && ready {
+		return
+	}
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return
+}
+
+func reassignedAfterGuard(output io.Writer) (err error) {
+	err = externalError()
+	if err != nil {
+		return
+	}
+	err = externalError()
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
 	return
 }
 
@@ -416,6 +498,10 @@ func externalError() error { return nil }
 		"func assignedNil",
 		"func explicitNil",
 		"func selfAssigned",
+		"func guardedAfterAcquisition",
+		"func guardedBeforeAcquisition",
+		"func equalGuardBeforeAcquisition",
+		"func reverseGuardBeforeAcquisition",
 	}
 	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
 		t.Fatalf("named writer finalization result = %#v", result)
@@ -660,7 +746,7 @@ func BenchmarkWriterNotFinalizedSharedCFG(b *testing.B) {
 	for index := range 100 {
 		fmt.Fprintf(
 			&input,
-			"func run%d(output io.Writer) (err error) { writer := gzip.NewWriter(output); _, _ = writer.Write([]byte(\"payload\")); return }\n",
+			"func run%d(output io.Writer) (err error) { writer := gzip.NewWriter(output); _, err = writer.Write([]byte(\"payload\")); if err != nil { return }; return }\n",
 			index,
 		)
 	}

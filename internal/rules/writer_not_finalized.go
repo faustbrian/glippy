@@ -36,7 +36,7 @@ type writerLifecycleWork struct {
 	block *cfg.Block
 	offset int
 	state writerLifecycleState
-	errorState NilState
+	errorState writerNamedErrorState
 }
 
 type writerNodeTransition struct {
@@ -46,8 +46,17 @@ type writerNodeTransition struct {
 
 type writerNamedErrorAnalysis struct {
 	result types.Object
-	snapshot stateTransitionSnapshot[[]NilState]
+	snapshot stateTransitionSnapshot[[]writerNamedErrorState]
 	complete bool
+}
+
+type writerNamedErrorState struct {
+	nilness NilState
+	escaped bool
+}
+
+func (s writerNamedErrorState) provenNil() bool {
+	return !s.escaped && s.nilness == NilStateNil
 }
 
 var requiredWriterLifecycleSpecs = []writerLifecycleSpec{
@@ -112,7 +121,7 @@ func (writerNotFinalizedRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"The exact contract covers direct local assignment results and initialized variable declarations from archive/tar.NewWriter, compress/gzip.NewWriter or NewWriterLevel, encoding/ascii85.NewEncoder, encoding/base32.NewEncoder, encoding/base64.NewEncoder, and mime/multipart.NewWriter.",
 			"Only exact output-producing receiver methods establish use; construction and configuration alone do not require finalization.",
-			"A function with one named error result may classify a bare return or that exact result as successful only while CFG dataflow proves the result retains its nil zero value through direct nil or self assignments; other assignments, address escape, closure capture, multiple error results, delegated values, and unknown joins remain conservative.",
+			"A function with one named error result may classify a bare return or that exact result as successful only while CFG dataflow proves nil from zero initialization, direct nil or self assignment, or an exact == nil or != nil edge; compound conditions, address escape, closure capture, multiple error results, delegated values, and unknown joins remain conservative.",
 			"Aliases, fields, containers, closures, method values, asynchronous calls, and transfers stop analysis because exact ownership or execution order is unavailable.",
 			"One constructor call must supply the declaration or assignment values; parallel multi-expression acquisitions remain outside the direct mapping contract.",
 			"No fix is offered because correct finalization and error joining depend on the surrounding return contract.",
@@ -313,12 +322,19 @@ func writerLifecycleNeedsFinalization(
 			return true
 		}
 		for _, successor := range current.block.Succs {
+			successorErrorState := writerNamedErrorStateOnEdge(
+				ctx.Info(),
+				current.block,
+				successor,
+				errorResult,
+				errorState,
+			)
 			work = append(
 				work,
 				writerLifecycleWork{
 					block: successor,
 					state: state,
-					errorState: errorState,
+					errorState: successorErrorState,
 				},
 			)
 		}
@@ -474,7 +490,7 @@ func writerReturnIsSuccessful(
 	ctx *ControlFlowContext,
 	returned *ast.ReturnStmt,
 	namedError types.Object,
-	errorState NilState,
+	errorState writerNamedErrorState,
 ) bool {
 	if ctx == nil || returned == nil || ctx.Info() == nil {
 		return false
@@ -500,17 +516,17 @@ func writerReturnIsSuccessful(
 		return true
 	}
 	if len(returned.Results) == 0 {
-		return namedError != nil && errorState == NilStateNil
+		return namedError != nil && errorState.provenNil()
 	}
 	if len(returned.Results) != signature.Results().Len() {
 		return false
 	}
 	errorExpression := returned.Results[errorIndex]
 	if isNilExpression(ctx.Info(), errorExpression) {
-		return namedError == nil || errorState == NilStateNil
+		return namedError == nil || errorState.provenNil()
 	}
 	return namedError != nil &&
-		errorState == NilStateNil &&
+		errorState.provenNil() &&
 		directObject(ctx.Info(), errorExpression) == namedError
 }
 
@@ -543,9 +559,9 @@ func writerNamedErrorStateAfter(
 	info *types.Info,
 	node ast.Node,
 	result types.Object,
-	state NilState,
-) NilState {
-	if info == nil || node == nil || result == nil || state != NilStateNil {
+	state writerNamedErrorState,
+) writerNamedErrorState {
+	if info == nil || node == nil || result == nil || state.escaped {
 		return state
 	}
 	escaped := false
@@ -571,13 +587,14 @@ func writerNamedErrorStateAfter(
 		},
 	)
 	if escaped {
-		return NilStateUnknown
+		return writerNamedErrorState{nilness: NilStateUnknown, escaped: true}
 	}
 	if ranged, ok := node.(*ast.RangeStmt);
 		ok &&
 			(directObject(info, ranged.Key) == result ||
 				directObject(info, ranged.Value) == result) {
-		return NilStateUnknown
+		state.nilness = NilStateUnknown
+		return state
 	}
 	assignment, ok := node.(*ast.AssignStmt)
 	if !ok {
@@ -588,12 +605,34 @@ func writerNamedErrorStateAfter(
 			continue
 		}
 		if len(assignment.Lhs) != len(assignment.Rhs) || index >= len(assignment.Rhs) {
-			return NilStateUnknown
+			state.nilness = NilStateUnknown
+			return state
 		}
 		value := assignment.Rhs[index]
-		if !isNilExpression(info, value) && directObject(info, value) != result {
-			return NilStateUnknown
+		if isNilExpression(info, value) {
+			state.nilness = NilStateNil
+			continue
 		}
+		if directObject(info, value) != result {
+			state.nilness = NilStateUnknown
+		}
+	}
+	return state
+}
+
+func writerNamedErrorStateOnEdge(
+	info *types.Info,
+	from *cfg.Block,
+	to *cfg.Block,
+	result types.Object,
+	state writerNamedErrorState,
+) writerNamedErrorState {
+	if state.escaped {
+		return state
+	}
+	nilness, proven := exactObjectNilStateOnEdge(info, from, to, result)
+	if proven {
+		state.nilness = nilness
 	}
 	return state
 }
@@ -613,30 +652,53 @@ func newWriterNamedErrorAnalysis(ctx *ControlFlowContext) writerNamedErrorAnalys
 	analysis := writerNamedErrorAnalysis{result: result}
 	analysis.snapshot, analysis.complete = runStateTransitions(
 		ctx.Graph(),
-		stateTransitionModel[[]NilState]{
-			Initial: []NilState{NilStateNil},
-			Clone: func(state []NilState) []NilState {
+		stateTransitionModel[[]writerNamedErrorState]{
+			Initial: []writerNamedErrorState{{nilness: NilStateNil}},
+			Clone: func(state []writerNamedErrorState) []writerNamedErrorState {
 				if len(state) != 1 {
-					return []NilState{NilStateUnknown}
+					return []writerNamedErrorState{{nilness: NilStateUnknown}}
 				}
-				return []NilState{state[0]}
+				return []writerNamedErrorState{state[0]}
 			},
-			Merge: func(current *[]NilState, incoming []NilState) bool {
+			Merge: func(
+				current *[]writerNamedErrorState,
+				incoming []writerNamedErrorState,
+			) bool {
 				if current == nil || len(*current) != 1 || len(incoming) != 1 {
 					return false
 				}
-				if (*current)[0] == incoming[0] ||
-					(*current)[0] == NilStateUnknown {
+				merged := (*current)[0]
+				merged.escaped = merged.escaped || incoming[0].escaped
+				if merged.nilness != incoming[0].nilness {
+					merged.nilness = NilStateUnknown
+				}
+				if merged == (*current)[0] {
 					return false
 				}
-				(*current)[0] = NilStateUnknown
+				(*current)[0] = merged
 				return true
 			},
-			Transfer: func(state []NilState, node ast.Node) bool {
+			Transfer: func(state []writerNamedErrorState, node ast.Node) bool {
 				if len(state) == 1 {
 					state[0] = writerNamedErrorStateAfter(
 						ctx.Info(),
 						node,
+						result,
+						state[0],
+					)
+				}
+				return true
+			},
+			Edge: func(
+				state []writerNamedErrorState,
+				from *cfg.Block,
+				to *cfg.Block,
+			) bool {
+				if len(state) == 1 {
+					state[0] = writerNamedErrorStateOnEdge(
+						ctx.Info(),
+						from,
+						to,
 						result,
 						state[0],
 					)
@@ -649,7 +711,10 @@ func newWriterNamedErrorAnalysis(ctx *ControlFlowContext) writerNamedErrorAnalys
 	return analysis
 }
 
-func (a writerNamedErrorAnalysis) stateAt(ctx *ControlFlowContext, start obligationStart) NilState {
+func (a writerNamedErrorAnalysis) stateAt(
+	ctx *ControlFlowContext,
+	start obligationStart,
+) writerNamedErrorState {
 	if ctx == nil ||
 		a.result == nil ||
 		!a.complete ||
@@ -658,7 +723,7 @@ func (a writerNamedErrorAnalysis) stateAt(ctx *ControlFlowContext, start obligat
 		int(start.block.Index) >= len(a.snapshot.entries) ||
 		!a.snapshot.present[start.block.Index] ||
 		len(a.snapshot.entries[start.block.Index]) != 1 {
-		return NilStateUnknown
+		return writerNamedErrorState{nilness: NilStateUnknown}
 	}
 	state := a.snapshot.entries[start.block.Index][0]
 	nodes := start.block.Nodes

@@ -2273,3 +2273,21 @@ samples measured 92.84-179.18 ms, 4.96-5.53 MB, and 49,332-49,763 allocations
 on Darwin arm64.
 Portable four-runner typed-budget evidence and further high-signal
 interprocedural error-flow and ownership coverage remain active v0.5 work.
+
+The v0.5 exact-error-edge writer-success follow-up proves successful named
+error returns after exact `err == nil` and `err != nil` control-flow edges.
+It covers guards before or after writer acquisition and reversed comparison
+operands. The bounded transition engine now supports optional isolated
+successor-edge refinement, shared with the existing resource nil-edge
+contract. Compound guards, proven non-nil paths, address escape, closure
+capture, multiple error results, and reassignment after a guard remain
+conservative. The focused red regression retained only five earlier findings
+and missed three guarded successful paths before edge transfer was added.
+Exact-rule dogfood remained clean on Glippy, `go-libraries/pkg/prompts`, and
+`go-libraries/pkg/http-client` at
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`; both external repositories kept
+their exact revisions and pre-existing status. Five 100-function guarded
+named-result samples measured 91.63-150.02 ms, 5.48-6.06 MB, and
+59,533-60,019 allocations on Darwin arm64. Portable four-runner typed-budget
+evidence and further high-signal interprocedural error-flow and ownership
+coverage remain active v0.5 work.
