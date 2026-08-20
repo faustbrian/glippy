@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -2080,6 +2081,327 @@ func TestLSPWorkspaceOpeningDependencyInvalidatesKnownReverseDependant(t *testin
 			"package runs = %#v, want new dependency to invalidate known consumer",
 			runs,
 		)
+	}
+}
+
+func TestLSPWorkspaceMetadataDiscoveryScopesFailedNewPackage(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	dependencyPath := filepath.Join(root, "dependency", "dependency.go")
+	consumerPath := filepath.Join(root, "consumer", "consumer.go")
+	unrelatedPath := filepath.Join(root, "unrelated", "unrelated.go")
+	for _, path := range []string{dependencyPath, consumerPath, unrelatedPath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dependency := "package dependency\n\nfunc Value() int { return 1 }\n"
+	consumer := "package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc Value() int { return dependency.Value() }\n"
+	unrelated := "package unrelated\n\nfunc Value() int { return 2 }\n"
+	writeChangedCLIFile(t, dependencyPath, dependency)
+	writeChangedCLIFile(t, consumerPath, consumer)
+	writeChangedCLIFile(t, unrelatedPath, unrelated)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := make(map[string]int)
+	discoveries := 0
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			pattern := task.patterns[0]
+			runs[pattern]++
+			if pattern == "file=" + dependencyPath {
+				return analysis.PackageResult{}, errors.New(
+					"typed load failed before graph identity",
+				)
+			}
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+		runPackageGraphDiscovery: func(
+			ctx context.Context,
+			options analysis.PackageLoadOptions,
+		) (analysis.PackageGraphResult, error) {
+			discoveries++
+			return analysis.DiscoverPackageGraph(ctx, options)
+		},
+	}
+	consumerDocument := lsp.Document{
+		URI: "file://" + filepath.ToSlash(consumerPath),
+		Path: consumerPath,
+		Version: 1,
+		Text: []byte(consumer),
+	}
+	unrelatedDocument := lsp.Document{
+		URI: "file://" + filepath.ToSlash(unrelatedPath),
+		Path: unrelatedPath,
+		Version: 1,
+		Text: []byte(unrelated),
+	}
+	if _, err := backend.AnalyzeWorkspace(
+		context.Background(),
+		[]lsp.Document{consumerDocument, unrelatedDocument},
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	dependencyDocument := lsp.Document{
+		URI: "file://" + filepath.ToSlash(dependencyPath),
+		Path: dependencyPath,
+		Version: 1,
+		Text: []byte(dependency),
+	}
+	results, err := backend.AnalyzeWorkspace(
+		context.Background(),
+		[]lsp.Document{consumerDocument, dependencyDocument, unrelatedDocument},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[1].Err == nil {
+		t.Fatal("failed new package analysis did not retain its error")
+	}
+	if discoveries != 1 {
+		t.Fatalf("metadata discoveries = %d, want 1", discoveries)
+	}
+	consumerPattern := "file=" + consumerPath
+	dependencyPattern := "file=" + dependencyPath
+	unrelatedPattern := "file=" + unrelatedPath
+	if runs[consumerPattern] != 2 ||
+		runs[dependencyPattern] != 1 ||
+		runs[unrelatedPattern] != 1 {
+		t.Fatalf(
+			"package runs = %#v, want reverse dependant rerun and unrelated package reused",
+			runs,
+		)
+	}
+}
+
+func TestLSPWorkspaceMetadataDiscoveryPreservesCancellation(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "sample", "sample.go")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	input := "package sample\n\nfunc Value() int { return 1 }\n"
+	writeChangedCLIFile(t, path, input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			context.Context,
+			*rules.Registry,
+			lintPackageTask,
+			map[string][]byte,
+		) (analysis.PackageResult, error) {
+			return analysis.PackageResult{}, errors.New(
+				"typed load failed before graph identity",
+			)
+		},
+		runPackageGraphDiscovery: func(
+			context.Context,
+			analysis.PackageLoadOptions,
+		) (analysis.PackageGraphResult, error) {
+			return analysis.PackageGraphResult{}, context.Canceled
+		},
+	}
+	document := lsp.Document{
+		URI: "file://" + filepath.ToSlash(path),
+		Path: path,
+		Version: 1,
+		Text: []byte(input),
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document});
+		!errors.Is(err, context.Canceled) {
+		t.Fatalf("AnalyzeWorkspace() error = %v, want context cancellation", err)
+	}
+}
+
+func TestLSPWorkspaceMetadataDiscoveryFailureInvalidatesRoot(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	knownPath := filepath.Join(root, "known", "known.go")
+	newPath := filepath.Join(root, "newpkg", "new.go")
+	for _, path := range []string{knownPath, newPath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	known := "package known\n\nfunc Value() int { return 1 }\n"
+	newSource := "package newpkg\n\nfunc Value() int { return 2 }\n"
+	writeChangedCLIFile(t, knownPath, known)
+	writeChangedCLIFile(t, newPath, newSource)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := make(map[string]int)
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			pattern := task.patterns[0]
+			runs[pattern]++
+			if pattern == "file=" + newPath {
+				return analysis.PackageResult{}, errors.New(
+					"typed load failed before graph identity",
+				)
+			}
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+		runPackageGraphDiscovery: func(
+			context.Context,
+			analysis.PackageLoadOptions,
+		) (analysis.PackageGraphResult, error) {
+			return analysis.PackageGraphResult{}, errors.New("metadata unavailable")
+		},
+	}
+	knownDocument := lsp.Document{
+		URI: "file://" + filepath.ToSlash(knownPath),
+		Path: knownPath,
+		Version: 1,
+		Text: []byte(known),
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{knownDocument});
+		err != nil {
+		t.Fatal(err)
+	}
+	newDocument := lsp.Document{
+		URI: "file://" + filepath.ToSlash(newPath),
+		Path: newPath,
+		Version: 1,
+		Text: []byte(newSource),
+	}
+	results, err := backend.AnalyzeWorkspace(
+		context.Background(),
+		[]lsp.Document{knownDocument, newDocument},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[1].Err == nil {
+		t.Fatal("failed new package analysis did not retain its error")
+	}
+	knownPattern := "file=" + knownPath
+	newPattern := "file=" + newPath
+	if runs[knownPattern] != 2 || runs[newPattern] != 1 {
+		t.Fatalf("package runs = %#v, want conservative root-wide invalidation", runs)
+	}
+}
+
+func TestLSPWorkspaceMetadataDiscoveryRequiresExactOverlay(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "sample", "sample.go")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(t, path, "package sample\n")
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	discoveries := 0
+	backend := &lspBackend{
+		registry: registry,
+		runPackageGraphDiscovery: func(
+			context.Context,
+			analysis.PackageLoadOptions,
+		) (analysis.PackageGraphResult, error) {
+			discoveries++
+			return analysis.PackageGraphResult{
+				RootPackagePaths: []string{"example.com/editor/sample"},
+			}, nil
+		},
+	}
+	documents := []lsp.Document{
+		{
+			URI: "file://" + filepath.ToSlash(path),
+			Path: path,
+			Version: 1,
+			Text: []byte("package sample\n\nconst Value = 1\n"),
+		},
+		{
+			URI: "file://" + filepath.ToSlash(path),
+			Path: path,
+			Version: 2,
+			Text: []byte("package sample\n\nconst Value = 2\n"),
+		},
+	}
+	results, err := backend.AnalyzeWorkspace(context.Background(), documents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].Err == nil || results[1].Err == nil {
+		t.Fatalf("incompatible overlay results = %#v", results)
+	}
+	if discoveries != 0 {
+		t.Fatalf(
+			"metadata discoveries = %d, want none without an exact overlay",
+			discoveries,
+		)
+	}
+}
+
+func TestLSPPackageSnapshotRetainsGraphOnAnalysisFailure(t *testing.T) {
+	t.Parallel()
+
+	want := analysis.PackageResult{RootPackagePaths: []string{"example.com/editor/sample"}}
+	sentinel := errors.New("typed package validation failed")
+	backend := &lspBackend{
+		runPackageAnalysis: func(
+			context.Context,
+			*rules.Registry,
+			lintPackageTask,
+			map[string][]byte,
+		) (analysis.PackageResult, error) {
+			return want, sentinel
+		},
+	}
+	result, err := backend.analyzePackageSnapshot(context.Background(), lintPackageTask{}, nil)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("analyzePackageSnapshot() error = %v", err)
+	}
+	if !slices.Equal(result.RootPackagePaths, want.RootPackagePaths) {
+		t.Fatalf("retained root package paths = %q", result.RootPackagePaths)
 	}
 }
 

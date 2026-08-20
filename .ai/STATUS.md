@@ -10,6 +10,7 @@
 - v0.5 workspace file notifications: complete
 - v0.5 memory-aware workspace-result eviction: complete
 - v0.5 graph-first workspace invalidation: complete
+- v0.5 metadata-only package-graph discovery: complete
 - v0.5 same-package incremental typed analysis: complete
 - v0.5 test-package incremental typed analysis: complete
 - v0.5 import-only typed discovery: complete
@@ -2037,3 +2038,19 @@ diagnostic and two equivalent nil-result findings while retaining 22 other
 findings for separate ownership review. The external repository remained
 unmodified. Portable four-runner typed-budget evidence and further high-signal
 interprocedural error-flow and ownership coverage remain active v0.5 work.
+
+The v0.5 metadata-only package-graph batch removes the remaining root-wide LSP
+invalidation when a new package's typed attempt fails before returning graph
+identity. Proven root paths now survive later baseline or prerequisite errors;
+otherwise Glippy asks `go/packages` only for names, physical files, imports,
+transitive dependency metadata, test ownership, and module metadata under the
+same overlay, build, module, target, offline, and package-limit policy. It does
+not request export data, syntax, types, type information, type sizes, CFG, SSA,
+or facts. The red regression reloaded an unrelated cached package when a newly
+opened dependency failed typed analysis. The fixed state reloads only its known
+reverse dependant and reuses the unrelated package. Discovery failure retains
+root-wide invalidation, cancellation propagates, and an incompatible workspace
+overlay cannot trigger discovery against substituted disk bytes. No new latency
+or RSS claim is made. Portable four-runner typed-budget evidence and further
+high-signal interprocedural error-flow and ownership coverage remain active
+v0.5 work.

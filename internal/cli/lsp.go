@@ -107,6 +107,10 @@ type lspBackend struct {
 		lintPackageTask,
 		map[string][]byte,
 	) (analysis.PackageResult, error)
+	runPackageGraphDiscovery func(
+		context.Context,
+		analysis.PackageLoadOptions,
+	) (analysis.PackageGraphResult, error)
 }
 
 func (b *lspBackend) typedPackageSession() *analysis.PackageSession {
@@ -317,6 +321,7 @@ func (b *lspBackend) AnalyzeWorkspace(
 			return nil, contextErr
 		}
 		packageTask, overlay, packageErr := prepareGroup(group)
+		exactOverlay := packageErr == nil
 		var packageResult analysis.PackageResult
 		if packageErr == nil {
 			packageResult, packageErr = b.analyzePackageSnapshot(
@@ -326,7 +331,27 @@ func (b *lspBackend) AnalyzeWorkspace(
 			)
 		}
 		attempts[group.key] = packageAttempt{result: packageResult, err: packageErr}
-		if packageErr != nil || len(packageResult.RootPackagePaths) == 0 {
+		rootPackagePaths := packageResult.RootPackagePaths
+		if len(rootPackagePaths) == 0 && packageErr == nil {
+			packageErr = errors.New(
+				"typed package analysis returned no root package identity",
+			)
+			attempts[group.key] = packageAttempt{result: packageResult, err: packageErr}
+		}
+		if len(rootPackagePaths) == 0 && exactOverlay {
+			graph, graphErr := b.discoverPackageGraph(
+				ctx,
+				packageLoadOptions(packageTask, overlay),
+			)
+			if errors.Is(graphErr, context.Canceled) ||
+				errors.Is(graphErr, context.DeadlineExceeded) {
+				return nil, graphErr
+			}
+			if graphErr == nil {
+				rootPackagePaths = graph.RootPackagePaths
+			}
+		}
+		if len(rootPackagePaths) == 0 {
 			invalidateRoots[group.key.root] = true
 			continue
 		}
@@ -335,7 +360,7 @@ func (b *lspBackend) AnalyzeWorkspace(
 			paths = make(map[string]struct{})
 			invalidatedPackages[group.key.root] = paths
 		}
-		for _, path := range packageResult.RootPackagePaths {
+		for _, path := range rootPackagePaths {
 			paths[path] = struct{}{}
 		}
 	}
@@ -825,15 +850,25 @@ func (b *lspBackend) analyzePackageSnapshot(
 ) (analysis.PackageResult, error) {
 	result, err := b.analyzePackage(ctx, task, overlay)
 	if err != nil {
-		return analysis.PackageResult{}, err
+		return result, err
 	}
 	if err := applyConfiguredPackageBaseline(task, &result, b.registry); err != nil {
-		return analysis.PackageResult{}, err
+		return result, err
 	}
 	if err := validateLintPackagePrerequisites(result); err != nil {
-		return analysis.PackageResult{}, err
+		return result, err
 	}
 	return result, nil
+}
+
+func (b *lspBackend) discoverPackageGraph(
+	ctx context.Context,
+	options analysis.PackageLoadOptions,
+) (analysis.PackageGraphResult, error) {
+	if b.runPackageGraphDiscovery != nil {
+		return b.runPackageGraphDiscovery(ctx, options)
+	}
+	return analysis.DiscoverPackageGraph(ctx, options)
 }
 
 func (b *lspBackend) analyzeWorkspaceDocument(

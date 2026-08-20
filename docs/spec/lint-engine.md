@@ -187,6 +187,20 @@ NOT populate dependency syntax and type-info maps unless enabled rules require
 dependency or fact analysis. It MUST NOT construct CFG or SSA at this boundary.
 Every graph is run-owned; types from separate loads MUST NOT be mixed.
 
+Metadata-only package-graph discovery MAY precede typed analysis when an editor
+cache miss has no trustworthy root package identity. It MUST reuse the typed
+loader's normalized directory, non-empty patterns, overlay validation, package
+limit, build tags, module mode, environment, test selection, GOOS, GOARCH,
+offline, and cancellation policies. It MUST request only names, physical file
+lists, imports, transitive dependency metadata, test ownership, and module
+metadata; it MUST NOT request export data, syntax, types, type information,
+type sizes, CFG, SSA, or effect facts. The result MUST contain canonical root
+and dependency package paths plus canonical package-loading diagnostics. A
+workspace whose exact overlay cannot be constructed MUST NOT substitute disk
+bytes for metadata discovery. A failed, empty, or ambiguous discovery MUST
+remain a conservative cache
+invalidation signal rather than authorization to reuse uncertain typed state.
+
 The package parser boundary MUST capture the exact bytes supplied after overlay
 and build selection into the shared immutable source model. Each normalized
 absolute path MUST identify exactly one digest within a load; incompatible

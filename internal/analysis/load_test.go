@@ -107,6 +107,68 @@ func TestLoadPackagesRejectsCheapTiersAndPreservesCancellation(t *testing.T) {
 	}
 }
 
+func TestDiscoverPackageGraphUsesMetadataForIllTypedPackage(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeLoadFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	writeLoadFixture(
+		t,
+		filepath.Join(root, "dependency", "dependency.go"),
+		"package dependency\nconst Value = 1\n",
+	)
+	path := filepath.Join(root, "root", "root.go")
+	writeLoadFixture(
+		t,
+		path,
+		"package root\nimport \"example.com/project/dependency\"\nvar Value = dependency.Value\n",
+	)
+
+	result, err := analysis.DiscoverPackageGraph(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"file=" + path},
+			Tests: true,
+			Overlay: map[string][]byte{
+				path: []byte(
+					"package root\nimport \"example.com/project/dependency\"\nvar _ int = \"ill typed\"\nvar Value = dependency.Value\n",
+				),
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(result.RootPackagePaths, []string{"example.com/project/root"}) {
+		t.Fatalf("root package paths = %q", result.RootPackagePaths)
+	}
+	if !slices.Contains(result.DependencyPackagePaths, "example.com/project/dependency") {
+		t.Fatalf("dependency package paths = %q", result.DependencyPackagePaths)
+	}
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("metadata discovery type-checked the package: %#v", result.Diagnostics)
+	}
+}
+
+func TestDiscoverPackageGraphPreservesCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := analysis.DiscoverPackageGraph(
+		ctx,
+		analysis.PackageLoadOptions{Dir: t.TempDir(), Patterns: []string{"./..."}},
+	);
+		!errors.Is(err, context.Canceled) {
+		t.Fatalf("DiscoverPackageGraph() cancellation error = %v", err)
+	}
+}
+
 func TestLoadPackagesIncludesInternalAndExternalTestVariants(t *testing.T) {
 	t.Parallel()
 

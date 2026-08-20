@@ -254,35 +254,7 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 			options.Requirement,
 		)
 	}
-	if options.Dir == "" ||
-		!filepath.IsAbs(options.Dir) ||
-		filepath.Clean(options.Dir) != options.Dir {
-		return PackageLoadResult{}, fmt.Errorf(
-			"package loading directory %q is not normalized absolute",
-			options.Dir,
-		)
-	}
-	if len(options.Patterns) == 0 {
-		return PackageLoadResult{}, fmt.Errorf(
-			"package loading requires at least one pattern",
-		)
-	}
-	patterns := slices.Clone(options.Patterns)
-	for _, pattern := range patterns {
-		if strings.TrimSpace(pattern) == "" {
-			return PackageLoadResult{}, fmt.Errorf(
-				"package loading patterns must not be empty",
-			)
-		}
-	}
-	if err := validatePackageOverlay(options.Overlay); err != nil {
-		return PackageLoadResult{}, err
-	}
-	limits, err := resolvePackageResourceLimits(options)
-	if err != nil {
-		return PackageLoadResult{}, err
-	}
-	buildFlags, err := packageBuildFlags(options)
+	patterns, limits, buildFlags, err := preparePackageLoadRequest(options)
 	if err != nil {
 		return PackageLoadResult{}, err
 	}
@@ -352,6 +324,44 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 		Sources: sources,
 		effectFacts: effects,
 	}, nil
+}
+
+func preparePackageLoadRequest(
+	options PackageLoadOptions,
+) ([]string, packageResourceLimits, []string, error) {
+	if options.Dir == "" ||
+		!filepath.IsAbs(options.Dir) ||
+		filepath.Clean(options.Dir) != options.Dir {
+		return nil, packageResourceLimits{}, nil, fmt.Errorf(
+			"package loading directory %q is not normalized absolute",
+			options.Dir,
+		)
+	}
+	if len(options.Patterns) == 0 {
+		return nil, packageResourceLimits{}, nil, fmt.Errorf(
+			"package loading requires at least one pattern",
+		)
+	}
+	patterns := slices.Clone(options.Patterns)
+	for _, pattern := range patterns {
+		if strings.TrimSpace(pattern) == "" {
+			return nil, packageResourceLimits{}, nil, fmt.Errorf(
+				"package loading patterns must not be empty",
+			)
+		}
+	}
+	if err := validatePackageOverlay(options.Overlay); err != nil {
+		return nil, packageResourceLimits{}, nil, err
+	}
+	limits, err := resolvePackageResourceLimits(options)
+	if err != nil {
+		return nil, packageResourceLimits{}, nil, err
+	}
+	buildFlags, err := packageBuildFlags(options)
+	if err != nil {
+		return nil, packageResourceLimits{}, nil, err
+	}
+	return patterns, limits, buildFlags, nil
 }
 
 func validatePackageOverlay(overlay map[string][]byte) error {

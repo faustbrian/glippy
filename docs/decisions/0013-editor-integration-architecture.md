@@ -194,7 +194,17 @@ unrelated new package leaves known results reusable, while a newly opened
 dependency invalidates retained reverse dependants. Failed or unidentified
 graphs preserve the conservative root-wide fallback. This changes scheduling,
 not analysis identity: same-package edits still rebuild their complete typed
-representations, and metadata-only graph discovery remains future work.
+representations.
+
+When a typed cache-miss attempt fails before returning trustworthy root paths,
+the session now performs metadata-only package-graph discovery with the same
+overlay, build, module, offline, test, target, and graph-limit policy. It asks
+`go/packages` for names, physical files, imports, transitive dependencies, test
+ownership, and module metadata, while excluding export data, syntax, types,
+type information, type sizes, CFG, SSA, and facts. Exact discovered roots scope
+reverse-dependant invalidation. Discovery failure preserves root-wide
+invalidation, cancellation terminates the workspace operation, and an
+incompatible workspace overlay cannot be replaced by disk bytes for discovery.
 
 The next retained-state boundary incrementally re-typechecks compatible
 same-package overlay edits. Each eligible entry keeps compact dependency package
@@ -228,5 +238,5 @@ loads, dependency overlays, file notifications, source-membership,
 build-constraint, or project-control changes, parse/type failures, and every
 uncertain graph. This conservative fallback is part of the editor correctness
 contract. Import-only typed discovery does not replace metadata-only graph
-discovery, which remains future scheduling work before typed representations
-are required.
+discovery: the former supplies new dependency types to an incremental recheck,
+while the latter resolves only a new root's identity before cache reuse.

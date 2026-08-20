@@ -9,7 +9,34 @@ import (
 	"testing"
 
 	"github.com/faustbrian/glippy/internal/source"
+	"golang.org/x/tools/go/packages"
 )
+
+func TestPackageGraphMetadataLoadModeExcludesTypedRepresentations(t *testing.T) {
+	t.Parallel()
+
+	required := packages.NeedName |
+		packages.NeedFiles |
+		packages.NeedCompiledGoFiles |
+		packages.NeedImports |
+		packages.NeedDeps |
+		packages.NeedForTest |
+		packages.NeedModule
+	if packageGraphMetadataLoadMode != required {
+		t.Fatalf("metadata load mode = %v, want %v", packageGraphMetadataLoadMode, required)
+	}
+	forbidden := packages.NeedExportFile |
+		packages.NeedSyntax |
+		packages.NeedTypes |
+		packages.NeedTypesSizes |
+		packages.NeedTypesInfo
+	if packageGraphMetadataLoadMode & forbidden != 0 {
+		t.Fatalf(
+			"metadata load mode requests typed representations: %v",
+			packageGraphMetadataLoadMode,
+		)
+	}
+}
 
 func TestPackageSourceCollectorOrdersMultipleFatalSourceFailures(t *testing.T) {
 	root := t.TempDir()
