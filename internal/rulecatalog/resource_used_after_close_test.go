@@ -105,6 +105,41 @@ func closeDeferred(value *resource) { defer value.Close() }
 	}
 }
 
+func TestResourceUsedAfterCloseTracksCleanupManagedResultAcquisitions(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"os"
+	"testing"
+)
+
+func open(t *testing.T) *os.File {
+	file, _ := os.Open("input")
+	t.Cleanup(func() { _ = file.Close() })
+	return file
+}
+
+func use(t *testing.T) {
+	file := open(t)
+	_ = file.Close()
+	_, _ = file.Read(nil)
+}
+`
+	result := runResourceUsedAfterClose(t, input, contracts.Set{})
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("cleanup-managed resource-used-after-close result = %#v", result)
+	}
+	diagnostic := result.Files[0].Diagnostics[0]
+	start := strings.Index(input, "file.Read(nil)")
+	if diagnostic.RuleID != "resource-used-after-close" ||
+		diagnostic.Range.Start != start ||
+		diagnostic.Range.End != start + len("file.Read(nil)") {
+		t.Fatalf("cleanup-managed resource-used-after-close diagnostic = %#v", diagnostic)
+	}
+}
+
 func TestResourceUsedAfterCloseRemainsConservative(t *testing.T) {
 	t.Parallel()
 

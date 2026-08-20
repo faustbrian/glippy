@@ -51,6 +51,8 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 			GuaranteedKinds: rules.ParameterEffectTransfer,
 		},
 	}
+	first.cleanupManaged["function"] = map[int]struct{}{1: {}, 0: {}}
+	second.cleanupManaged["function"] = map[int]struct{}{0: {}, 1: {}}
 	changed := newNativeEffectFacts()
 	changed.noReturns["a"] = struct{}{}
 	if first.digest() != second.digest() {
@@ -101,6 +103,11 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	if first.digest() == changed.digest() {
 		t.Fatal("effect fact digest ignored a return-alias change")
 	}
+	changed = cloneNativeEffectFacts(first)
+	delete(changed.cleanupManaged["function"], 1)
+	if first.digest() == changed.digest() {
+		t.Fatal("effect fact digest ignored a cleanup-managed result change")
+	}
 }
 
 func TestNativeParameterEffectsUseStableCrossLoadFunctionIdentity(t *testing.T) {
@@ -143,6 +150,43 @@ func TestNativeReturnStatesUseStableCrossLoadFunctionIdentity(t *testing.T) {
 	}
 	if summary := facts.ReturnState(second, 1, 0); summary != (rules.ReturnStateSummary{}) {
 		t.Fatalf("return state matched another result pair: %#v", summary)
+	}
+}
+
+func TestNativeCleanupManagedResultsUseStableCrossLoadFunctionIdentity(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestFunction("example.com/project/resource", "Open")
+	second := effectTestFunction("example.com/project/resource", "Open")
+	facts := newNativeEffectFacts()
+	facts.cleanupManaged[stableFunctionIdentity(first)] = map[int]struct{}{0: {}}
+	if !facts.CleanupManagedResult(second, 0) {
+		t.Fatal("cleanup-managed result did not survive an independent type identity")
+	}
+	if facts.CleanupManagedResult(second, 1) {
+		t.Fatal("cleanup-managed result matched another result index")
+	}
+}
+
+func TestCleanupManagedFactsIntersectPackageVariants(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestFunction("example.com/project/resource", "Open")
+	second := effectTestFunction("example.com/project/resource", "Open")
+	analysis := &managedResultAnalysis{
+		definitions: []managedResultDefinition{{function: first}, {function: second}},
+		summaries: map[*types.Func]map[int]struct{}{first: {0: {}}},
+	}
+	facts := newNativeEffectFacts()
+	facts.addCleanupManagedResults(analysis)
+	if facts.CleanupManagedResult(first, 0) {
+		t.Fatal("cleanup-managed result survived a disagreeing package variant")
+	}
+	analysis.summaries[second] = map[int]struct{}{0: {}}
+	facts = newNativeEffectFacts()
+	facts.addCleanupManagedResults(analysis)
+	if !facts.CleanupManagedResult(second, 0) {
+		t.Fatal("cleanup-managed result was lost across agreeing package variants")
 	}
 }
 

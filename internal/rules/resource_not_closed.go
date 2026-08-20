@@ -29,7 +29,7 @@ func (resourceNotClosedRule) Metadata() Metadata {
 	return Metadata{
 		ID: "resource-not-closed",
 		Summary: "detects locally owned closers that are neither closed nor transferred",
-		Documentation: "A call result with a conventional Close method usually owns a file, connection, compressor, or similar resource. A locally owned result that reaches a normal return without being closed or transferred can retain descriptors, connections, buffers, or other external state until process termination or garbage collection. Exact nil-result branches carry no ownership obligation. Versioned parameter-effect and returned-alias summaries distinguish retained obligations from guaranteed closure or ownership transfer.",
+		Documentation: "A call result with a conventional Close method usually owns a file, connection, compressor, or similar resource. A locally owned result that reaches a normal return without being closed or transferred can retain descriptors, connections, buffers, or other external state until process termination or garbage collection. Exact nil-result branches carry no ownership obligation. Versioned parameter-effect, returned-alias, and cleanup-managed-result summaries distinguish retained obligations from guaranteed closure, ownership transfer, or test-lifetime cleanup.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
@@ -40,6 +40,7 @@ func (resourceNotClosedRule) Metadata() Metadata {
 			"Only direct resource == nil and resource != nil conditions discharge the nil branch; compound nilness, aliases, and indirect comparisons remain conservative.",
 			"A statically resolved same-module helper that provably borrows the resource leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
 			"An exact returned-alias contract preserves the obligation when the result is assigned back to the same resource variable; new alias bindings remain outside the tracked ownership identity.",
+			"Cleanup-managed results require one stable direct local result, an exact testing.T Cleanup call on a pointer receiver with a function-literal callback, and direct or helper-proven Close on every normally returning callback path. Copied testing.T values, conditional registration or closure, asynchronous or nested closure, reassignment, aliases, and non-testing cleanup APIs remain conservative.",
 			"Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules retain the conservative ownership-transfer behavior when no summary is available.",
 			"Pipes returned by os/exec.Cmd are owned by Cmd.Start and Cmd.Wait under the standard-library contract and are not treated as caller-owned closers.",
 			"Cleanup and ownership transfer must cover every normally returning path after a conventional acquisition guard when one is present.",
@@ -50,6 +51,11 @@ func (resourceNotClosedRule) Metadata() Metadata {
 				Title: "Close an opened resource after the error check",
 				Incorrect: "file, err := os.Open(path)\nif err != nil { return err }\nuse(file)",
 				Correct: "file, err := os.Open(path)\nif err != nil { return err }\ndefer file.Close()",
+			},
+			{
+				Title: "Register cleanup before returning a test resource",
+				Incorrect: "func open(t *testing.T) *os.File {\n\tfile, _ := os.Open(path)\n\treturn file\n}",
+				Correct: "func open(t *testing.T) *os.File {\n\tfile, _ := os.Open(path)\n\tt.Cleanup(func() { _ = file.Close() })\n\treturn file\n}",
 			},
 		},
 	}
@@ -63,7 +69,12 @@ func (resourceNotClosedRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding,
 	}
 	findings := make([]Finding, 0)
 	for _, candidate := range
-		localCloserCandidates(ctx.Info(), ctx.Body(), ctx.ReturnAliasesArgument) {
+		localCloserCandidates(
+			ctx.Info(),
+			ctx.Body(),
+			ctx.ReturnAliasesArgument,
+			ctx.CleanupManagedResult,
+		) {
 		start, found := localCloserObligationStart(ctx.Graph(), ctx.Info(), candidate)
 		if !found ||
 			!obligationReachesOpenReturnWithEdgeDischarge(
@@ -155,6 +166,7 @@ func localCloserCandidates(
 	info *types.Info,
 	body *ast.BlockStmt,
 	returnsAlias func(*ast.CallExpr, int, int) bool,
+	cleanupManaged func(*ast.CallExpr, int) bool,
 ) []localCloserCandidate {
 	result := make([]localCloserCandidate, 0)
 	ast.Inspect(
@@ -188,6 +200,8 @@ func localCloserCandidates(
 					identifier, _ := left.(*ast.Ident)
 					if identifier == nil ||
 						identifier.Name == "_" ||
+						cleanupManaged != nil &&
+							cleanupManaged(call, index) ||
 						callResultAliasesArgument(
 							call,
 							index,

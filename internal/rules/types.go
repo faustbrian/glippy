@@ -675,6 +675,7 @@ type EffectFacts interface {
 	MustUseResult(*types.Func, int) bool
 	Blocking(*types.Func) bool
 	ReturnAliasesArgument(*types.Func, int, int) bool
+	CleanupManagedResult(*types.Func, int) bool
 }
 
 // SSAContext binds one source function to its shared SSA program, typed
@@ -961,6 +962,17 @@ func (c *ControlFlowContext) ReturnAliasesArgument(
 	}
 	parameter, valid := StaticCallParameter(c.typesContext.info, call, callee, argument)
 	return valid && c.effects.ReturnAliasesArgument(callee, result, parameter)
+}
+
+// CleanupManagedResult reports whether an exact call result is returned from a
+// helper only after cleanup has been registered on every normally returning
+// path.
+func (c *ControlFlowContext) CleanupManagedResult(call *ast.CallExpr, result int) bool {
+	if c == nil || c.effects == nil {
+		return false
+	}
+	callee := c.staticCallee(call)
+	return callee != nil && result >= 0 && c.effects.CleanupManagedResult(callee, result)
 }
 
 // ReturnState returns a configured nil/error relationship for one statically

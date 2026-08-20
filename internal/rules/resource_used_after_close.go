@@ -252,7 +252,7 @@ func collectResourceUseCandidates(
 	objects := make([]types.Object, 0)
 	seen := make(map[types.Object]struct{})
 	acquisitions := make(map[*ast.AssignStmt]map[types.Object]struct{})
-	for _, candidate := range localCloserCandidates(info, body, returnsAlias) {
+	for _, candidate := range localCloserCandidates(info, body, returnsAlias, nil) {
 		if _, found := seen[candidate.object]; !found {
 			seen[candidate.object] = struct{}{}
 			objects = append(objects, candidate.object)

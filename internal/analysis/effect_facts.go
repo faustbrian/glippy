@@ -15,7 +15,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const nativeEffectFactSchemaVersion = 5
+const nativeEffectFactSchemaVersion = 6
 
 type returnStateKey struct {
 	value int
@@ -36,6 +36,7 @@ type nativeEffectFacts struct {
 	mustUse map[string]map[int]struct{}
 	blocking map[string]struct{}
 	aliases map[string]map[returnAliasKey]struct{}
+	cleanupManaged map[string]map[int]struct{}
 }
 
 func newNativeEffectFacts() *nativeEffectFacts {
@@ -46,6 +47,7 @@ func newNativeEffectFacts() *nativeEffectFacts {
 		mustUse: make(map[string]map[int]struct{}),
 		blocking: make(map[string]struct{}),
 		aliases: make(map[string]map[returnAliasKey]struct{}),
+		cleanupManaged: make(map[string]map[int]struct{}),
 	}
 }
 
@@ -87,6 +89,13 @@ func cloneNativeEffectFacts(facts *nativeEffectFacts) *nativeEffectFacts {
 			cloned[key] = struct{}{}
 		}
 		result.aliases[identity] = cloned
+	}
+	for identity, indexes := range facts.cleanupManaged {
+		cloned := make(map[int]struct{}, len(indexes))
+		for index := range indexes {
+			cloned[index] = struct{}{}
+		}
+		result.cleanupManaged[identity] = cloned
 	}
 	return result
 }
@@ -156,6 +165,15 @@ func (f *nativeEffectFacts) ReturnAliasesArgument(
 	_, found := f.aliases[stableFunctionIdentity(
 		function,
 	)][returnAliasKey{result: result, argument: argument}]
+	return found
+}
+
+// CleanupManagedResult implements rules.EffectFacts.
+func (f *nativeEffectFacts) CleanupManagedResult(function *types.Func, result int) bool {
+	if f == nil || function == nil || result < 0 {
+		return false
+	}
+	_, found := f.cleanupManaged[stableFunctionIdentity(function)][result]
 	return found
 }
 
@@ -325,6 +343,42 @@ func (f *nativeEffectFacts) addReturnStates(analysis *returnStateAnalysis) {
 				existing[key] = summary
 			}
 		}
+	}
+}
+
+func (f *nativeEffectFacts) addCleanupManagedResults(analysis *managedResultAnalysis) {
+	if f == nil || analysis == nil {
+		return
+	}
+	aggregated := make(map[string]map[int]struct{})
+	seen := make(map[string]struct{})
+	for _, definition := range analysis.definitions {
+		identity := stableFunctionIdentity(definition.function)
+		if identity == "" {
+			continue
+		}
+		indexes := analysis.summaries[definition.function]
+		if _, found := seen[identity]; !found {
+			seen[identity] = struct{}{}
+			cloned := make(map[int]struct{}, len(indexes))
+			for index := range indexes {
+				cloned[index] = struct{}{}
+			}
+			aggregated[identity] = cloned
+			continue
+		}
+		for index := range aggregated[identity] {
+			if _, managed := indexes[index]; !managed {
+				delete(aggregated[identity], index)
+			}
+		}
+	}
+	for identity, indexes := range aggregated {
+		if len(indexes) == 0 {
+			delete(f.cleanupManaged, identity)
+			continue
+		}
+		f.cleanupManaged[identity] = indexes
 	}
 }
 
@@ -513,6 +567,33 @@ func (f *nativeEffectFacts) digest() cache.Digest {
 		binary.BigEndian.PutUint64(version[:], uint64(record.key.argument))
 		_, _ = digest.Write(version[:])
 	}
+	cleanupManaged := make([]indexedRecord, 0)
+	if f != nil {
+		for identity, indexes := range f.cleanupManaged {
+			for index := range indexes {
+				cleanupManaged = append(
+					cleanupManaged,
+					indexedRecord{identity: identity, index: index},
+				)
+			}
+		}
+	}
+	sort.Slice(
+		cleanupManaged,
+		func(left, right int) bool {
+			if cleanupManaged[left].identity != cleanupManaged[right].identity {
+				return cleanupManaged[left].identity <
+					cleanupManaged[right].identity
+			}
+			return cleanupManaged[left].index < cleanupManaged[right].index
+		},
+	)
+	for _, record := range cleanupManaged {
+		_, _ = digest.Write([]byte{6})
+		writeEffectIdentity(digest, version[:], record.identity)
+		binary.BigEndian.PutUint64(version[:], uint64(record.index))
+		_, _ = digest.Write(version[:])
+	}
 	var result cache.Digest
 	copy(result[:], digest.Sum(nil))
 	return result
@@ -651,6 +732,12 @@ func loadNativeEffectFacts(
 			return nil, err
 		}
 		facts.addParameterEffects(parameterEffects)
+		managedResults := newManagedResultAnalysis(ctx, layers[index], facts, analysis)
+		managedResults.buildAll()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		facts.addCleanupManagedResults(managedResults)
 		returnStates := newReturnStateAnalysis(ctx, layers[index])
 		returnStates.buildAll()
 		facts.addReturnStates(returnStates)

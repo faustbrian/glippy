@@ -2054,3 +2054,21 @@ overlay cannot trigger discovery against substituted disk bytes. No new latency
 or RSS claim is made. Portable four-runner typed-budget evidence and further
 high-signal interprocedural error-flow and ownership coverage remain active
 v0.5 work.
+
+The v0.5 cleanup-managed result batch removes a repeated test-helper ownership
+false positive from `resource-not-closed`. An exact stable local result is
+cleanup-managed only when every normal helper return first registers an exact
+`testing.T.Cleanup` function-literal callback on `*testing.T` and every normal
+callback path closes the object directly or through a helper with a guaranteed
+close parameter effect. Conditional registration or closure, observation-only
+callbacks, goroutines, nested functions, copied `testing.T` values,
+reassignment or address escape inside callbacks, aliases, non-testing cleanup
+APIs, and disagreeing package variants remain conservative. The fact
+crosses selected-module package loads through stable function/result identity
+and advances the deterministic native effect cache component to version 6.
+Exact-rule dogfood remained clean on Glippy and `go-libraries/pkg/prompts`; an
+exact same-revision `http-client` comparison reduced findings from 22 to 17
+without modifying the external repository. The retained findings remain for
+separate source-specific ownership review. Portable four-runner typed-budget
+evidence and further high-signal interprocedural error-flow and ownership
+coverage remain active v0.5 work.

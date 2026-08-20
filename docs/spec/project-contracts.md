@@ -199,12 +199,16 @@ retain the ordinary deterministic target-union behavior. Fix modes retain the
 existing target-matrix prohibition.
 
 Contract changes MUST invalidate affected persistent native results. The
-`native-effects-v5` component binds no-return, parameter, returned-state,
+`native-effects-v6` component binds no-return, parameter, returned-state,
 must-use, blocking, and alias facts through stable package-qualified function
 identities, including the distinction between possible terminal effect kinds
 and effects independently guaranteed on every returning path. Contract source
 paths and process-local `types.Object` pointers MUST NOT become semantic
 identities.
+
+The version-6 component additionally binds inferred cleanup-managed result
+indexes. Project contracts do not declare that relationship; it is proven only
+from selected-module source and exact `testing.T.Cleanup` behavior.
 
 ## Safety And Extension Boundary
 

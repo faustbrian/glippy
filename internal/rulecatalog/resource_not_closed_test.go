@@ -314,6 +314,264 @@ func consume(io.Reader) error { return nil }
 	}
 }
 
+func TestResourceNotClosedUsesGuaranteedCleanupManagedResults(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/cleanupmanaged\n\ngo 1.26.0\n",
+	)
+	input := `package sample
+
+import (
+	"os"
+	"testing"
+)
+
+func directManaged(t *testing.T) *os.File {
+	file, _ := os.Open("input")
+	_ = file.Name()
+	t.Cleanup(func() { _ = file.Close() })
+	return file
+}
+
+func helperManaged(t *testing.T) *os.File {
+	file, _ := os.Open("input")
+	t.Cleanup(func() { closeFile(file) })
+	return file
+}
+
+func closeFile(file *os.File) { _ = file.Close() }
+
+func observationOnly(t *testing.T) *os.File {
+	file, _ := os.Open("input")
+	t.Cleanup(func() { _ = file.Name() })
+	return file
+}
+
+func conditionallyManaged(t *testing.T, closeFile bool) *os.File {
+	file, _ := os.Open("input")
+	t.Cleanup(func() {
+		if closeFile { _ = file.Close() }
+	})
+	return file
+}
+
+func conditionallyRegistered(t *testing.T, register bool) *os.File {
+	file, _ := os.Open("input")
+	if register { t.Cleanup(func() { _ = file.Close() }) }
+	return file
+}
+
+func asynchronouslyManaged(t *testing.T) *os.File {
+	file, _ := os.Open("input")
+	t.Cleanup(func() { go file.Close() })
+	return file
+}
+
+func nestedOnly(t *testing.T) *os.File {
+	file, _ := os.Open("input")
+	t.Cleanup(func() { _ = func() error { return file.Close() } })
+	return file
+}
+
+func replacedAfterRegistration(t *testing.T) *os.File {
+	file, _ := os.Open("input")
+	t.Cleanup(func() { _ = file.Close() })
+	file, _ = os.Open("replacement")
+	return file
+}
+
+func aliasedBeforeCleanup(t *testing.T) *os.File {
+	file, _ := os.Open("input")
+	alias := file
+	_ = alias
+	t.Cleanup(func() { _ = file.Close() })
+	return file
+}
+
+func replacedDuringCleanup(t *testing.T) *os.File {
+	file, _ := os.Open("input")
+	t.Cleanup(func() {
+		file, _ = os.Open("replacement")
+		_ = file.Close()
+	})
+	return file
+}
+
+func replaceFile(file **os.File) { *file, _ = os.Open("replacement") }
+
+func escapedDuringCleanup(t *testing.T) *os.File {
+	file, _ := os.Open("input")
+	t.Cleanup(func() {
+		replaceFile(&file)
+		_ = file.Close()
+	})
+	return file
+}
+
+func copiedTestHandle(t testing.T) *os.File {
+	file, _ := os.Open("input")
+	t.Cleanup(func() { _ = file.Close() })
+	return file
+}
+
+func use(t *testing.T) {
+	direct := directManaged(t)
+	_ = direct.Name()
+	helper := helperManaged(t)
+	_ = helper.Name()
+	observed := observationOnly(t)
+	_ = observed.Name()
+	conditional := conditionallyManaged(t, false)
+	_ = conditional.Name()
+	registered := conditionallyRegistered(t, false)
+	_ = registered.Name()
+	asynchronous := asynchronouslyManaged(t)
+	_ = asynchronous.Name()
+	nested := nestedOnly(t)
+	_ = nested.Name()
+	replaced := replacedAfterRegistration(t)
+	_ = replaced.Name()
+	aliased := aliasedBeforeCleanup(t)
+	_ = aliased.Name()
+	callbackReplaced := replacedDuringCleanup(t)
+	_ = callbackReplaced.Name()
+	callbackEscaped := escapedDuringCleanup(t)
+	_ = callbackEscaped.Name()
+	copied := copiedTestHandle(*t)
+	_ = copied.Name()
+}
+`
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"resource-not-closed": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 10 {
+		t.Fatalf("cleanup-managed result diagnostics = %#v", result)
+	}
+	want := map[int]string{
+		strings.Index(input, "observed := observationOnly"): "observed",
+		strings.Index(input, "conditional := conditionallyManaged"): "conditional",
+		strings.Index(input, "registered := conditionallyRegistered"): "registered",
+		strings.Index(input, "asynchronous := asynchronouslyManaged"): "asynchronous",
+		strings.Index(input, "nested := nestedOnly"): "nested",
+		strings.Index(input, "replaced := replacedAfterRegistration"): "replaced",
+		strings.Index(input, "aliased := aliasedBeforeCleanup"): "aliased",
+		strings.Index(
+			input,
+			"callbackReplaced := replacedDuringCleanup",
+		): "callbackReplaced",
+		strings.Index(input, "callbackEscaped := escapedDuringCleanup"): "callbackEscaped",
+		strings.Index(input, "copied := copiedTestHandle"): "copied",
+	}
+	for _, diagnostic := range result.Files[0].Diagnostics {
+		name, found := want[diagnostic.Range.Start]
+		if !found || diagnostic.Range.End != diagnostic.Range.Start + len(name) {
+			t.Fatalf("cleanup-managed result diagnostic = %#v", diagnostic)
+		}
+		delete(want, diagnostic.Range.Start)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing cleanup-managed result diagnostics = %#v", want)
+	}
+}
+
+func TestResourceNotClosedUsesImportedCleanupManagedResults(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/importedcleanup\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "helper", "helper.go"),
+		`package helper
+
+import (
+	"os"
+	"testing"
+)
+
+func Open(t *testing.T) *os.File {
+	file, _ := os.Open("input")
+	t.Cleanup(func() { closeFile(file) })
+	return file
+}
+
+func closeFile(file *os.File) { _ = file.Close() }
+`,
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "sample.go"),
+		`package sample
+
+import (
+	"testing"
+
+	"example.com/importedcleanup/helper"
+)
+
+func use(t *testing.T) {
+	file := helper.Open(t)
+	_ = file.Name()
+}
+`,
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"resource-not-closed": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 0 {
+		t.Fatalf("imported cleanup-managed result diagnostics = %#v", result)
+	}
+}
+
 func TestResourceNotClosedMetadata(t *testing.T) {
 	t.Parallel()
 

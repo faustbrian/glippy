@@ -48,6 +48,17 @@ The 2026-08-20 nil-result refinement discharges only the exact CFG edge where
 The non-nil edge must still close or transfer the value. Compound conditions,
 aliases, and indirect comparisons remain conservative.
 
+The 2026-08-20 cleanup-managed result refinement recognizes an exact
+`testing.T.Cleanup` function-literal callback when a helper returns one stable
+direct local object and every normally returning callback path closes that
+object directly or through a statically resolved helper with a guaranteed
+close parameter effect. The summary crosses selected-module package loads by
+stable function and result identity. Package variants must agree. Conditional
+registration or close, observation-only callbacks, goroutines, nested
+functions, reassignment, aliases, and non-testing cleanup APIs remain
+unmanaged. Cleanup registered on a copied `testing.T` value is also unmanaged
+because it is not attached to the test runner's pointer.
+
 The rule remains `suspicious`, not `correctness`, because ownership may be
 transferred through conventions it cannot prove. No fix is offered because the
 correct cleanup point and error policy are contextual.
@@ -57,7 +68,10 @@ correct cleanup point and error policy are contextual.
 Focused fixtures cover leaked files, deferred and explicit close, partial and
 complete branches, reassignment, implicit returns, argument and result
 transfer, exact ranges, suppressions, generated and type-error policy, source
-versions, CLI output, baselines, and absence of fixes.
+versions, CLI output, baselines, absence of fixes, same-package and imported
+cleanup-managed results, disagreeing package variants, and conservative
+conditional, asynchronous, nested, replacement, and copied-test-handle
+boundaries.
 
 Five complete-load iterations on Go 1.26.6, Darwin arm64, Apple M4 Max averaged
 `106,638,825 ns/op`, `1,969,809 B/op`, and `15,669 allocs/op` for the one-file

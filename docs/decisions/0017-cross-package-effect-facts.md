@@ -57,6 +57,13 @@ ADR 0021 advances the active schema and cache component to
 `native-effects-v4` for configured project contracts. The version-3 name in
 this record remains the historical identity of the v0.4 decision.
 
+The 2026-08-20 cleanup-managed result refinement advances the active schema and
+cache component to `native-effects-v6`. Exact stable function and result
+identities now record when selected-module source proves that a returned local
+resource is registered through `testing.T.Cleanup` on every normal return.
+Conditional, asynchronous, nested, reassigned, ambiguous, and non-testing
+cleanup shapes remain absent from the fact set.
+
 ## Alternatives
 
 - Load the complete dependency syntax closure with `packages.NeedDeps`:

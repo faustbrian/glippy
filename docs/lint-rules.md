@@ -3868,8 +3868,8 @@ A call result with a conventional Close method usually owns a file, connection, 
 similar resource. A locally owned result that reaches a normal return without being closed or
 transferred can retain descriptors, connections, buffers, or other external state until process
 termination or garbage collection. Exact nil-result branches carry no ownership obligation.
-Versioned parameter-effect and returned-alias summaries distinguish retained obligations from
-guaranteed closure or ownership transfer.
+Versioned parameter-effect, returned-alias, and cleanup-managed-result summaries distinguish
+retained obligations from guaranteed closure, ownership transfer, or test-lifetime cleanup.
 
 - Default severity: `warn`
 - Presets: `suspicious`
@@ -3898,6 +3898,11 @@ None.
   open; guaranteed closure or transfer must cover every normally returning helper path.
 - An exact returned-alias contract preserves the obligation when the result is assigned back to the
   same resource variable; new alias bindings remain outside the tracked ownership identity.
+- Cleanup-managed results require one stable direct local result, an exact testing.T Cleanup call on
+  a pointer receiver with a function-literal callback, and direct or helper-proven Close on every
+  normally returning callback path. Copied testing.T values, conditional registration or closure,
+  asynchronous or nested closure, reassignment, aliases, and non-testing cleanup APIs remain
+  conservative.
 - Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules
   retain the conservative ownership-transfer behavior when no summary is available.
 - Pipes returned by os/exec.Cmd are owned by Cmd.Start and Cmd.Wait under the standard-library
@@ -3923,6 +3928,27 @@ use(file)
 file, err := os.Open(path)
 if err != nil { return err }
 defer file.Close()
+```
+
+### Example: Register cleanup before returning a test resource
+
+**Incorrect**
+
+```go
+func open(t *testing.T) *os.File {
+	file, _ := os.Open(path)
+	return file
+}
+```
+
+**Correct**
+
+```go
+func open(t *testing.T) *os.File {
+	file, _ := os.Open(path)
+	t.Cleanup(func() { _ = file.Close() })
+	return file
+}
 ```
 
 ## resource-used-after-close

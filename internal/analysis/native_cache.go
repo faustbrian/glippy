@@ -273,7 +273,7 @@ func nativeEffectCacheDigests(facts *nativeEffectFacts) map[string]cache.Digest 
 	if facts == nil {
 		return map[string]cache.Digest{}
 	}
-	return map[string]cache.Digest{"native-effects-v5": facts.digest()}
+	return map[string]cache.Digest{"native-effects-v6": facts.digest()}
 }
 
 func nativeSourceOwners(loaded PackageLoadResult) (map[string]string, error) {

@@ -69,6 +69,12 @@ func RunControlFlow(
 			return nil, err
 		}
 		effects.addParameterEffects(parameterEffects)
+		managedResults := newManagedResultAnalysis(ctx, packages_, effects, noReturns)
+		managedResults.buildAll()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		effects.addCleanupManagedResults(managedResults)
 	}
 
 	diagnostics := make([]rules.Diagnostic, 0)
