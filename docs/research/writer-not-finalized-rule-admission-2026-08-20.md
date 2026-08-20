@@ -71,11 +71,16 @@ capturing the writer transfers ownership conservatively; method values,
 asynchronous use, aliases, and replacement bindings also stop or fail closed
 without guessing execution order.
 
-A function with no error result treats every normal return as success. When
-one exact built-in `error` result exists, only an explicit nil error expression
-is proven successful. Named results, tuple delegation, and other unknown error
-expressions remain conservative. No fix is registered because correct close
-placement and error joining depend on the surrounding return contract.
+A function with no error result treats every normal return as success. An
+explicit nil unnamed built-in error remains successful. For one named built-in
+error result, bounded CFG dataflow starts from the language-defined nil zero
+value and accepts a bare return, that exact result, or explicit nil only while
+every path reaching the acquisition and return preserves nil through direct
+nil or self assignments. An unknown assignment, address escape, closure
+capture, or disagreeing join makes the state permanently unknown. Multiple
+error results, tuple delegation, and other unknown error expressions remain
+conservative. No fix is registered because correct close placement and error
+joining depend on the surrounding return contract.
 
 ## Behavioral And Cost Evidence
 
@@ -103,6 +108,15 @@ closing, but produced no diagnostic. The shared acquisition mapping now accepts
 CFG `ValueSpec` nodes as well as assignment nodes. Focused coverage includes the
 single-result encoder form, multi-result `gzip.NewWriterLevel`, and a finalized
 declared encoder without broadening to parallel expression mapping.
+
+The named-result follow-up reproduced three missed successful returns: an
+untouched named error returned bare, the same proven-nil result returned
+explicitly, and a direct nil assignment followed by a bare return. The bounded
+dataflow begins at function entry so an unknown assignment or address escape
+before writer acquisition cannot be reinterpreted as the named result's zero
+value. Nearby unknown, failure, bare and explicit-nil deferred mutation,
+pre-acquisition assignment, and pre-acquisition escape cases remain
+non-diagnostics.
 
 Five complete 100-function package-analysis samples on Go 1.26.6, Darwin
 arm64, and an Apple M4 Max measured:
@@ -143,6 +157,14 @@ retained their pre-existing state. Five complete 100-function samples on the
 same Go 1.26.7 Darwin arm64 host measured
 `86,175,917-95,411,916 ns/op`, `4,469,480-5,059,128 B/op`, and
 `40,219-40,695 allocs/op`.
+
+The named-result follow-up remained clean under exact-rule dogfood on Glippy,
+`go-libraries/pkg/prompts`, and `go-libraries/pkg/http-client` at
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`. Both external repositories kept
+their exact pre-run revisions and pre-existing status. Five complete
+100-function named-result samples on the same Go 1.26.7 Darwin arm64 host
+measured `92,837,125-179,183,000 ns/op`, `4,961,080-5,527,936 B/op`, and
+`49,332-49,763 allocs/op`.
 
 ## Revisit Trigger
 

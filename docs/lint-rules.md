@@ -5831,8 +5831,10 @@ None.
   mime/multipart.NewWriter.
 - Only exact output-producing receiver methods establish use; construction and configuration alone
   do not require finalization.
-- For functions returning error, only an explicit nil error result is classified as success; named,
-  delegated, or otherwise unknown results remain conservative.
+- A function with one named error result may classify a bare return or that exact result as
+  successful only while CFG dataflow proves the result retains its nil zero value through direct nil
+  or self assignments; other assignments, address escape, closure capture, multiple error results,
+  delegated values, and unknown joins remain conservative.
 - Aliases, fields, containers, closures, method values, asynchronous calls, and transfers stop
   analysis because exact ownership or execution order is unavailable.
 - One constructor call must supply the declaration or assignment values; parallel multi-expression

@@ -284,6 +284,154 @@ func consume(io.Writer) {}
 	}
 }
 
+func TestWriterNotFinalizedRecognizesProvenNilNamedErrorReturns(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"compress/gzip"
+	"errors"
+	"io"
+)
+
+func untouched(output io.Writer) (err error) {
+	writer := gzip.NewWriter(output)
+	if _, writeErr := writer.Write([]byte("payload")); writeErr != nil {
+		return writeErr
+	}
+	return
+}
+
+func explicit(output io.Writer) (err error) {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return err
+}
+
+func assignedNil(output io.Writer) (err error) {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	err = nil
+	return
+}
+
+func explicitNil(output io.Writer) (err error) {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return nil
+}
+
+func selfAssigned(output io.Writer) (err error) {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	err = err
+	return
+}
+
+func unknown(output io.Writer) (err error) {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	err = externalError()
+	return
+}
+
+func failure(output io.Writer) (err error) {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	err = errors.New("failed")
+	return
+}
+
+func deferredMutation(output io.Writer) (err error) {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	defer func() { err = errors.New("failed") }()
+	return
+}
+
+func deferredExplicitNil(output io.Writer) (err error) {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	defer func() { err = errors.New("failed") }()
+	return nil
+}
+
+func assignedBeforeAcquisition(output io.Writer) (err error) {
+	err = externalError()
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return
+}
+
+func escapedBeforeAcquisition(output io.Writer) (err error) {
+	destination := &err
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	_ = destination
+	return
+}
+
+func multipleErrors(output io.Writer) (err error, closeErr error) {
+	writer := gzip.NewWriter(output)
+	_, _ = writer.Write([]byte("payload"))
+	return nil, nil
+}
+
+func externalError() error { return nil }
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/writernamedreturn\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"writer-not-finalized": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"func untouched",
+		"func explicit",
+		"func assignedNil",
+		"func explicitNil",
+		"func selfAssigned",
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
+		t.Fatalf("named writer finalization result = %#v", result)
+	}
+	for index, prefix := range want {
+		function := strings.Index(input, prefix)
+		writer := strings.Index(input[function:], "writer :=") + function
+		diagnostic := result.Files[0].Diagnostics[index]
+		if diagnostic.RuleID != "writer-not-finalized" ||
+			diagnostic.Range.Start != writer ||
+			diagnostic.Range.End != writer + len("writer") {
+			t.Fatalf("named writer diagnostic[%d] = %#v", index, diagnostic)
+		}
+	}
+}
+
 func TestWriterNotFinalizedOwnsGenericResourceDiagnostic(t *testing.T) {
 	t.Parallel()
 
@@ -512,7 +660,7 @@ func BenchmarkWriterNotFinalizedSharedCFG(b *testing.B) {
 	for index := range 100 {
 		fmt.Fprintf(
 			&input,
-			"func run%d(output io.Writer) { writer := gzip.NewWriter(output); _, _ = writer.Write([]byte(\"payload\")) }\n",
+			"func run%d(output io.Writer) (err error) { writer := gzip.NewWriter(output); _, _ = writer.Write([]byte(\"payload\")); return }\n",
 			index,
 		)
 	}

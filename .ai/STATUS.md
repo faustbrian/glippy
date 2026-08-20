@@ -2254,3 +2254,22 @@ samples across the six lifecycle benchmarks measured
 44.31-202.12 ms, 2.13-9.37 MB, and 17,026-90,785 allocations on Darwin arm64.
 Portable four-runner typed-budget evidence and further high-signal
 interprocedural error-flow and ownership coverage remain active v0.5 work.
+
+The v0.5 named-error writer-success follow-up extends
+`writer-not-finalized` from explicit nil returns to a bounded proof for one
+named built-in error result. Language-defined nil initialization, direct nil
+assignment, and exact self-assignment preserve successful bare or direct named
+returns; other assignments, address escape, closure capture, multiple error
+results, deferred named-result mutation, and disagreeing CFG joins remain
+conservative. Dataflow begins at function entry, so state established before
+writer acquisition is not lost.
+The first focused red regression produced no diagnostics for three proven
+successful paths; a second safety regression exposed two false positives when
+pre-acquisition state was initially omitted. Exact-rule dogfood remained clean
+on Glippy, `go-libraries/pkg/prompts`, and `go-libraries/pkg/http-client` at
+`127ee12bfa8aa0777716f58618ee8338ba40f0b3`; both external repositories kept
+their exact revisions and pre-existing status. Five 100-function named-result
+samples measured 92.84-179.18 ms, 4.96-5.53 MB, and 49,332-49,763 allocations
+on Darwin arm64.
+Portable four-runner typed-budget evidence and further high-signal
+interprocedural error-flow and ownership coverage remain active v0.5 work.
