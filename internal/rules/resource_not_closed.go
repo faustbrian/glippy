@@ -39,7 +39,7 @@ func (resourceNotClosedRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"Only direct resource == nil and resource != nil conditions discharge the nil branch; compound nilness, aliases, and indirect comparisons remain conservative.",
 			"Exact tar, gzip, and multipart writer constructors belong to writer-not-finalized and are excluded from this generic closer rule.",
-			"A direct function-literal constructor argument, or the final direct same-block value of a local argument, that captures the assigned resource conservatively transfers ownership because callback retention and execution are unknown; conditional or nested assignments do not prove transfer.",
+			"A direct function-literal constructor argument, or the final stable direct same-block assignment to a local argument, that captures the assigned resource conservatively transfers ownership because callback retention and execution are unknown; intervening mutation, call exposure, address escape, and conditional or nested assignments do not prove transfer.",
 			"A statically resolved helper in a selected local-source module that provably borrows the resource leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
 			"An exact returned-alias contract preserves the obligation when the result is assigned back to the same resource variable; new alias bindings remain outside the tracked ownership identity.",
 			"Cleanup-managed results require one stable direct local result, an exact testing.T Cleanup call on a pointer receiver with a function-literal callback, and direct, parameter-effect, or receiver-effect proven Close on every normally returning callback path. Copied testing.T values, conditional registration or closure, asynchronous or nested closure, reassignment, aliases, and non-testing cleanup APIs remain conservative.",
@@ -334,7 +334,11 @@ func finalLocalValueBefore(
 		return nil
 	}
 	var expression ast.Expr
-	for _, statement := range body.List {
+	assignmentIndex := -1
+	for statementIndex, statement := range body.List {
+		if statement.Pos() <= before && before < statement.End() {
+			break
+		}
 		assignment, assigned := statement.(*ast.AssignStmt)
 		if !assigned ||
 			assignment.Pos() >= before ||
@@ -344,10 +348,84 @@ func finalLocalValueBefore(
 		for index, target := range assignment.Lhs {
 			if directObject(info, target) == object {
 				expression = assignment.Rhs[index]
+				assignmentIndex = statementIndex
 			}
 		}
 	}
+	if assignmentIndex < 0 {
+		return nil
+	}
+	for _, statement := range body.List[assignmentIndex + 1:] {
+		if statement.Pos() <= before && before < statement.End() {
+			break
+		}
+		if statementChangesOrEscapesObject(info, statement, object) {
+			return nil
+		}
+	}
 	return expression
+}
+
+func statementChangesOrEscapesObject(
+	info *types.Info,
+	statement ast.Stmt,
+	object types.Object,
+) bool {
+	if info == nil || statement == nil || object == nil {
+		return false
+	}
+	changed := false
+	ast.Inspect(
+		statement,
+		func(node ast.Node) bool {
+			if changed || node == nil {
+				return false
+			}
+			if _, nested := node.(*ast.FuncLit); nested {
+				return false
+			}
+			switch node := node.(type) {
+			case *ast.AssignStmt:
+				for _, target := range node.Lhs {
+					if expressionRootObject(info, target) == object {
+						changed = true
+						return false
+					}
+				}
+			case *ast.IncDecStmt:
+				changed = expressionRootObject(info, node.X) == object
+			case *ast.RangeStmt:
+				changed = expressionRootObject(info, node.Key) == object ||
+					expressionRootObject(info, node.Value) == object
+			case *ast.CallExpr:
+				changed = expressionUsesObject(info, node, object)
+			case *ast.SendStmt:
+				changed = expressionUsesObject(info, node.Value, object)
+			case *ast.UnaryExpr:
+				changed = node.Op == token.AND &&
+					expressionRootObject(info, node.X) == object
+			}
+			return !changed
+		},
+	)
+	return changed
+}
+
+func expressionRootObject(info *types.Info, expression ast.Expr) types.Object {
+	switch expression := ast.Unparen(expression).(type) {
+	case *ast.Ident:
+		return info.ObjectOf(expression)
+	case *ast.SelectorExpr:
+		return expressionRootObject(info, expression.X)
+	case *ast.IndexExpr:
+		return expressionRootObject(info, expression.X)
+	case *ast.IndexListExpr:
+		return expressionRootObject(info, expression.X)
+	case *ast.StarExpr:
+		return expressionRootObject(info, expression.X)
+	default:
+		return nil
+	}
 }
 
 func callResultAliasesArgument(

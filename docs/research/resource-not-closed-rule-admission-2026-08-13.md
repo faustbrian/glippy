@@ -71,11 +71,14 @@ The constructor-callback refinement on 2026-08-20 applies the same conservative
 closure-capture boundary when a direct function-literal argument references the
 result being assigned by that constructor call. It also resolves the final
 direct assignment to a local argument in the acquisition block, covering stable
-callback containers passed through a configuration value. The callback may be
+callback containers passed through a configuration value. The indirect value
+remains stable only when intervening statements do not mutate it, expose it to a
+call, or take its address; harmless reads remain eligible. The callback may be
 retained and later own or close the resource, so the generic rule treats the
 acquisition as transferred. A callback that captures only another value, a
-replaced container, or a capture assigned only through conditional or nested
-control flow does not discharge the new resource obligation.
+replaced or escaped container, a mutated field, or a capture assigned only
+through conditional or nested control flow does not discharge the new resource
+obligation.
 
 The transfer classification applies only to the leak rule: the shared closer
 acquisition remains eligible for `resource-used-after-close`, so an explicit
@@ -95,7 +98,7 @@ versions, CLI output, baselines, absence of fixes, same-package and imported
 cleanup-managed results, disagreeing package variants, and conservative
 conditional, asynchronous, nested, replacement, and copied-test-handle
 boundaries, plus direct and stable-container constructor callbacks and their
-same-block dominance boundary.
+same-block dominance, mutation, escape, and harmless-read boundaries.
 
 Five complete-load iterations on Go 1.26.6, Darwin arm64, Apple M4 Max averaged
 `106,638,825 ns/op`, `1,969,809 B/op`, and `15,669 allocs/op` for the one-file
@@ -133,6 +136,14 @@ Five one-iteration samples on Go 1.26.7, Darwin arm64, Apple M4 Max measured
 `72,107,625-80,146,375 ns/op`, `2,133,768-2,704,144 B/op`, and
 `17,039-17,473 allocs/op`. This remains proportional rule evidence rather than
 a portable latency or allocation budget.
+
+The stability follow-up retained the exact five `go-libraries/pkg/http-client`
+findings at `556e3d5d9a6cd7981f2aaabdbc0f7aaef9ecc7ae` while exact-rule
+dogfood remained clean on Glippy and `go-libraries/pkg/prompts`. All external
+checks were non-mutating; unrelated dirty state remained outside this batch.
+Five one-iteration samples on the same Go 1.26.7 Darwin arm64 host measured
+`72,960,291-75,878,708 ns/op`, `2,131,400-2,707,320 B/op`, and
+`17,043-17,487 allocs/op`.
 
 ## Revisit Trigger
 

@@ -1128,9 +1128,11 @@ func TestResourceNotClosedTransfersConstructorCallbackCaptures(t *testing.T) {
 
 type resource struct{}
 type callbacks struct{ run func() }
+type callbackList []func()
 
 func (*resource) Close() error { return nil }
 func open(any) (*resource, error) { return &resource{}, nil }
+func retain(any) {}
 
 func captured() error {
 	var value *resource
@@ -1186,6 +1188,92 @@ func conditionalCapture(enabled bool) error {
 	_ = value
 	return nil
 }
+
+func fieldReplacedCapture() error {
+	var value *resource
+	hooks := callbacks{run: func() { _ = value.Close() }}
+	hooks.run = func() {}
+	value, err := open(hooks)
+	if err != nil {
+		return err
+	}
+	_ = value
+	return nil
+}
+
+func nestedFieldReplacedCapture(enabled bool) error {
+	var value *resource
+	hooks := callbacks{run: func() { _ = value.Close() }}
+	if enabled {
+		hooks.run = func() {}
+		value, err := open(hooks)
+		if err != nil {
+			return err
+		}
+		_ = value
+	}
+	return nil
+}
+
+func indexedReplacedCapture() error {
+	var value *resource
+	hooks := callbackList{func() { _ = value.Close() }}
+	hooks[0] = func() {}
+	value, err := open(hooks)
+	if err != nil {
+		return err
+	}
+	_ = value
+	return nil
+}
+
+func observedStableCapture() error {
+	var value *resource
+	hooks := callbacks{run: func() { _ = value.Close() }}
+	_ = hooks.run
+	value, err := open(hooks)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func escapedCapture() error {
+	var value *resource
+	hooks := callbacks{run: func() { _ = value.Close() }}
+	retain(&hooks)
+	value, err := open(hooks)
+	if err != nil {
+		return err
+	}
+	_ = value
+	return nil
+}
+
+func callExposedCapture() error {
+	var value *resource
+	hooks := callbacks{run: func() { _ = value.Close() }}
+	retain(hooks)
+	value, err := open(hooks)
+	if err != nil {
+		return err
+	}
+	_ = value
+	return nil
+}
+
+func addressedFieldCapture() error {
+	var value *resource
+	hooks := callbacks{run: func() { _ = value.Close() }}
+	callback := &hooks.run
+	_ = callback
+	value, err := open(hooks)
+	if err != nil {
+		return err
+	}
+	_ = value
+	return nil
+}
 `
 	writeFixture(t, filepath.Join(root, "sample.go"), input)
 	registry, err := rulecatalog.NewRegistry()
@@ -1211,12 +1299,22 @@ func conditionalCapture(enabled bool) error {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 3 {
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 9 {
 		t.Fatalf("constructor callback capture diagnostics = %#v", result)
 	}
 	wantOffsets := make(map[int]struct{})
 	for _, function := range
-		[]string{"unrelatedCapture", "replacedCapture", "conditionalCapture"} {
+		[]string{
+			"unrelatedCapture",
+			"replacedCapture",
+			"conditionalCapture",
+			"fieldReplacedCapture",
+			"nestedFieldReplacedCapture",
+			"indexedReplacedCapture",
+			"escapedCapture",
+			"callExposedCapture",
+			"addressedFieldCapture",
+		} {
 		functionOffset := strings.Index(input, "func " + function)
 		if functionOffset < 0 {
 			t.Fatalf("missing fixture function %q", function)

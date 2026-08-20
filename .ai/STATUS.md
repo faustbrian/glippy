@@ -2182,3 +2182,21 @@ batch. Five one-operation samples measured 72.11-80.15 ms, 2.13-2.70 MB, and
 17,039-17,473 allocations on Darwin arm64. Portable four-runner typed-budget
 evidence and further high-signal interprocedural error-flow and ownership
 coverage remain active v0.5 work.
+
+The v0.5 constructor-callback stability follow-up requires an indirectly
+capturing local argument to retain its final direct same-block value until the
+constructor call. Field or indexed mutation, address escape, call exposure,
+and nested mutation invalidate the inferred transfer; harmless reads preserve
+it. The focused red regression initially suppressed a leak after replacing the
+capturing function field and now reports that acquisition alongside replaced,
+conditional, escaped, and unrelated callback containers. Direct and stable
+container captures remain accepted, and `resource-used-after-close` continues
+to track the shared acquisition independently. Exact-rule dogfood remains
+clean on Glippy and `go-libraries/pkg/prompts`; the same-revision
+`go-libraries/pkg/http-client` run at
+`556e3d5d9a6cd7981f2aaabdbc0f7aaef9ecc7ae` retains exactly the expected one
+compression body and four resume fake-file findings. Five one-operation
+samples measured 72.96-75.88 ms, 2.13-2.71 MB, and 17,043-17,487 allocations
+on Darwin arm64. Portable four-runner typed-budget evidence and further
+high-signal interprocedural error-flow and ownership coverage remain active
+v0.5 work.
