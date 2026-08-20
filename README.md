@@ -248,6 +248,11 @@ assignments that update a shadowing error instead of the named result.
 selected-module sibling result relationship whose dominated state makes a
 non-nil error impossible.
 
+The default output-integrity catalog distinguishes three writer failures:
+discarded `Flush` or `Close` errors, CSV flushing without observing
+`Writer.Error`, and successful tar, gzip, or multipart output paths that use a
+directly acquired writer without finalizing or transferring it.
+
 The default correctness catalog checks direct `database/sql` transaction
 lifecycles. After a conventional successful `DB.Begin`, `DB.BeginTx`, or
 `Conn.BeginTx` guard, `sql-transaction-not-completed` requires every normally
@@ -359,6 +364,7 @@ precise scope.
 - [v0.5 cancellation returned-alias obligations](docs/research/v0.5-returned-alias-cancellation-obligations-2026-08-20.md)
 - [v0.5 receiver terminal effects](docs/research/v0.5-receiver-terminal-effects-2026-08-20.md)
 - [v0.5 nil-error return facts](docs/research/v0.5-nil-error-return-facts-2026-08-20.md)
+- [v0.5 required writer finalization](docs/research/writer-not-finalized-rule-admission-2026-08-20.md)
 - [Suppression reference](docs/suppressions.md)
 - [Lint engine and suppressions](docs/spec/lint-engine.md)
 - [Fix safety model](docs/spec/fix-safety.md)

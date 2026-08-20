@@ -104,6 +104,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewUncheckedWriterErrorRule(),
 		rules.NewUnreachableCodeRule(),
 		rules.NewWaitGroupNegativeCounterRule(),
+		rules.NewWriterNotFinalizedRule(),
 	)
 	all = append(all, rules.NewAlmostSwappedRule())
 	registry, err := rules.NewRegistry(all...)

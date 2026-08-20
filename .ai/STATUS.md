@@ -2127,3 +2127,22 @@ external repositories' pre-existing bytes remained unchanged. Five
 56,972-56,987 allocations per operation on Darwin arm64. Portable four-runner
 typed-budget evidence and further high-signal interprocedural error-flow and
 ownership coverage remain active v0.5 work.
+
+The v0.5 required-writer-finalization batch admits `writer-not-finalized` to
+default correctness. Direct tar, gzip, and multipart writer acquisitions become
+obligated only after an exact output-producing method; direct or deferred
+`Close` completes the lifecycle. A missing finalizer reports only on a normal
+return with no error result or an explicit nil built-in error result. Returning,
+sending, storing, passing, capturing, or asynchronously using the writer stays
+conservative, as do aliases, method values, replacement bindings, and unknown
+error results. The specific diagnostic supersedes an exact overlapping
+`resource-not-closed` finding. Focused red regressions covered unknown rule,
+implicit success, transfer forms, diagnostic ownership, and the initially
+omitted tar `AddFS` output path. Exact-rule dogfood remained clean on Glippy,
+`go-libraries/pkg/prompts`, and
+`go-libraries/pkg/http-client`, whose pre-existing bytes remained unchanged.
+Five 100-function samples measured 83.66-86.69 ms, 4.47-5.05 MB, and
+40,229-40,679 allocations per operation on Darwin arm64. The catalog now
+contains 113 rules. Portable four-runner typed-budget evidence and further
+high-signal interprocedural error-flow and ownership coverage remain active
+v0.5 work.

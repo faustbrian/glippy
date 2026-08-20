@@ -283,25 +283,37 @@ func preferSpecificDiagnostics(diagnostics []rules.Diagnostic) []rules.Diagnosti
 		start int
 		end int
 	}
-	mustUseLocations := make(map[diagnosticLocation]struct{})
+	supersededLocations := make(map[string]map[diagnosticLocation]struct{})
 	for _, diagnostic := range diagnostics {
-		if diagnostic.RuleID != "must-use-result" {
+		genericRule := ""
+		switch diagnostic.RuleID {
+		case "must-use-result":
+			genericRule = "discarded-error"
+		case "writer-not-finalized":
+			genericRule = "resource-not-closed"
+		}
+		if genericRule == "" {
 			continue
 		}
-		mustUseLocations[diagnosticLocation{
+		locations := supersededLocations[genericRule]
+		if locations == nil {
+			locations = make(map[diagnosticLocation]struct{})
+			supersededLocations[genericRule] = locations
+		}
+		locations[diagnosticLocation{
 			path: diagnostic.Path,
 			digest: diagnostic.Digest,
 			start: diagnostic.Range.Start,
 			end: diagnostic.Range.End,
 		}] = struct{}{}
 	}
-	if len(mustUseLocations) == 0 {
+	if len(supersededLocations) == 0 {
 		return diagnostics
 	}
 	result := make([]rules.Diagnostic, 0, len(diagnostics))
 	for _, diagnostic := range diagnostics {
-		if diagnostic.RuleID == "discarded-error" {
-			_, superseded := mustUseLocations[diagnosticLocation{
+		if locations := supersededLocations[diagnostic.RuleID]; locations != nil {
+			_, superseded := locations[diagnosticLocation{
 				path: diagnostic.Path,
 				digest: diagnostic.Digest,
 				start: diagnostic.Range.Start,

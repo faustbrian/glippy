@@ -119,6 +119,7 @@ not stable release promises.
 - [unused-result](#unused-result)
 - [waitgroup-misuse](#waitgroup-misuse)
 - [waitgroup-negative-counter](#waitgroup-negative-counter)
+- [writer-not-finalized](#writer-not-finalized)
 - [zero-regexp-match-limit](#zero-regexp-match-limit)
 - [zero-replace-count](#zero-replace-count)
 
@@ -5780,6 +5781,64 @@ group.Done()
 var group sync.WaitGroup
 group.Add(1)
 group.Done()
+```
+
+## writer-not-finalized
+
+detects successful output paths that omit required writer finalization
+
+Archive, compression, and multipart writers can buffer bytes or require trailing framing that is
+emitted only by Close. This rule follows exact standard-library writer acquisitions and reports a
+used writer when a successfully returning path neither finalizes nor transfers it.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: control flow
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- The initial contract covers direct local values from archive/tar.NewWriter,
+  compress/gzip.NewWriter or NewWriterLevel, and mime/multipart.NewWriter.
+- Only exact output-producing receiver methods establish use; construction and configuration alone
+  do not require finalization.
+- For functions returning error, only an explicit nil error result is classified as success; named,
+  delegated, or otherwise unknown results remain conservative.
+- Aliases, fields, containers, closures, method values, asynchronous calls, and transfers stop
+  analysis because exact ownership or execution order is unavailable.
+- No fix is offered because correct finalization and error joining depend on the surrounding return
+  contract.
+
+### Example: Finalize compressed output before returning success
+
+**Incorrect**
+
+```go
+writer := gzip.NewWriter(output)
+_, _ = writer.Write(data)
+return nil
+```
+
+**Correct**
+
+```go
+writer := gzip.NewWriter(output)
+if _, err := writer.Write(data); err != nil { return err }
+return writer.Close()
 ```
 
 ## zero-regexp-match-limit

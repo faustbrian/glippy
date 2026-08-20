@@ -55,8 +55,9 @@ The response and stream lifecycle track has admitted its first two CFG rules:
 terminal error on every normally returning path. Alias and interface expansion
 remains evidence-gated rather than silently increasing either rule to SSA.
 
-The output-integrity track now admits `unchecked-writer-error` and
-`unchecked-csv-writer-error` as default correctness rules. The first reports
+The output-integrity track now admits `unchecked-writer-error`,
+`unchecked-csv-writer-error`, and `writer-not-finalized` as default correctness
+rules. The first reports
 discarded Flush and Close errors from exact standard-library buffered,
 archive, compression, encoding, multipart, and tabular writers whose
 finalizers emit pending bytes or required framing. Ordinary, deferred,
@@ -69,6 +70,14 @@ returning streaming encoders from `encoding/ascii85`, `encoding/base32`, and
 `encoding/base64` are also covered when an exact constructor result remains in
 a stable direct binding through `Close`. Indirect acquisition and reassigned
 interface bindings remain evidence-gated follow-up work.
+
+`writer-not-finalized` covers the distinct missing-finalizer state for direct
+tar, gzip, and multipart writer acquisitions. Exact output-producing method
+calls start the obligation; direct or deferred `Close` completes it. Only
+normal returns with no error result or an explicit nil built-in error result
+count as success. Transfers, aliases, asynchronous calls, and unknown error
+results remain conservative, and the writer-specific diagnostic owns an exact
+overlapping `resource-not-closed` finding.
 
 The first restriction rule, `blank-error-discard`, provides an exact-ID policy
 for projects that prohibit explicit `_ = err` and tuple-error discards. It is
