@@ -331,6 +331,26 @@ func Deferred() (err error) {
 	defer func() { err = errors.New("deferred") }()
 	return nil
 }
+func DeferredPanic() error {
+	defer func() { panic("deferred") }()
+	return nil
+}
+func DeferredHelperPanic() error {
+	defer stopDeferredReturn()
+	return nil
+}
+func stopDeferredReturn() { panic("deferred") }
+`,
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "delegate", "delegate.go"),
+		`package delegate
+
+import "example.com/nilwrapresultfacts/helper"
+
+func Nil() error { return helper.Nil() }
+func TupleNil() (int, error) { return helper.TupleNil() }
 `,
 	)
 	input := `package sample
@@ -338,6 +358,7 @@ func Deferred() (err error) {
 import (
 	"fmt"
 
+	"example.com/nilwrapresultfacts/delegate"
 	"example.com/nilwrapresultfacts/helper"
 )
 
@@ -369,6 +390,15 @@ func tupleImported() error {
 	return fmt.Errorf("tuple: %w", err)
 }
 
+func delegatedImported() error {
+	return fmt.Errorf("delegated imported: %w", delegate.Nil())
+}
+
+func delegatedTupleImported() error {
+	_, err := delegate.TupleNil()
+	return fmt.Errorf("delegated tuple: %w", err)
+}
+
 func failure() error {
 	err := helper.Failure()
 	return fmt.Errorf("failure: %w", err)
@@ -382,6 +412,14 @@ func unknown(err error) error {
 func deferred() error {
 	err := helper.Deferred()
 	return fmt.Errorf("deferred: %w", err)
+}
+
+func deferredPanic() error {
+	return fmt.Errorf("deferred panic: %w", helper.DeferredPanic())
+}
+
+func deferredHelperPanic() error {
+	return fmt.Errorf("deferred helper panic: %w", helper.DeferredHelperPanic())
 }
 
 func dynamic(operation func() error) error {
@@ -440,6 +478,11 @@ func merged(selectLocal bool) error {
 		{call: `fmt.Errorf("imported: %w", err)`, argument: "err"},
 		{call: `fmt.Errorf("direct imported: %w", helper.Nil())`, argument: "helper.Nil()"},
 		{call: `fmt.Errorf("tuple: %w", err)`, argument: "err"},
+		{
+			call: `fmt.Errorf("delegated imported: %w", delegate.Nil())`,
+			argument: "delegate.Nil()",
+		},
+		{call: `fmt.Errorf("delegated tuple: %w", err)`, argument: "err"},
 	}
 	if len(result.Files) != 1 ||
 		result.Files[0].Path != path ||
@@ -595,6 +638,48 @@ func BenchmarkNilErrorWrapPackageAnalysis(b *testing.B) {
 			Presets: []rules.Preset{},
 			Overrides: map[string]rules.Severity{"nil-error-wrap": rules.SeverityWarn},
 			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+		100,
+	)
+}
+
+func BenchmarkDelegatedResultStatePackageAnalysis(b *testing.B) {
+	root := b.TempDir()
+	writeFixture(
+		b,
+		filepath.Join(root, "go.mod"),
+		"module example.com/delegatedresultbenchmark\n\ngo 1.26.0\n",
+	)
+	var input strings.Builder
+	input.WriteString("package sample\nimport \"fmt\"\n")
+	for index := range 100 {
+		fmt.Fprintf(
+			&input,
+			"func base%d() error { return nil }; func delegate%d() error { return base%d() }; func run%d() error { return fmt.Errorf(\"operation: %%w\", delegate%d()) }\n",
+			index,
+			index,
+			index,
+			index,
+			index,
+		)
+	}
+	writeFixture(b, filepath.Join(root, "sample.go"), input.String())
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		b.Fatal(err)
+	}
+	benchmarkPackageRuns(
+		b,
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"nil-error-wrap": rules.SeverityWarn},
+			SourceGoVersion: "go1.26",
 		},
 		analysis.PackageLoadOptions{
 			Dir: root,

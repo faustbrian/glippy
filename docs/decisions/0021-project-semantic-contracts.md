@@ -68,6 +68,12 @@ not configurable: every explicit normal return and every selected package
 variant must agree on one nil-capable result state before an exact static caller
 may consume it.
 
+Exact delegated result-state inference later advances the active representation
+to version 9 and `native-effects-v9`. Static same-type single results and
+same-arity tuples may consume those source-derived summaries through a bounded,
+recursion-rejecting selected-package traversal. Project contracts still cannot
+declare these inferred result states.
+
 Contract files are data only. They do not execute code, provide replacement Go
 types, load runtime plugins, or grant write authority. Syntax-only lint does
 not load type state because contracts are configured. External contracts use

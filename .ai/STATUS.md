@@ -22,6 +22,7 @@
 - v0.5 receiver terminal effects and reachable local-module facts: complete
 - v0.5 unconditional result-state facts and delegated writer success: complete
 - v0.5 unconditional nil-error wrapping facts: complete
+- v0.5 bounded delegated result-state facts: complete
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -2332,3 +2333,26 @@ status remain unchanged. Five 100-function samples measured 88.29-91.71 ms,
 5.55-6.14 MB, and 58,212-58,662 allocations on Darwin arm64. Portable
 four-runner typed-budget evidence and further high-signal interprocedural
 error-flow and ownership coverage remain active v0.5 work.
+
+The v0.5 delegated result-state batch advances the versioned effect component
+to `native-effects-v9`. Exact static single-result calls and same-arity tuple
+returns now reuse unconditional nilness through a bounded 4,096-definition
+selected-package traversal. Dependency layers consume only stable facts already
+intersected across package variants; same-layer definitions resolve lazily.
+Recursive cycles, dynamic calls, result-count or exact-type mismatches, typed
+nil errors, unknown returns, deferred calls proven not to return, and
+unavailable facts remain conservative. The focused red regressions initially
+retained unknown states for direct nil and
+non-nil wrappers, a tuple wrapper, and two cross-package `%w` defects. They now
+prove those acyclic delegates while mutually recursive helpers remain unknown.
+Safety review then reproduced false nil facts for an explicit return followed
+by an always-panicking deferred closure or exact local helper. Result inference
+now shares the no-return predicate and rejects both shapes, plus unreachable
+explicit returns inside functions already proven not to return.
+Exact `nil-error-wrap` and `writer-not-finalized` dogfood remains clean on
+Glippy, `go-libraries/pkg/prompts`, and `go-libraries/pkg/http-client` at
+external revision `127ee12bfa8aa0777716f58618ee8338ba40f0b3`; external bytes
+and pre-existing state remain unchanged. Five 100-chain samples measured
+88.29-92.73 ms, 7.69-8.31 MB, and 78,919-79,415 allocations on Darwin arm64.
+Portable four-runner typed-budget evidence and further high-signal
+interprocedural error-flow and ownership coverage remain active v0.5 work.

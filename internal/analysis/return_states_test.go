@@ -51,8 +51,14 @@ func Indirect(value *Value) (*Value, error) { return &*value, nil }
 
 func NilError() error { return nil }
 func NonNilError() error { return errors.New("failed") }
+func NilTuple() (*Value, error) { return &Value{}, nil }
+func DelegatedNilError() error { return NilError() }
+func DelegatedNonNilError() error { return NonNilError() }
+func DelegatedTuple() (*Value, error) { return NilTuple() }
 func UnknownError(err error) error { return err }
 func RecursiveError() error { return RecursiveError() }
+func MutualErrorA() error { return MutualErrorB() }
+func MutualErrorB() error { return MutualErrorA() }
 func TypedNilError() error {
 	var err *typedError
 	return err
@@ -60,6 +66,23 @@ func TypedNilError() error {
 
 func DeferredNilError() (err error) {
 	defer func() { err = errors.New("deferred") }()
+	return nil
+}
+
+func DeferredPanicNilError() error {
+	defer func() { panic("deferred") }()
+	return nil
+}
+
+func DeferredHelperPanicNilError() error {
+	defer stopDeferredReturn()
+	return nil
+}
+
+func stopDeferredReturn() { panic("deferred") }
+
+func UnreachableNilError() error {
+	stopDeferredReturn()
 	return nil
 }
 
@@ -86,7 +109,9 @@ func Conflicting(found bool) (*Value, error) {
 }
 `,
 	)
-	analysis := newReturnStateAnalysis(context.Background(), []*packages.Package{package_})
+	ctx := context.Background()
+	noReturns := newNoReturnAnalysis(ctx, []*packages.Package{package_}, nil)
+	analysis := newReturnStateAnalysis(ctx, []*packages.Package{package_}, nil, noReturns)
 	analysis.buildAll()
 
 	wantKnown := rules.ReturnStateSummary{
@@ -116,6 +141,18 @@ func Conflicting(found bool) (*Value, error) {
 		got != rules.NilStateNonNil {
 		t.Fatalf("NonNilError result state = %v, want non-nil", got)
 	}
+	if got := resultStateForTest(analysis, package_, "DelegatedNilError", 0);
+		got != rules.NilStateNil {
+		t.Fatalf("DelegatedNilError result state = %v, want nil", got)
+	}
+	if got := resultStateForTest(analysis, package_, "DelegatedNonNilError", 0);
+		got != rules.NilStateNonNil {
+		t.Fatalf("DelegatedNonNilError result state = %v, want non-nil", got)
+	}
+	if got := resultStateForTest(analysis, package_, "DelegatedTuple", 1);
+		got != rules.NilStateNil {
+		t.Fatalf("DelegatedTuple error result state = %v, want nil", got)
+	}
 	if got := resultStateForTest(analysis, package_, "Known", 1); got != rules.NilStateUnknown {
 		t.Fatalf("Known error result state = %v, want unknown", got)
 	}
@@ -123,8 +160,13 @@ func Conflicting(found bool) (*Value, error) {
 		[]string{
 			"UnknownError",
 			"RecursiveError",
+			"MutualErrorA",
+			"MutualErrorB",
 			"TypedNilError",
 			"DeferredNilError",
+			"DeferredPanicNilError",
+			"DeferredHelperPanicNilError",
+			"UnreachableNilError",
 			"AddressEscapedNilError",
 			"ConflictingError",
 		} {
@@ -152,7 +194,8 @@ func Lookup() (*Value, error) { return &Value{}, nil }
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	analysis := newReturnStateAnalysis(ctx, []*packages.Package{package_})
+	noReturns := newNoReturnAnalysis(ctx, []*packages.Package{package_}, nil)
+	analysis := newReturnStateAnalysis(ctx, []*packages.Package{package_}, nil, noReturns)
 	analysis.buildAll()
 	if len(analysis.summaries) != 0 || len(analysis.resultStates) != 0 {
 		t.Fatalf(

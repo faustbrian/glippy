@@ -75,7 +75,7 @@ func RunControlFlow(
 			return nil, err
 		}
 		effects.addCleanupManagedResults(managedResults)
-		returnStates := newReturnStateAnalysis(ctx, packages_)
+		returnStates := newReturnStateAnalysis(ctx, packages_, effects, noReturns)
 		returnStates.buildResultStates()
 		if err := ctx.Err(); err != nil {
 			return nil, err

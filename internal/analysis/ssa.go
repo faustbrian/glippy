@@ -74,7 +74,7 @@ func RunSSA(
 	noReturns := newNoReturnAnalysis(ctx, ssaInputs, loaded.effectFacts)
 	effects := cloneNativeEffectFacts(loaded.effectFacts)
 	if loaded.effectFacts != nil {
-		returnStates := newReturnStateAnalysis(ctx, ssaInputs)
+		returnStates := newReturnStateAnalysis(ctx, ssaInputs, effects, noReturns)
 		returnStates.buildAll()
 		effects.addReturnStates(returnStates)
 		effects.addResultStates(returnStates)

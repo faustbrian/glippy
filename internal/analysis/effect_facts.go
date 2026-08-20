@@ -15,7 +15,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const nativeEffectFactSchemaVersion = 8
+const nativeEffectFactSchemaVersion = 9
 
 type returnStateKey struct {
 	value int
@@ -925,7 +925,7 @@ func loadNativeEffectFacts(
 			return nil, err
 		}
 		facts.addCleanupManagedResults(managedResults)
-		returnStates := newReturnStateAnalysis(ctx, layers[index])
+		returnStates := newReturnStateAnalysis(ctx, layers[index], facts, analysis)
 		returnStates.buildAll()
 		facts.addReturnStates(returnStates)
 		facts.addResultStates(returnStates)

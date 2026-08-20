@@ -6,15 +6,24 @@ import (
 	"go/types"
 
 	"github.com/faustbrian/glippy/internal/rules"
+	"golang.org/x/tools/go/cfg"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/types/typeutil"
 )
 
+const maxResultStateBuildDepth = 4096
+
 type returnStateAnalysis struct {
 	ctx context.Context
+	effects *nativeEffectFacts
+	noReturns *noReturnAnalysis
 	summaries map[*types.Func]map[returnStateKey]rules.ReturnStateSummary
 	resultStates map[*types.Func]map[int]rules.NilState
 	definitions []returnStateDefinition
+	definitionsByFunction map[*types.Func]*returnStateDefinition
+	resultStatesBuilt map[*types.Func]bool
+	resultStatesStarted map[*types.Func]bool
+	buildDepth int
 }
 
 type returnStateDefinition struct {
@@ -27,12 +36,19 @@ type returnStateDefinition struct {
 func newReturnStateAnalysis(
 	ctx context.Context,
 	packages_ []*packages.Package,
+	effects *nativeEffectFacts,
+	noReturns *noReturnAnalysis,
 ) *returnStateAnalysis {
 	analysis := &returnStateAnalysis{
 		ctx: ctx,
+		effects: effects,
+		noReturns: noReturns,
 		summaries: make(map[*types.Func]map[returnStateKey]rules.ReturnStateSummary),
 		resultStates: make(map[*types.Func]map[int]rules.NilState),
 		definitions: make([]returnStateDefinition, 0),
+		definitionsByFunction: make(map[*types.Func]*returnStateDefinition),
+		resultStatesBuilt: make(map[*types.Func]bool),
+		resultStatesStarted: make(map[*types.Func]bool),
 	}
 	for _, pkg := range packages_ {
 		if ctx == nil || ctx.Err() != nil {
@@ -61,17 +77,19 @@ func newReturnStateAnalysis(
 				if signature == nil {
 					continue
 				}
-				analysis.definitions = append(
-					analysis.definitions,
-					returnStateDefinition{
-						function: object,
-						declaration: function,
-						signature: signature,
-						info: pkg.TypesInfo,
-					},
-				)
+				definition := returnStateDefinition{
+					function: object,
+					declaration: function,
+					signature: signature,
+					info: pkg.TypesInfo,
+				}
+				analysis.definitions = append(analysis.definitions, definition)
 			}
 		}
+	}
+	for index := range analysis.definitions {
+		definition := &analysis.definitions[index]
+		analysis.definitionsByFunction[definition.function] = definition
 	}
 	return analysis
 }
@@ -80,10 +98,11 @@ func (a *returnStateAnalysis) buildAll() {
 	if a == nil || a.ctx == nil {
 		return
 	}
-	for _, definition := range a.definitions {
+	for index := range a.definitions {
 		if a.ctx.Err() != nil {
 			return
 		}
+		definition := &a.definitions[index]
 		summaries := summarizeReturnStates(
 			definition.declaration,
 			definition.signature,
@@ -92,14 +111,7 @@ func (a *returnStateAnalysis) buildAll() {
 		if len(summaries) != 0 {
 			a.summaries[definition.function] = summaries
 		}
-		states := summarizeResultStates(
-			definition.declaration,
-			definition.signature,
-			definition.info,
-		)
-		if len(states) != 0 {
-			a.resultStates[definition.function] = states
-		}
+		a.buildDefinitionResultStates(definition)
 	}
 }
 
@@ -107,22 +119,54 @@ func (a *returnStateAnalysis) buildResultStates() {
 	if a == nil || a.ctx == nil {
 		return
 	}
-	for _, definition := range a.definitions {
+	for index := range a.definitions {
 		if a.ctx.Err() != nil {
 			return
 		}
-		states := summarizeResultStates(
-			definition.declaration,
-			definition.signature,
-			definition.info,
-		)
-		if len(states) != 0 {
-			a.resultStates[definition.function] = states
-		}
+		a.buildDefinitionResultStates(&a.definitions[index])
 	}
 }
 
-func summarizeResultStates(
+func (a *returnStateAnalysis) buildDefinitionResultStates(
+	definition *returnStateDefinition,
+) map[int]rules.NilState {
+	if a == nil ||
+		definition == nil ||
+		definition.function == nil ||
+		a.ctx == nil ||
+		a.ctx.Err() != nil ||
+		a.buildDepth >= maxResultStateBuildDepth {
+		return nil
+	}
+	if a.resultStatesBuilt[definition.function] {
+		return a.resultStates[definition.function]
+	}
+	if a.noReturns != nil && a.noReturns.noReturn(definition.function) {
+		a.resultStatesBuilt[definition.function] = true
+		return nil
+	}
+	if a.resultStatesStarted[definition.function] {
+		return nil
+	}
+	a.resultStatesStarted[definition.function] = true
+	a.buildDepth++
+	defer func() {
+		a.buildDepth--
+		delete(a.resultStatesStarted, definition.function)
+	}()
+	states := a.summarizeResultStates(
+		definition.declaration,
+		definition.signature,
+		definition.info,
+	)
+	if len(states) != 0 {
+		a.resultStates[definition.function] = states
+	}
+	a.resultStatesBuilt[definition.function] = true
+	return states
+}
+
+func (a *returnStateAnalysis) summarizeResultStates(
 	function *ast.FuncDecl,
 	signature *types.Signature,
 	info *types.Info,
@@ -132,6 +176,9 @@ func summarizeResultStates(
 	}
 	results := signature.Results()
 	if results == nil || results.Len() == 0 {
+		return nil
+	}
+	if a.hasDeferredNoReturn(function.Body, info) {
 		return nil
 	}
 	returns := explicitFunctionReturns(function.Body)
@@ -148,12 +195,70 @@ func summarizeResultStates(
 		if namedResultMayChangeAfterReturn(function.Body, result, info) {
 			continue
 		}
-		state := aggregateResultState(returns, results.Len(), index, resultType, info)
+		state := a.aggregateResultState(returns, results.Len(), index, resultType, info)
 		if state != rules.NilStateUnknown {
 			states[index] = state
 		}
 	}
 	return states
+}
+
+func (a *returnStateAnalysis) hasDeferredNoReturn(body *ast.BlockStmt, info *types.Info) bool {
+	if body == nil || info == nil {
+		return false
+	}
+	found := false
+	ast.Inspect(
+		body,
+		func(node ast.Node) bool {
+			if found || node == nil {
+				return false
+			}
+			if _, nested := node.(*ast.FuncLit); nested {
+				return false
+			}
+			deferred, ok := node.(*ast.DeferStmt)
+			if !ok || deferred.Call == nil {
+				return true
+			}
+			found = !a.resultStateCallMayReturn(deferred.Call, info, 0)
+			return !found
+		},
+	)
+	return found
+}
+
+func (a *returnStateAnalysis) resultStateCallMayReturn(
+	call *ast.CallExpr,
+	info *types.Info,
+	depth int,
+) bool {
+	if call == nil || info == nil || depth >= maxResultStateBuildDepth {
+		return true
+	}
+	if literal, ok := ast.Unparen(call.Fun).(*ast.FuncLit); ok {
+		graph := cfg.New(
+			literal.Body,
+			func(nested *ast.CallExpr) bool {
+				return a.resultStateCallMayReturn(nested, info, depth + 1)
+			},
+		)
+		return !graph.NoReturn()
+	}
+	identifier, _ := ast.Unparen(call.Fun).(*ast.Ident)
+	builtin, _ := info.ObjectOf(identifier).(*types.Builtin)
+	if builtin != nil && builtin.Name() == "panic" {
+		return false
+	}
+	function := typeutil.StaticCallee(info, call)
+	if function == nil {
+		return true
+	}
+	if a.noReturns != nil {
+		return !a.noReturns.noReturn(function)
+	}
+	return !isAuthoritativeNoReturn(function) &&
+		(a.effects == nil || !a.effects.noReturn(function))
 }
 
 func namedResultMayChangeAfterReturn(
@@ -218,7 +323,7 @@ func directSyntaxObject(expression ast.Expr, info *types.Info) types.Object {
 	return info.ObjectOf(identifier)
 }
 
-func aggregateResultState(
+func (a *returnStateAnalysis) aggregateResultState(
 	returns []*ast.ReturnStmt,
 	resultCount int,
 	resultIndex int,
@@ -227,16 +332,34 @@ func aggregateResultState(
 ) rules.NilState {
 	state := rules.NilStateUnknown
 	for _, returned := range returns {
-		if returned == nil ||
-			len(returned.Results) != resultCount ||
-			resultIndex >= len(returned.Results) {
+		if returned == nil || len(returned.Results) == 0 {
 			return rules.NilStateUnknown
 		}
-		candidate := classifyResultExpression(
-			returned.Results[resultIndex],
-			resultType,
-			info,
-		)
+		var candidate rules.NilState
+		switch {
+		case len(returned.Results) == resultCount && resultIndex < len(returned.Results):
+			expression := returned.Results[resultIndex]
+			candidate = classifyResultExpression(expression, resultType, info)
+			if candidate == rules.NilStateUnknown {
+				candidate = a.delegatedResultState(
+					expression,
+					0,
+					1,
+					resultType,
+					info,
+				)
+			}
+		case len(returned.Results) == 1:
+			candidate = a.delegatedResultState(
+				returned.Results[0],
+				resultIndex,
+				resultCount,
+				resultType,
+				info,
+			)
+		default:
+			return rules.NilStateUnknown
+		}
 		if candidate == rules.NilStateUnknown {
 			return rules.NilStateUnknown
 		}
@@ -246,6 +369,38 @@ func aggregateResultState(
 		state = candidate
 	}
 	return state
+}
+
+func (a *returnStateAnalysis) delegatedResultState(
+	expression ast.Expr,
+	resultIndex int,
+	wantResults int,
+	wantType types.Type,
+	info *types.Info,
+) rules.NilState {
+	call, _ := ast.Unparen(expression).(*ast.CallExpr)
+	if call == nil || info == nil || resultIndex < 0 || wantResults <= 0 || wantType == nil {
+		return rules.NilStateUnknown
+	}
+	function := typeutil.StaticCallee(info, call)
+	if function == nil {
+		return rules.NilStateUnknown
+	}
+	signature, _ := types.Unalias(function.Type()).(*types.Signature)
+	if signature == nil ||
+		signature.Results() == nil ||
+		signature.Results().Len() != wantResults ||
+		resultIndex >= signature.Results().Len() ||
+		!types.Identical(signature.Results().At(resultIndex).Type(), wantType) {
+		return rules.NilStateUnknown
+	}
+	if definition := a.definitionsByFunction[function]; definition != nil {
+		return a.buildDefinitionResultStates(definition)[resultIndex]
+	}
+	if a.effects == nil {
+		return rules.NilStateUnknown
+	}
+	return a.effects.ResultState(function, resultIndex)
 }
 
 func classifyResultExpression(

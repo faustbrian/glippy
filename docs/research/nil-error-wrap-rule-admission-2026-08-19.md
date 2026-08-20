@@ -70,9 +70,10 @@ operands remain conservative. The later v0.5 extension consumes already proven
 selected-module return-state facts for direct tuple results; it does not infer
 new relationships inside the rule. The later unconditional-result extension
 also accepts one exact static call or tuple extraction when every explicit
-normal return proves that built-in error result nil. Phis, dynamic calls,
-recursive or delegated helper results, typed nil errors, conflicting package
-variants, and named results captured or exposed by address remain conservative.
+normal return proves that built-in error result nil. Exact selected-package
+delegation may reuse that proof through a bounded recursion-rejecting traversal.
+Phis, dynamic calls, recursive helper cycles, typed nil errors, conflicting
+package variants, and named results captured or exposed by address remain conservative.
 No fix is registered because the intended repair may return nil, remove
 wrapping, select a different error, construct a new error, or alter the
 surrounding branch.

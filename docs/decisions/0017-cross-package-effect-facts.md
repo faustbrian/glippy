@@ -87,6 +87,15 @@ state or the fact is discarded. This lets an exact static caller classify a
 delegated error result without retaining dependency syntax or process-local
 type identity.
 
+The 2026-08-20 delegated result-state refinement advances the active schema and
+cache component to `native-effects-v9`. Exact static single-result calls and
+same-arity tuple returns may reuse an already proven per-result state through a
+bounded 4,096-definition traversal. Same-layer definitions resolve lazily;
+dependency layers consume only stable facts already intersected across package
+variants. Recursive cycles, dynamic calls, type mismatches, unavailable facts,
+functions or deferred calls proven not to return, and every previously unknown
+result remain unknown.
+
 ## Alternatives
 
 - Load the complete dependency syntax closure with `packages.NeedDeps`:

@@ -3172,8 +3172,9 @@ None.
   dominates the call, exact static helper results proven nil on every explicit normal return, and
   exact sibling-result states that contradict every non-nil-error return from a selected local
   helper.
-- Unconditional result proof requires a direct SSA call or tuple extraction; phis, dynamic calls,
-  recursive or delegated helper results, typed nil errors, captured or address-taken named results,
+- Unconditional result proof requires a direct SSA call or tuple extraction; exact static delegation
+  may cross selected local-source packages through a bounded recursion-rejecting summary. Phis,
+  dynamic calls, recursive helper cycles, typed nil errors, captured or address-taken named results,
   conflicting returns, and unavailable dependency facts remain conservative. Relational return-state
   proof still requires a direct tuple result and an exact sibling nil comparison.
 - Only values with the exact built-in error interface type are tracked; typed nil pointers and
@@ -5836,9 +5837,10 @@ None.
 - A function with one named error result may classify a bare return or that exact result as
   successful only while CFG dataflow proves nil from zero initialization, direct nil or self
   assignment, or an exact == nil or != nil edge. An exact statically resolved delegated call is
-  successful only when every explicit normal return of the selected local helper proves that error
-  result nil. Compound conditions, address escape, closure capture, multiple errors, dynamic or
-  recursive delegation, typed nil errors, and unknown joins remain conservative.
+  successful only when every explicit normal return of the selected local helper or bounded
+  delegation chain proves that error result nil. Compound conditions, address escape, closure
+  capture, multiple errors, dynamic calls, recursive delegation, typed nil errors, and unknown joins
+  remain conservative.
 - Aliases, fields, containers, closures, method values, asynchronous calls, and transfers stop
   analysis because exact ownership or execution order is unavailable.
 - One constructor call must supply the declaration or assignment values; parallel multi-expression

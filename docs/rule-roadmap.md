@@ -279,14 +279,15 @@ another existing default tool already owns the problem well enough.
 The first priority now has versioned no-return, parameter-effect,
 receiver-effect, and returned nil/error facts. Enabled CFG and SSA consumers
 summarize selected local-source module helpers through stable function
-identities without retaining dependency source as lint targets. The resource,
-HTTP-body, transaction, and cancellation lifecycle rules
+identities without retaining dependency source as lint targets. Exact
+unconditional result states may cross bounded static delegation chains. The
+resource, HTTP-body, transaction, and cancellation lifecycle rules
 distinguish proven borrowing from guaranteed completion, invocation, or
 ownership transfer on every normally returning path. `nilness` consumes exact
 returned relationships for direct uses dominated by error checks. Broader
-aliasing, delegated results, workspace modules outside the selected import
-graph, and downloaded third-party packages remain outside the admitted boundary
-rather than being inferred from names.
+aliasing, delegated relational results, workspace modules outside the selected
+import graph, and downloaded third-party packages remain outside the admitted
+boundary rather than being inferred from names.
 
 Opt-in `lint/check --stats` now exposes package-loading versus analysis cost,
 per-tier and per-rule process-local measurements, cache outcomes, final finding
