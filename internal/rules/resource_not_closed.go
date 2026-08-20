@@ -29,7 +29,7 @@ func (resourceNotClosedRule) Metadata() Metadata {
 	return Metadata{
 		ID: "resource-not-closed",
 		Summary: "detects locally owned closers that are neither closed nor transferred",
-		Documentation: "A call result with a conventional Close method usually owns a file, connection, compressor, or similar resource. A locally owned result that reaches a normal return without being closed or transferred can retain descriptors, connections, buffers, or other external state until process termination or garbage collection. Exact nil-result branches carry no ownership obligation. Versioned parameter-effect, returned-alias, and cleanup-managed-result summaries distinguish retained obligations from guaranteed closure, ownership transfer, or test-lifetime cleanup.",
+		Documentation: "A call result with a conventional Close method usually owns a file, connection, compressor, or similar resource. A locally owned result that reaches a normal return without being closed or transferred can retain descriptors, connections, buffers, or other external state until process termination or garbage collection. Exact nil-result branches carry no ownership obligation. Versioned parameter-effect, receiver-effect, returned-alias, and cleanup-managed-result summaries distinguish retained obligations from guaranteed closure, ownership transfer, or test-lifetime cleanup.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
@@ -38,9 +38,10 @@ func (resourceNotClosedRule) Metadata() Metadata {
 		Categories: []Category{CategoryCorrectness, CategorySafety, CategorySuspicious},
 		KnownLimitations: []string{
 			"Only direct resource == nil and resource != nil conditions discharge the nil branch; compound nilness, aliases, and indirect comparisons remain conservative.",
-			"A statically resolved same-module helper that provably borrows the resource leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
+			"A statically resolved helper in a selected local-source module that provably borrows the resource leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
 			"An exact returned-alias contract preserves the obligation when the result is assigned back to the same resource variable; new alias bindings remain outside the tracked ownership identity.",
-			"Cleanup-managed results require one stable direct local result, an exact testing.T Cleanup call on a pointer receiver with a function-literal callback, and direct or helper-proven Close on every normally returning callback path. Copied testing.T values, conditional registration or closure, asynchronous or nested closure, reassignment, aliases, and non-testing cleanup APIs remain conservative.",
+			"Cleanup-managed results require one stable direct local result, an exact testing.T Cleanup call on a pointer receiver with a function-literal callback, and direct, parameter-effect, or receiver-effect proven Close on every normally returning callback path. Copied testing.T values, conditional registration or closure, asynchronous or nested closure, reassignment, aliases, and non-testing cleanup APIs remain conservative.",
+			"Receiver effects require a direct method selection; a promoted method does not prove an effect for the outer receiver value.",
 			"Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules retain the conservative ownership-transfer behavior when no summary is available.",
 			"Pipes returned by os/exec.Cmd are owned by Cmd.Start and Cmd.Wait under the standard-library contract and are not treated as caller-owned closers.",
 			"Cleanup and ownership transfer must cover every normally returning path after a conventional acquisition guard when one is present.",

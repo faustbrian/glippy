@@ -3,6 +3,7 @@ package analysis
 import (
 	"context"
 	"go/ast"
+	"go/token"
 	"go/types"
 
 	"github.com/faustbrian/glippy/internal/rules"
@@ -18,6 +19,9 @@ type parameterEffectDefinition struct {
 	signature *types.Signature
 	summaries map[int]rules.ParameterEffectSummary
 	started map[int]bool
+	receiver rules.ParameterEffectSummary
+	receiverBuilt bool
+	receiverStarted bool
 }
 
 type parameterEffectAnalysis struct {
@@ -83,15 +87,61 @@ func (a *parameterEffectAnalysis) buildAll() {
 		if a.ctx.Err() != nil {
 			return
 		}
-		if definition == nil ||
-			definition.signature == nil ||
-			definition.signature.Params() == nil {
+		if definition == nil || definition.signature == nil {
+			continue
+		}
+		if definition.signature.Recv() != nil {
+			a.buildReceiver(definition)
+		}
+		if definition.signature.Params() == nil {
 			continue
 		}
 		for index := range definition.signature.Params().Len() {
 			a.build(definition, index)
 		}
 	}
+}
+
+func (a *parameterEffectAnalysis) receiverSummary(
+	function *types.Func,
+) rules.ParameterEffectSummary {
+	if a == nil || function == nil {
+		return rules.ParameterEffectSummary{}
+	}
+	if definition := a.definitions[function]; definition != nil {
+		return a.buildReceiver(definition)
+	}
+	return a.effects.ReceiverEffect(function)
+}
+
+func (a *parameterEffectAnalysis) buildReceiver(
+	definition *parameterEffectDefinition,
+) rules.ParameterEffectSummary {
+	if definition == nil ||
+		definition.signature == nil ||
+		definition.signature.Recv() == nil ||
+		a.ctx.Err() != nil {
+		return rules.ParameterEffectSummary{}
+	}
+	if definition.receiverBuilt {
+		return definition.receiver
+	}
+	if definition.receiverStarted {
+		return rules.ParameterEffectSummary{}
+	}
+	definition.receiverStarted = true
+	defer func() {
+		definition.receiverStarted = false
+	}()
+
+	definition.receiver = a.summarizeParameter(
+		a.graphFor(definition),
+		definition.info,
+		definition.signature.Recv(),
+		true,
+	)
+	definition.receiverBuilt = true
+	return definition.receiver
 }
 
 func (a *parameterEffectAnalysis) summary(
@@ -128,24 +178,29 @@ func (a *parameterEffectAnalysis) build(
 	definition.started[index] = true
 	defer delete(definition.started, index)
 
-	var graph *cfg.CFG
-	if a.noReturns != nil {
-		graph = a.noReturns.graphFor(definition.function, definition.body, definition.info)
-	} else {
-		graph = cfg.New(
-			definition.body,
-			func(*ast.CallExpr) bool {
-				return true
-			},
-		)
-	}
 	summary := a.summarizeParameter(
-		graph,
+		a.graphFor(definition),
 		definition.info,
 		definition.signature.Params().At(index),
+		false,
 	)
 	definition.summaries[index] = summary
 	return summary
+}
+
+func (a *parameterEffectAnalysis) graphFor(definition *parameterEffectDefinition) *cfg.CFG {
+	if definition == nil || definition.body == nil || definition.info == nil {
+		return nil
+	}
+	if a.noReturns != nil {
+		return a.noReturns.graphFor(definition.function, definition.body, definition.info)
+	}
+	return cfg.New(
+		definition.body,
+		func(*ast.CallExpr) bool {
+			return true
+		},
+	)
 }
 
 type parameterEffectWork struct {
@@ -157,6 +212,7 @@ func (a *parameterEffectAnalysis) summarizeParameter(
 	graph *cfg.CFG,
 	info *types.Info,
 	parameter *types.Var,
+	receiver bool,
 ) rules.ParameterEffectSummary {
 	if graph == nil || len(graph.Blocks) == 0 || info == nil || parameter == nil {
 		return rules.ParameterEffectSummary{}
@@ -184,6 +240,7 @@ func (a *parameterEffectAnalysis) summarizeParameter(
 				info,
 				node,
 				parameter,
+				receiver,
 			)
 			if ambiguous {
 				known = false
@@ -233,6 +290,7 @@ func (a *parameterEffectAnalysis) parameterNodeEffect(
 	info *types.Info,
 	node ast.Node,
 	parameter types.Object,
+	receiver bool,
 ) (rules.ParameterEffectKind, rules.ParameterEffectKind, bool) {
 	if asynchronous, ok := node.(*ast.GoStmt);
 		ok && expressionUsesObjectForEffects(info, asynchronous.Call, parameter) {
@@ -273,8 +331,37 @@ func (a *parameterEffectAnalysis) parameterNodeEffect(
 					return false
 				}
 				callee := typeutil.StaticCallee(info, current)
+				receiverObject, receiverArgument := staticCallReceiverArgument(
+					info,
+					current,
+				)
+				if receiverObject == parameter {
+					if callee == nil {
+						if receiver {
+							ambiguous = true
+							return false
+						}
+						return true
+					}
+					summary := a.receiverSummary(callee)
+					if !summary.Known {
+						if receiver {
+							ambiguous = true
+							return false
+						}
+						return true
+					}
+					if summary.Always {
+						effect |= summary.Kinds
+						guaranteed |= summary.GuaranteedKinds
+					}
+				}
 				for index, argument := range current.Args {
 					if directEffectObject(info, argument) != parameter {
+						continue
+					}
+					if receiverObject == parameter &&
+						receiverArgument == index {
 						continue
 					}
 					if callee == nil {
@@ -316,6 +403,14 @@ func (a *parameterEffectAnalysis) parameterNodeEffect(
 					return false
 				}
 			case *ast.AssignStmt:
+				if receiver {
+					for _, target := range current.Lhs {
+						if directEffectObject(info, target) == parameter {
+							ambiguous = true
+							return false
+						}
+					}
+				}
 				for index, expression := range current.Rhs {
 					if directEffectObject(info, expression) != parameter {
 						continue
@@ -370,11 +465,46 @@ func (a *parameterEffectAnalysis) parameterNodeEffect(
 					ambiguous = true
 					return false
 				}
+			case *ast.UnaryExpr:
+				if receiver &&
+					current.Op == token.AND &&
+					directEffectObject(info, current.X) == parameter {
+					ambiguous = true
+					return false
+				}
 			}
 			return true
 		},
 	)
 	return effect, guaranteed, ambiguous
+}
+
+func staticCallReceiverObject(info *types.Info, call *ast.CallExpr) types.Object {
+	object, _ := staticCallReceiverArgument(info, call)
+	return object
+}
+
+func staticCallReceiverArgument(info *types.Info, call *ast.CallExpr) (types.Object, int) {
+	if info == nil || call == nil {
+		return nil, -1
+	}
+	selector, _ := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if selector == nil {
+		return nil, -1
+	}
+	selection := info.Selections[selector]
+	if selection == nil || len(selection.Index()) != 1 {
+		return nil, -1
+	}
+	switch selection.Kind() {
+	case types.MethodVal:
+		return directEffectObject(info, selector.X), -1
+	case types.MethodExpr:
+		if len(call.Args) != 0 {
+			return directEffectObject(info, call.Args[0]), 0
+		}
+	}
+	return nil, -1
 }
 
 func directParameterCompletion(

@@ -19,6 +19,7 @@
 - v0.5 transaction state transition: complete
 - v0.5 channel state transition: complete
 - v0.5 WaitGroup counter state transition: complete
+- v0.5 receiver terminal effects and reachable local-module facts: complete
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -2070,5 +2071,24 @@ Exact-rule dogfood remained clean on Glippy and `go-libraries/pkg/prompts`; an
 exact same-revision `http-client` comparison reduced findings from 22 to 17
 without modifying the external repository. The retained findings remain for
 separate source-specific ownership review. Portable four-runner typed-budget
+evidence and further high-signal interprocedural error-flow and ownership
+coverage remain active v0.5 work.
+
+The v0.5 receiver terminal-effect batch extends the shared CFG effect model from
+ordinary parameters to exact method receivers. Direct `Close` and statically
+resolved receiver delegation can prove closure on every normal path; method
+expressions and parameter helpers consume the same stable summary. Conditional
+or asynchronous closure, early returns, observation-only methods, receiver
+reassignment, aliases, address escape, unresolved recursion, dynamic dispatch,
+and disagreeing package variants remain conservative. Effect source selection
+now includes root modules plus reachable active-workspace and local filesystem
+replacement modules while excluding downloaded dependencies and unrelated
+workspace modules. The deterministic native effect schema and cache component
+advance to version 7. Focused red regressions covered the receiver and workspace
+boundaries. An exact same-revision `go-libraries/pkg/http-client` comparison at
+`0e0240b1fdcefaa73619b8d0a5d0dfc778d9e2f0` reduced findings from 17 to 12 by
+removing exactly the five `newGoCircuitBreakerIntegration` callers whose cleanup
+uses the proven cross-workspace `Breaker.Shutdown` method. The external head and
+pre-existing dirty state remained unchanged. Portable four-runner typed-budget
 evidence and further high-signal interprocedural error-flow and ownership
 coverage remain active v0.5 work.

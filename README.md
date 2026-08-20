@@ -54,8 +54,9 @@ inside formatting, and layout policy is not duplicated as lint noise.
 - **Demand-driven analysis:** syntax-only work does not construct types, CFG,
   or SSA; deeper representations are shared within one package run. CFG and
   SSA consumers share demand-driven no-return and nil/error return summaries,
-  while lifecycle rules consume versioned parameter effects for same-module
-  imported helpers, without retaining dependency syntax as lint targets. Lock
+  while lifecycle rules consume versioned parameter and receiver effects for
+  root modules plus reachable workspace and local replacement modules, without
+  retaining dependency syntax as lint targets. Lock
   rules share one bounded fixed-point state transition over each function CFG,
   distinguish read and write modes, and consume configured blocking-call
   contracts without repeating propagation per rule. Closed-resource analysis
@@ -349,6 +350,7 @@ precise scope.
 - [v0.5 memory-aware SSA package waves](docs/research/v0.5-memory-aware-ssa-waves-2026-08-19.md)
 - [v0.5 project semantic contracts](docs/research/v0.5-project-semantic-contracts-2026-08-16.md)
 - [v0.5 cancellation returned-alias obligations](docs/research/v0.5-returned-alias-cancellation-obligations-2026-08-20.md)
+- [v0.5 receiver terminal effects](docs/research/v0.5-receiver-terminal-effects-2026-08-20.md)
 - [Suppression reference](docs/suppressions.md)
 - [Lint engine and suppressions](docs/spec/lint-engine.md)
 - [Fix safety model](docs/spec/fix-safety.md)

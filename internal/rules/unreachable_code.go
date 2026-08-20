@@ -22,7 +22,7 @@ func (unreachableCodeRule) Metadata() Metadata {
 	return Metadata{
 		ID: "unreachable-code",
 		Summary: "detects statements that execution cannot reach",
-		Documentation: "Statements following an unconditional return, panic, terminating branch, infinite loop, or proven no-return call cannot execute. They often preserve stale work after a refactor or conceal control-flow mistakes. Glippy uses the shared no-return analysis behind its control-flow graph so same-module imported no-return facts participate without retaining dependency source as a lint target.",
+		Documentation: "Statements following an unconditional return, panic, terminating branch, infinite loop, or proven no-return call cannot execute. They often preserve stale work after a refactor or conceal control-flow mistakes. Glippy uses the shared no-return analysis behind its control-flow graph so selected local-source module facts participate without retaining dependency source as a lint target.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetCorrectness},
 		MinimumGoVersion: "1.25",

@@ -59,6 +59,14 @@ functions, reassignment, aliases, and non-testing cleanup APIs remain
 unmanaged. Cleanup registered on a copied `testing.T` value is also unmanaged
 because it is not attached to the test runner's pointer.
 
+The receiver terminal-effect refinement on 2026-08-20 also proves a cleanup
+callback that calls an exact method such as `resource.Shutdown()` when the
+method closes its receiver on every normal path. Known receiver effects
+propagate through statically resolved receiver methods, method expressions, and
+parameter helpers. Reachable active-workspace and local filesystem replacement
+modules now join root modules inside the selected local-source boundary;
+downloaded dependencies and unrelated workspace modules remain excluded.
+
 The rule remains `suspicious`, not `correctness`, because ownership may be
 transferred through conventions it cannot prove. No fix is offered because the
 correct cleanup point and error policy are contextual.

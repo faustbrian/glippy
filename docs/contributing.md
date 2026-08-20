@@ -93,10 +93,10 @@ precision contract:
 Do not request types, CFG, SSA, dependency syntax, effect facts, generated files, or
 type-error packages for implementation convenience. `PackageRule` is a
 types-tier package callback; dependency syntax is available only when its
-metadata declares that need. CFG and SSA rules receive same-module imported
-effects only when their metadata declares that need. Rules report only through source ranges mapped by
-their supplied context. Package-wide findings additionally use the exact
-`PackageFile` owned by that callback.
+metadata declares that need. CFG and SSA rules receive selected local-source
+module effects only when their metadata declares that need. Rules report only
+through source ranges mapped by their supplied context. Package-wide findings
+additionally use the exact `PackageFile` owned by that callback.
 
 Metadata is both the scheduling contract and the canonical source for
 `glippy explain`. It includes the stable ID, summary, full documentation, default

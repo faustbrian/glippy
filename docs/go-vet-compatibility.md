@@ -50,7 +50,7 @@ analyzer as one rule.
 | --- | --- |
 | `loopclosure` | `loop-capture` is native and follows Glippy's supported-source-version and range contract. It is not promised to reproduce every `loopclosure` diagnostic. |
 | `lostcancel` | `context-cancel-leak` is native and uses shared CFG. Package-local summaries and exact standard-library terminal APIs are shared, but Glippy does not reproduce `lostcancel`'s complete transitive dependency-fact graph. |
-| `unreachable` | `unreachable-code` is native and preserves the upstream first-statement and run-despite-errors behavior while using Glippy's shared no-return analysis for same-module imported helpers. |
+| `unreachable` | `unreachable-code` is native and preserves the upstream first-statement and run-despite-errors behavior while using Glippy's shared no-return analysis for selected local-source module helpers. |
 
 These native rules address the same defect families, but they are documented
 differences rather than analyzer-equivalence claims.

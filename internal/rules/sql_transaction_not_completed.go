@@ -35,7 +35,7 @@ func (sqlTransactionNotCompletedRule) Metadata() Metadata {
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"The initial contract recognizes direct database/sql DB.Begin, DB.BeginTx, and Conn.BeginTx assignments followed immediately by an err != nil guard whose body returns.",
-			"A statically resolved same-module helper that provably borrows the transaction leaves the obligation open; guaranteed Commit, Rollback, or transfer must cover every normally returning helper path.",
+			"A statically resolved helper in a selected local-source module that provably borrows the transaction leaves the obligation open; guaranteed Commit, Rollback, or transfer must cover every normally returning helper path.",
 			"An exact returned-alias contract preserves the obligation when the result is assigned back to the same transaction variable; new alias bindings remain outside the tracked ownership identity.",
 			"Dynamic calls, interface dispatch, recursion, wrapper finalizers, and helpers outside selected modules retain the conservative ownership-transfer behavior when no summary is available.",
 			"Generated files and packages with type errors are excluded.",

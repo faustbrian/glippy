@@ -28,7 +28,7 @@ func (httpResponseBodyNotClosedRule) Metadata() Metadata {
 	return Metadata{
 		ID: "http-response-body-not-closed",
 		Summary: "detects HTTP response bodies not closed on every normal return",
-		Documentation: "A successful net/http client request returns a response whose Body must be closed. A locally owned response that reaches a normal return without closing or conservatively transferring its body can leak connections and prevent transport reuse. This rule follows direct package and Client request helpers through the shared control-flow graph after a conventional acquisition-error guard and consumes versioned same-module helper effects.",
+		Documentation: "A successful net/http client request returns a response whose Body must be closed. A locally owned response that reaches a normal return without closing or conservatively transferring its body can leak connections and prevent transport reuse. This rule follows direct package and Client request helpers through the shared control-flow graph after a conventional acquisition-error guard and consumes versioned selected local-source module effects.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
@@ -38,7 +38,7 @@ func (httpResponseBodyNotClosedRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"The initial contract recognizes direct net/http Get, Head, Post, and PostForm functions plus Client.Do, Get, Head, Post, and PostForm methods followed immediately by an err != nil guard whose body returns.",
 			"Returning, passing, sending, storing, or capturing the response transfers ownership. A body argument transfers ownership only when the destination parameter itself has Close() error; passing Body as an io.Reader does not discharge the obligation.",
-			"A statically resolved same-module helper that provably borrows Body leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
+			"A statically resolved helper in a selected local-source module that provably borrows Body leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
 			"Dynamic calls, interface dispatch, recursion, response wrappers, middleware, and helpers outside selected modules retain the conservative transfer behavior when no summary is available.",
 			"Generated files and packages with type errors are excluded.",
 		},

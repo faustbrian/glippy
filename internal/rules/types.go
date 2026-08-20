@@ -671,6 +671,7 @@ func (s ParameterEffectSummary) GuaranteesAny(accepted ParameterEffectKind) bool
 // control-flow rules without exposing dependency source as lint targets.
 type EffectFacts interface {
 	ParameterEffect(*types.Func, int) ParameterEffectSummary
+	ReceiverEffect(*types.Func) ParameterEffectSummary
 	ReturnState(*types.Func, int, int) ReturnStateSummary
 	MustUseResult(*types.Func, int) bool
 	Blocking(*types.Func) bool
@@ -933,6 +934,17 @@ func (c *ControlFlowContext) ParameterEffect(
 		return ParameterEffectSummary{}
 	}
 	return c.effects.ParameterEffect(callee, parameter)
+}
+
+// ReceiverEffect returns the conservative summary for the receiver of one
+// statically resolved method call. Dynamic calls and functions without a
+// receiver are unknown.
+func (c *ControlFlowContext) ReceiverEffect(call *ast.CallExpr) ParameterEffectSummary {
+	callee := c.staticCallee(call)
+	if callee == nil {
+		return ParameterEffectSummary{}
+	}
+	return c.effects.ReceiverEffect(callee)
 }
 
 // MustUse reports whether a configured contract requires one result from a

@@ -74,34 +74,38 @@ mutate those shared values.
 
 A native CFG-tier or SSA-tier rule MAY declare that it requires semantic
 effect facts. No cheaper tier MAY declare that requirement. When at least one
-enabled native rule requires effects, the scheduler MUST load same-module
-imported packages in deterministic dependency layers and derive versioned
-stable function summaries. It MUST seed the same summary set from exact
-configured [project semantic contracts](project-contracts.md) resolved against
+enabled native rule requires effects, the scheduler MUST load imported packages
+from selected root modules, reachable active-workspace modules, and reachable
+versionless local filesystem replacements in deterministic dependency layers
+and derive versioned stable function summaries. Downloaded third-party modules
+and workspace modules outside the selected import graph MUST remain excluded.
+The scheduler MUST seed the same summary set from exact configured
+[project semantic contracts](project-contracts.md) resolved against
 the already-loaded type graph. External contract resolution MUST use export
 type information without requesting dependency source solely for that
 contract. The scheduler MUST install no-return summaries in the shared CFG and
 SSA predicate, expose immutable parameter effects, must-use results, blocking
-operations, returned aliases, and returned nil/error relationships by stable
-function identity and exact indexes. A parameter effect MUST be known
-only when analysis can distinguish a proven borrow from an effect reached on
-every normally returning path. Unknown calls, interface dispatch, unresolved
+operations, returned aliases, cleanup-managed results, receiver effects, and
+returned nil/error relationships by stable function identity and exact indexes.
+A parameter or receiver effect MUST be known only when analysis can distinguish
+a proven borrow from an effect reached on every normally returning path.
+Unknown calls, interface dispatch, unresolved
 recursion, and unsupported aliasing MUST fail closed. A returned-state
 relationship MUST remain unknown unless every explicit return associated with
 the exact built-in error state proves the same nilness. Bare returns,
 delegation, recursion, unknown error construction, and conflicting returns
-MUST fail closed. The scheduler MUST NOT
-retain effect inputs as lint targets or expose their independently loaded type
-objects to rules. Glippy does not infer third-party or unrelated workspace
-module effects from dependency bodies. Exact configured contracts MAY provide
+MUST fail closed. The scheduler MUST NOT retain effect inputs as lint targets
+or expose their independently loaded type objects to rules. Glippy MUST NOT
+infer downloaded third-party or unrelated workspace module effects from
+dependency bodies. Exact configured contracts MAY provide
 those effects when the package is already present in the typed graph and the
 declaration passes the project-contract validation boundary.
 
 The CFG runner MUST construct `golang.org/x/tools/go/cfg` graphs only when at
 least one enabled CFG rule is eligible for the function's file and package. It
 MUST treat calls resolved by `go/types` to the predeclared `panic`, proven
-package-local no-return functions, versioned same-module imported no-return
-summaries requested by an enabled consumer, and the documented exact
+package-local no-return functions, versioned no-return summaries from selected
+local-source modules requested by an enabled consumer, and the documented exact
 standard-library terminal set as non-returning. It MUST conservatively treat
 shadowed `panic` identifiers, dynamic calls, interface dispatch, and imported
 helpers outside those sets as potentially returning. This CFG tier does not
@@ -123,8 +127,9 @@ package exceeding the byte limit remains eligible alone. Shared production
 files in distinct selected test variants MUST be charged once per variant. It
 MUST create dependency package shells from the shared type graph.
 Dependency bodies MUST NOT enter the SSA program. A declared effect-fact
-consumer MAY cause the separate bounded effect summarizer to load same-module
-dependency syntax; unrelated SSA rules MUST NOT trigger that work.
+consumer MAY cause the separate bounded effect summarizer to load dependency
+syntax from selected local-source modules; unrelated SSA rules MUST NOT trigger
+that work.
 
 The SSA runner MUST complete shared no-return and return-state summaries before
 building any package program. It MUST then build selected packages in canonical
@@ -171,8 +176,8 @@ Active package parsing and type checking use the bounded I/O and
 `GOMAXPROCS`-derived CPU scheduling provided by the pinned `go/packages`
 implementation. Glippy MUST NOT start independent package loads or duplicate
 deep representations per rule. The scheduler MAY perform one serialized load
-per same-module effect-dependency layer when an enabled rule declares that
-requirement; the combined root and effect source set MUST remain within the
+per selected local-source effect-dependency layer when an enabled rule declares
+that requirement; the combined root and effect source set MUST remain within the
 ordinary file and byte limits. Native types, CFG, SSA, fact, and cache work
 within one load remains deterministically serialized unless a later bounded
 scheduler has measured memory and ordering evidence.

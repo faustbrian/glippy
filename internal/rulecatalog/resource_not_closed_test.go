@@ -525,6 +525,18 @@ func Open(t *testing.T) *os.File {
 }
 
 func closeFile(file *os.File) { _ = file.Close() }
+
+type Resource struct{}
+
+func (*Resource) Close() error { return nil }
+
+func (resource *Resource) Shutdown() error { return resource.Close() }
+
+func OpenViaReceiver(t *testing.T) *Resource {
+	resource := &Resource{}
+	t.Cleanup(func() { _ = resource.Shutdown() })
+	return resource
+}
 `,
 	)
 	writeFixture(
@@ -541,6 +553,8 @@ import (
 func use(t *testing.T) {
 	file := helper.Open(t)
 	_ = file.Name()
+	resource := helper.OpenViaReceiver(t)
+	_ = resource
 }
 `,
 	)
@@ -569,6 +583,318 @@ func use(t *testing.T) {
 	}
 	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 0 {
 		t.Fatalf("imported cleanup-managed result diagnostics = %#v", result)
+	}
+}
+
+func TestResourceNotClosedRequiresGuaranteedReceiverCleanupEffects(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/receivereffects\n\ngo 1.26.0\n",
+	)
+	input := `package sample
+
+import (
+	"context"
+	"testing"
+)
+
+type resource struct{}
+
+func (*resource) Close() error { return nil }
+
+type innerResource struct{}
+
+func (*innerResource) Close() error { return nil }
+
+func (value *innerResource) Shutdown(context.Context) error { return value.Close() }
+
+type promotedResource struct{ *innerResource }
+
+func (*promotedResource) Close() error { return nil }
+
+func (value *resource) Shutdown(context.Context) error { return value.Close() }
+
+func (value *resource) DelegatedShutdown(ctx context.Context) error {
+	return value.Shutdown(ctx)
+}
+
+func closeThroughReceiver(value *resource) {
+	_ = value.Shutdown(context.Background())
+}
+
+func (value *resource) ConditionalShutdown(closeNow bool) {
+	if closeNow { _ = value.Close() }
+}
+
+func (value *resource) AsynchronousShutdown() { go value.Close() }
+
+func (value *resource) AliasedShutdown() {
+	alias := value
+	_ = alias.Close()
+}
+
+func (value *resource) ReassignedShutdown() {
+	value = &resource{}
+	_ = value.Close()
+}
+
+func replaceResource(value **resource) { *value = &resource{} }
+
+func (value *resource) EscapedShutdown() {
+	replaceResource(&value)
+	_ = value.Close()
+}
+
+func (*resource) Observe() {}
+
+func (value *resource) EarlyReturnShutdown(skip bool) {
+	if skip { return }
+	_ = value.Close()
+}
+
+type dynamicResource interface {
+	Close() error
+	Shutdown(context.Context) error
+}
+
+func directManaged(t *testing.T) *resource {
+	value := &resource{}
+	t.Cleanup(func() { _ = value.Shutdown(context.Background()) })
+	return value
+}
+
+func delegatedManaged(t *testing.T) *resource {
+	value := &resource{}
+	t.Cleanup(func() { _ = value.DelegatedShutdown(context.Background()) })
+	return value
+}
+
+func methodExpressionManaged(t *testing.T) *resource {
+	value := &resource{}
+	t.Cleanup(func() { _ = (*resource).Shutdown(value, context.Background()) })
+	return value
+}
+
+func parameterDelegatedManaged(t *testing.T) *resource {
+	value := &resource{}
+	t.Cleanup(func() { closeThroughReceiver(value) })
+	return value
+}
+
+func conditionalUnmanaged(t *testing.T) *resource {
+	value := &resource{}
+	t.Cleanup(func() { value.ConditionalShutdown(false) })
+	return value
+}
+
+func asynchronousUnmanaged(t *testing.T) *resource {
+	value := &resource{}
+	t.Cleanup(func() { value.AsynchronousShutdown() })
+	return value
+}
+
+func aliasedUnmanaged(t *testing.T) *resource {
+	value := &resource{}
+	t.Cleanup(func() { value.AliasedShutdown() })
+	return value
+}
+
+func reassignedUnmanaged(t *testing.T) *resource {
+	value := &resource{}
+	t.Cleanup(func() { value.ReassignedShutdown() })
+	return value
+}
+
+func escapedUnmanaged(t *testing.T) *resource {
+	value := &resource{}
+	t.Cleanup(func() { value.EscapedShutdown() })
+	return value
+}
+
+func observedUnmanaged(t *testing.T) *resource {
+	value := &resource{}
+	t.Cleanup(func() { value.Observe() })
+	return value
+}
+
+func earlyReturnUnmanaged(t *testing.T) *resource {
+	value := &resource{}
+	t.Cleanup(func() { value.EarlyReturnShutdown(true) })
+	return value
+}
+
+func dynamicUnmanaged(t *testing.T) dynamicResource {
+	var value dynamicResource = &resource{}
+	t.Cleanup(func() { _ = value.Shutdown(context.Background()) })
+	return value
+}
+
+func promotedUnmanaged(t *testing.T) *promotedResource {
+	value := &promotedResource{innerResource: &innerResource{}}
+	t.Cleanup(func() { _ = value.Shutdown(context.Background()) })
+	return value
+}
+
+func use(t *testing.T) {
+	direct := directManaged(t)
+	_ = direct
+	delegated := delegatedManaged(t)
+	_ = delegated
+	methodExpression := methodExpressionManaged(t)
+	_ = methodExpression
+	parameterDelegated := parameterDelegatedManaged(t)
+	_ = parameterDelegated
+	conditional := conditionalUnmanaged(t)
+	_ = conditional
+	asynchronous := asynchronousUnmanaged(t)
+	_ = asynchronous
+	aliased := aliasedUnmanaged(t)
+	_ = aliased
+	reassigned := reassignedUnmanaged(t)
+	_ = reassigned
+	escaped := escapedUnmanaged(t)
+	_ = escaped
+	observed := observedUnmanaged(t)
+	_ = observed
+	earlyReturn := earlyReturnUnmanaged(t)
+	_ = earlyReturn
+	dynamic := dynamicUnmanaged(t)
+	_ = dynamic
+	promoted := promotedUnmanaged(t)
+	_ = promoted
+}
+`
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"resource-not-closed": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 9 {
+		t.Fatalf("receiver cleanup diagnostics = %#v", result)
+	}
+	want := map[int]string{
+		strings.Index(input, "conditional := conditionalUnmanaged"): "conditional",
+		strings.Index(input, "asynchronous := asynchronousUnmanaged"): "asynchronous",
+		strings.Index(input, "aliased := aliasedUnmanaged"): "aliased",
+		strings.Index(input, "reassigned := reassignedUnmanaged"): "reassigned",
+		strings.Index(input, "escaped := escapedUnmanaged"): "escaped",
+		strings.Index(input, "observed := observedUnmanaged"): "observed",
+		strings.Index(input, "earlyReturn := earlyReturnUnmanaged"): "earlyReturn",
+		strings.Index(input, "dynamic := dynamicUnmanaged"): "dynamic",
+		strings.Index(input, "promoted := promotedUnmanaged"): "promoted",
+	}
+	for _, diagnostic := range result.Files[0].Diagnostics {
+		name, found := want[diagnostic.Range.Start]
+		if !found || diagnostic.Range.End != diagnostic.Range.Start + len(name) {
+			t.Fatalf("receiver cleanup diagnostic = %#v", diagnostic)
+		}
+		delete(want, diagnostic.Range.Start)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing receiver cleanup diagnostics = %#v", want)
+	}
+}
+
+func TestResourceNotClosedUsesReachableWorkspaceModuleReceiverEffects(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := filepath.Join(root, "app")
+	helper := filepath.Join(root, "helper")
+	writeFixture(
+		t,
+		filepath.Join(root, "go.work"),
+		"go 1.26.0\n\nuse (\n\t./app\n\t./helper\n)\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(app, "go.mod"),
+		"module example.com/app\n\ngo 1.26.0\n\nrequire example.com/helper v0.0.0\n",
+	)
+	writeFixture(t, filepath.Join(helper, "go.mod"), "module example.com/helper\n\ngo 1.26.0\n")
+	writeFixture(
+		t,
+		filepath.Join(helper, "helper.go"),
+		`package helper
+
+type Resource struct{}
+
+func (*Resource) Close() error { return nil }
+
+func (resource *Resource) Shutdown() error { return resource.Close() }
+`,
+	)
+	writeFixture(
+		t,
+		filepath.Join(app, "sample.go"),
+		`package app
+
+import (
+	"testing"
+
+	"example.com/helper"
+)
+
+func open(t *testing.T) *helper.Resource {
+	resource := &helper.Resource{}
+	t.Cleanup(func() { _ = resource.Shutdown() })
+	return resource
+}
+
+func use(t *testing.T) {
+	resource := open(t)
+	_ = resource
+}
+`,
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"resource-not-closed": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: app,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 0 {
+		t.Fatalf("workspace receiver cleanup diagnostics = %#v", result)
 	}
 }
 

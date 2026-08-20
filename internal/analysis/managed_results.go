@@ -296,12 +296,17 @@ func (a *managedResultAnalysis) localObjectIsAliasedOrEscaped(
 						continue
 					}
 					if cleanupCallbacks[callback] &&
-						a.callArgumentGuaranteesClose(
+						(a.callArgumentGuaranteesClose(
 							info,
 							node,
 							object,
 							argument,
-						) {
+						) ||
+							a.callReceiverGuaranteesClose(
+								info,
+								node,
+								object,
+							)) {
 						continue
 					}
 					unstable = true
@@ -585,6 +590,10 @@ func (a *managedResultAnalysis) nodeClosesObject(
 				closed = true
 				return false
 			}
+			if a.callReceiverGuaranteesClose(info, call, object) {
+				closed = true
+				return false
+			}
 			callee := typeutil.StaticCallee(info, call)
 			if callee == nil {
 				return true
@@ -602,6 +611,20 @@ func (a *managedResultAnalysis) nodeClosesObject(
 		},
 	)
 	return closed
+}
+
+func (a *managedResultAnalysis) callReceiverGuaranteesClose(
+	info *types.Info,
+	call *ast.CallExpr,
+	object types.Object,
+) bool {
+	if info == nil || call == nil || object == nil || a.effects == nil {
+		return false
+	}
+	callee := typeutil.StaticCallee(info, call)
+	return callee != nil &&
+		staticCallReceiverObject(info, call) == object &&
+		a.effects.ReceiverEffect(callee).GuaranteesAny(rules.ParameterEffectClose)
 }
 
 func (a *managedResultAnalysis) callArgumentGuaranteesClose(

@@ -155,12 +155,12 @@ CFG or SSA rule declares effect-fact requirements, Glippy resolves the same
 immutable contract snapshot against the selected type graph.
 
 Configured effects seed the shared native effect set before source-derived
-same-module inference. An exact configured parameter or returned-state record
-is authoritative for that record; source-derived analysis MAY fill only
-unstated records. No-return, must-use, blocking, and alias records are additive
-exact facts. External dependency contracts resolve through export type
-information and MUST NOT require dependency source loading solely for contract
-resolution.
+selected local-source module inference. An exact configured parameter or
+returned-state record is authoritative for that record; source-derived analysis
+MAY fill only unstated records. No-return, must-use, blocking, and alias records
+are additive exact facts. External dependency contracts resolve through export
+type information and MUST NOT require dependency source loading solely for
+contract resolution.
 
 The default-correctness `must-use-result` rule MUST treat call statements,
 `go` and `defer` calls, and blank assignment or declaration destinations as
@@ -199,16 +199,18 @@ retain the ordinary deterministic target-union behavior. Fix modes retain the
 existing target-matrix prohibition.
 
 Contract changes MUST invalidate affected persistent native results. The
-`native-effects-v6` component binds no-return, parameter, returned-state,
-must-use, blocking, and alias facts through stable package-qualified function
-identities, including the distinction between possible terminal effect kinds
+`native-effects-v7` component binds no-return, parameter, receiver,
+returned-state, must-use, blocking, and alias facts through stable
+package-qualified function identities, including the distinction between
+possible terminal effect kinds
 and effects independently guaranteed on every returning path. Contract source
 paths and process-local `types.Object` pointers MUST NOT become semantic
 identities.
 
-The version-6 component additionally binds inferred cleanup-managed result
-indexes. Project contracts do not declare that relationship; it is proven only
-from selected-module source and exact `testing.T.Cleanup` behavior.
+The version-7 component additionally binds inferred receiver effects and
+cleanup-managed result indexes. Project contracts do not declare those
+relationships; they are proven only from selected local-source modules and
+exact control-flow or `testing.T.Cleanup` behavior.
 
 ## Safety And Extension Boundary
 

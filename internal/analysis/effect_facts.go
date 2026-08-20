@@ -15,7 +15,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const nativeEffectFactSchemaVersion = 6
+const nativeEffectFactSchemaVersion = 7
 
 type returnStateKey struct {
 	value int
@@ -32,6 +32,7 @@ type returnAliasKey struct {
 type nativeEffectFacts struct {
 	noReturns map[string]struct{}
 	parameters map[string]map[int]rules.ParameterEffectSummary
+	receivers map[string]rules.ParameterEffectSummary
 	returns map[string]map[returnStateKey]rules.ReturnStateSummary
 	mustUse map[string]map[int]struct{}
 	blocking map[string]struct{}
@@ -43,6 +44,7 @@ func newNativeEffectFacts() *nativeEffectFacts {
 	return &nativeEffectFacts{
 		noReturns: make(map[string]struct{}),
 		parameters: make(map[string]map[int]rules.ParameterEffectSummary),
+		receivers: make(map[string]rules.ParameterEffectSummary),
 		returns: make(map[string]map[returnStateKey]rules.ReturnStateSummary),
 		mustUse: make(map[string]map[int]struct{}),
 		blocking: make(map[string]struct{}),
@@ -65,6 +67,9 @@ func cloneNativeEffectFacts(facts *nativeEffectFacts) *nativeEffectFacts {
 			cloned[index] = summary
 		}
 		result.parameters[identity] = cloned
+	}
+	for identity, summary := range facts.receivers {
+		result.receivers[identity] = summary
 	}
 	for identity, summaries := range facts.returns {
 		cloned := make(map[returnStateKey]rules.ReturnStateSummary, len(summaries))
@@ -133,6 +138,15 @@ func (f *nativeEffectFacts) ParameterEffect(
 	}
 	parameters := f.parameters[stableFunctionIdentity(function)]
 	return parameters[index]
+}
+
+// ReceiverEffect implements rules.EffectFacts using the same stable method
+// identity across independent package loads.
+func (f *nativeEffectFacts) ReceiverEffect(function *types.Func) rules.ParameterEffectSummary {
+	if f == nil || function == nil {
+		return rules.ParameterEffectSummary{}
+	}
+	return f.receivers[stableFunctionIdentity(function)]
 }
 
 // MustUseResult implements rules.EffectFacts.
@@ -318,6 +332,43 @@ func (f *nativeEffectFacts) addParameterEffects(analysis *parameterEffectAnalysi
 			}
 		}
 	}
+	type receiverAggregate struct {
+		summary rules.ParameterEffectSummary
+		valid bool
+	}
+	receivers := make(map[string]receiverAggregate)
+	for function, definition := range analysis.definitions {
+		if definition == nil ||
+			definition.signature == nil ||
+			definition.signature.Recv() == nil {
+			continue
+		}
+		identity := stableFunctionIdentity(function)
+		if identity == "" {
+			continue
+		}
+		summary := definition.receiver
+		candidate := receiverAggregate{
+			summary: summary,
+			valid: definition.receiverBuilt && summary.Known,
+		}
+		if existing, found := receivers[identity]; found {
+			candidate.valid = existing.valid &&
+				candidate.valid &&
+				existing.summary == candidate.summary
+			candidate.summary = existing.summary
+		}
+		receivers[identity] = candidate
+	}
+	for identity, candidate := range receivers {
+		if !candidate.valid {
+			delete(f.receivers, identity)
+			continue
+		}
+		if _, configured := f.receivers[identity]; !configured {
+			f.receivers[identity] = candidate.summary
+		}
+	}
 }
 
 func (f *nativeEffectFacts) addReturnStates(analysis *returnStateAnalysis) {
@@ -449,6 +500,41 @@ func (f *nativeEffectFacts) digest() cache.Digest {
 		}
 		_, _ = digest.Write([]byte{byte(parameter.summary.Kinds)})
 		_, _ = digest.Write([]byte{byte(parameter.summary.GuaranteedKinds)})
+	}
+	type receiverRecord struct {
+		identity string
+		summary rules.ParameterEffectSummary
+	}
+	receivers := make([]receiverRecord, 0)
+	if f != nil {
+		for identity, summary := range f.receivers {
+			receivers = append(
+				receivers,
+				receiverRecord{identity: identity, summary: summary},
+			)
+		}
+	}
+	sort.Slice(
+		receivers,
+		func(left, right int) bool {
+			return receivers[left].identity < receivers[right].identity
+		},
+	)
+	for _, receiver := range receivers {
+		_, _ = digest.Write([]byte{7})
+		writeEffectIdentity(digest, version[:], receiver.identity)
+		if receiver.summary.Known {
+			_, _ = digest.Write([]byte{1})
+		} else {
+			_, _ = digest.Write([]byte{0})
+		}
+		if receiver.summary.Always {
+			_, _ = digest.Write([]byte{1})
+		} else {
+			_, _ = digest.Write([]byte{0})
+		}
+		_, _ = digest.Write([]byte{byte(receiver.summary.Kinds)})
+		_, _ = digest.Write([]byte{byte(receiver.summary.GuaranteedKinds)})
 	}
 	type returnRecord struct {
 		identity string
@@ -778,19 +864,47 @@ func effectTypePackages(roots []*packages.Package) []*types.Package {
 
 func effectModulePrefixes(roots []*packages.Package) []string {
 	prefixes := make([]string, 0)
-	seen := make(map[string]struct{})
-	for _, root := range roots {
-		if root == nil || root.Module == nil || root.Module.Path == "" {
+	seenModules := make(map[string]struct{})
+	seenPackages := make(map[*packages.Package]struct{})
+	work := append([]*packages.Package(nil), roots...)
+	for len(work) != 0 {
+		pkg := work[len(work) - 1]
+		work = work[:len(work) - 1]
+		if pkg == nil {
 			continue
 		}
-		if _, found := seen[root.Module.Path]; found {
+		if _, found := seenPackages[pkg]; found {
 			continue
 		}
-		seen[root.Module.Path] = struct{}{}
-		prefixes = append(prefixes, root.Module.Path)
+		seenPackages[pkg] = struct{}{}
+		module := pkg.Module
+		if effectModuleProvidesLocalSource(module) {
+			if _, found := seenModules[module.Path]; !found {
+				seenModules[module.Path] = struct{}{}
+				prefixes = append(prefixes, module.Path)
+			}
+		}
+		paths := make([]string, 0, len(pkg.Imports))
+		for path := range pkg.Imports {
+			paths = append(paths, path)
+		}
+		sort.Sort(sort.Reverse(sort.StringSlice(paths)))
+		for _, path := range paths {
+			work = append(work, pkg.Imports[path])
+		}
 	}
 	sort.Strings(prefixes)
 	return prefixes
+}
+
+func effectModuleProvidesLocalSource(module *packages.Module) bool {
+	if module == nil || module.Path == "" {
+		return false
+	}
+	if module.Main {
+		return true
+	}
+	return module.Replace != nil && module.Replace.Dir != "" && module.Replace.Version == ""
 }
 
 func localEffectImports(

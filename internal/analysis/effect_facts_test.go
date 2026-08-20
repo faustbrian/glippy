@@ -3,9 +3,11 @@ package analysis
 import (
 	"go/token"
 	"go/types"
+	"slices"
 	"testing"
 
 	"github.com/faustbrian/glippy/internal/rules"
+	"golang.org/x/tools/go/packages"
 )
 
 func TestNativeEffectFactsUseStableCrossLoadFunctionIdentity(t *testing.T) {
@@ -51,6 +53,18 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 			GuaranteedKinds: rules.ParameterEffectTransfer,
 		},
 	}
+	first.receivers["method"] = rules.ParameterEffectSummary{
+		Known: true,
+		Always: true,
+		Kinds: rules.ParameterEffectClose,
+		GuaranteedKinds: rules.ParameterEffectClose,
+	}
+	second.receivers["method"] = rules.ParameterEffectSummary{
+		Known: true,
+		Always: true,
+		Kinds: rules.ParameterEffectClose,
+		GuaranteedKinds: rules.ParameterEffectClose,
+	}
 	first.cleanupManaged["function"] = map[int]struct{}{1: {}, 0: {}}
 	second.cleanupManaged["function"] = map[int]struct{}{0: {}, 1: {}}
 	changed := newNativeEffectFacts()
@@ -70,6 +84,11 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	}
 	if first.digest() == changed.digest() {
 		t.Fatal("effect fact digest ignored a parameter effect change")
+	}
+	changed = cloneNativeEffectFacts(first)
+	delete(changed.receivers, "method")
+	if first.digest() == changed.digest() {
+		t.Fatal("effect fact digest ignored a receiver effect change")
 	}
 	changed = cloneNativeEffectFacts(first)
 	summary := changed.parameters["function"][1]
@@ -128,6 +147,71 @@ func TestNativeParameterEffectsUseStableCrossLoadFunctionIdentity(t *testing.T) 
 	}
 	if summary := facts.ParameterEffect(second, 1); summary.Known {
 		t.Fatalf("parameter effect matched another parameter: %#v", summary)
+	}
+}
+
+func TestNativeReceiverEffectsUseStableCrossLoadMethodIdentity(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestMethod("example.com/project/resource", "Resource", "Shutdown")
+	second := effectTestMethod("example.com/project/resource", "Resource", "Shutdown")
+	other := effectTestMethod("example.com/project/resource", "Resource", "Observe")
+	facts := newNativeEffectFacts()
+	facts.receivers[stableFunctionIdentity(first)] = rules.ParameterEffectSummary{
+		Known: true,
+		Always: true,
+		Kinds: rules.ParameterEffectClose,
+		GuaranteedKinds: rules.ParameterEffectClose,
+	}
+	if summary := facts.ReceiverEffect(second);
+		!summary.GuaranteesAny(rules.ParameterEffectClose) {
+		t.Fatalf(
+			"receiver effect did not survive an independent type identity: %#v",
+			summary,
+		)
+	}
+	if summary := facts.ReceiverEffect(other); summary.Known {
+		t.Fatalf("receiver effect matched another method: %#v", summary)
+	}
+}
+
+func TestReceiverEffectFactsIntersectPackageVariants(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestMethod("example.com/project/resource", "Resource", "Shutdown")
+	second := effectTestMethod("example.com/project/resource", "Resource", "Shutdown")
+	closeSummary := rules.ParameterEffectSummary{
+		Known: true,
+		Always: true,
+		Kinds: rules.ParameterEffectClose,
+		GuaranteedKinds: rules.ParameterEffectClose,
+	}
+	analysis := &parameterEffectAnalysis{
+		definitions: map[*types.Func]*parameterEffectDefinition{
+			first: {
+				signature: first.Type().(*types.Signature),
+				receiver: closeSummary,
+				receiverBuilt: true,
+			},
+			second: {
+				signature: second.Type().(*types.Signature),
+				receiver: rules.ParameterEffectSummary{Known: true},
+				receiverBuilt: true,
+			},
+		},
+	}
+	facts := newNativeEffectFacts()
+	facts.addParameterEffects(analysis)
+	if summary := facts.ReceiverEffect(first); summary.Known {
+		t.Fatalf("receiver effect survived a disagreeing package variant: %#v", summary)
+	}
+
+	analysis.definitions[second].receiver = closeSummary
+	facts = newNativeEffectFacts()
+	facts.addParameterEffects(analysis)
+	if summary := facts.ReceiverEffect(second);
+		!summary.GuaranteesAny(rules.ParameterEffectClose) {
+		t.Fatalf("receiver effect was lost across agreeing package variants: %#v", summary)
 	}
 }
 
@@ -205,8 +289,57 @@ func TestEffectPathsStayWithinSelectedModuleBoundaries(t *testing.T) {
 	}
 }
 
+func TestEffectModulePrefixesIncludeReachableLocalModulesOnly(t *testing.T) {
+	t.Parallel()
+
+	workspace := &packages.Package{
+		PkgPath: "example.com/workspace/helper",
+		Module: &packages.Module{Path: "example.com/workspace", Main: true},
+	}
+	replacement := &packages.Package{
+		PkgPath: "example.com/replaced/helper",
+		Module: &packages.Module{
+			Path: "example.com/replaced",
+			Replace: &packages.Module{Dir: "/workspace/replaced"},
+		},
+	}
+	thirdParty := &packages.Package{
+		PkgPath: "example.com/thirdparty/helper",
+		Module: &packages.Module{
+			Path: "example.com/thirdparty",
+			Dir: "/module-cache/example.com/thirdparty",
+		},
+	}
+	root := &packages.Package{
+		PkgPath: "example.com/root",
+		Module: &packages.Module{Path: "example.com/root", Main: true},
+		Imports: map[string]*packages.Package{
+			workspace.PkgPath: workspace,
+			replacement.PkgPath: replacement,
+			thirdParty.PkgPath: thirdParty,
+		},
+	}
+	prefixes := effectModulePrefixes([]*packages.Package{root})
+	want := []string{"example.com/replaced", "example.com/root", "example.com/workspace"}
+	if !slices.Equal(prefixes, want) {
+		t.Fatalf("effect module prefixes = %q, want %q", prefixes, want)
+	}
+}
+
 func effectTestFunction(packagePath string, name string) *types.Func {
 	package_ := types.NewPackage(packagePath, "terminate")
 	signature := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	return types.NewFunc(token.NoPos, package_, name, signature)
+}
+
+func effectTestMethod(packagePath string, typeName string, name string) *types.Func {
+	package_ := types.NewPackage(packagePath, "resource")
+	named := types.NewNamed(
+		types.NewTypeName(token.NoPos, package_, typeName, nil),
+		types.NewStruct(nil, nil),
+		nil,
+	)
+	receiver := types.NewVar(token.NoPos, package_, "receiver", types.NewPointer(named))
+	signature := types.NewSignatureType(receiver, nil, nil, nil, nil, false)
 	return types.NewFunc(token.NoPos, package_, name, signature)
 }

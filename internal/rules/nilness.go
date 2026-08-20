@@ -18,7 +18,7 @@ func (nilnessRule) Metadata() Metadata {
 	return Metadata{
 		ID: "nilness",
 		Summary: "detects operations on values proven to be nil",
-		Documentation: "Reports nil dereferences, degenerate nil comparisons, nil channel and map operations, nil panics, and invalid nil-slice conversions when SSA dominance proves the value's nilness. The implementation reuses the current x/tools nilness analyzer over Glippy's shared SSA function and augments it with conservative nil/error return relationships from same-module helpers.",
+		Documentation: "Reports nil dereferences, degenerate nil comparisons, nil channel and map operations, nil panics, and invalid nil-slice conversions when SSA dominance proves the value's nilness. The implementation reuses the current x/tools nilness analyzer over Glippy's shared SSA function and augments it with conservative nil/error return relationships from selected local-source modules.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetSuspicious},
 		MinimumGoVersion: "1.25",
@@ -27,7 +27,7 @@ func (nilnessRule) Metadata() Metadata {
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"Control-flow joins may lose nilness facts, so the rule intentionally misses some defects rather than guessing.",
-			"The shared SSA program propagates no-return behavior and explicit nil/error return relationships through the selected package and same-module imported helpers. Third-party helpers outside the selected modules remain conservative unless they match an exact standard-library terminal API.",
+			"The shared SSA program propagates no-return behavior and explicit nil/error return relationships through selected local-source modules. Third-party helpers outside those modules remain conservative unless they match an exact standard-library terminal API.",
 			"Return relationships require explicit results with exact nil, definitely non-nil allocation forms, errors.New, or fmt.Errorf. Bare returns, delegated or recursive results, &*x expressions, unknown error construction, aliases, and conflicting returns remain unknown.",
 			"Functions marked with //go:cgo_unsafe_args are excluded because their runtime behavior is not represented faithfully in SSA.",
 			"Generated files and packages with type errors are excluded.",

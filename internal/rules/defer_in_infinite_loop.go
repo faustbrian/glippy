@@ -23,7 +23,7 @@ func (deferInInfiniteLoopRule) Metadata() Metadata {
 		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySuspicious},
 		KnownLimitations: []string{
-			"No-return behavior propagates through the selected package and same-module imported helpers. Third-party helpers outside the selected modules remain conservatively returning unless they match an exact standard-library terminal API.",
+			"No-return behavior propagates through selected local-source modules. Third-party helpers outside those modules remain conservatively returning unless they match an exact standard-library terminal API.",
 			"Generated files and packages with type errors are excluded.",
 		},
 		Examples: []Example{

@@ -105,7 +105,7 @@ depends on the upstream graph's otherwise undefined block-slice order.
 
 The shared no-return policy recognizes calls whose type information resolves
 to the predeclared `panic`, a proven named function or method in the loaded
-package set, a versioned same-module imported function summary requested by an
+package set, a versioned selected local-source module summary requested by an
 enabled effect consumer, or the documented exact standard-library terminal
 set. It treats shadowed identifiers, dynamic and interface calls, and imported
 helpers outside selected modules as returning. Effect inputs use independent

@@ -57,6 +57,11 @@ version 6 and `native-effects-v6`. That source-derived relationship is not a
 configurable project contract, but it shares the stable identity and cache
 boundary because native lifecycle consumers use it across package loads.
 
+Receiver terminal-effect inference later advances the active representation to
+version 7 and `native-effects-v7`. Receiver summaries are source-derived rather
+than configured, but share the stable identity and invalidation boundary used
+by parameter and cleanup-managed facts.
+
 Contract files are data only. They do not execute code, provide replacement Go
 types, load runtime plugins, or grant write authority. Syntax-only lint does
 not load type state because contracts are configured. External contracts use

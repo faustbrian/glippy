@@ -64,6 +64,18 @@ resource is registered through `testing.T.Cleanup` on every normal return.
 Conditional, asynchronous, nested, reassigned, ambiguous, and non-testing
 cleanup shapes remain absent from the fact set.
 
+The 2026-08-20 receiver terminal-effect refinement advances the active schema
+and cache component to `native-effects-v7`. Exact method identities now record
+effects reached on the receiver across every normally returning path. A direct
+receiver `Close` or a statically resolved receiver method with the same proven
+effect may establish closure. Conditional or asynchronous closure, receiver
+reassignment, aliases, address escape, recursion without a proof, and dynamic
+dispatch remain conservative. A promoted method does not prove an effect for
+the outer receiver value. The selected source boundary now includes root modules
+plus reachable active-workspace modules and reachable local filesystem
+replacements. Downloaded dependencies and workspace modules outside the root
+import graph remain excluded.
+
 ## Alternatives
 
 - Load the complete dependency syntax closure with `packages.NeedDeps`:
@@ -82,19 +94,20 @@ cleanup shapes remain absent from the fact set.
 
 ## Consequences
 
-CFG and SSA rules can remove impossible continuations through same-module
-helpers without making unrelated typed rules pay for effect loading. The
-native `unreachable-code` rule reports the first statement after those proven
-terminal calls while preserving branch, label, nested-function, type-error,
-and suggestion-fix behavior. Cold runs perform additional module-local package
-loads; warm native-result caching and the bounded source policy constrain that
-cost.
+CFG and SSA rules can remove impossible continuations through selected
+local-source helpers without making unrelated typed rules pay for effect
+loading. The native `unreachable-code` rule reports the first statement after
+those proven terminal calls while preserving branch, label, nested-function,
+type-error, and suggestion-fix behavior. Cold runs perform additional
+module-local package loads; warm native-result caching and the bounded source
+policy constrain that cost.
 
 The third schema improves the four lifecycle consumers and lets `nilness`
 diagnose direct dereferences and nil comparisons dominated by a proven error
 branch. It does not prove relationships through unsupported aliases,
-delegation, external-module helpers, or multi-module workspace effects. Those
-gaps remain explicit rather than being filled with optimistic assumptions.
+downloaded dependency bodies, or workspace modules outside the selected import
+graph. Those gaps remain explicit rather than being filled with optimistic
+assumptions.
 
 ## Revisit Trigger
 
@@ -102,6 +115,7 @@ Advance the schema again only when a returned-state or additional ownership
 effect has exact positive and close-negative fixtures, stable cross-load
 identity, deterministic cache invalidation, bounded cold and warm cost, and
 dogfood evidence. Revisit aliasing when a repeated real helper pattern can be
-modeled without optimistic ownership claims. Revisit module selection when
-workspace or replacement-module dogfood demonstrates a material same-repository
-false negative.
+modeled without optimistic ownership claims. The module-selection trigger was
+satisfied by the 2026-08-20 receiver-effect dogfood record. Revisit downloaded
+dependency inference only with a bounded provenance and source-trust policy
+that does not turn arbitrary dependency bodies into analysis inputs.

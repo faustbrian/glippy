@@ -176,7 +176,8 @@ cross-function lock handoff remain conservative boundaries.
 The state-transition track now also admits `resource-used-after-close` as an
 opt-in suspicious rule. It follows locally acquired `Close() error` results,
 reports curated direct operations only when every reaching CFG state is proven
-closed, and consumes exact same-module or configured close effects. Proven
+closed, and consumes exact selected local-source module or configured close
+effects. Proven
 ownership transfer and every helper without an exact close effect stop state
 tracking: an ownership borrow does not prove that a helper left the resource's
 internal state unchanged. Deferred or asynchronous closes do not establish an
@@ -251,16 +252,17 @@ another existing default tool already owns the problem well enough.
 | 8 | Structurally credible allocation or concurrency costs | types, CFG, or SSA | Is there a reproducible cost mechanism and an opt-in performance contract rather than a generic micro-optimization preference? |
 | 9 | Explicit Go-version and API migrations | syntax or types | Is there a configured target version, a canonical replacement, and a migration-specific safety classification? |
 
-The first priority now has versioned no-return, parameter-effect, and returned
-nil/error facts.
-Enabled CFG and SSA consumers summarize same-module imported helpers through
-stable function identities without retaining dependency source as lint
-targets. The resource, HTTP-body, transaction, and cancellation lifecycle rules
+The first priority now has versioned no-return, parameter-effect,
+receiver-effect, and returned nil/error facts. Enabled CFG and SSA consumers
+summarize selected local-source module helpers through stable function
+identities without retaining dependency source as lint targets. The resource,
+HTTP-body, transaction, and cancellation lifecycle rules
 distinguish proven borrowing from guaranteed completion, invocation, or
 ownership transfer on every normally returning path. `nilness` consumes exact
 returned relationships for direct uses dominated by error checks. Broader
-aliasing, delegated results, workspace modules, and third-party packages remain
-outside the admitted boundary rather than being inferred from names.
+aliasing, delegated results, workspace modules outside the selected import
+graph, and downloaded third-party packages remain outside the admitted boundary
+rather than being inferred from names.
 
 Opt-in `lint/check --stats` now exposes package-loading versus analysis cost,
 per-tier and per-rule process-local measurements, cache outcomes, final finding

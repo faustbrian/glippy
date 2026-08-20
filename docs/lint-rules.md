@@ -507,16 +507,16 @@ None.
 
 ### Known limitations
 
-- A statically resolved same-module helper that provably borrows the cancellation function does not
-  discharge the obligation; guaranteed invocation or ownership transfer must cover every normally
-  returning helper path.
+- A statically resolved helper in a selected local-source module that provably borrows the
+  cancellation function does not discharge the obligation; guaranteed invocation or ownership
+  transfer must cover every normally returning helper path.
 - An exact returned-alias contract preserves the obligation when the result is assigned back to the
   same cancellation variable; new alias bindings remain outside the tracked ownership identity.
 - Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules
   retain the conservative use-or-transfer behavior when no summary is available.
-- The shared CFG propagates no-return behavior through the selected package and same-module imported
-  helpers. Third-party helpers outside the selected modules remain conservatively returning unless
-  they match an exact standard-library terminal API.
+- The shared CFG propagates no-return behavior through selected local-source modules. Third-party
+  helpers outside those modules remain conservatively returning unless they match an exact
+  standard-library terminal API.
 
 ### Example: Retain and call the cancellation function
 
@@ -755,9 +755,9 @@ None.
 
 ### Known limitations
 
-- No-return behavior propagates through the selected package and same-module imported helpers.
-  Third-party helpers outside the selected modules remain conservatively returning unless they match
-  an exact standard-library terminal API.
+- No-return behavior propagates through selected local-source modules. Third-party helpers outside
+  those modules remain conservatively returning unless they match an exact standard-library terminal
+  API.
 - Generated files and packages with type errors are excluded.
 
 ### Example: Release per-iteration resources explicitly
@@ -1383,7 +1383,7 @@ A successful net/http client request returns a response whose Body must be close
 response that reaches a normal return without closing or conservatively transferring its body can
 leak connections and prevent transport reuse. This rule follows direct package and Client request
 helpers through the shared control-flow graph after a conventional acquisition-error guard and
-consumes versioned same-module helper effects.
+consumes versioned selected local-source module effects.
 
 - Default severity: `warn`
 - Presets: `suspicious`
@@ -1412,8 +1412,9 @@ None.
 - Returning, passing, sending, storing, or capturing the response transfers ownership. A body
   argument transfers ownership only when the destination parameter itself has Close() error; passing
   Body as an io.Reader does not discharge the obligation.
-- A statically resolved same-module helper that provably borrows Body leaves the obligation open;
-  guaranteed closure or transfer must cover every normally returning helper path.
+- A statically resolved helper in a selected local-source module that provably borrows Body leaves
+  the obligation open; guaranteed closure or transfer must cover every normally returning helper
+  path.
 - Dynamic calls, interface dispatch, recursion, response wrappers, middleware, and helpers outside
   selected modules retain the conservative transfer behavior when no summary is available.
 - Generated files and packages with type errors are excluded.
@@ -3286,7 +3287,7 @@ detects operations on values proven to be nil
 Reports nil dereferences, degenerate nil comparisons, nil channel and map operations, nil panics,
 and invalid nil-slice conversions when SSA dominance proves the value's nilness. The implementation
 reuses the current x/tools nilness analyzer over Glippy's shared SSA function and augments it with
-conservative nil/error return relationships from same-module helpers.
+conservative nil/error return relationships from selected local-source modules.
 
 - Default severity: `warn`
 - Presets: `suspicious`
@@ -3312,8 +3313,8 @@ None.
 - Control-flow joins may lose nilness facts, so the rule intentionally misses some defects rather
   than guessing.
 - The shared SSA program propagates no-return behavior and explicit nil/error return relationships
-  through the selected package and same-module imported helpers. Third-party helpers outside the
-  selected modules remain conservative unless they match an exact standard-library terminal API.
+  through selected local-source modules. Third-party helpers outside those modules remain
+  conservative unless they match an exact standard-library terminal API.
 - Return relationships require explicit results with exact nil, definitely non-nil allocation forms,
   errors.New, or fmt.Errorf. Bare returns, delegated or recursive results, &*x expressions, unknown
   error construction, aliases, and conflicting returns remain unknown.
@@ -3868,8 +3869,9 @@ A call result with a conventional Close method usually owns a file, connection, 
 similar resource. A locally owned result that reaches a normal return without being closed or
 transferred can retain descriptors, connections, buffers, or other external state until process
 termination or garbage collection. Exact nil-result branches carry no ownership obligation.
-Versioned parameter-effect, returned-alias, and cleanup-managed-result summaries distinguish
-retained obligations from guaranteed closure, ownership transfer, or test-lifetime cleanup.
+Versioned parameter-effect, receiver-effect, returned-alias, and cleanup-managed-result summaries
+distinguish retained obligations from guaranteed closure, ownership transfer, or test-lifetime
+cleanup.
 
 - Default severity: `warn`
 - Presets: `suspicious`
@@ -3894,15 +3896,18 @@ None.
 
 - Only direct resource == nil and resource != nil conditions discharge the nil branch; compound
   nilness, aliases, and indirect comparisons remain conservative.
-- A statically resolved same-module helper that provably borrows the resource leaves the obligation
-  open; guaranteed closure or transfer must cover every normally returning helper path.
+- A statically resolved helper in a selected local-source module that provably borrows the resource
+  leaves the obligation open; guaranteed closure or transfer must cover every normally returning
+  helper path.
 - An exact returned-alias contract preserves the obligation when the result is assigned back to the
   same resource variable; new alias bindings remain outside the tracked ownership identity.
 - Cleanup-managed results require one stable direct local result, an exact testing.T Cleanup call on
-  a pointer receiver with a function-literal callback, and direct or helper-proven Close on every
-  normally returning callback path. Copied testing.T values, conditional registration or closure,
-  asynchronous or nested closure, reassignment, aliases, and non-testing cleanup APIs remain
-  conservative.
+  a pointer receiver with a function-literal callback, and direct, parameter-effect, or
+  receiver-effect proven Close on every normally returning callback path. Copied testing.T values,
+  conditional registration or closure, asynchronous or nested closure, reassignment, aliases, and
+  non-testing cleanup APIs remain conservative.
+- Receiver effects require a direct method selection; a promoted method does not prove an effect for
+  the outer receiver value.
 - Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules
   retain the conservative ownership-transfer behavior when no summary is available.
 - Pipes returned by os/exec.Cmd are owned by Cmd.Start and Cmd.Wait under the standard-library
@@ -4156,9 +4161,9 @@ None.
 
 - The initial contract recognizes direct database/sql DB.Begin, DB.BeginTx, and Conn.BeginTx
   assignments followed immediately by an err != nil guard whose body returns.
-- A statically resolved same-module helper that provably borrows the transaction leaves the
-  obligation open; guaranteed Commit, Rollback, or transfer must cover every normally returning
-  helper path.
+- A statically resolved helper in a selected local-source module that provably borrows the
+  transaction leaves the obligation open; guaranteed Commit, Rollback, or transfer must cover every
+  normally returning helper path.
 - An exact returned-alias contract preserves the obligation when the result is assigned back to the
   same transaction variable; new alias bindings remain outside the tracked ownership identity.
 - Dynamic calls, interface dispatch, recursion, wrapper finalizers, and helpers outside selected
@@ -5161,9 +5166,9 @@ None.
   writes through range targets and indirect aliases are not modeled.
 - Passing Rows.Err to another call counts as observing the result; the rule does not inspect the
   callee's behavior.
-- The shared CFG propagates no-return behavior through the selected package and same-module imported
-  helpers. Third-party helpers outside the selected modules remain conservatively returning unless
-  they match an exact standard-library terminal API.
+- The shared CFG propagates no-return behavior through selected local-source modules. Third-party
+  helpers outside those modules remain conservatively returning unless they match an exact
+  standard-library terminal API.
 - Generated files and packages with type errors are excluded.
 
 ### Example: Check the terminal iteration error
@@ -5219,9 +5224,9 @@ None.
   writes through range targets and indirect aliases are not modeled.
 - Passing Scanner.Err to another call counts as observing the result; the rule does not inspect the
   callee's behavior.
-- The shared CFG propagates no-return behavior through the selected package and same-module imported
-  helpers. Third-party helpers outside the selected modules remain conservatively returning unless
-  they match an exact standard-library terminal API.
+- The shared CFG propagates no-return behavior through selected local-source modules. Third-party
+  helpers outside those modules remain conservatively returning unless they match an exact
+  standard-library terminal API.
 - Generated files and packages with type errors are excluded.
 
 ### Example: Check the terminal scanner error
@@ -5515,8 +5520,7 @@ detects statements that execution cannot reach
 Statements following an unconditional return, panic, terminating branch, infinite loop, or proven
 no-return call cannot execute. They often preserve stale work after a refactor or conceal
 control-flow mistakes. Glippy uses the shared no-return analysis behind its control-flow graph so
-same-module imported no-return facts participate without retaining dependency source as a lint
-target.
+selected local-source module facts participate without retaining dependency source as a lint target.
 
 - Default severity: `warn`
 - Presets: `correctness`

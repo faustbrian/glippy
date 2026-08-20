@@ -484,10 +484,16 @@ func TestRunControlFlowExposesPackageParameterEffects(t *testing.T) {
 
 type closer interface { Close() error }
 
+type observer struct{}
+
+func (*observer) Observe() {}
+
 func noParameters() {}
 func borrow(value closer) {}
 func borrowAll(values ...closer) {}
 func borrowSecond(value closer) { borrowAll(nil, value) }
+func borrowMethodValue(value *observer) { value.Observe() }
+func borrowMethodExpression(value *observer) { (*observer).Observe(value) }
 func closeFirst(values ...closer) { _ = values[0].Close() }
 func close(value closer) { _ = value.Close() }
 func closeDeferred(value closer) { defer value.Close() }
@@ -497,6 +503,8 @@ func inspect(value closer) {
 	borrow(value)
 	borrowAll(value, value)
 	borrowSecond(value)
+	borrowMethodValue(nil)
+	borrowMethodExpression(nil)
 	closeFirst(value, value)
 	close(value)
 	closeDeferred(value)
@@ -589,6 +597,13 @@ func inspect(value closer) {
 	}
 	if second := summaries["borrowSecond"]; !second.Known || second.Always {
 		t.Fatalf("propagated variadic borrow summary = %#v", second)
+	}
+	if methodValue := summaries["borrowMethodValue"]; !methodValue.Known || methodValue.Always {
+		t.Fatalf("method-value receiver borrow summary = %#v", methodValue)
+	}
+	if methodExpression := summaries["borrowMethodExpression"];
+		!methodExpression.Known || methodExpression.Always {
+		t.Fatalf("method-expression receiver borrow summary = %#v", methodExpression)
 	}
 	if second := summaries["closeFirstSecond"]; second.Known {
 		t.Fatalf("indexed variadic effect summary = %#v", second)
