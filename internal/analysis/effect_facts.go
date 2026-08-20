@@ -15,7 +15,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const nativeEffectFactSchemaVersion = 4
+const nativeEffectFactSchemaVersion = 5
 
 type returnStateKey struct {
 	value int
@@ -188,7 +188,20 @@ func (f *nativeEffectFacts) addContracts(resolved contracts.Resolved) {
 				summary := parameters[index]
 				summary.Known = true
 				summary.Always = true
+				terminal := rules.ParameterEffectClose |
+					rules.ParameterEffectTransactionComplete |
+					rules.ParameterEffectCancelInvoke
+				if kind == rules.ParameterEffectTransfer &&
+					summary.GuaranteedKinds & terminal != 0 {
+					parameters[index] = summary
+					continue
+				}
+				if kind & terminal != 0 {
+					summary.Kinds &^= rules.ParameterEffectTransfer
+					summary.GuaranteedKinds &^= rules.ParameterEffectTransfer
+				}
 				summary.Kinds |= kind
+				summary.GuaranteedKinds |= kind
 				parameters[index] = summary
 			}
 		}
@@ -381,6 +394,7 @@ func (f *nativeEffectFacts) digest() cache.Digest {
 			_, _ = digest.Write([]byte{0})
 		}
 		_, _ = digest.Write([]byte{byte(parameter.summary.Kinds)})
+		_, _ = digest.Write([]byte{byte(parameter.summary.GuaranteedKinds)})
 	}
 	type returnRecord struct {
 		identity string

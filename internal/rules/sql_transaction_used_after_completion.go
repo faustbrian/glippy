@@ -280,11 +280,20 @@ func (b *sqlTransactionStateBuilder) transfer(flow sqlTransactionFlowState, node
 		nil,
 		b.ctx.ParameterEffect,
 		ParameterEffectTransactionComplete,
+		nil,
 	)
 	switch effect {
 	case obligationCompleted:
 		state = sqlTransactionCompleted
 	case obligationTransferred, obligationLost:
+		state = sqlTransactionUnknown
+	}
+	if assignmentReplacesObject(
+		b.ctx.Info(),
+		node,
+		b.candidate.object,
+		b.ctx.ReturnAliasesArgument,
+	) {
 		state = sqlTransactionUnknown
 	}
 	*flow.value = state

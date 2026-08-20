@@ -227,7 +227,7 @@ func httpResponseObligationEffect(
 	if nodeTransfersResponseBody(ctx, node, response) {
 		return obligationTransferred
 	}
-	return objectObligationEffect(info, node, response, nil, nil, 0)
+	return objectObligationEffect(info, node, response, nil, nil, 0, nil)
 }
 
 func nodeContainsResponseBodyClose(info *types.Info, node ast.Node, response types.Object) bool {

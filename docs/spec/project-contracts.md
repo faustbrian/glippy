@@ -172,6 +172,21 @@ produce diagnostics with the same source identity and exact call range, the
 contract-specific diagnostic MUST own the condition and supersede the generic
 diagnostic before suppression or baseline policy is applied.
 
+An exact `returns-alias` relationship MUST preserve an outstanding resource or
+transaction obligation when the contracted result is assigned directly back
+to the same tracked object whose argument it aliases. A guaranteed close or
+transaction-completion effect still discharges the obligation. Assigning the
+result to a different object MUST remain conservative until the analysis owns
+a bounded dynamic alias model. Returned identity alone MUST NOT prove that a
+resource's open or closed state is unchanged.
+
+When one configured parameter declares both a specific terminal effect and
+generic ownership transfer, the specific close, transaction completion, or
+cancellation effect MUST take precedence. Configured effects describe
+simultaneous guarantees; inferred effect-kind unions MAY instead describe
+different terminal paths and MUST NOT be interpreted as guaranteeing each
+listed kind independently.
+
 The base `[analysis]` build selection and the LSP use the same contract
 snapshot. Every `[[analysis.targets]]` package run uses that snapshot while
 validating the signature selected by its target. Identical target findings
@@ -179,10 +194,12 @@ retain the ordinary deterministic target-union behavior. Fix modes retain the
 existing target-matrix prohibition.
 
 Contract changes MUST invalidate affected persistent native results. The
-`native-effects-v4` component binds no-return, parameter, returned-state,
+`native-effects-v5` component binds no-return, parameter, returned-state,
 must-use, blocking, and alias facts through stable package-qualified function
-identities. Contract source paths and process-local `types.Object` pointers
-MUST NOT become semantic identities.
+identities, including the distinction between possible terminal effect kinds
+and effects independently guaranteed on every returning path. Contract source
+paths and process-local `types.Object` pointers MUST NOT become semantic
+identities.
 
 ## Safety And Extension Boundary
 

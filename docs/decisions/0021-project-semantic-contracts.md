@@ -46,6 +46,11 @@ Configured records seed native effects before source inference and win for the
 same exact parameter or result relationship. The schema advances to native
 effects version 4, adding deterministic must-use, blocking, and alias records
 to existing facts. The native cache component becomes `native-effects-v4`.
+Returned-alias lifecycle admission later advances the active representation to
+version 5 and `native-effects-v5`, separating possible terminal kinds from
+effects independently guaranteed on every returning path. This preserves
+simultaneous configured guarantees without treating alternative inferred paths
+as if each effect occurred universally.
 
 Contract files are data only. They do not execute code, provide replacement Go
 types, load runtime plugins, or grant write authority. Syntax-only lint does

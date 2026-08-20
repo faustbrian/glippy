@@ -34,12 +34,22 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	second.noReturns["a"] = struct{}{}
 	second.noReturns["z"] = struct{}{}
 	first.parameters["function"] = map[int]rules.ParameterEffectSummary{
-		1: {Known: true, Always: true, Kinds: rules.ParameterEffectTransfer},
+		1: {
+			Known: true,
+			Always: true,
+			Kinds: rules.ParameterEffectTransfer,
+			GuaranteedKinds: rules.ParameterEffectTransfer,
+		},
 		0: {Known: true},
 	}
 	second.parameters["function"] = map[int]rules.ParameterEffectSummary{
 		0: {Known: true},
-		1: {Known: true, Always: true, Kinds: rules.ParameterEffectTransfer},
+		1: {
+			Known: true,
+			Always: true,
+			Kinds: rules.ParameterEffectTransfer,
+			GuaranteedKinds: rules.ParameterEffectTransfer,
+		},
 	}
 	changed := newNativeEffectFacts()
 	changed.noReturns["a"] = struct{}{}
@@ -54,9 +64,17 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 		Known: true,
 		Always: true,
 		Kinds: rules.ParameterEffectClose,
+		GuaranteedKinds: rules.ParameterEffectClose,
 	}
 	if first.digest() == changed.digest() {
 		t.Fatal("effect fact digest ignored a parameter effect change")
+	}
+	changed = cloneNativeEffectFacts(first)
+	summary := changed.parameters["function"][1]
+	summary.GuaranteedKinds = 0
+	changed.parameters["function"][1] = summary
+	if first.digest() == changed.digest() {
+		t.Fatal("effect fact digest ignored independently guaranteed effects")
 	}
 	changed = cloneNativeEffectFacts(first)
 	changed.returns["function"] = map[returnStateKey]rules.ReturnStateSummary{

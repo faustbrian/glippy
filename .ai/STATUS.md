@@ -1987,3 +1987,19 @@ pre-existing changes, including its `go.sum` bytes, remained unchanged. The
 catalog now contains 112 rules. Portable four-runner typed-budget evidence and
 further high-signal interprocedural error-flow and ownership coverage remain
 active v0.5 work.
+
+The v0.5 returned-alias obligation batch makes the final previously inert
+project-contract relationship observable in a built-in lifecycle consumer. An
+exact contracted result assigned back to the same tracked transaction or
+closer now preserves its outstanding completion obligation instead of being
+treated as an ownership transfer or replacement. Guaranteed close and
+transaction-completion effects still discharge the obligation; uncontracted
+helpers, new alias bindings, and post-close state remain conservative. The
+focused red test reproduced a missing transaction diagnostic before the shared
+obligation engine consumed `returns-alias`. Five complete 100-function samples
+measured a 91.73 ms median, about 6.14 MB, and 64,634 allocations per run on
+Darwin arm64. Exact-rule dogfood remained clean on Glippy and
+`go-libraries/pkg/prompts` at `5925270`, whose pre-existing dirty state and
+`go.sum` bytes were unchanged. Portable four-runner typed-budget evidence and
+further high-signal interprocedural error-flow and ownership coverage remain
+active v0.5 work.

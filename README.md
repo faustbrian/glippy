@@ -63,7 +63,9 @@ inside formatting, and layout policy is not duplicated as lint noise.
   without treating ownership borrowing as proof of unchanged resource state.
   Exact project contracts can also require individual call results to be used;
   ignored contracted results report without duplicating the broader
-  `discarded-error` diagnostic.
+  `discarded-error` diagnostic. Exact returned-alias contracts preserve
+  outstanding lifecycle obligations when ownership returns to the same tracked
+  value.
 - **Safe source changes:** fixes carry source identity and safety class;
   conflicts, stale ranges, and failed validation cannot silently write source.
   Accepted fixes may declare exact required imports, while the coordinator

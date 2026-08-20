@@ -3865,8 +3865,8 @@ detects locally owned closers that are neither closed nor transferred
 A call result with a conventional Close method usually owns a file, connection, compressor, or
 similar resource. A locally owned result that reaches a normal return without being closed or
 transferred can retain descriptors, connections, buffers, or other external state until process
-termination or garbage collection. Versioned parameter-effect summaries distinguish proven
-same-module helper borrowing from guaranteed closure or ownership transfer.
+termination or garbage collection. Versioned parameter-effect and returned-alias summaries
+distinguish retained obligations from guaranteed closure or ownership transfer.
 
 - Default severity: `warn`
 - Presets: `suspicious`
@@ -3891,6 +3891,8 @@ None.
 
 - A statically resolved same-module helper that provably borrows the resource leaves the obligation
   open; guaranteed closure or transfer must cover every normally returning helper path.
+- An exact returned-alias contract preserves the obligation when the result is assigned back to the
+  same resource variable; new alias bindings remain outside the tracked ownership identity.
 - Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules
   retain the conservative ownership-transfer behavior when no summary is available.
 - Pipes returned by os/exec.Cmd are owned by Cmd.Start and Cmd.Wait under the standard-library
@@ -4098,7 +4100,7 @@ database/sql requires every successful transaction to end with Tx.Commit or Tx.R
 owned transaction that reaches a normal return without either call can retain a connection, locks,
 and transaction state. This rule follows direct DB.Begin, DB.BeginTx, and Conn.BeginTx results
 through the shared control-flow graph after a conventional acquisition-error guard and consumes
-versioned same-module helper effects.
+versioned helper effects and returned-alias contracts.
 
 - Default severity: `warn`
 - Presets: `correctness`
@@ -4126,6 +4128,8 @@ None.
 - A statically resolved same-module helper that provably borrows the transaction leaves the
   obligation open; guaranteed Commit, Rollback, or transfer must cover every normally returning
   helper path.
+- An exact returned-alias contract preserves the obligation when the result is assigned back to the
+  same transaction variable; new alias bindings remain outside the tracked ownership identity.
 - Dynamic calls, interface dispatch, recursion, wrapper finalizers, and helpers outside selected
   modules retain the conservative ownership-transfer behavior when no summary is available.
 - Generated files and packages with type errors are excluded.

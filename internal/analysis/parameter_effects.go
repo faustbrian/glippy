@@ -167,6 +167,7 @@ func (a *parameterEffectAnalysis) summarizeParameter(
 	openReturn := false
 	terminal := false
 	var kinds rules.ParameterEffectKind
+	var guaranteedKinds rules.ParameterEffectKind
 	for len(work) > 0 {
 		if a.ctx.Err() != nil {
 			return rules.ParameterEffectSummary{}
@@ -179,13 +180,22 @@ func (a *parameterEffectAnalysis) summarizeParameter(
 		seen[current] = true
 		pathTerminated := false
 		for _, node := range current.block.Nodes[current.offset:] {
-			effect, ambiguous := a.parameterNodeEffect(info, node, parameter)
+			effect, guaranteed, ambiguous := a.parameterNodeEffect(
+				info,
+				node,
+				parameter,
+			)
 			if ambiguous {
 				known = false
 				pathTerminated = true
 				break
 			}
 			if effect != 0 {
+				if !terminal {
+					guaranteedKinds = guaranteed
+				} else {
+					guaranteedKinds &= guaranteed
+				}
 				terminal = true
 				kinds |= effect
 				pathTerminated = true
@@ -210,6 +220,12 @@ func (a *parameterEffectAnalysis) summarizeParameter(
 		Known: true,
 		Always: terminal && !openReturn,
 		Kinds: kinds,
+		GuaranteedKinds: func() rules.ParameterEffectKind {
+			if openReturn {
+				return 0
+			}
+			return guaranteedKinds
+		}(),
 	}
 }
 
@@ -217,12 +233,13 @@ func (a *parameterEffectAnalysis) parameterNodeEffect(
 	info *types.Info,
 	node ast.Node,
 	parameter types.Object,
-) (rules.ParameterEffectKind, bool) {
+) (rules.ParameterEffectKind, rules.ParameterEffectKind, bool) {
 	if asynchronous, ok := node.(*ast.GoStmt);
 		ok && expressionUsesObjectForEffects(info, asynchronous.Call, parameter) {
-		return rules.ParameterEffectTransfer, false
+		return rules.ParameterEffectTransfer, rules.ParameterEffectTransfer, false
 	}
 	var effect rules.ParameterEffectKind
+	var guaranteed rules.ParameterEffectKind
 	ambiguous := false
 	ast.PreorderStack(
 		node,
@@ -234,6 +251,7 @@ func (a *parameterEffectAnalysis) parameterNodeEffect(
 			if literal, nested := current.(*ast.FuncLit); nested {
 				if expressionUsesObjectForEffects(info, literal.Body, parameter) {
 					effect = rules.ParameterEffectTransfer
+					guaranteed = effect
 				}
 				return false
 			}
@@ -241,6 +259,7 @@ func (a *parameterEffectAnalysis) parameterNodeEffect(
 			case *ast.CallExpr:
 				if directEffectObject(info, current.Fun) == parameter {
 					effect = rules.ParameterEffectCancelInvoke
+					guaranteed = effect
 					return false
 				}
 				if completion := directParameterCompletion(
@@ -250,6 +269,7 @@ func (a *parameterEffectAnalysis) parameterNodeEffect(
 				);
 					completion != 0 {
 					effect = completion
+					guaranteed = effect
 					return false
 				}
 				callee := typeutil.StaticCallee(info, current)
@@ -261,10 +281,16 @@ func (a *parameterEffectAnalysis) parameterNodeEffect(
 						ambiguous = true
 						return false
 					}
-					parameterIndex := parameterEffectArgumentIndex(
+					parameterIndex, valid := rules.StaticCallParameter(
+						info,
+						current,
 						callee,
 						index,
 					)
+					if !valid {
+						ambiguous = true
+						return false
+					}
 					summary := a.summary(callee, parameterIndex)
 					if !summary.Known {
 						ambiguous = true
@@ -272,52 +298,61 @@ func (a *parameterEffectAnalysis) parameterNodeEffect(
 					}
 					if summary.Always {
 						effect |= summary.Kinds
+						guaranteed |= summary.GuaranteedKinds
 					}
 				}
 			case *ast.ReturnStmt:
 				for _, expression := range current.Results {
 					if directEffectObject(info, expression) == parameter {
 						effect = rules.ParameterEffectTransfer
+						guaranteed = effect
 						return false
 					}
 				}
 			case *ast.SendStmt:
 				if directEffectObject(info, current.Value) == parameter {
 					effect = rules.ParameterEffectTransfer
+					guaranteed = effect
 					return false
 				}
 			case *ast.AssignStmt:
-				for _, expression := range current.Rhs {
+				for index, expression := range current.Rhs {
 					if directEffectObject(info, expression) != parameter {
 						continue
 					}
-					for _, target := range current.Lhs {
-						identifier, named := ast.Unparen(
-							target,
-						).(*ast.Ident)
-						if named && identifier.Name == "_" {
-							continue
-						}
-						object := directEffectObject(info, target)
-						variable, local := object.(*types.Var)
-						if local &&
-							variable.Pkg() != nil &&
-							variable.Parent() ==
-								variable.Pkg().Scope() {
-							effect = rules.ParameterEffectTransfer
-							return false
-						}
-						if !local {
-							effect = rules.ParameterEffectTransfer
-							return false
-						}
+					if len(current.Rhs) != len(current.Lhs) {
 						ambiguous = true
 						return false
 					}
+					target := current.Lhs[index]
+					identifier, named := ast.Unparen(target).(*ast.Ident)
+					if named && identifier.Name == "_" {
+						continue
+					}
+					object := directEffectObject(info, target)
+					if object == parameter {
+						continue
+					}
+					variable, local := object.(*types.Var)
+					if local &&
+						variable.Pkg() != nil &&
+						variable.Parent() == variable.Pkg().Scope() {
+						effect = rules.ParameterEffectTransfer
+						guaranteed = effect
+						return false
+					}
+					if !local {
+						effect = rules.ParameterEffectTransfer
+						guaranteed = effect
+						return false
+					}
+					ambiguous = true
+					return false
 				}
 			case *ast.CompositeLit:
 				if expressionUsesObjectForEffects(info, current, parameter) {
 					effect = rules.ParameterEffectTransfer
+					guaranteed = effect
 					return false
 				}
 			case *ast.IndexExpr:
@@ -339,24 +374,7 @@ func (a *parameterEffectAnalysis) parameterNodeEffect(
 			return true
 		},
 	)
-	return effect, ambiguous
-}
-
-func parameterEffectArgumentIndex(function *types.Func, argument int) int {
-	if function == nil || argument < 0 {
-		return -1
-	}
-	signature, _ := function.Type().(*types.Signature)
-	if signature == nil || signature.Params() == nil {
-		return -1
-	}
-	if signature.Variadic() && argument >= signature.Params().Len() - 1 {
-		argument = signature.Params().Len() - 1
-	}
-	if argument >= signature.Params().Len() {
-		return -1
-	}
-	return argument
+	return effect, guaranteed, ambiguous
 }
 
 func directParameterCompletion(

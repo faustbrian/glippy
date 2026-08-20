@@ -113,8 +113,10 @@ func objectObligationEffect(
 	complete func(*ast.CallExpr) bool,
 	parameterEffect func(*ast.CallExpr, int) ParameterEffectSummary,
 	acceptedEffects ParameterEffectKind,
+	returnsAlias func(*ast.CallExpr, int, int) bool,
 ) obligationEffect {
 	effect := obligationOpen
+	assignment, _ := node.(*ast.AssignStmt)
 	ast.PreorderStack(
 		node,
 		nil,
@@ -136,9 +138,27 @@ func objectObligationEffect(
 				}
 				for index, argument := range current.Args {
 					if directObject(info, argument) == object {
+						aliasReturned := assignmentReturnsObjectAlias(
+							info,
+							assignment,
+							object,
+							current,
+							index,
+							returnsAlias,
+						)
 						if parameterEffect != nil {
 							summary := parameterEffect(current, index)
 							if summary.Known {
+								if summary.GuaranteesAny(
+									acceptedEffects &
+										^ParameterEffectTransfer,
+								) {
+									effect = obligationCompleted
+									return false
+								}
+								if aliasReturned {
+									continue
+								}
 								if summary.GuaranteesAny(
 									acceptedEffects,
 								) {
@@ -147,6 +167,9 @@ func objectObligationEffect(
 								}
 								continue
 							}
+						}
+						if aliasReturned {
+							continue
 						}
 						effect = obligationTransferred
 						return false
@@ -169,20 +192,23 @@ func objectObligationEffect(
 					return false
 				}
 			case *ast.AssignStmt:
-				for _, expression := range current.Rhs {
+				for index, expression := range current.Rhs {
 					if directObject(info, expression) != object &&
 						!methodValueUsesObject(info, expression, object) {
 						continue
 					}
-					for _, target := range current.Lhs {
-						identifier, blank := target.(*ast.Ident)
-						if blank && identifier.Name == "_" {
-							continue
-						}
-						if directObject(info, target) != object {
-							effect = obligationTransferred
-							return false
-						}
+					if len(current.Rhs) != len(current.Lhs) {
+						effect = obligationTransferred
+						return false
+					}
+					target := current.Lhs[index]
+					identifier, blank := target.(*ast.Ident)
+					if blank && identifier.Name == "_" {
+						continue
+					}
+					if directObject(info, target) != object {
+						effect = obligationTransferred
+						return false
 					}
 				}
 			case *ast.CompositeLit:
@@ -199,16 +225,130 @@ func objectObligationEffect(
 	if effect != obligationOpen {
 		return effect
 	}
-	assignment, ok := node.(*ast.AssignStmt)
-	if !ok {
+	if assignment == nil {
 		return obligationOpen
 	}
 	for _, target := range assignment.Lhs {
 		if directObject(info, target) == object {
+			if !assignmentReplacesObject(info, assignment, object, returnsAlias) {
+				return obligationOpen
+			}
 			return obligationLost
 		}
 	}
 	return obligationOpen
+}
+
+func assignmentReturnsFinalObjectAlias(
+	info *types.Info,
+	assignment *ast.AssignStmt,
+	object types.Object,
+	returnsAlias func(*ast.CallExpr, int, int) bool,
+) bool {
+	if info == nil || assignment == nil || object == nil || returnsAlias == nil {
+		return false
+	}
+	target := -1
+	for index, expression := range assignment.Lhs {
+		if directObject(info, expression) == object {
+			target = index
+		}
+	}
+	if target < 0 {
+		return false
+	}
+	var call *ast.CallExpr
+	result := 0
+	if len(assignment.Rhs) == 1 {
+		call, _ = ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
+		if call == nil || callResultCount(info, call) != len(assignment.Lhs) {
+			return false
+		}
+		result = target
+	} else {
+		if len(assignment.Rhs) != len(assignment.Lhs) {
+			return false
+		}
+		call, _ = ast.Unparen(assignment.Rhs[target]).(*ast.CallExpr)
+		if call == nil || callResultCount(info, call) != 1 {
+			return false
+		}
+	}
+	for argument, expression := range call.Args {
+		if directObject(info, expression) == object &&
+			returnsAlias(call, result, argument) {
+			return true
+		}
+	}
+	return false
+}
+
+func assignmentReplacesObject(
+	info *types.Info,
+	node ast.Node,
+	object types.Object,
+	returnsAlias func(*ast.CallExpr, int, int) bool,
+) bool {
+	assignment, _ := node.(*ast.AssignStmt)
+	if info == nil || assignment == nil || object == nil {
+		return false
+	}
+	target := -1
+	for index, expression := range assignment.Lhs {
+		if directObject(info, expression) == object {
+			target = index
+		}
+	}
+	if target < 0 {
+		return false
+	}
+	if len(assignment.Rhs) == len(assignment.Lhs) &&
+		directObject(info, assignment.Rhs[target]) == object {
+		return false
+	}
+	return !assignmentReturnsFinalObjectAlias(info, assignment, object, returnsAlias)
+}
+
+func assignmentReturnsObjectAlias(
+	info *types.Info,
+	assignment *ast.AssignStmt,
+	object types.Object,
+	call *ast.CallExpr,
+	argument int,
+	returnsAlias func(*ast.CallExpr, int, int) bool,
+) bool {
+	if info == nil ||
+		assignment == nil ||
+		object == nil ||
+		call == nil ||
+		returnsAlias == nil ||
+		argument < 0 ||
+		argument >= len(call.Args) ||
+		directObject(info, call.Args[argument]) != object {
+		return false
+	}
+	if len(assignment.Rhs) == 1 && ast.Unparen(assignment.Rhs[0]) == call {
+		if callResultCount(info, call) != len(assignment.Lhs) {
+			return false
+		}
+		for result, target := range assignment.Lhs {
+			if directObject(info, target) == object &&
+				returnsAlias(call, result, argument) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(assignment.Rhs) != len(assignment.Lhs) || callResultCount(info, call) != 1 {
+		return false
+	}
+	for result, expression := range assignment.Rhs {
+		if ast.Unparen(expression) == call &&
+			directObject(info, assignment.Lhs[result]) == object {
+			return returnsAlias(call, 0, argument)
+		}
+	}
+	return false
 }
 
 func returningNonNilErrorGuard(info *types.Info, guard *ast.IfStmt, errorObject types.Object) bool {

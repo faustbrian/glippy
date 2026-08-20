@@ -176,7 +176,11 @@ func resourceUseAnalysisFor(ctx *ControlFlowContext) *resourceUseAnalysis {
 }
 
 func buildResourceUseAnalysis(ctx *ControlFlowContext) *resourceUseAnalysis {
-	objects, acquisitions := collectResourceUseCandidates(ctx.Info(), ctx.Body())
+	objects, acquisitions := collectResourceUseCandidates(
+		ctx.Info(),
+		ctx.Body(),
+		ctx.ReturnAliasesArgument,
+	)
 	if len(objects) == 0 {
 		return &resourceUseAnalysis{complete: true, issues: []resourceUseIssue{}}
 	}
@@ -243,11 +247,12 @@ func buildResourceUseAnalysis(ctx *ControlFlowContext) *resourceUseAnalysis {
 func collectResourceUseCandidates(
 	info *types.Info,
 	body *ast.BlockStmt,
+	returnsAlias func(*ast.CallExpr, int, int) bool,
 ) ([]types.Object, map[*ast.AssignStmt]map[types.Object]struct{}) {
 	objects := make([]types.Object, 0)
 	seen := make(map[types.Object]struct{})
 	acquisitions := make(map[*ast.AssignStmt]map[types.Object]struct{})
-	for _, candidate := range localCloserCandidates(info, body) {
+	for _, candidate := range localCloserCandidates(info, body, returnsAlias) {
 		if _, found := seen[candidate.object]; !found {
 			seen[candidate.object] = struct{}{}
 			objects = append(objects, candidate.object)
@@ -353,8 +358,12 @@ func (b *resourceUseBuilder) transferObject(
 		nil,
 		b.ctx.ParameterEffect,
 		ParameterEffectClose | ParameterEffectTransfer,
+		nil,
 	)
 	if effect == obligationTransferred || effect == obligationLost {
+		value = resourceUseUnknown
+	}
+	if assignmentReplacesObject(b.ctx.Info(), node, object, b.ctx.ReturnAliasesArgument) {
 		value = resourceUseUnknown
 	}
 	state.values[object] = value

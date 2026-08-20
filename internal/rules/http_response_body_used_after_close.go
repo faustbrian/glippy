@@ -272,7 +272,7 @@ func (b *httpResponseBodyStateBuilder) transfer(
 		responseReassignedInNode(b.ctx.Info(), node, b.candidate.object) {
 		state = httpResponseBodyUnknown
 	}
-	effect := objectObligationEffect(b.ctx.Info(), node, b.candidate.object, nil, nil, 0)
+	effect := objectObligationEffect(b.ctx.Info(), node, b.candidate.object, nil, nil, 0, nil)
 	if effect == obligationTransferred || effect == obligationLost {
 		state = httpResponseBodyUnknown
 	}

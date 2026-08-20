@@ -633,10 +633,13 @@ const (
 // statically resolved function parameter. Known distinguishes a proven borrow
 // from an unavailable or ambiguous summary. Always is true only when every
 // normally returning path reaches one of Kinds before returning.
+// GuaranteedKinds contains effects independently present on every path, while
+// Kinds also includes effects that occur only on alternative terminal paths.
 type ParameterEffectSummary struct {
 	Known bool
 	Always bool
 	Kinds ParameterEffectKind
+	GuaranteedKinds ParameterEffectKind
 }
 
 // NilState is a proven nilness state for one returned value.
@@ -656,10 +659,12 @@ type ReturnStateSummary struct {
 	WhenErrorNonNil NilState
 }
 
-// GuaranteesAny reports whether every normally returning path applies only an
-// accepted terminal effect and at least one such effect is present.
+// GuaranteesAny reports whether at least one accepted effect is independently
+// guaranteed or every possible terminal effect belongs to the accepted set.
 func (s ParameterEffectSummary) GuaranteesAny(accepted ParameterEffectKind) bool {
-	return s.Known && s.Always && s.Kinds != 0 && s.Kinds & ^accepted == 0
+	return s.Known &&
+		s.Always &&
+		(s.GuaranteedKinds & accepted != 0 || s.Kinds != 0 && s.Kinds & ^accepted == 0)
 }
 
 // EffectFacts exposes immutable, stable cross-load semantic summaries to
@@ -922,7 +927,7 @@ func (c *ControlFlowContext) ParameterEffect(
 	if callee == nil {
 		return ParameterEffectSummary{}
 	}
-	parameter, valid := staticCallParameter(callee, argument)
+	parameter, valid := StaticCallParameter(c.typesContext.info, call, callee, argument)
 	if !valid {
 		return ParameterEffectSummary{}
 	}
@@ -954,7 +959,7 @@ func (c *ControlFlowContext) ReturnAliasesArgument(
 	if callee == nil || result < 0 || argument < 0 || argument >= len(call.Args) {
 		return false
 	}
-	parameter, valid := staticCallParameter(callee, argument)
+	parameter, valid := StaticCallParameter(c.typesContext.info, call, callee, argument)
 	return valid && c.effects.ReturnAliasesArgument(callee, result, parameter)
 }
 
@@ -979,8 +984,16 @@ func (c *ControlFlowContext) staticCallee(call *ast.CallExpr) *types.Func {
 	return typeutil.StaticCallee(c.typesContext.info, call)
 }
 
-func staticCallParameter(callee *types.Func, argument int) (int, bool) {
-	if callee == nil || argument < 0 {
+// StaticCallParameter maps one call argument to the callee parameter index.
+// Method-expression calls expose the receiver as argument zero even though the
+// receiver is not part of a configured or inferred parameter contract.
+func StaticCallParameter(
+	info *types.Info,
+	call *ast.CallExpr,
+	callee *types.Func,
+	argument int,
+) (int, bool) {
+	if info == nil || call == nil || callee == nil || argument < 0 {
 		return 0, false
 	}
 	signature, _ := callee.Type().(*types.Signature)
@@ -988,6 +1001,14 @@ func staticCallParameter(callee *types.Func, argument int) (int, bool) {
 		return 0, false
 	}
 	parameter := argument
+	selector, _ := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if selection := info.Selections[selector];
+		selection != nil && selection.Kind() == types.MethodExpr {
+		parameter--
+	}
+	if parameter < 0 {
+		return 0, false
+	}
 	if signature.Variadic() && parameter >= signature.Params().Len() - 1 {
 		parameter = signature.Params().Len() - 1
 	}
