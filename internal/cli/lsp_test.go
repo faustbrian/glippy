@@ -1500,7 +1500,7 @@ func TestLSPWorkspaceFallsBackWhenInternalTestBuildConstraintChanges(t *testing.
 	}
 }
 
-func TestLSPWorkspaceFallsBackWhenClosedDependencyChangesOnDisk(t *testing.T) {
+func TestLSPWorkspaceRetypechecksChangedLocalDependencyWithoutFullReload(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -1528,7 +1528,7 @@ func TestLSPWorkspaceFallsBackWhenClosedDependencyChangesOnDisk(t *testing.T) {
 		"package dependency\n\nfunc Value() int { return 1 }\n",
 	)
 	original := "package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc run() {\n\tvalue := dependency.Value()\n\t_ = value\n}\n"
-	changed := "package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc run() {\n\tvalue := dependency.Value()\n\tvalue = value\n}\n"
+	changed := "package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc run() {\n\tvalue := dependency.Value()\n\tvar _ string = value\n\tvalue = value\n}\n"
 	writeChangedCLIFile(t, consumerPath, original)
 	registry, err := rulecatalog.NewRegistry()
 	if err != nil {
@@ -1564,10 +1564,136 @@ func TestLSPWorkspaceFallsBackWhenClosedDependencyChangesOnDisk(t *testing.T) {
 		t.Fatalf("changed workspace diagnostics = %#v", diagnostics)
 	}
 	statistics := backend.packageSession.Statistics()
-	if statistics.FullLoads != 2 || statistics.IncrementalLoads != 0 {
+	if statistics.FullLoads != 1 || statistics.IncrementalLoads != 1 {
 		t.Fatalf(
-			"typed package session statistics = %#v, want dependency-change fallback",
+			"typed package session statistics = %#v, want dependency recheck",
 			statistics,
+		)
+	}
+	clean := &lspBackend{registry: registry}
+	cleanResult, err := clean.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cleanResult) != 1 || cleanResult[0].Err != nil {
+		t.Fatalf("clean workspace analysis = %#v", cleanResult)
+	}
+	cleanDiagnostics := cleanResult[0].Analysis.Diagnostics
+	incrementalDiagnostics := result[0].Analysis.Diagnostics
+	if len(cleanDiagnostics) != len(incrementalDiagnostics) ||
+		cleanDiagnostics[0].Code != incrementalDiagnostics[0].Code ||
+		cleanDiagnostics[0].Range != incrementalDiagnostics[0].Range ||
+		cleanDiagnostics[0].Message != incrementalDiagnostics[0].Message {
+		t.Fatalf(
+			"incremental diagnostics = %#v, clean diagnostics = %#v",
+			incrementalDiagnostics,
+			cleanDiagnostics,
+		)
+	}
+}
+
+func TestLSPWorkspaceRefreshesEffectsFromChangedLocalDependency(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = []\n[lint.rules]\nresource-not-closed = \"warn\"\n",
+	)
+	dependencyPath := filepath.Join(root, "helper", "helper.go")
+	consumerPath := filepath.Join(root, "consumer", "consumer.go")
+	if err := os.MkdirAll(filepath.Dir(dependencyPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(consumerPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(
+		t,
+		dependencyPath,
+		"package helper\n\nimport \"os\"\n\nfunc Finalize(file *os.File) { _ = file.Close() }\n",
+	)
+	original := `package consumer
+
+import (
+	"os"
+
+	"example.com/editor/helper"
+)
+
+func run() error {
+	file, err := os.Open("input")
+	if err != nil { return err }
+	helper.Finalize(file)
+	return nil
+}
+`
+	changed := strings.Replace(original, "func run()", "// refreshed\nfunc run()", 1)
+	writeChangedCLIFile(t, consumerPath, original)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &lspBackend{registry: registry}
+	document := lsp.Document{
+		URI: "file://" + filepath.ToSlash(consumerPath),
+		Path: consumerPath,
+		Version: 1,
+		Text: []byte(original),
+	}
+	initial, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(initial) != 1 || initial[0].Err != nil || len(initial[0].Analysis.Diagnostics) != 0 {
+		t.Fatalf("initial workspace analysis = %#v", initial)
+	}
+	writeChangedCLIFile(
+		t,
+		dependencyPath,
+		"package helper\n\nimport \"os\"\n\nfunc Finalize(file *os.File) { _ = file.Name() }\n",
+	)
+	document.Version = 2
+	document.Text = []byte(changed)
+	result, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].Err != nil {
+		t.Fatalf("changed workspace analysis = %#v", result)
+	}
+	if diagnostics := result[0].Analysis.Diagnostics;
+		len(diagnostics) != 1 || diagnostics[0].Code != "resource-not-closed" {
+		t.Fatalf("changed workspace diagnostics = %#v", diagnostics)
+	}
+	statistics := backend.packageSession.Statistics()
+	if statistics.FullLoads != 1 || statistics.IncrementalLoads != 1 {
+		t.Fatalf("typed package session statistics = %#v, want effect refresh", statistics)
+	}
+	clean := &lspBackend{registry: registry}
+	cleanResult, err := clean.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cleanResult) != 1 || cleanResult[0].Err != nil {
+		t.Fatalf("clean workspace analysis = %#v", cleanResult)
+	}
+	cleanDiagnostics := cleanResult[0].Analysis.Diagnostics
+	incrementalDiagnostics := result[0].Analysis.Diagnostics
+	if len(cleanDiagnostics) != len(incrementalDiagnostics) ||
+		cleanDiagnostics[0].Code != incrementalDiagnostics[0].Code ||
+		cleanDiagnostics[0].Range != incrementalDiagnostics[0].Range ||
+		cleanDiagnostics[0].Message != incrementalDiagnostics[0].Message {
+		t.Fatalf(
+			"incremental diagnostics = %#v, clean diagnostics = %#v",
+			incrementalDiagnostics,
+			cleanDiagnostics,
 		)
 	}
 }
@@ -1647,7 +1773,7 @@ func TestLSPWorkspaceFallsBackWhenIgnoredDependencySelectionChanges(t *testing.T
 	}
 }
 
-func TestLSPWorkspaceFallsBackWhenExternalLocalDependencyChangesOnDisk(t *testing.T) {
+func TestLSPWorkspaceRetypechecksChangedLocalReplacementWithoutFullReload(t *testing.T) {
 	t.Parallel()
 
 	parent := t.TempDir()
@@ -1682,7 +1808,7 @@ func TestLSPWorkspaceFallsBackWhenExternalLocalDependencyChangesOnDisk(t *testin
 	)
 	path := filepath.Join(root, "source.go")
 	original := "package editor\n\nimport \"example.com/dependency\"\n\nfunc run() {\n\tvalue := dependency.Value()\n\t_ = value\n}\n"
-	changed := "package editor\n\nimport \"example.com/dependency\"\n\nfunc run() {\n\tvalue := dependency.Value()\n\tvalue = value\n}\n"
+	changed := "package editor\n\nimport \"example.com/dependency\"\n\nfunc run() {\n\tvalue := dependency.Value()\n\tvar _ string = value\n\tvalue = value\n}\n"
 	writeChangedCLIFile(t, path, original)
 	registry, err := rulecatalog.NewRegistry()
 	if err != nil {
@@ -1718,9 +1844,9 @@ func TestLSPWorkspaceFallsBackWhenExternalLocalDependencyChangesOnDisk(t *testin
 		t.Fatalf("changed workspace diagnostics = %#v", diagnostics)
 	}
 	statistics := backend.packageSession.Statistics()
-	if statistics.FullLoads != 2 || statistics.IncrementalLoads != 0 {
+	if statistics.FullLoads != 1 || statistics.IncrementalLoads != 1 {
 		t.Fatalf(
-			"typed package session statistics = %#v, want external dependency fallback",
+			"typed package session statistics = %#v, want local replacement recheck",
 			statistics,
 		)
 	}
@@ -1739,9 +1865,114 @@ func TestLSPWorkspaceFallsBackWhenExternalLocalDependencyChangesOnDisk(t *testin
 		t.Fatalf("module-changed workspace analysis = %#v", result)
 	}
 	statistics = backend.packageSession.Statistics()
-	if statistics.FullLoads != 3 || statistics.IncrementalLoads != 0 {
+	if statistics.FullLoads != 2 || statistics.IncrementalLoads != 1 {
 		t.Fatalf(
 			"typed package session statistics = %#v, want external module fallback",
+			statistics,
+		)
+	}
+	writeChangedCLIFile(
+		t,
+		filepath.Join(dependencyRoot, "go.sum"),
+		"example.com/transitive v0.0.0 h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n",
+	)
+	document.Version = 4
+	document.Text = []byte(changed)
+	result, err = backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].Err != nil {
+		t.Fatalf("sum-changed workspace analysis = %#v", result)
+	}
+	statistics = backend.packageSession.Statistics()
+	if statistics.FullLoads != 3 || statistics.IncrementalLoads != 1 {
+		t.Fatalf(
+			"typed package session statistics = %#v, want external sum fallback",
+			statistics,
+		)
+	}
+}
+
+func TestLSPWorkspaceRetypechecksChangedWorkspaceModuleWithoutFullReload(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	root := filepath.Join(workspace, "editor")
+	dependencyRoot := filepath.Join(workspace, "dependency")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dependencyRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(
+		t,
+		filepath.Join(workspace, "go.work"),
+		"go 1.26.0\n\nuse (\n\t./editor\n\t./dependency\n)\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n\nrequire example.com/dependency v0.0.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = []\n[lint.rules]\nself-assignment = \"warn\"\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(dependencyRoot, "go.mod"),
+		"module example.com/dependency\n\ngo 1.26.0\n",
+	)
+	dependencyPath := filepath.Join(dependencyRoot, "dependency.go")
+	writeChangedCLIFile(
+		t,
+		dependencyPath,
+		"package dependency\n\nfunc Value() int { return 1 }\n",
+	)
+	path := filepath.Join(root, "source.go")
+	original := "package editor\n\nimport \"example.com/dependency\"\n\nfunc run() {\n\tvalue := dependency.Value()\n\t_ = value\n}\n"
+	changed := "package editor\n\nimport \"example.com/dependency\"\n\nfunc run() {\n\tvalue := dependency.Value()\n\tvar _ string = value\n\tvalue = value\n}\n"
+	writeChangedCLIFile(t, path, original)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &lspBackend{registry: registry}
+	document := lsp.Document{
+		URI: "file://" + filepath.ToSlash(path),
+		Path: path,
+		Version: 1,
+		Text: []byte(original),
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document});
+		err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(
+		t,
+		dependencyPath,
+		"package dependency\n\nfunc Value() string { return \"value\" }\n",
+	)
+	document.Version = 2
+	document.Text = []byte(changed)
+	result, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].Err != nil {
+		t.Fatalf("changed workspace analysis = %#v", result)
+	}
+	if diagnostics := result[0].Analysis.Diagnostics;
+		len(diagnostics) != 1 || diagnostics[0].Code != "self-assignment" {
+		t.Fatalf("changed workspace diagnostics = %#v", diagnostics)
+	}
+	statistics := backend.packageSession.Statistics()
+	if statistics.FullLoads != 1 || statistics.IncrementalLoads != 1 {
+		t.Fatalf(
+			"typed package session statistics = %#v, want workspace-module recheck",
 			statistics,
 		)
 	}
@@ -3105,6 +3336,82 @@ func BenchmarkLSPWorkspaceSamePackageIncremental(b *testing.B) {
 	for index := 0; index < b.N; index++ {
 		document.Version++
 		document.Text = []byte(sources[(index + 1) % len(sources)])
+		if _, err := backend.AnalyzeWorkspace(
+			context.Background(),
+			[]lsp.Document{document},
+		);
+			err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	after := backend.packageSession.Statistics()
+	fullLoads := after.FullLoads - before.FullLoads
+	incrementalLoads := after.IncrementalLoads - before.IncrementalLoads
+	if fullLoads != 0 || incrementalLoads != uint64(b.N) {
+		b.Fatalf(
+			"package session loads = full %d, incremental %d; want full 0, incremental %d",
+			fullLoads,
+			incrementalLoads,
+			b.N,
+		)
+	}
+	b.ReportMetric(float64(fullLoads) / float64(b.N), "full-package-loads/op")
+	b.ReportMetric(float64(incrementalLoads) / float64(b.N), "incremental-loads/op")
+}
+
+func BenchmarkLSPWorkspaceChangedDependencyIncremental(b *testing.B) {
+	root := b.TempDir()
+	writeChangedCLIFile(
+		b,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		b,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = []\n[lint.rules]\nself-assignment = \"warn\"\n",
+	)
+	dependencyPath := filepath.Join(root, "dependency", "dependency.go")
+	consumerPath := filepath.Join(root, "consumer", "consumer.go")
+	if err := os.MkdirAll(filepath.Dir(dependencyPath), 0o755); err != nil {
+		b.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(consumerPath), 0o755); err != nil {
+		b.Fatal(err)
+	}
+	dependencies := []string{
+		"package dependency\n\nfunc Value() int { return 1 }\n",
+		"package dependency\n\nfunc Value() string { return \"value\" }\n",
+	}
+	consumers := []string{
+		"package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc run() { value := dependency.Value(); var _ int = value; value = value }\n",
+		"package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc run() { value := dependency.Value(); var _ string = value; value = value }\n",
+	}
+	writeChangedCLIFile(b, dependencyPath, dependencies[0])
+	writeChangedCLIFile(b, consumerPath, consumers[0])
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		b.Fatal(err)
+	}
+	backend := &lspBackend{registry: registry}
+	document := lsp.Document{
+		URI: "file://" + filepath.ToSlash(consumerPath),
+		Path: consumerPath,
+		Version: 1,
+		Text: []byte(consumers[0]),
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document});
+		err != nil {
+		b.Fatal(err)
+	}
+	before := backend.packageSession.Statistics()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		selected := (index + 1) % len(dependencies)
+		writeChangedCLIFile(b, dependencyPath, dependencies[selected])
+		document.Version++
+		document.Text = []byte(consumers[selected])
 		if _, err := backend.AnalyzeWorkspace(
 			context.Background(),
 			[]lsp.Document{document},

@@ -362,7 +362,7 @@ var _ string = sample.Value()
 	}
 }
 
-func TestPackageSessionFallsBackWhenExternalTestDependencyOverlayChanges(t *testing.T) {
+func TestPackageSessionRetypechecksExternalTestDependencyOverlay(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -422,9 +422,9 @@ var _ string = sample.Value()
 		t.Fatalf("full external-test diagnostics = %#v", loaded.Diagnostics)
 	}
 	statistics := session.Statistics()
-	if statistics.FullLoads != 2 || statistics.IncrementalLoads != 1 {
+	if statistics.FullLoads != 1 || statistics.IncrementalLoads != 2 {
 		t.Fatalf(
-			"typed package session statistics = %#v, want dependency-overlay fallback",
+			"typed package session statistics = %#v, want dependency-overlay recheck",
 			statistics,
 		)
 	}

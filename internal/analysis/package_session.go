@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/faustbrian/glippy/internal/contracts"
 	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
 	"golang.org/x/tools/go/packages"
@@ -62,6 +63,8 @@ type packageSessionEntry struct {
 	rootIgnoredInputs map[string]packageSessionFileIdentity
 	dependencyFiles map[string]struct{}
 	dependencyDirs map[string]struct{}
+	mutableDependencyFiles map[string]struct{}
+	mutableDependencyBuildConstraints map[string][]packageSessionBuildConstraint
 	dependencyInputs map[string]packageSessionFileIdentity
 	dependencyNames map[string][]string
 	directoryNames map[string][]string
@@ -175,9 +178,9 @@ func (s *PackageSession) load(
 				s.mu.Unlock()
 			} else {
 				s.mu.Unlock()
-				retained, retain := entry.refreshed(loaded, options.Dir)
+				retained, retain := newPackageSessionEntry(loaded, options)
 				if !retain {
-					retained, retain = newPackageSessionEntry(loaded, options)
+					retained, retain = entry.refreshed(loaded, options.Dir)
 				}
 				s.mu.Lock()
 				if s.generation == generation {
@@ -485,9 +488,23 @@ func newPackageSessionEntry(
 		mutableDependencyFiles,
 		mutableDependencyIgnoredFiles,
 		mutableDependencyDirs,
+		options.Overlay,
 	)
 	if err != nil {
 		return packageSessionEntry{}, false
+	}
+	mutableDependencySources := make(map[string]struct{})
+	mutableDependencyBuildConstraints := make(map[string][]packageSessionBuildConstraint)
+	for path := range mutableDependencyFiles {
+		if filepath.Ext(path) != ".go" {
+			continue
+		}
+		file, found := loaded.Sources.Lookup(path)
+		if !found || file == nil || !file.CanFormat() {
+			return packageSessionEntry{}, false
+		}
+		mutableDependencySources[path] = struct{}{}
+		mutableDependencyBuildConstraints[path] = packageSessionBuildConstraints(file)
 	}
 	return packageSessionEntry{
 		variants: variants,
@@ -497,6 +514,8 @@ func newPackageSessionEntry(
 		rootIgnoredInputs: rootIgnoredInputs,
 		dependencyFiles: dependencyFiles,
 		dependencyDirs: dependencyDirs,
+		mutableDependencyFiles: mutableDependencySources,
+		mutableDependencyBuildConstraints: mutableDependencyBuildConstraints,
 		dependencyInputs: dependencyInputs,
 		dependencyNames: dependencyNames,
 		directoryNames: directoryNames,
@@ -841,6 +860,10 @@ func compactPackageSessionRoot(
 					return nil, false
 				}
 				mutableDependencyFiles[goMod] = struct{}{}
+				mutableDependencyFiles[filepath.Join(
+					filepath.Dir(goMod),
+					"go.sum",
+				)] = struct{}{}
 			}
 			for _, path := range pkg.CompiledGoFiles {
 				if _, sourceBacked := goFiles[filepath.Clean(path)]; !sourceBacked {
@@ -1061,7 +1084,14 @@ func (entry packageSessionEntry) reload(
 	if !equalPackageSessionControlFiles(currentControls, entry.controlFiles) {
 		return PackageLoadResult{}, false, nil
 	}
-	if !packageSessionDependenciesCurrent(entry.dependencyInputs, entry.dependencyNames) {
+	dependencySources, dependencyBytes, changedDependencies, current, dependencySourceErr := entry.loadDependencySources(
+		ctx,
+		options,
+	)
+	if dependencySourceErr != nil {
+		return PackageLoadResult{}, false, dependencySourceErr
+	}
+	if !current {
 		return PackageLoadResult{}, false, nil
 	}
 	if !packageSessionDependenciesCurrent(entry.rootIgnoredInputs, nil) {
@@ -1069,7 +1099,10 @@ func (entry packageSessionEntry) reload(
 	}
 	for path := range options.Overlay {
 		if _, dependency := entry.dependencyFiles[path]; dependency {
-			return PackageLoadResult{}, false, nil
+			if _, mutable := entry.mutableDependencyFiles[path]; !mutable {
+				return PackageLoadResult{}, false, nil
+			}
+			continue
 		}
 		if _, dependency := entry.dependencyDirs[filepath.Dir(path)]; dependency {
 			return PackageLoadResult{}, false, nil
@@ -1124,6 +1157,11 @@ func (entry packageSessionEntry) reload(
 		}
 	}
 	sources := PackageSourceSet{paths: paths, files: files}
+	mergedSources, mergeErr := MergePackageSourceSets(sources, dependencySources)
+	if mergeErr != nil {
+		return PackageLoadResult{}, false, nil
+	}
+	sources = mergedSources
 	if len(missingSet) > 0 {
 		if loadImports == nil {
 			return PackageLoadResult{}, false, nil
@@ -1166,7 +1204,25 @@ func (entry packageSessionEntry) reload(
 			variants[index].availableImports = available
 		}
 	}
-	freshByID := make(map[string]*packages.Package, len(entry.variants))
+	withinLimits, limitErr := packageSessionSourcesWithinLimits(sources, options)
+	if limitErr != nil {
+		return PackageLoadResult{}, false, limitErr
+	}
+	if !withinLimits {
+		return PackageLoadResult{}, false, nil
+	}
+	freshByID, reusable, dependencyErr := reloadPackageSessionDependencies(
+		ctx,
+		sourceGoVersion,
+		options.Dir,
+		variants,
+		dependencyBytes,
+		changedDependencies,
+		options.LoadEffectFacts,
+	)
+	if dependencyErr != nil || !reusable {
+		return PackageLoadResult{}, reusable, dependencyErr
+	}
 	packages_ := make([]*packages.Package, 0, len(entry.variants))
 	for _, variant := range variants {
 		root, reusable, err := variant.reload(ctx, sourceGoVersion, bytesByPath, freshByID)
@@ -1176,13 +1232,402 @@ func (entry packageSessionEntry) reload(
 		freshByID[root.ID] = root
 		packages_ = append(packages_, root)
 	}
+	effectFacts := cloneNativeEffectFacts(entry.effectFacts)
+	if options.LoadEffectFacts && len(changedDependencies) > 0 {
+		var effectErr error
+		effectFacts, effectErr = rebuildPackageSessionEffectFacts(
+			ctx,
+			options,
+			packages_,
+			freshByID,
+		)
+		if effectErr != nil {
+			return PackageLoadResult{}, false, effectErr
+		}
+	}
 	return PackageLoadResult{
 		Requirement: options.Requirement,
 		Packages: packages_,
 		Diagnostics: []PackageDiagnostic{},
 		Sources: sources,
-		effectFacts: cloneNativeEffectFacts(entry.effectFacts),
+		effectFacts: effectFacts,
 	}, true, nil
+}
+
+func packageSessionSourcesWithinLimits(
+	sources PackageSourceSet,
+	options PackageLoadOptions,
+) (bool, error) {
+	limits, err := resolvePackageResourceLimits(options)
+	if err != nil {
+		return false, err
+	}
+	paths := sources.Paths()
+	if len(paths) > limits.maxSourceFiles {
+		return false, nil
+	}
+	var bytes int64
+	for _, path := range paths {
+		file, found := sources.Lookup(path)
+		if !found || file == nil {
+			return false, nil
+		}
+		if file.ByteSize() > limits.maxSourceBytes - bytes {
+			return false, nil
+		}
+		bytes += file.ByteSize()
+	}
+	return true, nil
+}
+
+func (entry packageSessionEntry) loadDependencySources(
+	ctx context.Context,
+	options PackageLoadOptions,
+) (PackageSourceSet, map[string][]byte, map[string]struct{}, bool, error) {
+	if !packageSessionDependencyNamesCurrent(entry.dependencyNames) {
+		return PackageSourceSet{}, nil, nil, false, nil
+	}
+	paths := make([]string, 0, len(entry.mutableDependencyFiles))
+	for path := range entry.mutableDependencyFiles {
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+	files := make(map[string]*source.File, len(paths))
+	bytesByPath := make(map[string][]byte, len(paths))
+	changed := make(map[string]struct{})
+	for _, path := range paths {
+		if err := ctx.Err(); err != nil {
+			return PackageSourceSet{}, nil, nil, false, err
+		}
+		input, overlaid := options.Overlay[path]
+		if !overlaid {
+			var err error
+			input, err = source.ReadFile(path)
+			if err != nil {
+				return PackageSourceSet{}, nil, nil, false, nil
+			}
+		}
+		physical, err := source.Load(path, input)
+		if err != nil || physical == nil || !physical.CanFormat() {
+			return PackageSourceSet{}, nil, nil, false, nil
+		}
+		if !slices.Equal(
+			packageSessionBuildConstraints(physical),
+			entry.mutableDependencyBuildConstraints[path],
+		) {
+			return PackageSourceSet{}, nil, nil, false, nil
+		}
+		identity := entry.dependencyInputs[path]
+		if !identity.exists || physical.Digest() != identity.digest {
+			changed[path] = struct{}{}
+		}
+		files[path] = physical
+		bytesByPath[path] = physical.Bytes()
+	}
+	for path, expected := range entry.dependencyInputs {
+		if _, active := entry.mutableDependencyFiles[path]; active {
+			continue
+		}
+		input, err := source.ReadFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			if expected.exists {
+				return PackageSourceSet{}, nil, nil, false, nil
+			}
+			continue
+		}
+		if err != nil ||
+			!expected.exists ||
+			source.Digest(sha256.Sum256(input)) != expected.digest {
+			return PackageSourceSet{}, nil, nil, false, nil
+		}
+	}
+	return PackageSourceSet{paths: paths, files: files}, bytesByPath, changed, true, nil
+}
+
+func packageSessionDependencyNamesCurrent(directories map[string][]string) bool {
+	for directory, expected := range directories {
+		current, err := packageSessionGoNames(directory)
+		if err != nil || !slices.Equal(current, expected) {
+			return false
+		}
+	}
+	return true
+}
+
+func reloadPackageSessionDependencies(
+	ctx context.Context,
+	sourceGoVersion string,
+	projectRoot string,
+	variants []packageSessionVariant,
+	bytesByPath map[string][]byte,
+	changedPaths map[string]struct{},
+	refreshAllMutable bool,
+) (map[string]*packages.Package, bool, error) {
+	freshByID := make(map[string]*packages.Package)
+	if len(changedPaths) == 0 {
+		return freshByID, true, nil
+	}
+	directlyChanged := make(map[string]struct{})
+	seen := make(map[string]struct{})
+	stack := make([]*packages.Package, 0)
+	for _, variant := range variants {
+		for _, imported := range variant.root.Imports {
+			stack = append(stack, imported)
+		}
+	}
+	for len(stack) > 0 {
+		pkg := stack[len(stack) - 1]
+		stack = stack[:len(stack) - 1]
+		if pkg == nil || pkg.ID == "" {
+			return nil, false, nil
+		}
+		if _, visited := seen[pkg.ID]; visited {
+			continue
+		}
+		seen[pkg.ID] = struct{}{}
+		for _, path := range pkg.GoFiles {
+			if _, changed := changedPaths[filepath.Clean(path)]; changed {
+				directlyChanged[pkg.ID] = struct{}{}
+			}
+		}
+		if refreshAllMutable && packageSessionDependencyIsMutable(projectRoot, pkg) {
+			directlyChanged[pkg.ID] = struct{}{}
+		}
+		for _, imported := range pkg.Imports {
+			stack = append(stack, imported)
+		}
+	}
+	if len(directlyChanged) == 0 {
+		return nil, false, nil
+	}
+	type visitState uint8
+	const (
+		visitActive visitState = iota + 1
+		visitComplete
+	)
+	states := make(map[string]visitState)
+	impacted := make(map[string]bool)
+	var refresh func(*packages.Package) (bool, bool, error)
+	refresh = func(pkg *packages.Package) (bool, bool, error) {
+		if pkg == nil || pkg.ID == "" {
+			return false, false, nil
+		}
+		switch states[pkg.ID] {
+		case visitActive:
+			return false, false, nil
+		case visitComplete:
+			return impacted[pkg.ID], true, nil
+		}
+		states[pkg.ID] = visitActive
+		changed := false
+		if _, direct := directlyChanged[pkg.ID]; direct {
+			changed = true
+		}
+		paths := make([]string, 0, len(pkg.Imports))
+		for path := range pkg.Imports {
+			paths = append(paths, path)
+		}
+		slices.Sort(paths)
+		for _, path := range paths {
+			importChanged, valid, err := refresh(pkg.Imports[path])
+			if err != nil || !valid {
+				return false, valid, err
+			}
+			changed = changed || importChanged
+		}
+		if changed {
+			if !packageSessionDependencyIsMutable(projectRoot, pkg) {
+				return false, false, nil
+			}
+			fresh, valid, err := reloadPackageSessionPackage(
+				ctx,
+				sourceGoVersion,
+				pkg,
+				bytesByPath,
+				freshByID,
+			)
+			if err != nil || !valid {
+				return false, valid, err
+			}
+			freshByID[pkg.ID] = fresh
+		}
+		states[pkg.ID] = visitComplete
+		impacted[pkg.ID] = changed
+		return changed, true, nil
+	}
+	for _, variant := range variants {
+		paths := make([]string, 0, len(variant.root.Imports))
+		for path := range variant.root.Imports {
+			paths = append(paths, path)
+		}
+		slices.Sort(paths)
+		for _, path := range paths {
+			_, valid, err := refresh(variant.root.Imports[path])
+			if err != nil || !valid {
+				return nil, valid, err
+			}
+		}
+	}
+	return freshByID, true, nil
+}
+
+func rebuildPackageSessionEffectFacts(
+	ctx context.Context,
+	options PackageLoadOptions,
+	roots []*packages.Package,
+	freshByID map[string]*packages.Package,
+) (*nativeEffectFacts, error) {
+	facts := newNativeEffectFacts()
+	resolved, err := contracts.Resolve(options.Contracts, effectTypePackages(roots))
+	if err != nil {
+		return nil, fmt.Errorf("resolve incremental project semantic contracts: %w", err)
+	}
+	facts.addContracts(resolved)
+	prefixes := effectModulePrefixes(roots)
+	selected := make([]*packages.Package, 0, len(freshByID))
+	seen := make(map[string]struct{})
+	rootIDs := make(map[string]struct{}, len(roots))
+	for _, root := range roots {
+		if root != nil {
+			rootIDs[root.ID] = struct{}{}
+		}
+	}
+	for id, pkg := range freshByID {
+		if pkg == nil || pkg.ID != id || !effectPathWithinModules(pkg.PkgPath, prefixes) {
+			continue
+		}
+		if _, root := rootIDs[pkg.ID]; root {
+			continue
+		}
+		if _, duplicate := seen[pkg.ID]; duplicate {
+			continue
+		}
+		seen[pkg.ID] = struct{}{}
+		selected = append(selected, pkg)
+	}
+	slices.SortFunc(
+		selected,
+		func(left, right *packages.Package) int {
+			if compared := strings.Compare(left.PkgPath, right.PkgPath); compared != 0 {
+				return compared
+			}
+			return strings.Compare(left.ID, right.ID)
+		},
+	)
+	if len(selected) == 0 {
+		return facts, nil
+	}
+	noReturns := newNoReturnAnalysis(ctx, selected, facts)
+	noReturns.buildAll()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	facts.addNoReturns(noReturns)
+	parameterEffects := newParameterEffectAnalysis(ctx, selected, facts, noReturns)
+	parameterEffects.buildAll()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	facts.addParameterEffects(parameterEffects)
+	managedResults := newManagedResultAnalysis(ctx, selected, facts, noReturns)
+	managedResults.buildAll()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	facts.addCleanupManagedResults(managedResults)
+	returnStates := newReturnStateAnalysis(ctx, selected, facts, noReturns)
+	returnStates.buildAll()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	facts.addReturnStates(returnStates)
+	facts.addResultStates(returnStates)
+	return facts, nil
+}
+
+func reloadPackageSessionPackage(
+	ctx context.Context,
+	sourceGoVersion string,
+	pkg *packages.Package,
+	bytesByPath map[string][]byte,
+	freshByID map[string]*packages.Package,
+) (*packages.Package, bool, error) {
+	if pkg == nil || pkg.TypesSizes == nil || len(pkg.CompiledGoFiles) == 0 {
+		return nil, false, nil
+	}
+	fileSet := token.NewFileSet()
+	syntax := make([]*ast.File, 0, len(pkg.CompiledGoFiles))
+	usedImports := make(map[string]*packages.Package)
+	importer := packageSessionImporter{packages: pkg.Imports, freshByID: freshByID}
+	for _, path := range pkg.CompiledGoFiles {
+		if err := ctx.Err(); err != nil {
+			return nil, false, err
+		}
+		input, found := bytesByPath[filepath.Clean(path)]
+		if !found {
+			return nil, false, nil
+		}
+		parsed, err := parser.ParseFile(
+			fileSet,
+			path,
+			input,
+			parser.ParseComments | parser.SkipObjectResolution,
+		)
+		if err != nil ||
+			parsed == nil ||
+			parsed.Name == nil ||
+			parsed.Name.Name != pkg.Name {
+			return nil, false, nil
+		}
+		for _, specification := range parsed.Imports {
+			importPath, err := strconv.Unquote(specification.Path.Value)
+			if err != nil || importPath == "C" {
+				return nil, false, nil
+			}
+			imported := importer.packageFor(importPath)
+			if imported == nil || imported.Types == nil {
+				return nil, false, nil
+			}
+			usedImports[importPath] = imported
+		}
+		syntax = append(syntax, parsed)
+	}
+	information := newPackageSessionTypesInfo()
+	configuration := types.Config{
+		Importer: importer,
+		Sizes: pkg.TypesSizes,
+		GoVersion: packageSessionGoVersion(sourceGoVersion),
+	}
+	checked, typeErr := configuration.Check(pkg.PkgPath, fileSet, syntax, information)
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	if typeErr != nil || checked == nil {
+		return nil, false, nil
+	}
+	fresh := *pkg
+	fresh.Types = checked
+	fresh.Fset = fileSet
+	fresh.Syntax = syntax
+	fresh.TypesInfo = information
+	fresh.Imports = usedImports
+	fresh.Errors = nil
+	fresh.TypeErrors = nil
+	fresh.IllTyped = false
+	return &fresh, true, nil
+}
+
+func newPackageSessionTypesInfo() *types.Info {
+	return &types.Info{
+		Types: make(map[ast.Expr]types.TypeAndValue),
+		Instances: make(map[*ast.Ident]types.Instance),
+		Defs: make(map[*ast.Ident]types.Object),
+		Uses: make(map[*ast.Ident]types.Object),
+		Implicits: make(map[ast.Node]types.Object),
+		Scopes: make(map[ast.Node]*types.Scope),
+		Selections: make(map[*ast.SelectorExpr]*types.Selection),
+		FileVersions: make(map[*ast.File]string),
+	}
 }
 
 func (variant packageSessionVariant) missingImports(
@@ -1465,12 +1910,21 @@ func capturePackageSessionDependencies(
 	files map[string]struct{},
 	ignoredFiles map[string]struct{},
 	directories map[string][]string,
+	overlay map[string][]byte,
 ) (map[string]packageSessionFileIdentity, map[string][]string, error) {
 	inputs := make(map[string]packageSessionFileIdentity)
 	for path := range files {
-		contents, err := source.ReadFile(path)
-		if err != nil {
-			return nil, nil, err
+		contents, overlaid := overlay[path]
+		if !overlaid {
+			var err error
+			contents, err = source.ReadFile(path)
+			if errors.Is(err, os.ErrNotExist) && filepath.Base(path) == "go.sum" {
+				inputs[path] = packageSessionFileIdentity{}
+				continue
+			}
+			if err != nil {
+				return nil, nil, err
+			}
 		}
 		digest := source.Digest(sha256.Sum256(contents))
 		file, found := sources.Lookup(path)

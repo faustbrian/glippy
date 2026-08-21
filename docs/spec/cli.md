@@ -108,6 +108,18 @@ source, package, and analysis failures MUST remain visible document diagnostics
 instead of silently falling back to defaults. Closing a document MUST remove it
 from later snapshots and clear its diagnostics.
 
+A retained typed workspace session MAY reparse and re-typecheck a changed root
+or selected local dependency without invoking the complete package loader. A
+dependency reuse MUST validate unchanged package membership, build constraints,
+ignored-file selection, and module/workspace controls; recheck the changed
+package and every retained reverse dependant needed by the selected root; and
+rebuild selected local-source effect facts before publishing diagnostics. Local
+dependency overlays MUST be accepted only for already selected active source.
+Parse or type failure, cgo-generated source, new dependency imports, changed
+selection or control inputs, ambiguous graph identity, and every unsupported
+state MUST fall back to the complete loader rather than reuse stale types or
+effects.
+
 Safe individual code actions and one `source.fixAll.glippy` action MUST be
 available by default. `--fix-suggestions` and `--fix-unsafe` MUST independently
 authorize those additional individual action classes; neither may broaden the

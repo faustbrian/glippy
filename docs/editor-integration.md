@@ -124,8 +124,12 @@ reverse dependant; unrelated open packages reuse their result while code actions
 receive the new complete workspace overlay. Captured disk-source contents,
 Go-file directory membership, module and workspace control files, configured
 baselines, and configuration identity are revalidated before reuse. The edited
-package still performs a complete package load and analysis; same-package
-incremental type, CFG, and SSA reconstruction remains future work.
+package is reparsed and re-typechecked from retained compact dependency types,
+then receives fresh CFG, SSA, effects, and diagnostics. A changed active source
+in the main module, an active workspace module, or a local replacement also
+rechecks its retained reverse dependency closure without a full package load.
+Source membership, build-selection, module/workspace-control, cgo, parse, type,
+or unresolved dependency-import changes fall back to the complete loader.
 
 When the client advertises dynamic watched-file registration, the server
 registers `workspace/didChangeWatchedFiles` for Go sources, module and workspace

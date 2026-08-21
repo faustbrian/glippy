@@ -413,6 +413,14 @@ its diagnostics. Typed, CFG, and SSA selections also participate in the
 configured persistent cache. Rule diagnostics include a canonical documentation
 link matching `glippy explain`.
 
+The retained typed session reparses and re-typechecks compatible changes in the
+selected package without a complete package load. A changed active dependency
+in the main module, an active workspace module, or a local filesystem
+replacement also rechecks its retained reverse dependency closure and refreshes
+selected-module effect facts. Source or build-selection changes, project-control
+changes, cgo-generated inputs, new dependency imports, parse or type failure,
+and ambiguous or immutable dependency state fall back to the complete loader.
+
 Individual safe actions and `source.fixAll.glippy` are available by default.
 Suggestion actions require `--fix-suggestions`; unsafe actions require
 `--fix-unsafe`. Every action returns one version-bound whole-document edit only

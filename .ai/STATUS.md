@@ -14,6 +14,7 @@
 - v0.5 same-package incremental typed analysis: complete
 - v0.5 test-package incremental typed analysis: complete
 - v0.5 import-only typed discovery: complete
+- v0.5 changed local dependency incremental typed analysis: complete
 - v0.5 memory-aware SSA package waves: complete
 - v0.5 curated strictness profiles: complete
 - v0.5 transaction state transition: complete
@@ -2460,4 +2461,25 @@ one-iteration samples measured 72.01-77.98 ms and 2.14-2.72 MB for
 `resource-not-closed`, plus 41.30-45.65 ms and 5.73-5.74 MB for
 `resource-used-after-close`. Portable four-runner typed-budget evidence and
 further high-signal interprocedural error-flow and ownership coverage remain
+active v0.5 work.
+
+The v0.5 changed-dependency incremental-analysis batch extends the retained
+typed workspace session beyond same-package edits. Changed active source in the
+main module, an active workspace module, or a local filesystem replacement now
+reparses and re-typechecks the changed package, its retained reverse dependency
+closure, and the selected root without invoking the complete package loader.
+Exact dependency overlays participate in the same path. Selected-module effect
+facts are rebuilt before root diagnostics, so lifecycle findings cannot reuse
+stale ownership summaries. Package membership, build constraints, ignored-file
+selection, module and workspace controls, source limits, and supported import
+graphs are revalidated; cgo-generated source, new dependency imports, parse or
+type failure, ambiguous identities, and immutable dependency edits retain the
+conservative full-load fallback. Focused regressions cover main-module and
+workspace-module source, external-test dependency overlays, local replacements,
+module and sum controls, refreshed cleanup effects, and ignored-source
+selection. Five ten-operation Darwin arm64 samples
+measured 618.5-663.6 microseconds, 273,274-277,954 bytes, and 1,607-1,611
+allocations per operation, with zero full primary package loads and one
+incremental load per operation. Dependency import-graph changes, portable
+editor latency and RSS budgets, and further state-transition precision remain
 active v0.5 work.
