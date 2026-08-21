@@ -1134,6 +1134,146 @@ func use(t *testing.T) {
 	}
 }
 
+func TestResourceNotClosedExcludesSourceProvenNoOpClosers(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+type returnNilCloser struct{}
+
+func (*returnNilCloser) Close() error { return nil }
+func openReturnNilCloser() *returnNilCloser { return &returnNilCloser{} }
+
+type inertFieldCloser struct { closeErr error }
+
+func (closer *inertFieldCloser) Close() error { return closer.closeErr }
+func openInertFieldCloser() *inertFieldCloser { return &inertFieldCloser{} }
+
+var packageCloseErr error
+
+type packageValueCloser struct{}
+
+func (*packageValueCloser) Close() error { return packageCloseErr }
+func openPackageValueCloser() *packageValueCloser { return &packageValueCloser{} }
+
+type mutatingCloser struct { closed bool }
+
+func (closer *mutatingCloser) Close() error { closer.closed = true; return nil }
+func openMutatingCloser() *mutatingCloser { return &mutatingCloser{} }
+
+type nestedCloser struct { closer interface { Close() error } }
+
+func (closer *nestedCloser) Close() error { return closer.closer.Close() }
+func openNestedCloser() *nestedCloser { return &nestedCloser{} }
+
+var globallyClosed bool
+
+type globalCloser struct{}
+
+func (*globalCloser) Close() error { globallyClosed = true; return nil }
+func openGlobalCloser() *globalCloser { return &globalCloser{} }
+
+type helperCloser struct{}
+
+func closeHelper() error { return nil }
+func (*helperCloser) Close() error { return closeHelper() }
+func openHelperCloser() *helperCloser { return &helperCloser{} }
+
+func returnNil() error {
+	closer := openReturnNilCloser()
+	_ = closer
+	return nil
+}
+
+func inertField() error {
+	closer := openInertFieldCloser()
+	_ = closer
+	return nil
+}
+
+func packageValue() error {
+	closer := openPackageValueCloser()
+	_ = closer
+	return nil
+}
+
+func mutating() error {
+	closer := openMutatingCloser()
+	_ = closer
+	return nil
+}
+
+func nested() error {
+	closer := openNestedCloser()
+	_ = closer
+	return nil
+}
+
+func global() error {
+	closer := openGlobalCloser()
+	_ = closer
+	return nil
+}
+
+func helper() error {
+	closer := openHelperCloser()
+	_ = closer
+	return nil
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/inertclosers\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"resource-not-closed": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 6 {
+		t.Fatalf("no-op closer diagnostics = %#v", result)
+	}
+	want := map[int]struct{}{
+		strings.Index(input, "closer := openReturnNilCloser()"): {},
+		strings.Index(input, "closer := openPackageValueCloser()"): {},
+		strings.Index(input, "closer := openMutatingCloser()"): {},
+		strings.Index(input, "closer := openNestedCloser()"): {},
+		strings.Index(input, "closer := openGlobalCloser()"): {},
+		strings.Index(input, "closer := openHelperCloser()"): {},
+	}
+	for _, diagnostic := range result.Files[0].Diagnostics {
+		if _, found := want[diagnostic.Range.Start];
+			!found || diagnostic.Range.End != diagnostic.Range.Start + len("closer") {
+			t.Fatalf("no-op closer diagnostic = %#v", diagnostic)
+		}
+		delete(want, diagnostic.Range.Start)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing stateful closer diagnostics = %#v", want)
+	}
+}
+
 func TestResourceNotClosedMetadata(t *testing.T) {
 	t.Parallel()
 

@@ -65,6 +65,8 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 		Kinds: rules.ParameterEffectClose,
 		GuaranteedKinds: rules.ParameterEffectClose,
 	}
+	first.noOpCloses["no-op-close"] = struct{}{}
+	second.noOpCloses["no-op-close"] = struct{}{}
 	first.results["function"] = map[int]rules.NilState{
 		1: rules.NilStateNil,
 		0: rules.NilStateNonNil,
@@ -97,6 +99,11 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	delete(changed.receivers, "method")
 	if first.digest() == changed.digest() {
 		t.Fatal("effect fact digest ignored a receiver effect change")
+	}
+	changed = cloneNativeEffectFacts(first)
+	delete(changed.noOpCloses, "no-op-close")
+	if first.digest() == changed.digest() {
+		t.Fatal("effect fact digest ignored a no-op close change")
 	}
 	changed = cloneNativeEffectFacts(first)
 	summary := changed.parameters["function"][1]
@@ -185,6 +192,71 @@ func TestNativeReceiverEffectsUseStableCrossLoadMethodIdentity(t *testing.T) {
 	}
 	if summary := facts.ReceiverEffect(other); summary.Known {
 		t.Fatalf("receiver effect matched another method: %#v", summary)
+	}
+}
+
+func TestConventionalCloseMethodAcceptsBuiltInErrorResult(t *testing.T) {
+	t.Parallel()
+
+	package_ := types.NewPackage("example.com/project/resource", "resource")
+	named := types.NewNamed(
+		types.NewTypeName(token.NoPos, package_, "Resource", nil),
+		types.NewStruct(nil, nil),
+		nil,
+	)
+	receiver := types.NewVar(token.NoPos, package_, "receiver", types.NewPointer(named))
+	results := types.NewTuple(
+		types.NewVar(token.NoPos, package_, "", types.Universe.Lookup("error").Type()),
+	)
+	signature := types.NewSignatureType(receiver, nil, nil, nil, results, false)
+	function := types.NewFunc(token.NoPos, package_, "Close", signature)
+	if !conventionalCloseMethod(function, signature) {
+		t.Fatal("built-in error result was not recognized as a conventional close method")
+	}
+}
+
+func TestNativeNoOpClosesUseStableCrossLoadMethodIdentity(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestCloseMethod("example.com/project/resource", "Resource")
+	second := effectTestCloseMethod("example.com/project/resource", "Resource")
+	other := effectTestCloseMethod("example.com/project/resource", "Other")
+	facts := newNativeEffectFacts()
+	facts.noOpCloses[stableFunctionIdentity(first)] = struct{}{}
+	if !facts.NoOpClose(second) {
+		t.Fatal("no-op close did not survive an independent type identity")
+	}
+	if facts.NoOpClose(other) {
+		t.Fatal("no-op close matched another receiver type")
+	}
+}
+
+func TestNoOpCloseFactsIntersectPackageVariants(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestCloseMethod("example.com/project/resource", "Resource")
+	second := effectTestCloseMethod("example.com/project/resource", "Resource")
+	analysis := &parameterEffectAnalysis{
+		definitions: map[*types.Func]*parameterEffectDefinition{
+			first: {
+				signature: first.Type().(*types.Signature),
+				closeMethod: true,
+				noOpClose: true,
+			},
+			second: {signature: second.Type().(*types.Signature), closeMethod: true},
+		},
+	}
+	facts := newNativeEffectFacts()
+	facts.addParameterEffects(analysis)
+	if facts.NoOpClose(first) {
+		t.Fatal("no-op close survived a disagreeing package variant")
+	}
+
+	analysis.definitions[second].noOpClose = true
+	facts = newNativeEffectFacts()
+	facts.addParameterEffects(analysis)
+	if !facts.NoOpClose(second) {
+		t.Fatal("no-op close was lost across agreeing package variants")
 	}
 }
 
@@ -393,4 +465,19 @@ func effectTestMethod(packagePath string, typeName string, name string) *types.F
 	receiver := types.NewVar(token.NoPos, package_, "receiver", types.NewPointer(named))
 	signature := types.NewSignatureType(receiver, nil, nil, nil, nil, false)
 	return types.NewFunc(token.NoPos, package_, name, signature)
+}
+
+func effectTestCloseMethod(packagePath string, typeName string) *types.Func {
+	package_ := types.NewPackage(packagePath, "resource")
+	named := types.NewNamed(
+		types.NewTypeName(token.NoPos, package_, typeName, nil),
+		types.NewStruct(nil, nil),
+		nil,
+	)
+	receiver := types.NewVar(token.NoPos, package_, "receiver", types.NewPointer(named))
+	results := types.NewTuple(
+		types.NewVar(token.NoPos, package_, "", types.Universe.Lookup("error").Type()),
+	)
+	signature := types.NewSignatureType(receiver, nil, nil, nil, results, false)
+	return types.NewFunc(token.NoPos, package_, "Close", signature)
 }

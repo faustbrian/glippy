@@ -20,6 +20,7 @@
 - v0.5 channel state transition: complete
 - v0.5 WaitGroup counter state transition: complete
 - v0.5 receiver terminal effects and reachable local-module facts: complete
+- v0.5 no-op closer lifecycle precision: complete
 - v0.5 unconditional result-state facts and delegated writer success: complete
 - v0.5 unconditional nil-error wrapping facts: complete
 - v0.5 bounded delegated result-state facts: complete
@@ -2439,3 +2440,24 @@ clean on Glippy and `go-libraries/pkg/prompts`. At external revision
 from generic `*testing.T` channel helpers in `pkg/http-client` without changing
 external bytes. Five one-iteration package-load samples measured
 113.95-203.13 ms, 5.73-6.41 MB, and 48,387-48,845 allocations on Darwin arm64.
+
+The v0.5 no-op closer lifecycle batch separates exact source-proven no-op
+`Close() error` methods from ordinary receiver-borrow summaries. Only a
+selected-module method whose complete body returns a field reached directly
+from its receiver is classified as no-op; `return nil`, computed or helper
+results, receiver or global mutation, nested cleanup, additional statements,
+unavailable source, and disagreeing package variants remain tracked. The first
+implementation was rejected by broader regressions because it classified every
+`return nil` closer as no-op. The final effect fact advances the native schema
+and persistent-cache component to `native-effects-v13`, is stable across
+independent loads, participates in deterministic digest and clone behavior,
+and requires package-variant agreement. Exact-rule dogfood is clean on Glippy
+and `go-libraries/pkg/prompts`; at external revision
+`8409c3d568cc0b921aa271f6dc0cc6dcfcc40625`, `pkg/http-client` retains one
+credible decompression-body ownership finding while its four field-returning
+`fakeResumeFile` findings are removed. External state remained unchanged. Five
+one-iteration samples measured 72.01-77.98 ms and 2.14-2.72 MB for
+`resource-not-closed`, plus 41.30-45.65 ms and 5.73-5.74 MB for
+`resource-used-after-close`. Portable four-runner typed-budget evidence and
+further high-signal interprocedural error-flow and ownership coverage remain
+active v0.5 work.

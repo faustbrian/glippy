@@ -92,6 +92,11 @@ facts accept only `*testing.T`, `testing.TB`, `*testing.B`, and `*testing.F`;
 project contracts still cannot declare cleanup-managed results or authorize
 lookalike cleanup registries.
 
+Exact source-proven no-op Close facts later advance the active representation
+to version 13 and `native-effects-v13`. The fact is inferred only for a
+selected-module `Close() error` method whose complete body returns a receiver
+field in one statement, and project contracts cannot declare it.
+
 Contract files are data only. They do not execute code, provide replacement Go
 types, load runtime plugins, or grant write authority. Syntax-only lint does
 not load type state because contracts are configured. External contracts use

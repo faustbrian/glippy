@@ -122,6 +122,15 @@ through `testing.TB` is authoritative even though its concrete receiver is
 dynamic. Named embedding interfaces, user-defined cleanup interfaces, and
 other lookalikes remain unmanaged.
 
+The 2026-08-21 no-op closer refinement advances the active schema and cache
+component to `native-effects-v13`. An exact selected-module `Close() error`
+method is classified as no-op only when its complete implementation is one
+return statement for a field reached directly from its receiver. Package
+variants must agree. Returning nil or another expression, receiver or global
+mutation, nested cleanup, helper calls, additional statements, unavailable
+source, and dynamic method identity remain ordinary resource lifecycle
+boundaries.
+
 ## Alternatives
 
 - Load the complete dependency syntax closure with `packages.NeedDeps`:

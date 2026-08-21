@@ -17,6 +17,8 @@ type parameterEffectDefinition struct {
 	body *ast.BlockStmt
 	info *types.Info
 	signature *types.Signature
+	closeMethod bool
+	noOpClose bool
 	summaries map[int]rules.ParameterEffectSummary
 	started map[int]bool
 	receiver rules.ParameterEffectSummary
@@ -71,6 +73,8 @@ func newParameterEffectAnalysis(
 					body: function.Body,
 					info: pkg.TypesInfo,
 					signature: signature,
+					closeMethod: conventionalCloseMethod(object, signature),
+					noOpClose: sourceProvesNoOpClose(function, pkg.TypesInfo),
 					summaries: make(map[int]rules.ParameterEffectSummary),
 					started: make(map[int]bool),
 				}
@@ -80,6 +84,56 @@ func newParameterEffectAnalysis(
 		}
 	}
 	return analysis
+}
+
+func conventionalCloseMethod(function *types.Func, signature *types.Signature) bool {
+	if function == nil ||
+		function.Name() != "Close" ||
+		signature == nil ||
+		signature.Recv() == nil ||
+		signature.Params() != nil && signature.Params().Len() != 0 ||
+		signature.Results() == nil ||
+		signature.Results().Len() != 1 {
+		return false
+	}
+	errorType := types.Universe.Lookup("error").Type()
+	return types.AssignableTo(signature.Results().At(0).Type(), errorType)
+}
+
+func sourceProvesNoOpClose(function *ast.FuncDecl, info *types.Info) bool {
+	if function == nil ||
+		function.Body == nil ||
+		function.Recv == nil ||
+		len(function.Recv.List) != 1 ||
+		len(function.Recv.List[0].Names) != 1 ||
+		info == nil ||
+		len(function.Body.List) != 1 {
+		return false
+	}
+	returned, _ := function.Body.List[0].(*ast.ReturnStmt)
+	if returned == nil || len(returned.Results) != 1 {
+		return false
+	}
+	receiver := info.ObjectOf(function.Recv.List[0].Names[0])
+	return receiver != nil && receiverFieldExpression(info, returned.Results[0], receiver)
+}
+
+func receiverFieldExpression(info *types.Info, expression ast.Expr, receiver types.Object) bool {
+	if info == nil || expression == nil || receiver == nil {
+		return false
+	}
+	selector, _ := ast.Unparen(expression).(*ast.SelectorExpr)
+	if selector == nil {
+		return false
+	}
+	selection := info.Selections[selector]
+	if selection == nil || selection.Kind() != types.FieldVal {
+		return false
+	}
+	if identifier, direct := ast.Unparen(selector.X).(*ast.Ident); direct {
+		return info.ObjectOf(identifier) == receiver
+	}
+	return receiverFieldExpression(info, selector.X, receiver)
 }
 
 func (a *parameterEffectAnalysis) buildAll() {

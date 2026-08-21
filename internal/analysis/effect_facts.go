@@ -15,7 +15,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const nativeEffectFactSchemaVersion = 12
+const nativeEffectFactSchemaVersion = 13
 
 type returnStateKey struct {
 	value int
@@ -33,6 +33,7 @@ type nativeEffectFacts struct {
 	noReturns map[string]struct{}
 	parameters map[string]map[int]rules.ParameterEffectSummary
 	receivers map[string]rules.ParameterEffectSummary
+	noOpCloses map[string]struct{}
 	returns map[string]map[returnStateKey]rules.ReturnStateSummary
 	results map[string]map[int]rules.NilState
 	mustUse map[string]map[int]struct{}
@@ -46,6 +47,7 @@ func newNativeEffectFacts() *nativeEffectFacts {
 		noReturns: make(map[string]struct{}),
 		parameters: make(map[string]map[int]rules.ParameterEffectSummary),
 		receivers: make(map[string]rules.ParameterEffectSummary),
+		noOpCloses: make(map[string]struct{}),
 		returns: make(map[string]map[returnStateKey]rules.ReturnStateSummary),
 		results: make(map[string]map[int]rules.NilState),
 		mustUse: make(map[string]map[int]struct{}),
@@ -72,6 +74,9 @@ func cloneNativeEffectFacts(facts *nativeEffectFacts) *nativeEffectFacts {
 	}
 	for identity, summary := range facts.receivers {
 		result.receivers[identity] = summary
+	}
+	for identity := range facts.noOpCloses {
+		result.noOpCloses[identity] = struct{}{}
 	}
 	for identity, summaries := range facts.returns {
 		cloned := make(map[returnStateKey]rules.ReturnStateSummary, len(summaries))
@@ -164,6 +169,15 @@ func (f *nativeEffectFacts) ReceiverEffect(function *types.Func) rules.Parameter
 		return rules.ParameterEffectSummary{}
 	}
 	return f.receivers[stableFunctionIdentity(function)]
+}
+
+// NoOpClose implements rules.EffectFacts across independent package loads.
+func (f *nativeEffectFacts) NoOpClose(function *types.Func) bool {
+	if f == nil || function == nil {
+		return false
+	}
+	_, found := f.noOpCloses[stableFunctionIdentity(function)]
+	return found
 }
 
 // MustUseResult implements rules.EffectFacts.
@@ -386,6 +400,30 @@ func (f *nativeEffectFacts) addParameterEffects(analysis *parameterEffectAnalysi
 			f.receivers[identity] = candidate.summary
 		}
 	}
+	noOpCloses := make(map[string]bool)
+	seenNoOpClose := make(map[string]struct{})
+	for function, definition := range analysis.definitions {
+		if definition == nil || !definition.closeMethod {
+			continue
+		}
+		identity := stableFunctionIdentity(function)
+		if identity == "" {
+			continue
+		}
+		if _, seen := seenNoOpClose[identity]; !seen {
+			seenNoOpClose[identity] = struct{}{}
+			noOpCloses[identity] = definition.noOpClose
+			continue
+		}
+		noOpCloses[identity] = noOpCloses[identity] && definition.noOpClose
+	}
+	for identity, noOp := range noOpCloses {
+		if !noOp {
+			delete(f.noOpCloses, identity)
+			continue
+		}
+		f.noOpCloses[identity] = struct{}{}
+	}
 }
 
 func (f *nativeEffectFacts) addReturnStates(analysis *returnStateAnalysis) {
@@ -600,6 +638,18 @@ func (f *nativeEffectFacts) digest() cache.Digest {
 		}
 		_, _ = digest.Write([]byte{byte(receiver.summary.Kinds)})
 		_, _ = digest.Write([]byte{byte(receiver.summary.GuaranteedKinds)})
+	}
+	noOpCloses := make([]string, 0)
+	if f != nil {
+		noOpCloses = make([]string, 0, len(f.noOpCloses))
+		for identity := range f.noOpCloses {
+			noOpCloses = append(noOpCloses, identity)
+		}
+	}
+	sort.Strings(noOpCloses)
+	for _, identity := range noOpCloses {
+		_, _ = digest.Write([]byte{12})
+		writeEffectIdentity(digest, version[:], identity)
 	}
 	type returnRecord struct {
 		identity string

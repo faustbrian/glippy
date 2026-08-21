@@ -413,6 +413,46 @@ func conditional(closeNow bool) error {
 	}
 }
 
+func TestResourceUsedAfterCloseExcludesSourceProvenNoOpClosers(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+type inertCloser struct { closeErr error }
+
+func (closer *inertCloser) Close() error { return closer.closeErr }
+func (*inertCloser) Read() {}
+func openInertCloser() *inertCloser { return &inertCloser{} }
+
+type statefulCloser struct { closed bool }
+
+func (closer *statefulCloser) Close() error { closer.closed = true; return nil }
+func (*statefulCloser) Read() {}
+func openStatefulCloser() *statefulCloser { return &statefulCloser{} }
+
+func inert() {
+	closer := openInertCloser()
+	_ = closer.Close()
+	closer.Read()
+}
+
+func stateful() {
+	closer := openStatefulCloser()
+	_ = closer.Close()
+	closer.Read()
+}
+`
+	result := runResourceUsedAfterClose(t, input, contracts.Set{})
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("no-op closer use diagnostics = %#v", result)
+	}
+	start := strings.LastIndex(input, "closer.Read()")
+	diagnostic := result.Files[0].Diagnostics[0]
+	if diagnostic.Range.Start != start || diagnostic.Range.End != start + len("closer.Read()") {
+		t.Fatalf("stateful closer diagnostic = %#v", diagnostic)
+	}
+}
+
 func TestResourceUsedAfterCloseStopsTrackingAfterProjectTransfer(t *testing.T) {
 	t.Parallel()
 

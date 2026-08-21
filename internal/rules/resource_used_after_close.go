@@ -106,6 +106,7 @@ func (resourceUsedAfterCloseRule) Metadata() Metadata {
 		Categories: []Category{CategoryCorrectness, CategorySafety, CategorySuspicious},
 		KnownLimitations: []string{
 			"The initial contract tracks direct local call results whose static type has Close() error and a curated set of I/O, file, deadline, synchronization, and accept operations.",
+			"An exact selected-module Close() error method whose complete body only returns a field reached directly from its receiver is treated as a no-op closer. Returning nil or another expression, mutation, calls, additional statements, unavailable source, and package-variant disagreement retain ordinary tracking.",
 			"An open/closed branch join, alias, escape, asynchronous close, unknown helper, reassignment, reinitializer, observer, or arbitrary method becomes unknown instead of producing a speculative finding.",
 			"A CFG node containing multiple tracked calls becomes unknown because AST preorder does not by itself prove Go evaluation order for every nested call shape.",
 			"A statically resolved helper parameter or direct method receiver with a proven close effect establishes closed state; every other helper use becomes unknown because ownership borrowing does not prove resource state preservation.",
@@ -181,6 +182,7 @@ func buildResourceUseAnalysis(ctx *ControlFlowContext) *resourceUseAnalysis {
 		ctx.Info(),
 		ctx.Body(),
 		ctx.ReturnAliasesArgument,
+		ctx.NoOpCloser,
 	)
 	if len(objects) == 0 {
 		return &resourceUseAnalysis{complete: true, issues: []resourceUseIssue{}}
@@ -249,11 +251,13 @@ func collectResourceUseCandidates(
 	info *types.Info,
 	body *ast.BlockStmt,
 	returnsAlias func(*ast.CallExpr, int, int) bool,
+	noOpCloser func(types.Type) bool,
 ) ([]types.Object, map[ast.Node]map[types.Object]struct{}) {
 	objects := make([]types.Object, 0)
 	seen := make(map[types.Object]struct{})
 	acquisitions := make(map[ast.Node]map[types.Object]struct{})
-	for _, candidate := range localCloserCandidates(info, body, returnsAlias, nil, false) {
+	for _, candidate := range
+		localCloserCandidates(info, body, returnsAlias, nil, noOpCloser, false) {
 		if _, found := seen[candidate.object]; !found {
 			seen[candidate.object] = struct{}{}
 			objects = append(objects, candidate.object)

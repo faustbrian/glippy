@@ -3914,6 +3914,10 @@ None.
   declarations remain conservative.
 - Exact tar, gzip, and multipart writer constructors belong to writer-not-finalized and are excluded
   from this generic closer rule.
+- An exact selected-module Close() error method whose complete body only returns a field reached
+  directly from its receiver is treated as a no-op closer. Returning nil or another expression,
+  mutation, calls, additional statements, unavailable source, and package-variant disagreement
+  retain the resource obligation.
 - A direct function-literal constructor argument, or the final stable direct same-block assignment
   to a local argument, that captures the assigned resource conservatively transfers ownership
   because callback retention and execution are unknown; intervening mutation, call exposure, address
@@ -4011,6 +4015,10 @@ None.
 
 - The initial contract tracks direct local call results whose static type has Close() error and a
   curated set of I/O, file, deadline, synchronization, and accept operations.
+- An exact selected-module Close() error method whose complete body only returns a field reached
+  directly from its receiver is treated as a no-op closer. Returning nil or another expression,
+  mutation, calls, additional statements, unavailable source, and package-variant disagreement
+  retain ordinary tracking.
 - An open/closed branch join, alias, escape, asynchronous close, unknown helper, reassignment,
   reinitializer, observer, or arbitrary method becomes unknown instead of producing a speculative
   finding.

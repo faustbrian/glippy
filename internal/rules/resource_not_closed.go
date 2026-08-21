@@ -40,6 +40,7 @@ func (resourceNotClosedRule) Metadata() Metadata {
 			"Only direct resource == nil and resource != nil conditions discharge the nil branch; compound nilness, aliases, and indirect comparisons remain conservative.",
 			"Acquisitions recognize one call returning into an assignment or a one-spec initialized local var declaration; declarations containing multiple specifications and parallel multi-expression declarations remain conservative.",
 			"Exact tar, gzip, and multipart writer constructors belong to writer-not-finalized and are excluded from this generic closer rule.",
+			"An exact selected-module Close() error method whose complete body only returns a field reached directly from its receiver is treated as a no-op closer. Returning nil or another expression, mutation, calls, additional statements, unavailable source, and package-variant disagreement retain the resource obligation.",
 			"A direct function-literal constructor argument, or the final stable direct same-block assignment to a local argument, that captures the assigned resource conservatively transfers ownership because callback retention and execution are unknown; intervening mutation, call exposure, address escape, and conditional or nested assignments do not prove transfer.",
 			"A statically resolved helper in a selected local-source module that provably borrows the resource leaves the obligation open; guaranteed closure or transfer must cover every normally returning helper path.",
 			"An exact returned-alias contract preserves the obligation when the result is assigned back to the same resource variable; new alias bindings remain outside the tracked ownership identity.",
@@ -78,6 +79,7 @@ func (resourceNotClosedRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding,
 			ctx.Body(),
 			ctx.ReturnAliasesArgument,
 			ctx.CleanupManagedResult,
+			ctx.NoOpCloser,
 			true,
 		) {
 		start, found := localCloserObligationStart(ctx.Graph(), ctx.Info(), candidate)
@@ -148,6 +150,7 @@ func localCloserCandidates(
 	body *ast.BlockStmt,
 	returnsAlias func(*ast.CallExpr, int, int) bool,
 	cleanupManaged func(*ast.CallExpr, int) bool,
+	noOpCloser func(types.Type) bool,
 	constructorCallbacksTransfer bool,
 ) []localCloserCandidate {
 	result := make([]localCloserCandidate, 0)
@@ -182,6 +185,7 @@ func localCloserCandidates(
 					continue
 				}
 				for index, identifier := range acquisition.identifiers {
+					resultType := signature.Results().At(index).Type()
 					if identifier == nil ||
 						identifier.Name == "_" ||
 						cleanupManaged != nil &&
@@ -191,9 +195,8 @@ func localCloserCandidates(
 							index,
 							returnsAlias,
 						) ||
-						!conventionalCloser(
-							signature.Results().At(index).Type(),
-						) {
+						!conventionalCloser(resultType) ||
+						noOpCloser != nil && noOpCloser(resultType) {
 						continue
 					}
 					object := info.ObjectOf(identifier)

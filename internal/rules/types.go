@@ -672,6 +672,7 @@ func (s ParameterEffectSummary) GuaranteesAny(accepted ParameterEffectKind) bool
 type EffectFacts interface {
 	ParameterEffect(*types.Func, int) ParameterEffectSummary
 	ReceiverEffect(*types.Func) ParameterEffectSummary
+	NoOpClose(*types.Func) bool
 	ReturnState(*types.Func, int, int) ReturnStateSummary
 	ResultState(*types.Func, int) NilState
 	MustUseResult(*types.Func, int) bool
@@ -954,6 +955,17 @@ func (c *ControlFlowContext) ReceiverEffect(call *ast.CallExpr) ParameterEffectS
 		return ParameterEffectSummary{}
 	}
 	return c.effects.ReceiverEffect(callee)
+}
+
+// NoOpCloser reports whether selected local source proves the exact
+// conventional Close method satisfies the versioned no-op close contract.
+func (c *ControlFlowContext) NoOpCloser(type_ types.Type) bool {
+	if c == nil || c.typesContext == nil || c.effects == nil || type_ == nil {
+		return false
+	}
+	object, _, _ := types.LookupFieldOrMethod(type_, true, c.typesContext.package_, "Close")
+	method, _ := object.(*types.Func)
+	return method != nil && c.effects.NoOpClose(method)
 }
 
 // MustUse reports whether a configured contract requires one result from a

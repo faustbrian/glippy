@@ -199,7 +199,7 @@ retain the ordinary deterministic target-union behavior. Fix modes retain the
 existing target-matrix prohibition.
 
 Contract changes MUST invalidate affected persistent native results. The
-`native-effects-v12` component binds no-return, parameter, receiver,
+`native-effects-v13` component binds no-return, parameter, receiver,
 returned-state, unconditional result-state, must-use, blocking, and alias facts
 through stable
 package-qualified function identities, including the distinction between
@@ -208,9 +208,10 @@ and effects independently guaranteed on every returning path. Contract source
 paths and process-local `types.Object` pointers MUST NOT become semantic
 identities.
 
-The version-12 component additionally binds inferred receiver effects,
-cleanup-managed result indexes, and unconditional nilness for nil-capable
-results across every explicit normal return whose named binding is neither
+The version-13 component additionally binds inferred receiver effects, exact
+source-proven no-op Close method identities, cleanup-managed result indexes,
+and unconditional nilness for nil-capable results across every explicit normal
+return whose named binding is neither
 captured nor address-taken, including exact bounded static delegation through
 selected local-source packages. A syntactic return followed by a deferred call
 proven not to return, or belonging to a function already proven not to return,
@@ -220,6 +221,12 @@ cross exact static single-result and same-arity tuple delegation through that
 bounded traversal. Project contracts do not declare those relationships; they
 are proven only from selected local-source modules and exact source or
 control-flow behavior.
+
+A source-derived no-op Close fact MUST identify an exact selected-module
+`Close() error` method whose complete body consists of one return statement for
+a field reached directly from its receiver. Returning nil or another
+expression, mutation, calls, additional statements, unavailable source, and
+disagreement between package variants MUST leave that fact absent.
 
 ## Safety And Extension Boundary
 

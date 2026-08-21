@@ -108,12 +108,15 @@ native execution. A valid warm entry MAY bypass native callbacks and CFG or SSA
 construction because the key and payload bind every selected rule and
 loaded-graph input.
 
-An effect-aware native entry MUST include the `native-effects-v12` component.
+An effect-aware native entry MUST include the `native-effects-v13` component.
 Its digest binds the effect schema version, canonically ordered no-return
 identities, and every exported parameter-effect identity, parameter index,
 known/always state, possible effect-kind bitset, and independently guaranteed
 effect-kind bitset, plus every receiver-effect method identity and the same
-summary fields. It also binds every returned-state function identity, value
+summary fields, plus every exact source-proven no-op Close method identity. A
+no-op Close identity MUST be present only when selected source proves the
+version-13 return-field contract and all package variants agree. It also binds
+every returned-state function identity, value
 and error result index, and nilness under nil and non-nil error states,
 including exact bounded static tuple delegation through selected local-source
 packages. It also binds every unconditionally proven nil-capable result
@@ -126,10 +129,10 @@ aliases, and exact cleanup-managed function result indexes inferred from
 selected local-source modules, including bounded exact static delegation. A
 dependency or project-contract change that
 alters a borrow, guaranteed completion, invocation, ownership transfer,
-returned relationship, receiver effect, must-use requirement, blocking
-contract, unconditional result state, alias, or cleanup-managed result MUST
-therefore invalidate the native result even when the root source and registry
-are unchanged.
+returned relationship, receiver effect, no-op close classification, must-use
+requirement, blocking contract, unconditional result state, alias, or
+cleanup-managed result MUST therefore invalidate the native result even when
+the root source and registry are unchanged.
 
 This proves cold population, independent-load hits, source invalidation,
 corruption-as-recomputation, and transactional restore for the implemented
