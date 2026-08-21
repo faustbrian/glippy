@@ -29,6 +29,12 @@
 - v0.5 bounded delegated return-relationship facts: complete
 - v0.5 authoritative testing cleanup receivers: complete
 - v0.5 testing termination return-shim precision: complete
+- v0.5 multi-target analysis: complete
+- v0.5 project semantic contracts: complete
+- v0.5 state-transition correctness pack: complete
+- v0.5 restriction policy and exported API documentation: complete
+- v0.5 direction exit audit: engineering stages complete; delivery, several
+  integrated adoptions, and current-candidate release evidence remain open
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -2506,3 +2512,14 @@ incremental path, additions performed one exact import load, removals performed
 none, and no operation invoked the complete primary package loader. Portable
 editor latency and RSS budgets, cgo-generated inputs, and further
 state-transition precision remain active v0.5 work.
+
+The v0.5 direction exit audit reconciles the requested ten-stage program with
+the live repository at `e06ffc160bc19fb432ef77bc9da523e7a99fb8e6`. Seven
+engineering stages are complete: memory reduction, incremental workspace
+analysis, target matrices, semantic contracts, state-transition correctness,
+curated profiles, and opt-in catalog expansion. The canonical catalog contains
+118 rules. The milestone remains open because local `main` was 56 commits ahead
+of both public repository heads, the approved `pkg/prompts` adoption branch was
+unpushed and unintegrated, two additional integrated adoptions were absent, and
+the current source revision had not run the four-native-runner release gate or
+received final maintainer review. No push, tag, or publication occurred.

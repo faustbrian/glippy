@@ -379,6 +379,7 @@ precise scope.
 - [v0.5 delegated return relationships](docs/research/v0.5-delegated-return-relationships-2026-08-20.md)
 - [v0.5 delegated cleanup-managed results](docs/research/v0.5-delegated-cleanup-managed-results-2026-08-21.md)
 - [v0.5 authoritative testing cleanup receivers](docs/research/v0.5-authoritative-testing-cleanup-receivers-2026-08-21.md)
+- [v0.5 direction exit audit](docs/research/v0.5-direction-exit-audit-2026-08-21.md)
 - [v0.5 required writer finalization](docs/research/writer-not-finalized-rule-admission-2026-08-20.md)
 - [Suppression reference](docs/suppressions.md)
 - [Lint engine and suppressions](docs/spec/lint-engine.md)
