@@ -5574,8 +5574,11 @@ None.
 - The control-flow walk reports the first unreachable statement in each contiguous lexical region.
 - Same-module imported no-return helpers are recognized; dynamic calls, recursion without a proven
   terminal path, and helpers outside selected modules remain conservatively returning.
-- A return or built-in panic required for a value-returning function to satisfy Go's syntactic
-  termination check after a proven helper call is not reported.
+- A direct return or built-in panic required for a value-returning function to satisfy Go's
+  syntactic termination check after a proven helper call is not reported.
+- An exact testing FailNow, Fatal, or Fatalf call may also be followed by a final zero-value
+  variable declaration and a return of only those variables without being reported; empty or
+  initialized declarations, retained work, lookalikes, and result-free functions remain diagnostics.
 - Source retained after a direct testing Skip, Skipf, or SkipNow call is treated as an intentional
   disabled-test body and is not reported.
 - Removal remains suggestion-only because comments and intentionally retained examples require

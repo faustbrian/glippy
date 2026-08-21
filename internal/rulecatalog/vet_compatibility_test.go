@@ -500,6 +500,128 @@ func requiredPanic(t *testing.T, ready <-chan int) int {
 	}
 }
 
+func TestUnreachableCodeAcceptsTestingZeroReturnShims(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "testing"
+
+func sideEffect() int { return 1 }
+func stop() { panic("stop") }
+
+type fatalLookalike struct{}
+
+func (fatalLookalike) Fatal(string) { panic("stop") }
+
+func fromT[Value any](t *testing.T, values <-chan Value) Value {
+	select {
+	case value := <-values:
+		return value
+	default:
+		t.Fatal("terminal")
+		var zero Value
+		return zero
+	}
+}
+
+func fromTB[Value any](t testing.TB) Value {
+	t.FailNow()
+	var zero Value
+	return zero
+}
+
+func fromB[Value any](b *testing.B) Value {
+	b.Fatalf("terminal")
+	var zero Value
+	return zero
+}
+
+func fromF[Value any](f *testing.F) Value {
+	f.Fatal("terminal")
+	var zero Value
+	return zero
+}
+
+func localHelper[Value any]() Value {
+	stop()
+	var zero Value
+	return zero
+}
+
+func initialized(t *testing.T) int {
+	t.Fatal("terminal")
+	var zero = sideEffect()
+	return zero
+}
+
+func retainedWork(t *testing.T) int {
+	t.Fatal("terminal")
+	var zero int
+	println("not a return shim")
+	return zero
+}
+
+func noResult(t *testing.T) {
+	t.Fatal("terminal")
+	var zero int
+	_ = zero
+}
+
+func lookalike[Value any](fatal fatalLookalike) Value {
+	fatal.Fatal("terminal")
+	var zero Value
+	return zero
+}
+
+func workAfterShim[Value any](t *testing.T) Value {
+	t.Fatal("terminal")
+	var zero Value
+	return zero
+	println("still dead")
+	return zero
+}
+
+func emptyDeclaration(t *testing.T) (zero int) {
+	t.Fatal("terminal")
+	var ()
+	return
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"unreachable-code"})
+	if len(result.LoadDiagnostics) != 0 {
+		t.Fatalf(
+			"compiler-required return shim failed to load: %#v",
+			result.LoadDiagnostics,
+		)
+	}
+	want := []string{
+		"var zero Value",
+		"var zero = sideEffect()",
+		"var zero int",
+		"var zero int",
+		"var zero Value",
+		"var zero Value",
+		`println("still dead")`,
+		"var ()",
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
+		t.Fatalf("unreachable-code zero return shims = %#v", result)
+	}
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		if diagnostic.Range.Start < 0 ||
+			diagnostic.Range.End > len(input) ||
+			string(input[diagnostic.Range.Start:diagnostic.Range.End]) != want[index] {
+			t.Fatalf(
+				"unreachable-code diagnostic[%d] = %#v, want %q",
+				index,
+				diagnostic,
+				want[index],
+			)
+		}
+	}
+}
+
 func TestRemainingVetCompatibilityPackMetadata(t *testing.T) {
 	t.Parallel()
 

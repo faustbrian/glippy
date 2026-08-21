@@ -40,7 +40,8 @@ func (unreachableCodeRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"The control-flow walk reports the first unreachable statement in each contiguous lexical region.",
 			"Same-module imported no-return helpers are recognized; dynamic calls, recursion without a proven terminal path, and helpers outside selected modules remain conservatively returning.",
-			"A return or built-in panic required for a value-returning function to satisfy Go's syntactic termination check after a proven helper call is not reported.",
+			"A direct return or built-in panic required for a value-returning function to satisfy Go's syntactic termination check after a proven helper call is not reported.",
+			"An exact testing FailNow, Fatal, or Fatalf call may also be followed by a final zero-value variable declaration and a return of only those variables without being reported; empty or initialized declarations, retained work, lookalikes, and result-free functions remain diagnostics.",
 			"Source retained after a direct testing Skip, Skipf, or SkipNow call is treated as an intentional disabled-test body and is not reported.",
 			"Removal remains suggestion-only because comments and intentionally retained examples require review.",
 		},
@@ -275,15 +276,8 @@ func isSyntacticReturnTerminator(info *types.Info, statement ast.Stmt) bool {
 }
 
 func isTestingSkip(info *types.Info, call *ast.CallExpr) bool {
-	if info == nil || call == nil {
-		return false
-	}
-	function := typeutil.StaticCallee(info, call)
-	if function == nil || function.Pkg() == nil || function.Pkg().Path() != "testing" {
-		return false
-	}
-	signature, _ := function.Type().(*types.Signature)
-	if signature == nil || signature.Recv() == nil {
+	function := staticTestingMethod(info, call)
+	if function == nil {
 		return false
 	}
 	switch function.Name() {
@@ -295,9 +289,97 @@ func isTestingSkip(info *types.Info, call *ast.CallExpr) bool {
 }
 
 func (w *unreachableWalker) walkList(statements []ast.Stmt) {
-	for _, statement := range statements {
+	for index := 0; index < len(statements); index++ {
+		statement := statements[index]
 		w.walk(statement)
+		if w.reachable ||
+			!w.requiresReturn ||
+			!w.hasResults ||
+			!isTestingTerminationStatement(w.ctx.Info(), statement) ||
+			!isZeroReturnShim(w.ctx.Info(), statements[index + 1:]) {
+			continue
+		}
+		index += 2
+		w.requiresReturn = false
 	}
+}
+
+func isTestingTerminationStatement(info *types.Info, statement ast.Stmt) bool {
+	expression, _ := statement.(*ast.ExprStmt)
+	if expression == nil {
+		return false
+	}
+	call, _ := expression.X.(*ast.CallExpr)
+	function := staticTestingMethod(info, call)
+	if function == nil {
+		return false
+	}
+	switch function.Name() {
+	case "FailNow", "Fatal", "Fatalf":
+		return true
+	default:
+		return false
+	}
+}
+
+func isZeroReturnShim(info *types.Info, statements []ast.Stmt) bool {
+	if info == nil || len(statements) != 2 {
+		return false
+	}
+	declaration, _ := statements[0].(*ast.DeclStmt)
+	return_, _ := statements[1].(*ast.ReturnStmt)
+	if declaration == nil || return_ == nil {
+		return false
+	}
+	general, _ := declaration.Decl.(*ast.GenDecl)
+	if general == nil || general.Tok != token.VAR {
+		return false
+	}
+	objects := make(map[types.Object]bool)
+	for _, specification := range general.Specs {
+		values, _ := specification.(*ast.ValueSpec)
+		if values == nil || len(values.Names) == 0 || len(values.Values) != 0 {
+			return false
+		}
+		for _, name := range values.Names {
+			object := info.Defs[name]
+			if object == nil || name.Name == "_" {
+				return false
+			}
+			objects[object] = false
+		}
+	}
+	if len(objects) == 0 || len(return_.Results) != len(objects) {
+		return false
+	}
+	for _, result := range return_.Results {
+		identifier, _ := ast.Unparen(result).(*ast.Ident)
+		if identifier == nil {
+			return false
+		}
+		object := info.Uses[identifier]
+		used, exists := objects[object]
+		if !exists || used {
+			return false
+		}
+		objects[object] = true
+	}
+	return true
+}
+
+func staticTestingMethod(info *types.Info, call *ast.CallExpr) *types.Func {
+	if info == nil || call == nil {
+		return nil
+	}
+	function := typeutil.StaticCallee(info, call)
+	if function == nil || function.Pkg() == nil || function.Pkg().Path() != "testing" {
+		return nil
+	}
+	signature, _ := function.Type().(*types.Signature)
+	if signature == nil || signature.Recv() == nil {
+		return nil
+	}
+	return function
 }
 
 func (w *unreachableWalker) walkClauses(

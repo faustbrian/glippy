@@ -25,6 +25,7 @@
 - v0.5 bounded delegated result-state facts: complete
 - v0.5 bounded delegated return-relationship facts: complete
 - v0.5 authoritative testing cleanup receivers: complete
+- v0.5 testing termination return-shim precision: complete
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -2422,3 +2423,19 @@ established five findings and external state remains unchanged. The native
 effect schema and persistent-cache component advance to `native-effects-v12`;
 the existing bounded delegation and conservative ownership rules remain
 unchanged.
+
+The v0.5 testing-termination precision batch excludes compiler-required
+zero-value return shims from `unreachable-code`. After an exact standard-library
+`testing` `FailNow`, `Fatal`, or `Fatalf` call in a value-returning function,
+one final uninitialized variable declaration followed immediately by a return
+of only those declared variables is treated as the same syntactic termination
+shim as an already-excluded direct return. Empty or initialized declarations,
+retained work, local no-return helpers, testing lookalikes, result-free
+functions, and statements after the shim remain diagnostics. The regression
+covers `*testing.T`, `testing.TB`, `*testing.B`, and `*testing.F`; its initial run
+reported all four valid generic zero-value declarations. Exact-rule dogfood is
+clean on Glippy and `go-libraries/pkg/prompts`. At external revision
+`8409c3d568cc0b921aa271f6dc0cc6dcfcc40625`, it removes the two false positives
+from generic `*testing.T` channel helpers in `pkg/http-client` without changing
+external bytes. Five one-iteration package-load samples measured
+113.95-203.13 ms, 5.73-6.41 MB, and 48,387-48,845 allocations on Darwin arm64.
