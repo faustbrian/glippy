@@ -35,6 +35,7 @@ not stable release promises.
 - [errors-is-arguments](#errors-is-arguments)
 - [excessive-nesting](#excessive-nesting)
 - [exec-pipe-run](#exec-pipe-run)
+- [exported-api-documentation](#exported-api-documentation)
 - [http-canonical-header-key](#http-canonical-header-key)
 - [http-response-before-error](#http-response-before-error)
 - [http-response-body-not-closed](#http-response-body-not-closed)
@@ -1433,6 +1434,71 @@ stdout, _ := command.StdoutPipe()
 _ = command.Start()
 _, _ = io.ReadAll(stdout)
 _ = command.Wait()
+```
+
+## exported-api-documentation
+
+requires documentation for exported API declarations
+
+Exported declarations form a package's user-facing contract. This restriction rule requires
+documentation on exported functions, methods, types, constants, and variables, with optional
+exported struct-field and interface-method coverage. It can also require declaration-specific
+comments to begin with the documented name, following established Go documentation conventions.
+
+- Default severity: `warn`
+- Presets: `restriction`
+- Minimum Go: `1.25`
+- Analysis tier: syntax
+- Node interests: `file`
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: not applicable
+- Categories: `style`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+- `include-tests` (`boolean`; optional, default `false`): require exported API documentation in
+  files whose base name ends in _test.go
+- `include-main` (`boolean`; optional, default `false`): require exported API documentation in
+  package main
+- `include-members` (`boolean`; optional, default `true`): require documentation for exported named
+  struct fields and interface methods
+- `require-name-prefix` (`boolean`; optional, default `true`): require declaration-specific
+  documentation to begin with the exported name
+
+### Known limitations
+
+- Package-clause documentation is not checked because the syntax-tier scheduler analyzes files
+  independently and cannot prove that another file does not document the package.
+- Grouped declaration comments are accepted as documentation for the complete group and are not
+  required to begin with every declared name.
+- Exported embedded fields are excluded because one embedded declaration can expose a promoted API
+  whose documentation ownership requires package-level type information.
+- Named exported fields and interface methods are checked by default; include-members disables both
+  member policies.
+- Package main and test files are excluded by default; include-main and include-tests enable those
+  policies independently.
+- Generated files are excluded.
+- No fix is offered because useful API documentation cannot be synthesized from syntax.
+
+### Example: Document the exported contract
+
+**Incorrect**
+
+```go
+func Open(path string) (*File, error) { return nil, nil }
+```
+
+**Correct**
+
+```go
+// Open opens path for reading.
+func Open(path string) (*File, error) { return nil, nil }
 ```
 
 ## http-canonical-header-key

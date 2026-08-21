@@ -83,10 +83,11 @@ close-on-every-return diagnostic.
 
 The restriction catalog provides exact-ID policies for explicit blank error
 discards, direct panic, process termination, root background contexts, and
-placeholder contexts. It is not a selectable preset: deliberate best-effort,
-invariant, executable-boundary, detached-work, and compatibility cases require
-reasoned suppressions, and test files remain separately configurable for every
-rule.
+placeholder contexts. It also provides configurable exported API documentation
+coverage for declarations and named members. It is not a selectable preset:
+deliberate best-effort, invariant, executable-boundary, detached-work,
+compatibility, and documentation-policy cases require reasoned suppressions,
+and test files remain separately configurable for every rule.
 
 The error-flow track now admits `overwritten-error` as an SSA-backed suspicious
 rule. It is deliberately narrower than Staticcheck SA4006: only error-typed

@@ -40,6 +40,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewDiscardedErrorRule(),
 		rules.NewEmptyBranchRule(),
 		rules.NewExecPipeRunRule(),
+		rules.NewExportedAPIDocumentationRule(),
 		rules.NewHTTPCanonicalHeaderKeyRule(),
 		rules.NewHTTPResponseBodyNotClosedRule(),
 		rules.NewHTTPResponseBodyUsedAfterCloseRule(),

@@ -291,11 +291,13 @@ custom `RoundTripper` can supply an `io.ReadCloser` with implementation-specific
 post-close behavior.
 
 The restriction catalog includes `blank-error-discard`, `direct-panic`,
-`process-exit`, `context-background`, and `context-todo`. Projects can enable
-these policies only by exact rule ID to require explicit error handling, keep
-process termination at an owned boundary, or audit root and placeholder
-contexts. Each rule excludes test files unless its typed `include-tests` option
-is enabled, and the restriction group cannot be enabled wholesale.
+`process-exit`, `context-background`, `context-todo`, and
+`exported-api-documentation`. Projects can enable these policies only by exact
+rule ID to require explicit error handling, keep process termination at an
+owned boundary, audit root and placeholder contexts, or enforce documented
+exported contracts. Each rule excludes test files unless its typed
+`include-tests` option is enabled, and the restriction group cannot be enabled
+wholesale.
 
 ## Installation
 
