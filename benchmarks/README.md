@@ -555,11 +555,14 @@ remain required before the provisional limits become stable release budgets.
 The v0.5 workflow also checks out `sqlc-dev/sqlc` at
 `8a7cddfbb9088666eb981645285d7699e71dcb54` and runs the default correctness
 policy plus `-Wsuspicious` within a 40-second and 2-GiB ceiling on every native
-runner. Darwin arm64 additionally binds the known normalized diagnostic digest;
-the other native targets intentionally retain their raw result until a first
-four-runner campaign establishes whether build-selected findings are identical.
-Configured portable limits remain provisional until that campaign passes and
-its evidence is reviewed against the exact Glippy revision.
+runner. Darwin arm64 additionally binds normalized diagnostic SHA-256
+`13f9c3dd006a105196c13f766a1c849a882754b3083979e9386c78cc2fdb53d2` for the
+current 118-rule catalog. The other native targets intentionally retain their
+raw result because build-selected findings may differ. The digest update and
+current-revision arm64 rehearsal are recorded in
+[`../docs/research/v0.5-current-revision-arm64-budget-evidence-2026-08-21.md`](../docs/research/v0.5-current-revision-arm64-budget-evidence-2026-08-21.md).
+The exact release candidate must still pass and retain the complete four-runner
+campaign.
 
 The first native run, [`31611144933`](https://github.com/faustbrian/glippy/actions/runs/31611144933),
 rejected the original 15-second maximum. Its first repository-scale samples
@@ -582,3 +585,12 @@ typed side-workload, and artifact retention:
 
 This establishes the stable 250-millisecond editor, 90-second formatter, and
 2-GiB formatter peak-RSS budgets for native macOS and Linux on amd64 and arm64.
+
+The 2026-08-21 local rehearsal at `835a296` reran the current binary sources on
+native Darwin arm64 and Docker-hosted Linux arm64 with Go 1.26.5. All 20 editor
+samples and all five formatter and typed samples per operating system passed.
+Darwin maxima were 8.341 ms editor latency, 5.520 seconds and 1,478,885,376
+bytes for formatting, and 22.550 seconds and 1,360,035,840 bytes for typed
+linting. Linux maxima were 3.772 ms, 11.230 seconds and 1,317,863,424 bytes,
+and 23.390 seconds and 1,256,058,880 bytes respectively. Docker-hosted Linux is
+not a substitute for the exact-candidate native workflow.

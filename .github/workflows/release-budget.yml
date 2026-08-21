@@ -61,7 +61,7 @@ jobs:
           GLIPPY_PEAK_RSS_RUNS: "5"
           GLIPPY_PEAK_RSS_TYPED_BUDGET_BYTES: "2147483648"
           GLIPPY_PEAK_RSS_TYPED_BUDGET_SECONDS: "40"
-          GLIPPY_PEAK_RSS_TYPED_OUTPUT_SHA256: ${{ matrix.goos == 'darwin' && matrix.goarch == 'arm64' && '030f4474aec74877307118376e77e8ad7254a46c32777242fd11e3223c7282d0' || '' }}
+          GLIPPY_PEAK_RSS_TYPED_OUTPUT_SHA256: ${{ matrix.goos == 'darwin' && matrix.goarch == 'arm64' && '13f9c3dd006a105196c13f766a1c849a882754b3083979e9386c78cc2fdb53d2' || '' }}
           GLIPPY_PEAK_RSS_TYPED_REVISION: 8a7cddfbb9088666eb981645285d7699e71dcb54
           GLIPPY_PEAK_RSS_TYPED_ROOT: ${{ github.workspace }}/typed-corpus
           GLIPPY_RELEASE_EXPECTED_GOARCH: ${{ matrix.goarch }}

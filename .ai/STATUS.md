@@ -35,6 +35,8 @@
 - v0.5 restriction policy and exported API documentation: complete
 - v0.5 direction exit audit: engineering stages complete; delivery, several
   integrated adoptions, and current-candidate release evidence remain open
+- v0.5 current-source Darwin/Linux arm64 release budgets: complete locally;
+  four-native-runner exact-candidate evidence remains open
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -2523,3 +2525,16 @@ of both public repository heads, the approved `pkg/prompts` adoption branch was
 unpushed and unintegrated, two additional integrated adoptions were absent, and
 the current source revision had not run the four-native-runner release gate or
 received final maintainer review. No push, tag, or publication occurred.
+
+The v0.5 current-source arm64 release rehearsal runs exact Glippy revision
+`835a2961d4e47c43e21c551ac56313a743f98667`, Go 1.26.5, immutable golib and
+sqlc corpora, and the established release ceilings on native Darwin arm64 and
+Docker-hosted Linux arm64. Every 20-sample editor campaign and every five-sample
+formatter and typed campaign passes. The old Darwin typed fingerprint fails
+against the expanded catalog; five complete gated samples and three additional
+normalized runs establish deterministic replacement SHA-256
+`13f9c3dd006a105196c13f766a1c849a882754b3083979e9386c78cc2fdb53d2` for 353
+findings across five rule IDs. The release workflow now binds that value. The
+Docker run is not native or independent-host release evidence, so the exact
+pushed candidate still requires all four GitHub-hosted native runners. No push,
+tag, publication, or external adoption mutation occurred.
