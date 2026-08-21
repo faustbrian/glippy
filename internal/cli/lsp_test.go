@@ -1592,6 +1592,405 @@ func TestLSPWorkspaceRetypechecksChangedLocalDependencyWithoutFullReload(t *test
 	}
 }
 
+func TestLSPWorkspaceDiscoversNewImportInChangedLocalDependency(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = []\n[lint.rules]\nself-assignment = \"warn\"\n",
+	)
+	dependencyPath := filepath.Join(root, "dependency", "dependency.go")
+	consumerPath := filepath.Join(root, "consumer", "consumer.go")
+	if err := os.MkdirAll(filepath.Dir(dependencyPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(consumerPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(
+		t,
+		dependencyPath,
+		"package dependency\n\nfunc Value() int { return 1 }\n",
+	)
+	original := "package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc run() {\n\tvalue := dependency.Value()\n\tvar _ int = value\n}\n"
+	changed := "package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc run() {\n\tvalue := dependency.Value()\n\tvar _ string = value\n\tvalue = value\n}\n"
+	writeChangedCLIFile(t, consumerPath, original)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &lspBackend{registry: registry}
+	document := lsp.Document{
+		URI: "file://" + filepath.ToSlash(consumerPath),
+		Path: consumerPath,
+		Version: 1,
+		Text: []byte(original),
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document});
+		err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(
+		t,
+		dependencyPath,
+		"package dependency\n\nimport \"strings\"\n\nfunc Value() string { return strings.TrimSpace(\" value \") }\n",
+	)
+	document.Version = 2
+	document.Text = []byte(changed)
+	result, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].Err != nil {
+		t.Fatalf("changed workspace analysis = %#v", result)
+	}
+	if diagnostics := result[0].Analysis.Diagnostics;
+		len(diagnostics) != 1 || diagnostics[0].Code != "self-assignment" {
+		t.Fatalf("changed workspace diagnostics = %#v", diagnostics)
+	}
+	statistics := backend.packageSession.Statistics()
+	if statistics.FullLoads != 1 ||
+		statistics.IncrementalLoads != 1 ||
+		statistics.ImportLoads != 1 {
+		t.Fatalf(
+			"typed package session statistics = %#v, want dependency import discovery",
+			statistics,
+		)
+	}
+}
+
+func TestLSPWorkspaceAdmitsRetainedImportInChangedLocalDependency(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = []\n[lint.rules]\nself-assignment = \"warn\"\n",
+	)
+	leafPath := filepath.Join(root, "leaf", "leaf.go")
+	leftPath := filepath.Join(root, "left", "left.go")
+	dependencyPath := filepath.Join(root, "dependency", "dependency.go")
+	consumerPath := filepath.Join(root, "consumer", "consumer.go")
+	for _, path := range []string{leafPath, leftPath, dependencyPath, consumerPath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeChangedCLIFile(t, leafPath, "package leaf\n\ntype Value struct{}\n")
+	writeChangedCLIFile(
+		t,
+		leftPath,
+		"package left\n\nimport \"example.com/editor/leaf\"\n\nfunc Value() leaf.Value { return leaf.Value{} }\n",
+	)
+	writeChangedCLIFile(t, dependencyPath, "package dependency\n\nfunc Use(value any) {}\n")
+	original := `package consumer
+
+import (
+	"example.com/editor/dependency"
+	"example.com/editor/left"
+)
+
+func run() {
+	value := left.Value()
+	dependency.Use(value)
+}
+`
+	changed := strings.Replace(
+		original,
+		"\tdependency.Use(value)",
+		"\tdependency.Use(value)\n\tvalue = value",
+		1,
+	)
+	writeChangedCLIFile(t, consumerPath, original)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &lspBackend{registry: registry}
+	document := lsp.Document{
+		URI: "file://" + filepath.ToSlash(consumerPath),
+		Path: consumerPath,
+		Version: 1,
+		Text: []byte(original),
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document});
+		err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(
+		t,
+		dependencyPath,
+		"package dependency\n\nimport \"example.com/editor/leaf\"\n\nfunc Use(value leaf.Value) {}\n",
+	)
+	document.Version = 2
+	document.Text = []byte(changed)
+	result, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].Err != nil {
+		t.Fatalf("changed workspace analysis = %#v", result)
+	}
+	if diagnostics := result[0].Analysis.Diagnostics;
+		len(diagnostics) != 1 || diagnostics[0].Code != "self-assignment" {
+		t.Fatalf("changed workspace diagnostics = %#v", diagnostics)
+	}
+	statistics := backend.packageSession.Statistics()
+	if statistics.FullLoads != 1 ||
+		statistics.IncrementalLoads != 1 ||
+		statistics.ImportLoads != 0 {
+		t.Fatalf(
+			"typed package session statistics = %#v, want retained dependency import",
+			statistics,
+		)
+	}
+}
+
+func TestLSPWorkspacePreservesRetainedTypesAcrossDiscoveredDependencyImport(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = []\n[lint.rules]\nself-assignment = \"warn\"\n",
+	)
+	leafPath := filepath.Join(root, "leaf", "leaf.go")
+	leftPath := filepath.Join(root, "left", "left.go")
+	helperPath := filepath.Join(root, "helper", "helper.go")
+	dependencyPath := filepath.Join(root, "dependency", "dependency.go")
+	consumerPath := filepath.Join(root, "consumer", "consumer.go")
+	for _, path := range
+		[]string{leafPath, leftPath, helperPath, dependencyPath, consumerPath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeChangedCLIFile(t, leafPath, "package leaf\n\ntype Value struct{}\n")
+	writeChangedCLIFile(
+		t,
+		leftPath,
+		"package left\n\nimport \"example.com/editor/leaf\"\n\nfunc Value() leaf.Value { return leaf.Value{} }\n",
+	)
+	writeChangedCLIFile(
+		t,
+		helperPath,
+		"package helper\n\nimport \"example.com/editor/leaf\"\n\nfunc Use(value leaf.Value) {}\n",
+	)
+	writeChangedCLIFile(
+		t,
+		dependencyPath,
+		"package dependency\n\nimport \"example.com/editor/left\"\n\nfunc Run() { _ = left.Value() }\n",
+	)
+	original := `package consumer
+
+import "example.com/editor/dependency"
+
+func run() {
+	dependency.Run()
+}
+`
+	changed := strings.Replace(
+		original,
+		"\tdependency.Run()",
+		"\tdependency.Run()\n\tvalue := 1\n\tvalue = value",
+		1,
+	)
+	writeChangedCLIFile(t, consumerPath, original)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &lspBackend{registry: registry}
+	document := lsp.Document{
+		URI: "file://" + filepath.ToSlash(consumerPath),
+		Path: consumerPath,
+		Version: 1,
+		Text: []byte(original),
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document});
+		err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(
+		t,
+		dependencyPath,
+		"package dependency\n\nimport (\n\t\"example.com/editor/helper\"\n\t\"example.com/editor/left\"\n)\n\nfunc Run() { helper.Use(left.Value()) }\n",
+	)
+	document.Version = 2
+	document.Text = []byte(changed)
+	result, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].Err != nil {
+		t.Fatalf("changed workspace analysis = %#v", result)
+	}
+	if diagnostics := result[0].Analysis.Diagnostics;
+		len(diagnostics) != 1 || diagnostics[0].Code != "self-assignment" {
+		t.Fatalf("changed workspace diagnostics = %#v", diagnostics)
+	}
+	statistics := backend.packageSession.Statistics()
+	if statistics.FullLoads != 1 ||
+		statistics.IncrementalLoads != 1 ||
+		statistics.ImportLoads != 1 {
+		t.Fatalf(
+			"typed package session statistics = %#v, want reconciled dependency types",
+			statistics,
+		)
+	}
+}
+
+func TestLSPWorkspaceRefreshesEffectsFromNewLocalDependencyImport(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = []\n[lint.rules]\nresource-not-closed = \"warn\"\n",
+	)
+	finalizerPath := filepath.Join(root, "finalizer", "finalizer.go")
+	helperPath := filepath.Join(root, "helper", "helper.go")
+	dependencyPath := filepath.Join(root, "dependency", "dependency.go")
+	consumerPath := filepath.Join(root, "consumer", "consumer.go")
+	for _, directory := range
+		[]string{
+			filepath.Dir(finalizerPath),
+			filepath.Dir(helperPath),
+			filepath.Dir(dependencyPath),
+			filepath.Dir(consumerPath),
+		} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeChangedCLIFile(
+		t,
+		finalizerPath,
+		"package finalizer\n\nimport \"os\"\n\nfunc Finalize(file *os.File) { _ = file.Close() }\n",
+	)
+	writeChangedCLIFile(
+		t,
+		helperPath,
+		"package helper\n\nimport (\n\t\"os\"\n\n\t\"example.com/editor/finalizer\"\n)\n\nfunc Finalize(file *os.File) { finalizer.Finalize(file) }\n",
+	)
+	writeChangedCLIFile(
+		t,
+		dependencyPath,
+		"package dependency\n\nimport \"os\"\n\nfunc Finalize(file *os.File) { _ = file.Close() }\n",
+	)
+	original := `package consumer
+
+import (
+	"os"
+
+	"example.com/editor/dependency"
+)
+
+func run() error {
+	file, err := os.Open("input")
+	if err != nil { return err }
+	dependency.Finalize(file)
+	return nil
+}
+`
+	changed := strings.Replace(original, "func run()", "// refreshed\nfunc run()", 1)
+	reused := strings.Replace(original, "func run()", "// reused\nfunc run()", 1)
+	writeChangedCLIFile(t, consumerPath, original)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &lspBackend{registry: registry}
+	document := lsp.Document{
+		URI: "file://" + filepath.ToSlash(consumerPath),
+		Path: consumerPath,
+		Version: 1,
+		Text: []byte(original),
+	}
+	initial, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(initial) != 1 || initial[0].Err != nil || len(initial[0].Analysis.Diagnostics) != 0 {
+		t.Fatalf("initial workspace analysis = %#v", initial)
+	}
+	writeChangedCLIFile(
+		t,
+		dependencyPath,
+		"package dependency\n\nimport (\n\t\"os\"\n\n\t\"example.com/editor/helper\"\n)\n\nfunc Finalize(file *os.File) { helper.Finalize(file) }\n",
+	)
+	document.Version = 2
+	document.Text = []byte(changed)
+	result, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].Err != nil || len(result[0].Analysis.Diagnostics) != 0 {
+		t.Fatalf("changed workspace analysis = %#v", result)
+	}
+	document.Version = 3
+	document.Text = []byte(reused)
+	result, err = backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].Err != nil || len(result[0].Analysis.Diagnostics) != 0 {
+		t.Fatalf("reused workspace analysis = %#v", result)
+	}
+	writeChangedCLIFile(
+		t,
+		finalizerPath,
+		"package finalizer\n\nimport \"os\"\n\nfunc Finalize(file *os.File) { _ = file.Name() }\n",
+	)
+	document.Version = 4
+	document.Text = []byte(changed)
+	result, err = backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].Err != nil {
+		t.Fatalf("new dependency changed workspace analysis = %#v", result)
+	}
+	if diagnostics := result[0].Analysis.Diagnostics;
+		len(diagnostics) != 1 || diagnostics[0].Code != "resource-not-closed" {
+		t.Fatalf("new dependency changed workspace diagnostics = %#v", diagnostics)
+	}
+	statistics := backend.packageSession.Statistics()
+	if statistics.FullLoads != 1 ||
+		statistics.IncrementalLoads != 3 ||
+		statistics.ImportLoads != 1 {
+		t.Fatalf(
+			"typed package session statistics = %#v, want retained local import effects",
+			statistics,
+		)
+	}
+}
+
 func TestLSPWorkspaceRefreshesEffectsFromChangedLocalDependency(t *testing.T) {
 	t.Parallel()
 
@@ -3433,6 +3832,87 @@ func BenchmarkLSPWorkspaceChangedDependencyIncremental(b *testing.B) {
 		)
 	}
 	b.ReportMetric(float64(fullLoads) / float64(b.N), "full-package-loads/op")
+	b.ReportMetric(float64(incrementalLoads) / float64(b.N), "incremental-loads/op")
+}
+
+func BenchmarkLSPWorkspaceChangedDependencyImportDiscovery(b *testing.B) {
+	root := b.TempDir()
+	writeChangedCLIFile(
+		b,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		b,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = []\n[lint.rules]\nself-assignment = \"warn\"\n",
+	)
+	dependencyPath := filepath.Join(root, "dependency", "dependency.go")
+	consumerPath := filepath.Join(root, "consumer", "consumer.go")
+	if err := os.MkdirAll(filepath.Dir(dependencyPath), 0o755); err != nil {
+		b.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(consumerPath), 0o755); err != nil {
+		b.Fatal(err)
+	}
+	dependencies := []string{
+		"package dependency\n\nfunc Value() int { return 1 }\n",
+		"package dependency\n\nimport \"strings\"\n\nfunc Value() string { return strings.TrimSpace(\" value \") }\n",
+	}
+	consumers := []string{
+		"package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc run() { value := dependency.Value(); var _ int = value; value = value }\n",
+		"package consumer\n\nimport \"example.com/editor/dependency\"\n\nfunc run() { value := dependency.Value(); var _ string = value; value = value }\n",
+	}
+	writeChangedCLIFile(b, dependencyPath, dependencies[0])
+	writeChangedCLIFile(b, consumerPath, consumers[0])
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		b.Fatal(err)
+	}
+	backend := &lspBackend{registry: registry}
+	document := lsp.Document{
+		URI: "file://" + filepath.ToSlash(consumerPath),
+		Path: consumerPath,
+		Version: 1,
+		Text: []byte(consumers[0]),
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document});
+		err != nil {
+		b.Fatal(err)
+	}
+	before := backend.packageSession.Statistics()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		selected := (index + 1) % len(dependencies)
+		writeChangedCLIFile(b, dependencyPath, dependencies[selected])
+		document.Version++
+		document.Text = []byte(consumers[selected])
+		if _, err := backend.AnalyzeWorkspace(
+			context.Background(),
+			[]lsp.Document{document},
+		);
+			err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	after := backend.packageSession.Statistics()
+	fullLoads := after.FullLoads - before.FullLoads
+	incrementalLoads := after.IncrementalLoads - before.IncrementalLoads
+	importLoads := after.ImportLoads - before.ImportLoads
+	wantImportLoads := uint64((b.N + 1) / len(dependencies))
+	if fullLoads != 0 || incrementalLoads != uint64(b.N) || importLoads != wantImportLoads {
+		b.Fatalf(
+			"package session loads = full %d, incremental %d, import %d; want full 0, incremental %d, import %d",
+			fullLoads,
+			incrementalLoads,
+			importLoads,
+			b.N,
+			wantImportLoads,
+		)
+	}
+	b.ReportMetric(float64(fullLoads) / float64(b.N), "full-package-loads/op")
+	b.ReportMetric(float64(importLoads) / float64(b.N), "import-loads/op")
 	b.ReportMetric(float64(incrementalLoads) / float64(b.N), "incremental-loads/op")
 }
 

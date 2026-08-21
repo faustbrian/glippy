@@ -178,12 +178,16 @@ module, or a local filesystem replacement reparses and re-typechecks its
 retained reverse dependency closure and rebuilds selected-module effect facts
 before root diagnostics. Exact overlays may replace already selected local
 dependency source. Newly direct root imports already present in the retained
-graph are admitted without a full load. Uncertain or malformed test package
-families, new dependency imports, cgo-generated sources, changed source or
-build selection, module or workspace control changes, parse or type errors,
-immutable dependency edits, and external file notifications fall back to a
-complete load. The ordinary aggregate retained weight is therefore 256 MiB; it
-remains a deterministic eviction model rather than an RSS promise.
+graph are admitted without a full load. Imports added by a changed local
+dependency reuse the retained package identity when available or use the same
+bounded exact types loader. Newly loaded mutable local layers are rechecked
+against compatible retained transitive types before reverse dependency and
+effect reconstruction. Uncertain or malformed test package families, unresolved
+dependency imports, cgo-generated sources, changed source or build selection,
+module or workspace control changes, parse or type errors, immutable dependency
+edits, and external file notifications fall back to a complete load. The
+ordinary aggregate retained weight is therefore 256 MiB; it remains a
+deterministic eviction model rather than an RSS promise.
 
 `glippy init` creates a starter `.glippy.toml` without overwriting an existing
 path. The `default`, `recommended`, `strict`, and `pedantic` profiles provide

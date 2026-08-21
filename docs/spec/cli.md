@@ -115,7 +115,13 @@ ignored-file selection, and module/workspace controls; recheck the changed
 package and every retained reverse dependant needed by the selected root; and
 rebuild selected local-source effect facts before publishing diagnostics. Local
 dependency overlays MUST be accepted only for already selected active source.
-Parse or type failure, cgo-generated source, new dependency imports, changed
+A new dependency import MAY reuse a compatible package in the retained graph or
+use a bounded exact-package types load when Go visibility permits it and the
+result has one clean unambiguous identity. The expanded graph MUST participate
+in reverse dependency rechecking, applicable effect reconstruction, source
+limits, and later retained-session validation. Compatible retained type
+identities MUST be preserved through newly loaded mutable local layers.
+Parse or type failure, cgo-generated source, unresolved imports, changed
 selection or control inputs, ambiguous graph identity, and every unsupported
 state MUST fall back to the complete loader rather than reuse stale types or
 effects.

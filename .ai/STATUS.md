@@ -15,6 +15,7 @@
 - v0.5 test-package incremental typed analysis: complete
 - v0.5 import-only typed discovery: complete
 - v0.5 changed local dependency incremental typed analysis: complete
+- v0.5 changed dependency import-only typed discovery: complete
 - v0.5 memory-aware SSA package waves: complete
 - v0.5 curated strictness profiles: complete
 - v0.5 transaction state transition: complete
@@ -2472,14 +2473,36 @@ Exact dependency overlays participate in the same path. Selected-module effect
 facts are rebuilt before root diagnostics, so lifecycle findings cannot reuse
 stale ownership summaries. Package membership, build constraints, ignored-file
 selection, module and workspace controls, source limits, and supported import
-graphs are revalidated; cgo-generated source, new dependency imports, parse or
-type failure, ambiguous identities, and immutable dependency edits retain the
-conservative full-load fallback. Focused regressions cover main-module and
-workspace-module source, external-test dependency overlays, local replacements,
-module and sum controls, refreshed cleanup effects, and ignored-source
-selection. Five ten-operation Darwin arm64 samples
-measured 618.5-663.6 microseconds, 273,274-277,954 bytes, and 1,607-1,611
+graphs are revalidated; cgo-generated source, unresolved dependency imports,
+parse or type failure, ambiguous identities, and immutable dependency edits
+retain the conservative full-load fallback. Focused regressions cover
+main-module and workspace-module source, external-test dependency overlays,
+local replacements, module and sum controls, refreshed cleanup effects, and
+ignored-source selection. Five ten-operation Darwin arm64 samples
+measured 565.6-692.2 microseconds, 271,711-278,087 bytes, and 1,622-1,627
 allocations per operation, with zero full primary package loads and one
-incremental load per operation. Dependency import-graph changes, portable
-editor latency and RSS budgets, and further state-transition precision remain
-active v0.5 work.
+incremental load per operation. Portable editor latency and RSS budgets and
+further state-transition precision remain active v0.5 work.
+
+The v0.5 changed-dependency import-discovery batch extends retained-import
+admission and the bounded exact types loader from root overlays to imports added
+by changed local dependencies. New imports are parsed from the changed package
+and checked against Go internal visibility. A matching package already in the
+retained graph preserves its existing type identity; an absent package loads
+through exact escaped package patterns. Newly loaded mutable local layers are
+then rechecked against compatible retained transitive types before the package
+is attached only to the dependency that introduced it. The expanded graph
+participates in reverse dependency rechecking, selected-module effect
+reconstruction, source limits, and the next retained session entry. A local
+helper introduced by the edit is therefore reusable on later snapshots, and a
+subsequent helper change refreshes the caller's lifecycle diagnostics without a
+full primary load. Import-load failure, diagnostics, ambiguous identity,
+unavailable types, cgo, and invalid source retain the conservative fallback;
+cancellation remains an operation-level error. Ten ten-operation
+Darwin arm64 samples that alternated adding and removing a standard-library
+import measured a 59.70 ms median and 55.99-76.18 ms range, 140.10-140.13 MB,
+and 1,722,590-1,722,674 allocations per operation. Each operation used the
+incremental path, additions performed one exact import load, removals performed
+none, and no operation invoked the complete primary package loader. Portable
+editor latency and RSS budgets, cgo-generated inputs, and further
+state-transition precision remain active v0.5 work.

@@ -128,8 +128,12 @@ package is reparsed and re-typechecked from retained compact dependency types,
 then receives fresh CFG, SSA, effects, and diagnostics. A changed active source
 in the main module, an active workspace module, or a local replacement also
 rechecks its retained reverse dependency closure without a full package load.
-Source membership, build-selection, module/workspace-control, cgo, parse, type,
-or unresolved dependency-import changes fall back to the complete loader.
+An import added by a changed local dependency reuses a compatible retained
+package or may use one bounded exact types load before the reverse closure and
+selected-module effects are rebuilt. Newly loaded mutable local layers preserve
+compatible retained transitive type identities. Source membership,
+build-selection, module/workspace-control, cgo, parse, type, or unresolved
+dependency-import changes fall back to the complete loader.
 
 When the client advertises dynamic watched-file registration, the server
 registers `workspace/didChangeWatchedFiles` for Go sources, module and workspace

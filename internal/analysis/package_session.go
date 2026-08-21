@@ -1058,6 +1058,119 @@ func packageSessionResolvedImports(
 	return resolved, true
 }
 
+func mergePackageSessionResolvedImports(
+	target map[string]*packages.Package,
+	imports map[string]*packages.Package,
+) bool {
+	for path, pkg := range imports {
+		if pkg == nil || pkg.PkgPath != path {
+			return false
+		}
+		if previous := target[path]; previous != nil && previous.ID != pkg.ID {
+			return false
+		}
+		target[path] = pkg
+	}
+	return true
+}
+
+func packageSessionImportGraphWithinLimit(
+	variants []packageSessionVariant,
+	imports map[string]*packages.Package,
+	maximum int,
+) bool {
+	if maximum <= 0 {
+		return false
+	}
+	stack := make([]*packages.Package, 0, len(variants) + len(imports))
+	for index := len(variants) - 1; index >= 0; index-- {
+		root := &variants[index].root
+		stack = append(stack, root)
+	}
+	paths := make([]string, 0, len(imports))
+	for path := range imports {
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+	for index := len(paths) - 1; index >= 0; index-- {
+		stack = append(stack, imports[paths[index]])
+	}
+	seen := make(map[string]string)
+	for len(stack) > 0 {
+		pkg := stack[len(stack) - 1]
+		stack = stack[:len(stack) - 1]
+		if pkg == nil || pkg.ID == "" || pkg.PkgPath == "" {
+			return false
+		}
+		if previous, visited := seen[pkg.ID]; visited {
+			if previous != pkg.PkgPath {
+				return false
+			}
+			continue
+		}
+		seen[pkg.ID] = pkg.PkgPath
+		if len(seen) > maximum {
+			return false
+		}
+		for _, imported := range pkg.Imports {
+			stack = append(stack, imported)
+		}
+	}
+	return true
+}
+
+func packageSessionMissingMutableImportSyntax(
+	projectRoot string,
+	roots map[string]*packages.Package,
+	loadedPaths map[string]struct{},
+) ([]string, bool) {
+	paths := make([]string, 0, len(roots))
+	for path := range roots {
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+	stack := make([]*packages.Package, 0, len(paths))
+	for index := len(paths) - 1; index >= 0; index-- {
+		stack = append(stack, roots[paths[index]])
+	}
+	seen := make(map[string]string)
+	missing := make(map[string]struct{})
+	for len(stack) > 0 {
+		pkg := stack[len(stack) - 1]
+		stack = stack[:len(stack) - 1]
+		if pkg == nil || pkg.ID == "" || pkg.PkgPath == "" || pkg.Types == nil {
+			return nil, false
+		}
+		if previous, visited := seen[pkg.ID]; visited {
+			if previous != pkg.PkgPath {
+				return nil, false
+			}
+			continue
+		}
+		seen[pkg.ID] = pkg.PkgPath
+		if packageSessionDependencyIsMutable(projectRoot, pkg) && len(pkg.Syntax) == 0 {
+			if _, loaded := loadedPaths[pkg.PkgPath]; loaded {
+				return nil, false
+			}
+			missing[pkg.PkgPath] = struct{}{}
+		}
+		imports := make([]string, 0, len(pkg.Imports))
+		for path := range pkg.Imports {
+			imports = append(imports, path)
+		}
+		slices.Sort(imports)
+		for index := len(imports) - 1; index >= 0; index-- {
+			stack = append(stack, pkg.Imports[imports[index]])
+		}
+	}
+	result := make([]string, 0, len(missing))
+	for path := range missing {
+		result = append(result, path)
+	}
+	slices.Sort(result)
+	return result, true
+}
+
 func (entry packageSessionEntry) reload(
 	ctx context.Context,
 	sourceGoVersion string,
@@ -1156,12 +1269,39 @@ func (entry packageSessionEntry) reload(
 			missingSet[path] = struct{}{}
 		}
 	}
+	retainedImportGraph := make(map[string]*packages.Package)
+	dependencyImports := make(map[string][]string)
+	retainedDependencyImports := make(map[string]*packages.Package)
+	if len(changedDependencies) > 0 {
+		var valid bool
+		retainedImportGraph, valid = packageSessionRetainedImports(variants)
+		if !valid {
+			return PackageLoadResult{}, false, nil
+		}
+		dependencyImports, retainedDependencyImports, valid = packageSessionDependencyAddedImports(
+			variants,
+			retainedImportGraph,
+			dependencyBytes,
+			changedDependencies,
+		)
+		if !valid {
+			return PackageLoadResult{}, false, nil
+		}
+	}
+	for _, imports := range dependencyImports {
+		for _, path := range imports {
+			if retainedDependencyImports[path] == nil {
+				missingSet[path] = struct{}{}
+			}
+		}
+	}
 	sources := PackageSourceSet{paths: paths, files: files}
 	mergedSources, mergeErr := MergePackageSourceSets(sources, dependencySources)
 	if mergeErr != nil {
 		return PackageLoadResult{}, false, nil
 	}
 	sources = mergedSources
+	resolvedImports := make(map[string]*packages.Package)
 	if len(missingSet) > 0 {
 		if loadImports == nil {
 			return PackageLoadResult{}, false, nil
@@ -1171,22 +1311,58 @@ func (entry packageSessionEntry) reload(
 			missing = append(missing, path)
 		}
 		slices.Sort(missing)
-		loadedImports, importErr := loadImports(ctx, options, missing)
-		if contextErr := ctx.Err(); contextErr != nil {
-			return PackageLoadResult{}, false, contextErr
+		loadedPaths := make(map[string]struct{})
+		limits, limitErr := resolvePackageResourceLimits(options)
+		if limitErr != nil {
+			return PackageLoadResult{}, false, limitErr
 		}
-		if importErr != nil {
-			return PackageLoadResult{}, false, nil
+		for len(missing) > 0 {
+			loadedImports, importErr := loadImports(ctx, options, missing)
+			if contextErr := ctx.Err(); contextErr != nil {
+				return PackageLoadResult{}, false, contextErr
+			}
+			if importErr != nil {
+				return PackageLoadResult{}, false, nil
+			}
+			resolved, valid := packageSessionResolvedImports(loadedImports, missing)
+			if !valid ||
+				!mergePackageSessionResolvedImports(resolvedImports, resolved) {
+				return PackageLoadResult{}, false, nil
+			}
+			if !packageSessionImportGraphWithinLimit(
+				variants,
+				resolvedImports,
+				limits.maxPackages,
+			) {
+				return PackageLoadResult{}, false, nil
+			}
+			for _, path := range missing {
+				loadedPaths[path] = struct{}{}
+			}
+			merged, mergeErr := MergePackageSourceSets(sources, loadedImports.Sources)
+			if mergeErr != nil {
+				return PackageLoadResult{}, false, nil
+			}
+			sources = merged
+			withinLimits, sourceLimitErr := packageSessionSourcesWithinLimits(
+				sources,
+				options,
+			)
+			if sourceLimitErr != nil {
+				return PackageLoadResult{}, false, sourceLimitErr
+			}
+			if !withinLimits {
+				return PackageLoadResult{}, false, nil
+			}
+			missing, valid = packageSessionMissingMutableImportSyntax(
+				options.Dir,
+				resolvedImports,
+				loadedPaths,
+			)
+			if !valid {
+				return PackageLoadResult{}, false, nil
+			}
 		}
-		resolved, valid := packageSessionResolvedImports(loadedImports, missing)
-		if !valid {
-			return PackageLoadResult{}, false, nil
-		}
-		merged, mergeErr := MergePackageSourceSets(sources, loadedImports.Sources)
-		if mergeErr != nil {
-			return PackageLoadResult{}, false, nil
-		}
-		sources = merged
 		for index, variantMissing := range missingByVariant {
 			if len(variantMissing) == 0 {
 				continue
@@ -1199,7 +1375,7 @@ func (entry packageSessionEntry) reload(
 				available[path] = imported
 			}
 			for _, path := range variantMissing {
-				available[path] = resolved[path]
+				available[path] = resolvedImports[path]
 			}
 			variants[index].availableImports = available
 		}
@@ -1211,13 +1387,53 @@ func (entry packageSessionEntry) reload(
 	if !withinLimits {
 		return PackageLoadResult{}, false, nil
 	}
+	dependencyReloadBytes := dependencyBytes
+	if len(changedDependencies) > 0 {
+		dependencyReloadBytes = make(map[string][]byte, len(dependencyBytes))
+		for path, input := range dependencyBytes {
+			dependencyReloadBytes[path] = input
+		}
+		seenImportBytes := make(map[string]struct{})
+		importStack := make([]*packages.Package, 0, len(resolvedImports))
+		for _, pkg := range resolvedImports {
+			importStack = append(importStack, pkg)
+		}
+		for len(importStack) > 0 {
+			pkg := importStack[len(importStack) - 1]
+			importStack = importStack[:len(importStack) - 1]
+			if pkg == nil || pkg.ID == "" || pkg.PkgPath == "" {
+				return PackageLoadResult{}, false, nil
+			}
+			if _, visited := seenImportBytes[pkg.ID]; visited {
+				continue
+			}
+			seenImportBytes[pkg.ID] = struct{}{}
+			if packageSessionDependencyIsMutable(options.Dir, pkg) {
+				for _, path := range pkg.CompiledGoFiles {
+					path = filepath.Clean(path)
+					file, found := sources.Lookup(path)
+					if !found || file == nil {
+						return PackageLoadResult{}, false, nil
+					}
+					dependencyReloadBytes[path] = file.Bytes()
+				}
+			}
+			for _, imported := range pkg.Imports {
+				importStack = append(importStack, imported)
+			}
+		}
+	}
 	freshByID, reusable, dependencyErr := reloadPackageSessionDependencies(
 		ctx,
 		sourceGoVersion,
 		options.Dir,
 		variants,
-		dependencyBytes,
+		dependencyReloadBytes,
 		changedDependencies,
+		dependencyImports,
+		retainedDependencyImports,
+		retainedImportGraph,
+		resolvedImports,
 		options.LoadEffectFacts,
 	)
 	if dependencyErr != nil || !reusable {
@@ -1235,13 +1451,28 @@ func (entry packageSessionEntry) reload(
 	effectFacts := cloneNativeEffectFacts(entry.effectFacts)
 	if options.LoadEffectFacts && len(changedDependencies) > 0 {
 		var effectErr error
-		effectFacts, effectErr = rebuildPackageSessionEffectFacts(
-			ctx,
-			options,
-			packages_,
-			freshByID,
-		)
+		if len(dependencyImports) > 0 {
+			effectFacts, effectErr = loadNativeEffectFacts(
+				ctx,
+				options,
+				packages_,
+				sources,
+			)
+		} else {
+			effectFacts, effectErr = rebuildPackageSessionEffectFacts(
+				ctx,
+				options,
+				packages_,
+				freshByID,
+			)
+		}
 		if effectErr != nil {
+			if contextErr := ctx.Err(); contextErr != nil {
+				return PackageLoadResult{}, false, contextErr
+			}
+			if len(dependencyImports) > 0 {
+				return PackageLoadResult{}, false, nil
+			}
 			return PackageLoadResult{}, false, effectErr
 		}
 	}
@@ -1354,6 +1585,259 @@ func packageSessionDependencyNamesCurrent(directories map[string][]string) bool 
 	return true
 }
 
+func packageSessionRetainedImports(
+	variants []packageSessionVariant,
+) (map[string]*packages.Package, bool) {
+	result := make(map[string]*packages.Package)
+	seen := make(map[string]*packages.Package)
+	stack := make([]*packages.Package, 0)
+	for _, variant := range variants {
+		for _, imported := range variant.root.Imports {
+			stack = append(stack, imported)
+		}
+	}
+	for len(stack) > 0 {
+		pkg := stack[len(stack) - 1]
+		stack = stack[:len(stack) - 1]
+		if pkg == nil || pkg.ID == "" || pkg.PkgPath == "" || pkg.Types == nil {
+			return nil, false
+		}
+		if previous, visited := seen[pkg.ID]; visited {
+			if previous.PkgPath != pkg.PkgPath || previous.Types != pkg.Types {
+				return nil, false
+			}
+			continue
+		}
+		seen[pkg.ID] = pkg
+		if previous := result[pkg.PkgPath];
+			previous != nil && (previous.ID != pkg.ID || previous.Types != pkg.Types) {
+			return nil, false
+		}
+		result[pkg.PkgPath] = pkg
+		for _, imported := range pkg.Imports {
+			stack = append(stack, imported)
+		}
+	}
+	return result, true
+}
+
+func packageSessionDependencyAddedImports(
+	variants []packageSessionVariant,
+	available map[string]*packages.Package,
+	bytesByPath map[string][]byte,
+	changedPaths map[string]struct{},
+) (map[string][]string, map[string]*packages.Package, bool) {
+	changedPackages := make(map[string]*packages.Package)
+	seen := make(map[string]struct{})
+	stack := make([]*packages.Package, 0)
+	for _, variant := range variants {
+		for _, imported := range variant.root.Imports {
+			stack = append(stack, imported)
+		}
+	}
+	for len(stack) > 0 {
+		pkg := stack[len(stack) - 1]
+		stack = stack[:len(stack) - 1]
+		if pkg == nil || pkg.ID == "" || pkg.PkgPath == "" || pkg.Name == "" {
+			return nil, nil, false
+		}
+		if _, visited := seen[pkg.ID]; visited {
+			continue
+		}
+		seen[pkg.ID] = struct{}{}
+		for _, path := range pkg.GoFiles {
+			if _, changed := changedPaths[filepath.Clean(path)]; changed {
+				changedPackages[pkg.ID] = pkg
+				break
+			}
+		}
+		for _, imported := range pkg.Imports {
+			stack = append(stack, imported)
+		}
+	}
+	ids := make([]string, 0, len(changedPackages))
+	for id := range changedPackages {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	result := make(map[string][]string)
+	retained := make(map[string]*packages.Package)
+	for _, id := range ids {
+		pkg := changedPackages[id]
+		added, valid := packageSessionMissingImports(
+			pkg.Name,
+			pkg.PkgPath,
+			pkg.CompiledGoFiles,
+			pkg.Imports,
+			bytesByPath,
+		)
+		if !valid {
+			return nil, nil, false
+		}
+		if len(added) == 0 {
+			continue
+		}
+		for _, path := range added {
+			imported := available[path]
+			if imported == nil || !packageSessionImportAllowed(pkg.PkgPath, path) {
+				continue
+			}
+			if previous := retained[path];
+				previous != nil &&
+					(previous.ID != imported.ID ||
+						previous.Types != imported.Types) {
+				return nil, nil, false
+			}
+			retained[path] = imported
+		}
+		result[id] = added
+	}
+	return result, retained, true
+}
+
+func addPackageSessionImportGraph(
+	target map[string]*packages.Package,
+	roots map[string]*packages.Package,
+) bool {
+	paths := make([]string, 0, len(roots))
+	for path := range roots {
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+	stack := make([]*packages.Package, 0, len(paths))
+	for index := len(paths) - 1; index >= 0; index-- {
+		stack = append(stack, roots[paths[index]])
+	}
+	for len(stack) > 0 {
+		pkg := stack[len(stack) - 1]
+		stack = stack[:len(stack) - 1]
+		if pkg == nil || pkg.ID == "" || pkg.PkgPath == "" || pkg.Types == nil {
+			return false
+		}
+		if existing := target[pkg.ID]; existing != nil {
+			if existing.PkgPath != pkg.PkgPath {
+				return false
+			}
+			continue
+		}
+		target[pkg.ID] = pkg
+		imports := make([]string, 0, len(pkg.Imports))
+		for path := range pkg.Imports {
+			imports = append(imports, path)
+		}
+		slices.Sort(imports)
+		for index := len(imports) - 1; index >= 0; index-- {
+			stack = append(stack, pkg.Imports[imports[index]])
+		}
+	}
+	return true
+}
+
+func reconcilePackageSessionImportGraph(
+	ctx context.Context,
+	sourceGoVersion string,
+	projectRoot string,
+	roots map[string]*packages.Package,
+	retained map[string]*packages.Package,
+	bytesByPath map[string][]byte,
+) (map[string]*packages.Package, bool, error) {
+	freshByID := make(map[string]*packages.Package)
+	if !addPackageSessionImportGraph(freshByID, roots) {
+		return nil, false, nil
+	}
+	for path, pkg := range retained {
+		if pkg == nil || pkg.PkgPath != path || pkg.ID == "" || pkg.Types == nil {
+			return nil, false, nil
+		}
+		if loaded := freshByID[pkg.ID]; loaded != nil {
+			if loaded.PkgPath != path {
+				return nil, false, nil
+			}
+			freshByID[pkg.ID] = pkg
+		}
+	}
+	type visitState uint8
+	const (
+		visitActive visitState = iota + 1
+		visitComplete
+	)
+	states := make(map[string]visitState)
+	var reconcile func(*packages.Package) (bool, error)
+	reconcile = func(pkg *packages.Package) (bool, error) {
+		if pkg == nil || pkg.ID == "" || pkg.PkgPath == "" || pkg.Types == nil {
+			return false, nil
+		}
+		if retainedPkg := retained[pkg.PkgPath]; retainedPkg != nil {
+			if retainedPkg.ID != pkg.ID || retainedPkg.Types == nil {
+				return false, nil
+			}
+			freshByID[pkg.ID] = retainedPkg
+			states[pkg.ID] = visitComplete
+			return true, nil
+		}
+		switch states[pkg.ID] {
+		case visitActive:
+			return false, nil
+		case visitComplete:
+			return true, nil
+		}
+		states[pkg.ID] = visitActive
+		if !packageSessionDependencyIsMutable(projectRoot, pkg) {
+			states[pkg.ID] = visitComplete
+			return true, nil
+		}
+		paths := make([]string, 0, len(pkg.Imports))
+		for path := range pkg.Imports {
+			paths = append(paths, path)
+		}
+		slices.Sort(paths)
+		available := make(map[string]*packages.Package, len(paths))
+		for _, path := range paths {
+			imported := pkg.Imports[path]
+			if retainedPkg := retained[path];
+				retainedPkg != nil &&
+					packageSessionImportAllowed(pkg.PkgPath, path) {
+				if retainedPkg.ID != imported.ID || retainedPkg.Types == nil {
+					return false, nil
+				}
+				available[path] = retainedPkg
+				continue
+			}
+			valid, err := reconcile(imported)
+			if err != nil || !valid {
+				return valid, err
+			}
+			available[path] = imported
+		}
+		fresh, valid, err := reloadPackageSessionPackage(
+			ctx,
+			sourceGoVersion,
+			pkg,
+			bytesByPath,
+			freshByID,
+			available,
+		)
+		if err != nil || !valid {
+			return valid, err
+		}
+		freshByID[pkg.ID] = fresh
+		states[pkg.ID] = visitComplete
+		return true, nil
+	}
+	paths := make([]string, 0, len(roots))
+	for path := range roots {
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+	for _, path := range paths {
+		valid, err := reconcile(roots[path])
+		if err != nil || !valid {
+			return nil, valid, err
+		}
+	}
+	return freshByID, true, nil
+}
+
 func reloadPackageSessionDependencies(
 	ctx context.Context,
 	sourceGoVersion string,
@@ -1361,11 +1845,40 @@ func reloadPackageSessionDependencies(
 	variants []packageSessionVariant,
 	bytesByPath map[string][]byte,
 	changedPaths map[string]struct{},
+	addedImports map[string][]string,
+	retainedImports map[string]*packages.Package,
+	retainedGraph map[string]*packages.Package,
+	resolvedImports map[string]*packages.Package,
 	refreshAllMutable bool,
 ) (map[string]*packages.Package, bool, error) {
-	freshByID := make(map[string]*packages.Package)
 	if len(changedPaths) == 0 {
-		return freshByID, true, nil
+		return map[string]*packages.Package{}, true, nil
+	}
+	freshByID, valid, err := reconcilePackageSessionImportGraph(
+		ctx,
+		sourceGoVersion,
+		projectRoot,
+		resolvedImports,
+		retainedGraph,
+		bytesByPath,
+	)
+	if err != nil || !valid {
+		return nil, valid, err
+	}
+	additionalImports := make(map[string]map[string]*packages.Package, len(addedImports))
+	for id, paths := range addedImports {
+		available := make(map[string]*packages.Package, len(paths))
+		for _, path := range paths {
+			imported := retainedImports[path]
+			if imported == nil {
+				imported = resolvedImports[path]
+			}
+			if imported == nil {
+				return nil, false, nil
+			}
+			available[path] = imported
+		}
+		additionalImports[id] = available
 	}
 	directlyChanged := make(map[string]struct{})
 	seen := make(map[string]struct{})
@@ -1445,6 +1958,7 @@ func reloadPackageSessionDependencies(
 				pkg,
 				bytesByPath,
 				freshByID,
+				additionalImports[pkg.ID],
 			)
 			if err != nil || !valid {
 				return false, valid, err
@@ -1551,6 +2065,7 @@ func reloadPackageSessionPackage(
 	pkg *packages.Package,
 	bytesByPath map[string][]byte,
 	freshByID map[string]*packages.Package,
+	additionalImports map[string]*packages.Package,
 ) (*packages.Package, bool, error) {
 	if pkg == nil || pkg.TypesSizes == nil || len(pkg.CompiledGoFiles) == 0 {
 		return nil, false, nil
@@ -1558,7 +2073,20 @@ func reloadPackageSessionPackage(
 	fileSet := token.NewFileSet()
 	syntax := make([]*ast.File, 0, len(pkg.CompiledGoFiles))
 	usedImports := make(map[string]*packages.Package)
-	importer := packageSessionImporter{packages: pkg.Imports, freshByID: freshByID}
+	availableImports := make(
+		map[string]*packages.Package,
+		len(pkg.Imports) + len(additionalImports),
+	)
+	for path, imported := range pkg.Imports {
+		availableImports[path] = imported
+	}
+	for path, imported := range additionalImports {
+		if imported == nil {
+			return nil, false, nil
+		}
+		availableImports[path] = imported
+	}
+	importer := packageSessionImporter{packages: availableImports, freshByID: freshByID}
 	for _, path := range pkg.CompiledGoFiles {
 		if err := ctx.Err(); err != nil {
 			return nil, false, err
@@ -1633,10 +2161,26 @@ func newPackageSessionTypesInfo() *types.Info {
 func (variant packageSessionVariant) missingImports(
 	bytesByPath map[string][]byte,
 ) ([]string, bool) {
+	return packageSessionMissingImports(
+		variant.root.Name,
+		variant.root.PkgPath,
+		variant.root.CompiledGoFiles,
+		variant.availableImports,
+		bytesByPath,
+	)
+}
+
+func packageSessionMissingImports(
+	packageName string,
+	packagePath string,
+	compiledFiles []string,
+	availableImports map[string]*packages.Package,
+	bytesByPath map[string][]byte,
+) ([]string, bool) {
 	missing := make([]string, 0)
 	seen := make(map[string]struct{})
-	for _, path := range variant.root.CompiledGoFiles {
-		input, found := bytesByPath[path]
+	for _, path := range compiledFiles {
+		input, found := bytesByPath[filepath.Clean(path)]
 		if !found {
 			return nil, false
 		}
@@ -1649,7 +2193,7 @@ func (variant packageSessionVariant) missingImports(
 		if err != nil ||
 			parsed == nil ||
 			parsed.Name == nil ||
-			parsed.Name.Name != variant.root.Name {
+			parsed.Name.Name != packageName {
 			return nil, false
 		}
 		for _, specification := range parsed.Imports {
@@ -1657,10 +2201,10 @@ func (variant packageSessionVariant) missingImports(
 			if unquoteErr != nil || importPath == "C" {
 				return nil, false
 			}
-			if variant.availableImports[importPath] != nil {
+			if availableImports[importPath] != nil {
 				continue
 			}
-			if !packageSessionImportAllowed(variant.root.PkgPath, importPath) {
+			if !packageSessionImportAllowed(packagePath, importPath) {
 				return nil, false
 			}
 			if _, found := seen[importPath]; found {

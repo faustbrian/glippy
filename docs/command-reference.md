@@ -417,9 +417,13 @@ The retained typed session reparses and re-typechecks compatible changes in the
 selected package without a complete package load. A changed active dependency
 in the main module, an active workspace module, or a local filesystem
 replacement also rechecks its retained reverse dependency closure and refreshes
-selected-module effect facts. Source or build-selection changes, project-control
-changes, cgo-generated inputs, new dependency imports, parse or type failure,
-and ambiguous or immutable dependency state fall back to the complete loader.
+selected-module effect facts. Imports added by a changed local dependency reuse
+a compatible retained package or use a bounded exact types load before that
+recheck. Newly loaded mutable local layers preserve compatible retained
+transitive type identities. Source or build-selection changes, project-control
+changes, cgo-generated inputs, unresolved dependency imports, parse or type
+failure, and ambiguous or immutable dependency state fall back to the complete
+loader.
 
 Individual safe actions and `source.fixAll.glippy` are available by default.
 Suggestion actions require `--fix-suggestions`; unsafe actions require
