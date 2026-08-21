@@ -561,11 +561,9 @@ current 118-rule catalog. The other native targets intentionally retain their
 raw result because build-selected findings may differ. The digest update and
 current-revision arm64 rehearsal are recorded in
 [`../docs/research/v0.5-current-revision-arm64-budget-evidence-2026-08-21.md`](../docs/research/v0.5-current-revision-arm64-budget-evidence-2026-08-21.md).
-The initial exact-candidate native run and the provisional calibration are
+The failed calibration run and the complete exact-candidate native rerun are
 recorded in
 [`../docs/research/v0.5-native-typed-budget-calibration-2026-08-21.md`](../docs/research/v0.5-native-typed-budget-calibration-2026-08-21.md).
-The exact release candidate must still pass and retain the complete four-runner
-campaign.
 
 The first native run, [`31611144933`](https://github.com/faustbrian/glippy/actions/runs/31611144933),
 rejected the original 15-second maximum. Its first repository-scale samples
@@ -597,3 +595,21 @@ bytes for formatting, and 22.550 seconds and 1,360,035,840 bytes for typed
 linting. Linux maxima were 3.772 ms, 11.230 seconds and 1,317,863,424 bytes,
 and 23.390 seconds and 1,256,058,880 bytes respectively. Docker-hosted Linux is
 not a substitute for the exact-candidate native workflow.
+
+Exact pushed candidate `724d8a2` subsequently passed
+[`workflow 32465998309`](https://github.com/faustbrian/glippy/actions/runs/32465998309)
+on all four native runners. The workflow completed every editor, formatter, and
+typed sample, constructed every archive on each runner, executed each target on
+its matching native runner, retained all four evidence bundles, validated their
+checksums, and proved that every runner produced a byte-identical release
+directory:
+
+| Runner | Editor maximum | Formatter time | Formatter RSS | Typed cold | Typed cold RSS | Typed warm |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Linux arm64 | 5.841 ms | 16.780-17.070 s | 1.181-1.364 GB | 49.200 s | 1.444 GB | 1.830-1.860 s |
+| Linux amd64 | 4.953 ms | 19.400-20.440 s | 1.158-1.422 GB | 50.020 s | 1.378 GB | 1.690-1.760 s |
+| Darwin arm64 | 22.149 ms | 22.660-25.520 s | 1.429-1.631 GB | 62.040 s | 1.406 GB | 1.990-2.860 s |
+| Darwin amd64 | 110.961 ms | 29.600-59.130 s | 1.465-1.675 GB | 87.910 s | 1.503 GB | 3.030-3.460 s |
+
+This validates the stable 105-second and 2-GiB typed release ceilings in
+addition to the existing editor and formatter budgets.

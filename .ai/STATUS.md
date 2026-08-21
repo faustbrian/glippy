@@ -33,10 +33,10 @@
 - v0.5 project semantic contracts: complete
 - v0.5 state-transition correctness pack: complete
 - v0.5 restriction policy and exported API documentation: complete
-- v0.5 direction exit audit: engineering stages complete; delivery, selected
-  `pkg/prompts` adoption, and current-candidate release evidence remain open
-- v0.5 current-source Darwin/Linux arm64 release budgets: complete locally;
-  four-native-runner exact-candidate evidence remains open
+- v0.5 direction exit audit: engineering, canonical delivery, selected
+  `pkg/prompts` adoption, and exact-candidate release evidence complete
+- v0.5 native macOS/Linux amd64/arm64 release budgets: complete at `724d8a2`;
+  final maintainer review remains open
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -99,7 +99,7 @@ performance evidence and approved external adoption closed the remaining
 Phase 2 gates.
 
 The replacement integration suite now passes on Darwin 27.0.0 arm64 with APFS
-and Linux arm64 with overlayfs under Go 1.26.5. Gox supports macOS and Linux
+and Linux arm64 with overlayfs under Go 1.26.5. Glippy supports macOS and Linux
 only; Windows cross-compilation is informational and Windows runtime evidence is
 not a release gate. Network, distributed, and userspace filesystems plus forced
 power-loss durability are outside the supported write/fix boundary unless
@@ -115,17 +115,17 @@ evidence, not completed adoption: generated-file refusal prevented a full-tree
 write rehearsal, and the 4,816-file migration diff has not received human
 readability approval.
 
-The external `pkg/prompts` adoption is now a dedicated committed migration on
-the isolated `feature/gox-prompts-adoption` branch at `d6b0fba8`. From immutable
-baseline `8c9c1e7a`, Gox selects 77 files and changes 65 Go files; the complete
-coordinated patch changes 69 files with 7,608 insertions and 3,598 deletions.
-It pins Gox revision `d84842b`, makes Gox the sole formatter authority, and
-passes its pinned format check, tests, race tests, vet, tidy-diff,
-documentation, golangci-lint, and workspace-dependent comparison-module gates.
-Sixty-three selected Go files intentionally remain non-fixed-points under
-gofmt. The maintainer approved Phase 2 and the complete layout on 2026-08-13,
-closing the formatter exit gate. The branch has not been pushed or integrated;
-that delivery state does not reopen Phase 2 and requires separate authority.
+The external `pkg/prompts` adoption now pins Glippy candidate `724d8a2` and is
+integrated on `faustbrian/golib` `main` at `5eb1b997`. The refreshed 88-file
+patch changes 79 Go files, removes golangci-lint's competing gofmt/goimports
+formatters, and makes module-owned Glippy targets authoritative through the
+canonical repository runner. The complete package gate passes, including
+format, tidy, safety, tests, race, statement coverage, lint, Staticcheck,
+vulnerability, secret, license, SBOM, fuzz, mutation, documentation, API,
+benchmark, and goal checks. NilAway retains its documented advisory findings;
+operational assurance remains separately scoped at 2/11 scenarios. The
+maintainer's earlier layout and Phase 2 approval apply to the refreshed
+canonical migration.
 
 The current formatter dialect is now published with evidence-linked examples
 covering width, indentation, blocks, semicolons, control flow, lists, binary
@@ -2574,3 +2574,17 @@ formatter campaign's established 33% headroom method over the slowest native
 observation. The exact candidate must rerun and retain all five typed samples
 on every native runner before the budget becomes stable release evidence. No
 tag or release was created.
+
+Exact pushed Glippy candidate
+`724d8a26eec0ef5883a28e5fee72b34a78c8284a` passes push-triggered CI run
+`32465991030` and native release-budget run `32465998309`. Every supported
+macOS/Linux amd64/arm64 runner completes the editor, formatter, cold typed, and
+warm typed campaigns within the stable 250 ms, 90 second, 105 second, and
+2-GiB ceilings. Each runner builds all four candidate archives, executes its
+native archive, retains its manifest and checksums, and produces a release
+directory identical to the other three runners. The selected
+`go-libraries/pkg/prompts` adoption
+was refreshed from current `golib` main, reviewed, passed the complete package
+gate, pushed, and integrated on `faustbrian/golib` `main` at `5eb1b997`. The
+engineering and delivery gates are complete. Final maintainer review remains
+required before any tag or release; no tag or release was created.
