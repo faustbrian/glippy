@@ -381,6 +381,7 @@ precise scope.
 - [v0.5 authoritative testing cleanup receivers](docs/research/v0.5-authoritative-testing-cleanup-receivers-2026-08-21.md)
 - [v0.5 direction exit audit](docs/research/v0.5-direction-exit-audit-2026-08-21.md)
 - [v0.5 current-revision arm64 budgets](docs/research/v0.5-current-revision-arm64-budget-evidence-2026-08-21.md)
+- [v0.5 native typed-budget calibration](docs/research/v0.5-native-typed-budget-calibration-2026-08-21.md)
 - [v0.5 pre-release readiness review](docs/research/v0.5-pre-release-readiness-review-2026-08-21.md)
 - [v0.5 required writer finalization](docs/research/writer-not-finalized-rule-admission-2026-08-20.md)
 - [Suppression reference](docs/suppressions.md)

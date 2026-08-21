@@ -2559,3 +2559,18 @@ The existing `feature/gox-prompts-adoption` branch at `d6b0fba8` remains clean
 but is 103 commits behind current `go-libraries` main, unpushed, unintegrated,
 and still uses Gox identity. It must be refreshed for Glippy and reviewed before
 the adoption gate closes. No external repository was modified.
+
+Canonical `faustbrian/glippy` `main` now exposes exact candidate `df65065`; the
+local `origin` also targets the canonical repository. Push-triggered CI run
+`32464914062` was still active when this calibration was recorded. Manual
+native release-budget run `32464981182` proves that the previously provisional
+40-second typed ceiling is not portable:
+the first cold sqlc sample took 49.740 seconds on Linux arm64, 51.260 seconds on
+Linux amd64, 64.100 seconds on Darwin arm64, and 78.660 seconds on Darwin
+amd64. All editor and formatter measurements passed, and typed analysis reached
+the elapsed-time check without exceeding the 2-GiB RSS ceiling. The portable
+typed ceiling is provisionally recalibrated to 105 seconds, matching the
+formatter campaign's established 33% headroom method over the slowest native
+observation. The exact candidate must rerun and retain all five typed samples
+on every native runner before the budget becomes stable release evidence. No
+tag or release was created.

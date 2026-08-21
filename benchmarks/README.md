@@ -554,13 +554,16 @@ remain required before the provisional limits become stable release budgets.
 
 The v0.5 workflow also checks out `sqlc-dev/sqlc` at
 `8a7cddfbb9088666eb981645285d7699e71dcb54` and runs the default correctness
-policy plus `-Wsuspicious` within a 40-second and 2-GiB ceiling on every native
-runner. Darwin arm64 additionally binds normalized diagnostic SHA-256
+policy plus `-Wsuspicious` within a 105-second and 2-GiB ceiling on every
+native runner. Darwin arm64 additionally binds normalized diagnostic SHA-256
 `13f9c3dd006a105196c13f766a1c849a882754b3083979e9386c78cc2fdb53d2` for the
 current 118-rule catalog. The other native targets intentionally retain their
 raw result because build-selected findings may differ. The digest update and
 current-revision arm64 rehearsal are recorded in
 [`../docs/research/v0.5-current-revision-arm64-budget-evidence-2026-08-21.md`](../docs/research/v0.5-current-revision-arm64-budget-evidence-2026-08-21.md).
+The initial exact-candidate native run and the provisional calibration are
+recorded in
+[`../docs/research/v0.5-native-typed-budget-calibration-2026-08-21.md`](../docs/research/v0.5-native-typed-budget-calibration-2026-08-21.md).
 The exact release candidate must still pass and retain the complete four-runner
 campaign.
 
