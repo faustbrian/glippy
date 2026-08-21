@@ -3924,11 +3924,11 @@ None.
 - An exact returned-alias contract preserves the obligation when the result is assigned back to the
   same resource variable; new alias bindings remain outside the tracked ownership identity.
 - Cleanup-managed results require one stable direct local result, or bounded exact static delegation
-  from one, plus an exact testing.T Cleanup call on a pointer receiver with a function-literal
-  callback and direct, parameter-effect, or receiver-effect proven Close on every normally returning
-  callback path. Recursive or dynamic delegation, copied testing.T values, conditional registration
-  or closure, asynchronous or nested closure, reassignment, aliases, and non-testing cleanup APIs
-  remain conservative.
+  from one, plus an exact Cleanup call on *testing.T, testing.TB, *testing.B, or *testing.F with a
+  function-literal callback and direct, parameter-effect, or receiver-effect proven Close on every
+  normally returning callback path. Recursive or dynamic delegation, copied testing values, named
+  interfaces embedding testing.TB, conditional registration or closure, asynchronous or nested
+  closure, reassignment, aliases, and non-testing cleanup APIs remain conservative.
 - Receiver effects require a direct method selection; a promoted method does not prove an effect for
   the outer receiver value.
 - Dynamic calls, interface dispatch, recursion, local aliases, and helpers outside selected modules

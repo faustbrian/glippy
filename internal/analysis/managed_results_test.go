@@ -113,6 +113,75 @@ func stop() { panic("stop") }
 	}
 }
 
+func TestManagedResultAnalysisAcceptsAuthoritativeTestingCleanupReceivers(t *testing.T) {
+	t.Parallel()
+
+	package_ := returnStateTestPackage(
+		t,
+		`package fixture
+
+import "testing"
+
+type Resource struct{}
+
+func (*Resource) Close() error { return nil }
+
+func FromTB(t testing.TB) *Resource {
+	value := &Resource{}
+	t.Cleanup(func() { _ = value.Close() })
+	return value
+}
+
+func FromBenchmark(b *testing.B) *Resource {
+	value := &Resource{}
+	b.Cleanup(func() { _ = value.Close() })
+	return value
+}
+
+func FromFuzz(f *testing.F) *Resource {
+	value := &Resource{}
+	f.Cleanup(func() { _ = value.Close() })
+	return value
+}
+
+type EmbeddedTB interface { testing.TB }
+
+func FromEmbeddedTB(t EmbeddedTB) *Resource {
+	value := &Resource{}
+	t.Cleanup(func() { _ = value.Close() })
+	return value
+}
+
+type CleanupOnly interface { Cleanup(func()) }
+
+func FromLookalike(t CleanupOnly) *Resource {
+	value := &Resource{}
+	t.Cleanup(func() { _ = value.Close() })
+	return value
+}
+`,
+	)
+	ctx := context.Background()
+	analysis := newManagedResultAnalysis(
+		ctx,
+		[]*packages.Package{package_},
+		nil,
+		newNoReturnAnalysis(ctx, []*packages.Package{package_}, nil),
+	)
+	analysis.buildAll()
+
+	for _, name := range []string{"FromTB", "FromBenchmark", "FromFuzz"} {
+		if !managedResultForTest(analysis, package_, name, 0) {
+			t.Fatalf("%s result is not cleanup-managed", name)
+		}
+	}
+	for _, name := range []string{"FromEmbeddedTB", "FromLookalike"} {
+		if managedResultForTest(analysis, package_, name, 0) {
+			t.Fatalf("%s result is unexpectedly cleanup-managed", name)
+		}
+	}
+}
+
 func managedResultForTest(
 	analysis *managedResultAnalysis,
 	package_ *packages.Package,

@@ -24,6 +24,7 @@
 - v0.5 unconditional nil-error wrapping facts: complete
 - v0.5 bounded delegated result-state facts: complete
 - v0.5 bounded delegated return-relationship facts: complete
+- v0.5 authoritative testing cleanup receivers: complete
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -2404,3 +2405,20 @@ samples measured 99.06-105.29 ms, 10.77-11.37 MB, and 116,768-117,245
 allocations on Darwin arm64. Portable four-runner typed-budget evidence and
 further high-signal interprocedural error-flow and ownership coverage remain
 active v0.5 work.
+
+The v0.5 authoritative testing-cleanup batch extends cleanup-managed result
+facts from `*testing.T` to the exact standard-library `testing.TB`,
+`*testing.B`, and `*testing.F` receiver identities. Interface dispatch through
+`testing.TB` is resolved from its exact selected method rather than treated as
+an arbitrary dynamic cleanup registry. Named interfaces embedding `testing.TB`,
+user-defined `Cleanup(func())` interfaces, and other lookalikes remain
+unmanaged. The boundary is grounded in `go-libraries` helpers that return
+cleanup-managed PostgreSQL pools through `testing.TB` and benchmark transports
+through `*testing.B`. Five 100-function samples measured 104.69-116.38 ms,
+10.85-11.45 MB, and 126,873-127,354 allocations on Darwin arm64. Exact-rule
+dogfood is clean on Glippy, `go-libraries/pkg/prompts`, and the real
+`testing.TB` and `*testing.B` helper packages; `http-client` retains its
+established five findings and external state remains unchanged. The native
+effect schema and persistent-cache component advance to `native-effects-v12`;
+the existing bounded delegation and conservative ownership rules remain
+unchanged.

@@ -628,37 +628,54 @@ func testingCleanupCallback(info *types.Info, call *ast.CallExpr) *ast.FuncLit {
 	if info == nil || call == nil || len(call.Args) != 1 {
 		return nil
 	}
-	function := typeutil.StaticCallee(info, call)
+	selector, _ := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if selector == nil {
+		return nil
+	}
+	selection := info.Selections[selector]
+	if selection == nil {
+		return nil
+	}
+	function, _ := selection.Obj().(*types.Func)
 	if function == nil ||
 		function.Pkg() == nil ||
 		function.Pkg().Path() != "testing" ||
 		function.Name() != "Cleanup" {
 		return nil
 	}
-	selector, _ := ast.Unparen(call.Fun).(*ast.SelectorExpr)
-	if selector == nil || !testingTType(info.TypeOf(selector.X)) {
+	if !testingCleanupReceiverType(info.TypeOf(selector.X)) {
 		return nil
 	}
 	callback, _ := ast.Unparen(call.Args[0]).(*ast.FuncLit)
 	return callback
 }
 
-func testingTType(type_ types.Type) bool {
+func testingCleanupReceiverType(type_ types.Type) bool {
 	if type_ == nil {
 		return false
 	}
 	type_ = types.Unalias(type_)
-	pointer, ok := type_.(*types.Pointer)
-	if !ok {
+	pointerReceiver := false
+	if pointer, ok := type_.(*types.Pointer); ok {
+		pointerReceiver = true
+		type_ = types.Unalias(pointer.Elem())
+	}
+	named, _ := type_.(*types.Named)
+	if named == nil ||
+		named.Obj() == nil ||
+		named.Obj().Pkg() == nil ||
+		named.Obj().Pkg().Path() != "testing" {
 		return false
 	}
-	type_ = types.Unalias(pointer.Elem())
-	named, _ := type_.(*types.Named)
-	return named != nil &&
-		named.Obj() != nil &&
-		named.Obj().Pkg() != nil &&
-		named.Obj().Pkg().Path() == "testing" &&
-		named.Obj().Name() == "T"
+	if !pointerReceiver {
+		return named.Obj().Name() == "TB"
+	}
+	switch named.Obj().Name() {
+	case "T", "B", "F":
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *managedResultAnalysis) callbackGuaranteesClose(

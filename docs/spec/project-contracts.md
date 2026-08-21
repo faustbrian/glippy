@@ -199,7 +199,7 @@ retain the ordinary deterministic target-union behavior. Fix modes retain the
 existing target-matrix prohibition.
 
 Contract changes MUST invalidate affected persistent native results. The
-`native-effects-v11` component binds no-return, parameter, receiver,
+`native-effects-v12` component binds no-return, parameter, receiver,
 returned-state, unconditional result-state, must-use, blocking, and alias facts
 through stable
 package-qualified function identities, including the distinction between
@@ -208,7 +208,7 @@ and effects independently guaranteed on every returning path. Contract source
 paths and process-local `types.Object` pointers MUST NOT become semantic
 identities.
 
-The version-11 component additionally binds inferred receiver effects,
+The version-12 component additionally binds inferred receiver effects,
 cleanup-managed result indexes, and unconditional nilness for nil-capable
 results across every explicit normal return whose named binding is neither
 captured nor address-taken, including exact bounded static delegation through

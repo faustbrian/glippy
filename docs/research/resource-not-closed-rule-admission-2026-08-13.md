@@ -62,6 +62,12 @@ functions, reassignment, aliases, and non-testing cleanup APIs remain
 unmanaged. Cleanup registered on a copied `testing.T` value is also unmanaged
 because it is not attached to the test runner's pointer.
 
+The authoritative testing-cleanup refinement on 2026-08-21 applies the same
+contract to exact `testing.TB`, `*testing.B`, and `*testing.F` receivers.
+Named interfaces embedding `testing.TB`, user-defined cleanup interfaces, and
+other lookalikes remain unmanaged. This advances the native effect schema and
+cache component to `native-effects-v12`.
+
 The receiver terminal-effect refinement on 2026-08-20 also proves a cleanup
 callback that calls an exact method such as `resource.Shutdown()` when the
 method closes its receiver on every normal path. Known receiver effects

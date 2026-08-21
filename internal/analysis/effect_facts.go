@@ -15,7 +15,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const nativeEffectFactSchemaVersion = 11
+const nativeEffectFactSchemaVersion = 12
 
 type returnStateKey struct {
 	value int

@@ -1509,7 +1509,7 @@ func BenchmarkDelegatedCleanupManagedResultPackageAnalysis(b *testing.B) {
 	for index := range 100 {
 		fmt.Fprintf(
 			&input,
-			"func base%d(t *testing.T) *Resource { value := &Resource{}; t.Cleanup(func() { _ = value.Close() }); return value }; func delegate%d(t *testing.T) *Resource { return base%d(t) }; func run%d(t *testing.T) { value := delegate%d(t); _ = value }\n",
+			"func base%d(t testing.TB) *Resource { value := &Resource{}; t.Cleanup(func() { _ = value.Close() }); return value }; func delegate%d(t testing.TB) *Resource { return base%d(t) }; func run%d(t *testing.T) { value := delegate%d(t); _ = value }\n",
 			index,
 			index,
 			index,

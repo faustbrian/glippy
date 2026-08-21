@@ -114,6 +114,14 @@ variants. Recursive cycles, dynamic calls, conversions, arity or type
 mismatches, unavailable facts, and functions or deferred calls proven not to
 return remain unmanaged.
 
+The 2026-08-21 authoritative testing-cleanup refinement advances the active
+schema and cache component to `native-effects-v12`. Cleanup-managed results may
+now use the exact standard-library `testing.TB`, `*testing.B`, and `*testing.F`
+receiver identities in addition to `*testing.T`. The interface method selected
+through `testing.TB` is authoritative even though its concrete receiver is
+dynamic. Named embedding interfaces, user-defined cleanup interfaces, and
+other lookalikes remain unmanaged.
+
 ## Alternatives
 
 - Load the complete dependency syntax closure with `packages.NeedDeps`:

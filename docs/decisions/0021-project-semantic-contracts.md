@@ -86,6 +86,12 @@ results and same-arity tuples may consume those source-derived summaries
 through the same bounded recursion-rejecting traversal. Project contracts still
 cannot declare cleanup-managed results.
 
+Exact standard-library testing cleanup receivers later advance the active
+representation to version 12 and `native-effects-v12`. Source-derived cleanup
+facts accept only `*testing.T`, `testing.TB`, `*testing.B`, and `*testing.F`;
+project contracts still cannot declare cleanup-managed results or authorize
+lookalike cleanup registries.
+
 Contract files are data only. They do not execute code, provide replacement Go
 types, load runtime plugins, or grant write authority. Syntax-only lint does
 not load type state because contracts are configured. External contracts use
