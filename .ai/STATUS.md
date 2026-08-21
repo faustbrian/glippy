@@ -2538,3 +2538,15 @@ findings across five rule IDs. The release workflow now binds that value. The
 Docker run is not native or independent-host release evidence, so the exact
 pushed candidate still requires all four GitHub-hosted native runners. No push,
 tag, publication, or external adoption mutation occurred.
+
+The v0.5 pre-release readiness review refreshes Oxfmt 0.64.0, Oxlint 1.79.0,
+Oxc `2dad1e0`, website `84e863f`, Go 1.26.7, and x/tools v0.48.0 evidence
+against local revision `c797d7c`. No reference change invalidates Glippy's
+architecture or safety boundaries. Fresh full tests, race tests, vet, module
+tidiness, build, and default combined self-check pass with task-owned caches.
+A complete non-mutating opt-in self-analysis reports 109 reviewed findings:
+98 configurable complexity thresholds and eleven genuine pedantic
+simplifications, with no package or source problems after dependency preload.
+Canonical synchronization, refreshed integrated adoption, the exact pushed
+candidate's four-native-runner workflow, and final maintainer review remain
+open. No push, tag, publication, or external adoption mutation occurred.

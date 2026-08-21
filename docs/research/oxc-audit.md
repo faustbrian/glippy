@@ -72,6 +72,42 @@ separate formatter and linter engines, document renderer, tiered Go analysis,
 diagnostic model, or fix coordinator. The refresh changes no Gox architecture;
 it reconfirms the deliberate Go- and safety-specific differences above.
 
+## v0.5 Pre-Release Refresh
+
+The comparison was refreshed again on 2026-08-21 against Oxc commit
+[`2dad1e0`](https://github.com/oxc-project/oxc/commit/2dad1e0ec7ba2878fc5472c9430b8ee28aa41b54)
+and website commit
+[`84e863f`](https://github.com/oxc-project/website/commit/84e863ff38308165e2b8ceb4c47363f042895ad2).
+The audited packages report Oxfmt 0.64.0 and Oxlint 1.79.0.
+
+Oxfmt retains the language-neutral arena document IR, iterative fit printer,
+CLI/LSP split, nested configuration, explicit stdin filepath, check and
+list-different modes, and ordinary `fs::write` replacement described above.
+The material formatter change since the previous snapshot is support for an
+experimental operator-position option. JavaScript users may select operators
+at the start or end of broken lines. Glippy deliberately keeps Go binary
+operators on the preceding line because Go semicolon insertion makes that
+placement part of syntax safety rather than a style preference. Oxfmt also
+clarifies that explicitly requested stdin, LSP documents, and file paths are
+not excluded merely by `.gitignore`; this remains compatible with Glippy's
+explicit-input policy.
+
+Oxlint retains independent safe, suggestion, and dangerous CLI fix switches;
+safe and dangerous LSP fix-all actions; suggestion-only quick fixes; shared
+multi-file and type-aware analysis; broad reporters; and ESLint-compatible
+suppressions and plugins. Its production fixer still sorts edits, silently
+leaves later overlapping or boundary-adjacent fixes unapplied, reparses only
+under debug assertions, and writes through ordinary `fs::write`. Its JSON
+envelope still includes runtime-dependent thread and start-time fields without
+an explicit schema version. Catalog and compatibility work since 1.78.0 does
+not change those boundaries.
+
+The current references therefore do not require a Glippy architectural change.
+They reinforce the retained decisions: one Go-native product with separate
+formatter and linter engines, bounded document rendering, demand-driven shared
+analysis, deterministic versioned diagnostics, and transactional fix and write
+validation.
+
 Reporting was refreshed on 2026-08-10 against Oxc commit
 [`8e9b95f`](https://github.com/oxc-project/oxc/commit/8e9b95f3b61534b220bc6577a2fa3552c91433a4).
 Oxfmt still separates check and list-different output and has no machine result

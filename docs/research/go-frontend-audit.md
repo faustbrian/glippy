@@ -27,6 +27,27 @@ or unadjusted `PositionFor(pos, false)`. They never use adjusted positions or
 raw `token.Pos` ordering: `//line` changes logical locations and concurrent
 `go/packages` parsing does not guarantee ordered file bases.
 
+## v0.5 Pre-Release Refresh
+
+The frontend boundary was refreshed on 2026-08-21 against Go 1.26.7 at tag
+[`e3336a2`](https://go.googlesource.com/go/+/e3336a22ad3f0a90bd252c95d8b5544e02674205)
+and the still-selected `golang.org/x/tools` v0.48.0 at
+[`05f9cb5`](https://go.googlesource.com/tools/+/05f9cb5d358503005bd6f82b17916d226ca7b210).
+
+The current `go/parser`, `go/ast`, `go/token`, and `go/scanner` contracts retain
+the same concrete-source limitations: partial ASTs do not own whitespace,
+semicolon origin, exact comment bytes, or formatter attachment policy. Current
+`go/packages` still supplies concurrent-safe parse hooks, overlays, build
+selection, tests, types, and package diagnostics. `go/analysis` still lacks
+Glippy's rule tier, severity, generated-file, node-interest, and fix-safety
+metadata. CFG construction remains an explicit per-function operation.
+
+The current SSA API exposes `Program.SetNoReturn`; Glippy supplies its proven
+standard-library, project-contract, and selected-module no-return predicate at
+`internal/analysis/ssa.go`. This improves semantic fidelity without replacing
+the standard frontend. No Go 1.26.7 or x/tools v0.48.0 evidence requires a new
+parser, type checker, CFG, SSA implementation, or broader analyzer adapter.
+
 ## Fidelity Matrix
 
 | Concern | Standard frontend | Required Gox state |
