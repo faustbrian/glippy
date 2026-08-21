@@ -16,8 +16,10 @@ not stable release promises.
 - [blank-error-discard](#blank-error-discard)
 - [buffer-string-conversion](#buffer-string-conversion)
 - [channel-used-after-close](#channel-used-after-close)
+- [context-background](#context-background)
 - [context-cancel-leak](#context-cancel-leak)
 - [context-key](#context-key)
+- [context-todo](#context-todo)
 - [contradictory-condition](#contradictory-condition)
 - [copied-lock](#copied-lock)
 - [defer-before-error-check](#defer-before-error-check)
@@ -25,6 +27,7 @@ not stable release promises.
 - [defer-in-loop](#defer-in-loop)
 - [deferred-lock](#deferred-lock)
 - [deferred-time-since](#deferred-time-since)
+- [direct-panic](#direct-panic)
 - [discarded-error](#discarded-error)
 - [duplicate-condition](#duplicate-condition)
 - [empty-branch](#empty-branch)
@@ -77,6 +80,7 @@ not stable release promises.
 - [oversized-shift](#oversized-shift)
 - [overwritten-error](#overwritten-error)
 - [printf-arguments](#printf-arguments)
+- [process-exit](#process-exit)
 - [redundant-bool-comparison](#redundant-bool-comparison)
 - [redundant-closure](#redundant-closure)
 - [redundant-else](#redundant-else)
@@ -476,6 +480,59 @@ updates <- 1
 close(updates)
 ```
 
+## context-background
+
+forbids creating root work with context.Background
+
+Request and job code should normally propagate its caller's context so cancellation, deadlines, and
+tracing remain connected. This restriction rule reports direct calls to the exact context.Background
+function. Executable roots and deliberately detached work can use narrow suppressions when they own
+the lifetime boundary.
+
+- Default severity: `warn`
+- Presets: `restriction`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `safety`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+- `include-tests` (`boolean`; optional, default `false`): report restricted calls in files whose
+  base name ends in _test.go
+
+### Known limitations
+
+- The rule cannot infer whether a call occurs at a legitimate process root or whether detached work
+  is intentional; those sites require a narrow suppression.
+- Only direct exact context.Background calls are covered; wrappers and values returned by helpers
+  require a project semantic contract or deeper value flow.
+- Test files are excluded by default because isolated fixtures commonly create root contexts;
+  include-tests enables the same policy for tests.
+- Generated files and packages with type errors are excluded.
+
+### Example: Propagate the caller context
+
+**Incorrect**
+
+```go
+result, err := load(context.Background())
+```
+
+**Correct**
+
+```go
+result, err := load(ctx)
+```
+
 ## context-cancel-leak
 
 detects context cancellation functions that may not run
@@ -580,6 +637,58 @@ context.WithValue(ctx, "request-id", requestID)
 ```go
 type requestIDKey struct{}
 context.WithValue(ctx, requestIDKey{}, requestID)
+```
+
+## context-todo
+
+forbids unresolved placeholder contexts
+
+context.TODO documents that the correct context has not yet been determined. Projects that require
+complete cancellation propagation can enable this restriction rule to make every remaining
+placeholder explicit and suppress only deliberate compatibility boundaries.
+
+- Default severity: `warn`
+- Presets: `restriction`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `safety`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+- `include-tests` (`boolean`; optional, default `false`): report restricted calls in files whose
+  base name ends in _test.go
+
+### Known limitations
+
+- The rule intentionally reports context.TODO at incomplete integration boundaries where the
+  placeholder may be appropriate; use a reasoned suppression until the caller contract is available.
+- Only direct exact context.TODO calls are covered; wrappers and values returned by helpers require
+  deeper value flow.
+- Test files are excluded by default because fixtures commonly use placeholder contexts;
+  include-tests enables the same policy for tests.
+- Generated files and packages with type errors are excluded.
+
+### Example: Propagate an owned context
+
+**Incorrect**
+
+```go
+result, err := load(context.TODO())
+```
+
+**Correct**
+
+```go
+result, err := load(ctx)
 ```
 
 ## contradictory-condition
@@ -924,6 +1033,58 @@ defer record(time.Since(start))
 
 ```go
 defer func() { record(time.Since(start)) }()
+```
+
+## direct-panic
+
+forbids direct calls to the predeclared panic function
+
+Libraries and long-running services may require failures to cross an explicit error boundary instead
+of unwinding the current goroutine through panic. This restriction rule reports direct calls to the
+exact predeclared panic function while leaving project-defined lookalikes alone.
+
+- Default severity: `warn`
+- Presets: `restriction`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `safety`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+- `include-tests` (`boolean`; optional, default `false`): report restricted calls in files whose
+  base name ends in _test.go
+
+### Known limitations
+
+- The rule intentionally reports panic calls that are valid recovery or invariant-enforcement
+  strategies; enable it only where project policy forbids direct panic.
+- Panics raised indirectly by library APIs, runtime checks, or called functions are outside the
+  direct-call contract.
+- Test files are excluded by default because panic behavior is commonly exercised in tests;
+  include-tests enables the same policy for tests.
+- Generated files and packages with type errors are excluded.
+
+### Example: Return failures from library code
+
+**Incorrect**
+
+```go
+panic(err)
+```
+
+**Correct**
+
+```go
+return fmt.Errorf("load configuration: %w", err)
 ```
 
 ## discarded-error
@@ -3576,6 +3737,59 @@ fmt.Printf("%d", "value")
 
 ```go
 fmt.Printf("%s", "value")
+```
+
+## process-exit
+
+forbids direct process termination through os and log APIs
+
+Reusable packages and managed services should return control to their caller instead of terminating
+the process. This restriction rule reports exact os.Exit calls and exact log.Fatal, Fatalf, and
+Fatalln package or Logger method calls, all of which terminate the process and bypass deferred
+cleanup in the terminating goroutine.
+
+- Default severity: `warn`
+- Presets: `restriction`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `safety`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+- `include-tests` (`boolean`; optional, default `false`): report restricted calls in files whose
+  base name ends in _test.go
+
+### Known limitations
+
+- The rule intentionally reports process termination in command entry points; enable it only where
+  callers must own termination or use a narrow suppression at the executable boundary.
+- Only direct exact os.Exit and log fatal-family calls are covered; aliases stored in variables,
+  wrappers, and third-party logging APIs require separate contracts.
+- Test files are excluded by default because subprocess fixtures may deliberately exercise
+  termination; include-tests enables the same policy for tests.
+- Generated files and packages with type errors are excluded.
+
+### Example: Return termination decisions to the caller
+
+**Incorrect**
+
+```go
+log.Fatalf("serve: %v", err)
+```
+
+**Correct**
+
+```go
+return fmt.Errorf("serve: %w", err)
 ```
 
 ## redundant-bool-comparison

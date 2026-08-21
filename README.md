@@ -290,12 +290,12 @@ remain conservative. The rule is suspicious rather than correctness because a
 custom `RoundTripper` can supply an `io.ReadCloser` with implementation-specific
 post-close behavior.
 
-The restriction catalog includes `blank-error-discard`, Glippy's Go analogue
-to Clippy's `let_underscore_must_use`. Projects can enable it by exact rule ID
-to require every explicit blank-identifier error discard to be handled or
-suppressed with a reason. Test files remain excluded unless the typed
-`include-tests` option is enabled, and the restriction group cannot be enabled
-wholesale.
+The restriction catalog includes `blank-error-discard`, `direct-panic`,
+`process-exit`, `context-background`, and `context-todo`. Projects can enable
+these policies only by exact rule ID to require explicit error handling, keep
+process termination at an owned boundary, or audit root and placeholder
+contexts. Each rule excludes test files unless its typed `include-tests` option
+is enabled, and the restriction group cannot be enabled wholesale.
 
 ## Installation
 
