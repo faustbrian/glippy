@@ -2381,3 +2381,26 @@ state remain unchanged. Five 100-function samples measured 102.62-105.21 ms,
 13.07-13.69 MB, and 155,080-155,600 allocations on Darwin arm64. Portable
 four-runner typed-budget evidence and further high-signal interprocedural
 error-flow and ownership coverage remain active v0.5 work.
+
+The v0.5 delegated cleanup-managed-result batch advances the versioned effect
+component to `native-effects-v11`. Exact static single-result calls and
+same-arity tuple returns now reuse cleanup-managed ownership through a bounded
+4,096-definition, recursion-rejecting selected-package traversal. Same-layer
+definitions resolve lazily; dependency layers consume only stable facts already
+intersected across package variants. Recursive cycles, dynamic calls,
+conversions, result-count or exact-type mismatches, mixed managed and unmanaged
+returns, no-return paths, and unavailable facts remain conservative. Focused
+red regressions initially reported delegated single and tuple acquisitions in
+same-package and imported callers. Both `resource-not-closed` boundaries now
+consume the exact fact, while `resource-used-after-close` continues to track a
+delegated acquisition that is explicitly closed before a later operation.
+Exact `resource-not-closed,resource-used-after-close` dogfood is clean on
+Glippy and `go-libraries/pkg/prompts`. At external revision
+`3fe07983906f192a6cd983217a203d89696ffc28`,
+`go-libraries/pkg/http-client` reports five conservative
+`resource-not-closed` findings and no `resource-used-after-close` finding;
+external bytes and pre-existing state remain unchanged. Five 100-function
+samples measured 99.06-105.29 ms, 10.77-11.37 MB, and 116,768-117,245
+allocations on Darwin arm64. Portable four-runner typed-budget evidence and
+further high-signal interprocedural error-flow and ownership coverage remain
+active v0.5 work.
