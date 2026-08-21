@@ -108,7 +108,7 @@ native execution. A valid warm entry MAY bypass native callbacks and CFG or SSA
 construction because the key and payload bind every selected rule and
 loaded-graph input.
 
-An effect-aware native entry MUST include the `native-effects-v10` component.
+An effect-aware native entry MUST include the `native-effects-v11` component.
 Its digest binds the effect schema version, canonically ordered no-return
 identities, and every exported parameter-effect identity, parameter index,
 known/always state, possible effect-kind bitset, and independently guaranteed
@@ -123,7 +123,8 @@ captured nor address-taken, including exact bounded static delegation through
 selected local-source packages. It also binds configured must-use
 result indexes, blocking identities, result-to-argument
 aliases, and exact cleanup-managed function result indexes inferred from
-selected local-source modules. A dependency or project-contract change that
+selected local-source modules, including bounded exact static delegation. A
+dependency or project-contract change that
 alters a borrow, guaranteed completion, invocation, ownership transfer,
 returned relationship, receiver effect, must-use requirement, blocking
 contract, unconditional result state, alias, or cleanup-managed result MUST

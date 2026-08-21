@@ -80,6 +80,12 @@ static tuple delegate may consume the source-derived nil/error relationship
 through the same bounded recursion-rejecting traversal. Project contracts still
 cannot declare these inferred relationships.
 
+Exact delegated cleanup-managed-result inference later advances the active
+representation to version 11 and `native-effects-v11`. Static same-type single
+results and same-arity tuples may consume those source-derived summaries
+through the same bounded recursion-rejecting traversal. Project contracts still
+cannot declare cleanup-managed results.
+
 Contract files are data only. They do not execute code, provide replacement Go
 types, load runtime plugins, or grant write authority. Syntax-only lint does
 not load type state because contracts are configured. External contracts use

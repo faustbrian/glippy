@@ -199,7 +199,7 @@ retain the ordinary deterministic target-union behavior. Fix modes retain the
 existing target-matrix prohibition.
 
 Contract changes MUST invalidate affected persistent native results. The
-`native-effects-v10` component binds no-return, parameter, receiver,
+`native-effects-v11` component binds no-return, parameter, receiver,
 returned-state, unconditional result-state, must-use, blocking, and alias facts
 through stable
 package-qualified function identities, including the distinction between
@@ -208,16 +208,18 @@ and effects independently guaranteed on every returning path. Contract source
 paths and process-local `types.Object` pointers MUST NOT become semantic
 identities.
 
-The version-10 component additionally binds inferred receiver effects,
+The version-11 component additionally binds inferred receiver effects,
 cleanup-managed result indexes, and unconditional nilness for nil-capable
 results across every explicit normal return whose named binding is neither
 captured nor address-taken, including exact bounded static delegation through
 selected local-source packages. A syntactic return followed by a deferred call
 proven not to return, or belonging to a function already proven not to return,
 contributes no result fact. Exact nil/error return relationships may cross the
-same bounded static tuple-delegation boundary. Project contracts do not declare
-those relationships; they are proven only from selected local-source modules
-and exact source or control-flow behavior.
+same bounded static tuple-delegation boundary. Cleanup-managed results may also
+cross exact static single-result and same-arity tuple delegation through that
+bounded traversal. Project contracts do not declare those relationships; they
+are proven only from selected local-source modules and exact source or
+control-flow behavior.
 
 ## Safety And Extension Boundary
 

@@ -241,7 +241,22 @@ func (a *returnStateAnalysis) summarizeResultStates(
 }
 
 func (a *returnStateAnalysis) hasDeferredNoReturn(body *ast.BlockStmt, info *types.Info) bool {
-	if body == nil || info == nil {
+	if a == nil || info == nil {
+		return false
+	}
+	return functionHasDeferredNoReturn(
+		body,
+		func(call *ast.CallExpr, depth int) bool {
+			return a.resultStateCallMayReturn(call, info, depth)
+		},
+	)
+}
+
+func functionHasDeferredNoReturn(
+	body *ast.BlockStmt,
+	callMayReturn func(*ast.CallExpr, int) bool,
+) bool {
+	if body == nil || callMayReturn == nil {
 		return false
 	}
 	found := false
@@ -258,7 +273,7 @@ func (a *returnStateAnalysis) hasDeferredNoReturn(body *ast.BlockStmt, info *typ
 			if !ok || deferred.Call == nil {
 				return true
 			}
-			found = !a.resultStateCallMayReturn(deferred.Call, info, 0)
+			found = !callMayReturn(deferred.Call, 0)
 			return !found
 		},
 	)
@@ -270,6 +285,19 @@ func (a *returnStateAnalysis) resultStateCallMayReturn(
 	info *types.Info,
 	depth int,
 ) bool {
+	if a == nil {
+		return true
+	}
+	return resultFactCallMayReturn(call, info, a.effects, a.noReturns, depth)
+}
+
+func resultFactCallMayReturn(
+	call *ast.CallExpr,
+	info *types.Info,
+	effects *nativeEffectFacts,
+	noReturns *noReturnAnalysis,
+	depth int,
+) bool {
 	if call == nil || info == nil || depth >= maxReturnStateBuildDepth {
 		return true
 	}
@@ -277,7 +305,13 @@ func (a *returnStateAnalysis) resultStateCallMayReturn(
 		graph := cfg.New(
 			literal.Body,
 			func(nested *ast.CallExpr) bool {
-				return a.resultStateCallMayReturn(nested, info, depth + 1)
+				return resultFactCallMayReturn(
+					nested,
+					info,
+					effects,
+					noReturns,
+					depth + 1,
+				)
 			},
 		)
 		return !graph.NoReturn()
@@ -291,11 +325,10 @@ func (a *returnStateAnalysis) resultStateCallMayReturn(
 	if function == nil {
 		return true
 	}
-	if a.noReturns != nil {
-		return !a.noReturns.noReturn(function)
+	if noReturns != nil {
+		return !noReturns.noReturn(function)
 	}
-	return !isAuthoritativeNoReturn(function) &&
-		(a.effects == nil || !a.effects.noReturn(function))
+	return !isAuthoritativeNoReturn(function) && (effects == nil || !effects.noReturn(function))
 }
 
 func namedResultMayChangeAfterReturn(

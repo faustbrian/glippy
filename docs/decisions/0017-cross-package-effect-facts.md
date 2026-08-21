@@ -105,6 +105,15 @@ traversal and stable dependency-layer facts as unconditional result-state
 delegation. Dynamic calls, cycles, type mismatches, unavailable facts, and
 functions or deferred calls proven not to return remain unknown.
 
+The 2026-08-21 delegated cleanup-managed-result refinement advances the active
+schema and cache component to `native-effects-v11`. Exact static single-result
+calls and same-arity tuple returns may reuse a cleanup-managed result through a
+bounded 4,096-definition traversal. Same-layer definitions resolve lazily;
+dependency layers consume only stable facts already intersected across package
+variants. Recursive cycles, dynamic calls, conversions, arity or type
+mismatches, unavailable facts, and functions or deferred calls proven not to
+return remain unmanaged.
+
 ## Alternatives
 
 - Load the complete dependency syntax closure with `packages.NeedDeps`:

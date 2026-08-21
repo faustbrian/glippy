@@ -12,6 +12,8 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 )
 
+const maxManagedResultBuildDepth = 4096
+
 type managedResultDefinition struct {
 	function *types.Func
 	declaration *ast.FuncDecl
@@ -22,9 +24,13 @@ type managedResultDefinition struct {
 type managedResultAnalysis struct {
 	ctx context.Context
 	definitions []managedResultDefinition
+	definitionsByFunction map[*types.Func]*managedResultDefinition
 	effects *nativeEffectFacts
 	noReturns *noReturnAnalysis
 	summaries map[*types.Func]map[int]struct{}
+	summariesBuilt map[*types.Func]bool
+	summariesStarted map[*types.Func]bool
+	buildDepth int
 }
 
 func newManagedResultAnalysis(
@@ -36,9 +42,12 @@ func newManagedResultAnalysis(
 	analysis := &managedResultAnalysis{
 		ctx: ctx,
 		definitions: make([]managedResultDefinition, 0),
+		definitionsByFunction: make(map[*types.Func]*managedResultDefinition),
 		effects: effects,
 		noReturns: noReturns,
 		summaries: make(map[*types.Func]map[int]struct{}),
+		summariesBuilt: make(map[*types.Func]bool),
+		summariesStarted: make(map[*types.Func]bool),
 	}
 	for _, pkg := range packages_ {
 		if ctx == nil || ctx.Err() != nil {
@@ -79,6 +88,10 @@ func newManagedResultAnalysis(
 			}
 		}
 	}
+	for index := range analysis.definitions {
+		definition := &analysis.definitions[index]
+		analysis.definitionsByFunction[definition.function] = definition
+	}
 	return analysis
 }
 
@@ -86,23 +99,74 @@ func (a *managedResultAnalysis) buildAll() {
 	if a == nil || a.ctx == nil {
 		return
 	}
-	for _, definition := range a.definitions {
+	for index := range a.definitions {
 		if a.ctx.Err() != nil {
 			return
 		}
-		a.build(definition)
+		a.buildDefinition(&a.definitions[index])
 	}
 }
 
-func (a *managedResultAnalysis) build(definition managedResultDefinition) {
-	if definition.declaration == nil ||
+func (a *managedResultAnalysis) buildDefinition(
+	definition *managedResultDefinition,
+) map[int]struct{} {
+	if a == nil ||
+		definition == nil ||
+		definition.function == nil ||
+		a.ctx == nil ||
+		a.ctx.Err() != nil ||
+		a.buildDepth >= maxManagedResultBuildDepth {
+		return nil
+	}
+	if a.summariesBuilt[definition.function] {
+		return a.summaries[definition.function]
+	}
+	if a.noReturns != nil && a.noReturns.noReturn(definition.function) {
+		a.summariesBuilt[definition.function] = true
+		return nil
+	}
+	if a.summariesStarted[definition.function] {
+		return nil
+	}
+	a.summariesStarted[definition.function] = true
+	a.buildDepth++
+	defer func() {
+		a.buildDepth--
+		delete(a.summariesStarted, definition.function)
+	}()
+	summaries := a.summarizeDefinition(definition)
+	if len(summaries) != 0 {
+		a.summaries[definition.function] = summaries
+	}
+	a.summariesBuilt[definition.function] = true
+	return summaries
+}
+
+func (a *managedResultAnalysis) summarizeDefinition(
+	definition *managedResultDefinition,
+) map[int]struct{} {
+	if definition == nil ||
+		definition.declaration == nil ||
 		definition.declaration.Body == nil ||
 		definition.signature == nil ||
 		definition.info == nil ||
-		definition.function == nil {
-		return
+		definition.function == nil ||
+		functionHasDeferredNoReturn(
+			definition.declaration.Body,
+			func(call *ast.CallExpr, depth int) bool {
+				return resultFactCallMayReturn(
+					call,
+					definition.info,
+					a.effects,
+					a.noReturns,
+					depth,
+				)
+			},
+		) {
+		return nil
 	}
 	graph := a.graphFor(definition.declaration, definition.declaration.Body, definition.info)
+	summaries := make(map[int]struct{})
 	for result := range definition.signature.Results().Len() {
 		object, found := stableReturnedLocalObject(
 			graph,
@@ -111,29 +175,108 @@ func (a *managedResultAnalysis) build(definition managedResultDefinition) {
 			result,
 			definition.signature.Results().Len(),
 		)
-		if !found ||
-			localObjectIsReassigned(
+		if found &&
+			!localObjectIsReassigned(
 				definition.declaration.Body,
 				definition.info,
 				object,
-			) ||
-			a.localObjectIsAliasedOrEscaped(
+			) &&
+			!a.localObjectIsAliasedOrEscaped(
 				definition.declaration.Body,
 				definition.info,
 				object,
-			) {
+			) &&
+			a.cleanupRegisteredBeforeEveryReturn(graph, definition.info, object) {
+			summaries[result] = struct{}{}
 			continue
 		}
-		if !a.cleanupRegisteredBeforeEveryReturn(graph, definition.info, object) {
-			continue
+		if a.delegatedResultIsManaged(
+			definition.declaration.Body,
+			definition.signature,
+			definition.info,
+			result,
+		) {
+			summaries[result] = struct{}{}
 		}
-		results := a.summaries[definition.function]
-		if results == nil {
-			results = make(map[int]struct{})
-			a.summaries[definition.function] = results
-		}
-		results[result] = struct{}{}
 	}
+	return summaries
+}
+
+func (a *managedResultAnalysis) delegatedResultIsManaged(
+	body *ast.BlockStmt,
+	signature *types.Signature,
+	info *types.Info,
+	result int,
+) bool {
+	if body == nil || signature == nil || signature.Results() == nil || info == nil {
+		return false
+	}
+	results := signature.Results()
+	if result < 0 || result >= results.Len() {
+		return false
+	}
+	returns := explicitFunctionReturns(body)
+	if len(returns) == 0 {
+		return false
+	}
+	for _, returned := range returns {
+		if returned == nil || len(returned.Results) == 0 {
+			return false
+		}
+		expression := ast.Expr(nil)
+		calleeResult := 0
+		calleeResults := 1
+		switch {
+		case len(returned.Results) == results.Len():
+			expression = returned.Results[result]
+		case len(returned.Results) == 1:
+			expression = returned.Results[0]
+			calleeResult = result
+			calleeResults = results.Len()
+		default:
+			return false
+		}
+		if !a.delegatedExpressionIsManaged(
+			expression,
+			calleeResult,
+			calleeResults,
+			results.At(result).Type(),
+			info,
+		) {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *managedResultAnalysis) delegatedExpressionIsManaged(
+	expression ast.Expr,
+	result int,
+	wantResults int,
+	wantType types.Type,
+	info *types.Info,
+) bool {
+	call, _ := ast.Unparen(expression).(*ast.CallExpr)
+	if call == nil || info == nil || result < 0 || wantResults <= 0 || wantType == nil {
+		return false
+	}
+	function := typeutil.StaticCallee(info, call)
+	if function == nil {
+		return false
+	}
+	signature, _ := types.Unalias(function.Type()).(*types.Signature)
+	if signature == nil ||
+		signature.Results() == nil ||
+		signature.Results().Len() != wantResults ||
+		result >= signature.Results().Len() ||
+		!types.Identical(signature.Results().At(result).Type(), wantType) {
+		return false
+	}
+	if definition := a.definitionsByFunction[function]; definition != nil {
+		_, managed := a.buildDefinition(definition)[result]
+		return managed
+	}
+	return a.effects != nil && a.effects.CleanupManagedResult(function, result)
 }
 
 func stableReturnedLocalObject(

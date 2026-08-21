@@ -132,8 +132,10 @@ func open(t *testing.T) *os.File {
 	return file
 }
 
+func delegated(t *testing.T) *os.File { return open(t) }
+
 func use(t *testing.T) {
-	file := open(t)
+	file := delegated(t)
 	_ = file.Close()
 	_, _ = file.Read(nil)
 }

@@ -2,6 +2,7 @@ package rulecatalog_test
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -537,6 +538,16 @@ func OpenViaReceiver(t *testing.T) *Resource {
 	t.Cleanup(func() { _ = resource.Shutdown() })
 	return resource
 }
+
+func DelegatedOpen(t *testing.T) *os.File { return Open(t) }
+
+func OpenTuple(t *testing.T) (*Resource, error) {
+	resource := &Resource{}
+	t.Cleanup(func() { _ = resource.Close() })
+	return resource, nil
+}
+
+func DelegatedOpenTuple(t *testing.T) (*Resource, error) { return OpenTuple(t) }
 `,
 	)
 	writeFixture(
@@ -555,6 +566,10 @@ func use(t *testing.T) {
 	_ = file.Name()
 	resource := helper.OpenViaReceiver(t)
 	_ = resource
+	delegated := helper.DelegatedOpen(t)
+	_ = delegated.Name()
+	tuple, _ := helper.DelegatedOpenTuple(t)
+	_ = tuple
 }
 `,
 	)
@@ -583,6 +598,111 @@ func use(t *testing.T) {
 	}
 	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 0 {
 		t.Fatalf("imported cleanup-managed result diagnostics = %#v", result)
+	}
+}
+
+func TestResourceNotClosedUsesDelegatedCleanupManagedResults(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/delegatedcleanup\n\ngo 1.26.0\n",
+	)
+	input := `package sample
+
+import "testing"
+
+type resource struct{}
+
+func (*resource) Close() error { return nil }
+
+func directManaged(t *testing.T) *resource {
+	value := &resource{}
+	t.Cleanup(func() { _ = value.Close() })
+	return value
+}
+
+func directManagedTuple(t *testing.T) (*resource, error) {
+	value := &resource{}
+	t.Cleanup(func() { _ = value.Close() })
+	return value, nil
+}
+
+func delegatedManaged(t *testing.T) *resource { return directManaged(t) }
+func delegatedTwice(t *testing.T) *resource { return delegatedManaged(t) }
+func delegatedTuple(t *testing.T) (*resource, error) { return directManagedTuple(t) }
+
+func recursiveDelegated(t *testing.T, recurse bool) *resource {
+	if recurse { return recursiveDelegated(t, false) }
+	return directManaged(t)
+}
+
+func dynamicDelegated(t *testing.T) *resource {
+	operation := directManaged
+	return operation(t)
+}
+
+func mixedDelegated(t *testing.T, managed bool) *resource {
+	if managed { return directManaged(t) }
+	return &resource{}
+}
+
+func use(t *testing.T) {
+	managed := delegatedTwice(t)
+	_ = managed
+	tuple, _ := delegatedTuple(t)
+	_ = tuple
+	recursive := recursiveDelegated(t, false)
+	_ = recursive
+	dynamic := dynamicDelegated(t)
+	_ = dynamic
+	mixed := mixedDelegated(t, false)
+	_ = mixed
+}
+`
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"resource-not-closed": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 3 {
+		t.Fatalf("delegated cleanup-managed result diagnostics = %#v", result)
+	}
+	want := map[int]string{
+		strings.Index(input, "recursive := recursiveDelegated"): "recursive",
+		strings.Index(input, "dynamic := dynamicDelegated"): "dynamic",
+		strings.Index(input, "mixed := mixedDelegated"): "mixed",
+	}
+	for _, diagnostic := range result.Files[0].Diagnostics {
+		name, found := want[diagnostic.Range.Start]
+		if !found || diagnostic.Range.End != diagnostic.Range.Start + len(name) {
+			t.Fatalf("delegated cleanup-managed result diagnostic = %#v", diagnostic)
+		}
+		delete(want, diagnostic.Range.Start)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing delegated cleanup-managed diagnostics = %#v", want)
 	}
 }
 
@@ -1371,6 +1491,53 @@ func BenchmarkResourceNotClosedPackageAnalysis(b *testing.B) {
 			ModuleMode: analysis.ModuleReadonly,
 		},
 		1,
+	)
+}
+
+func BenchmarkDelegatedCleanupManagedResultPackageAnalysis(b *testing.B) {
+	root := b.TempDir()
+	writeFixture(
+		b,
+		filepath.Join(root, "go.mod"),
+		"module example.com/delegatedcleanupbenchmark\n\ngo 1.26.0\n",
+	)
+	var input strings.Builder
+	input.WriteString(
+		"package sample\nimport \"testing\"\ntype Resource struct{}\n" +
+			"func (*Resource) Close() error { return nil }\n",
+	)
+	for index := range 100 {
+		fmt.Fprintf(
+			&input,
+			"func base%d(t *testing.T) *Resource { value := &Resource{}; t.Cleanup(func() { _ = value.Close() }); return value }; func delegate%d(t *testing.T) *Resource { return base%d(t) }; func run%d(t *testing.T) { value := delegate%d(t); _ = value }\n",
+			index,
+			index,
+			index,
+			index,
+			index,
+		)
+	}
+	writeFixture(b, filepath.Join(root, "sample.go"), input.String())
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		b.Fatal(err)
+	}
+	benchmarkPackageRuns(
+		b,
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"resource-not-closed": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+		0,
 	)
 }
 
