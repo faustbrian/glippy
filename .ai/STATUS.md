@@ -33,8 +33,8 @@
 - v0.5 project semantic contracts: complete
 - v0.5 state-transition correctness pack: complete
 - v0.5 restriction policy and exported API documentation: complete
-- v0.5 direction exit audit: engineering stages complete; delivery, several
-  integrated adoptions, and current-candidate release evidence remain open
+- v0.5 direction exit audit: engineering stages complete; delivery, selected
+  `pkg/prompts` adoption, and current-candidate release evidence remain open
 - v0.5 current-source Darwin/Linux arm64 release budgets: complete locally;
   four-native-runner exact-candidate evidence remains open
 - Phase 0 completed: 2026-08-09
@@ -2522,9 +2522,10 @@ analysis, target matrices, semantic contracts, state-transition correctness,
 curated profiles, and opt-in catalog expansion. The canonical catalog contains
 118 rules. The milestone remains open because local `main` was 56 commits ahead
 of both public repository heads, the approved `pkg/prompts` adoption branch was
-unpushed and unintegrated, two additional integrated adoptions were absent, and
-the current source revision had not run the four-native-runner release gate or
-received final maintainer review. No push, tag, or publication occurred.
+unpushed, unintegrated, and still used Gox identity, and the current source
+revision had not run the four-native-runner release gate or received final
+maintainer review. The maintainer-selected `pkg/prompts` repository is the sole
+required external adoption target. No push, tag, or publication occurred.
 
 The v0.5 current-source arm64 release rehearsal runs exact Glippy revision
 `835a2961d4e47c43e21c551ac56313a743f98667`, Go 1.26.5, immutable golib and
@@ -2550,3 +2551,11 @@ simplifications, with no package or source problems after dependency preload.
 Canonical synchronization, refreshed integrated adoption, the exact pushed
 candidate's four-native-runner workflow, and final maintainer review remain
 open. No push, tag, publication, or external adoption mutation occurred.
+
+The v0.5 adoption gate now reflects the maintainer's explicit selection of
+`go-libraries/pkg/prompts` as the sole representative external adoption target.
+The earlier requirement for two additional integrations no longer applies.
+The existing `feature/gox-prompts-adoption` branch at `d6b0fba8` remains clean
+but is 103 commits behind current `go-libraries` main, unpushed, unintegrated,
+and still uses Gox identity. It must be refreshed for Glippy and reviewed before
+the adoption gate closes. No external repository was modified.
