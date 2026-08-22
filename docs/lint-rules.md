@@ -118,6 +118,7 @@ not stable release promises.
 - [too-many-results](#too-many-results)
 - [typed-nil-error-return](#typed-nil-error-return)
 - [unbuffered-signal-channel](#unbuffered-signal-channel)
+- [uncatchable-signal](#uncatchable-signal)
 - [unchecked-csv-writer-error](#unchecked-csv-writer-error)
 - [unchecked-rows-error](#unchecked-rows-error)
 - [unchecked-scanner-error](#unchecked-scanner-error)
@@ -5769,6 +5770,55 @@ signal.Notify(signals, os.Interrupt)
 ```go
 signals := make(chan os.Signal, 1)
 signal.Notify(signals, os.Interrupt)
+```
+
+## uncatchable-signal
+
+detects attempts to handle SIGKILL or SIGSTOP
+
+SIGKILL and SIGSTOP cannot be caught by a Go program, so passing either signal to os/signal
+notification or disposition functions cannot make the requested handling take effect.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct calls to os/signal.Ignore, Notify, NotifyContext, and Reset are recognized by typed
+  object identity.
+- Only direct references to os.Kill, syscall.SIGKILL, and syscall.SIGSTOP are recognized, including
+  references wrapped in explicit type conversions; constants and values copied through local aliases
+  remain conservative.
+- Generated files and packages with type errors are excluded.
+
+### Example: Register a signal the program can receive
+
+**Incorrect**
+
+```go
+signal.Notify(signals, syscall.SIGKILL)
+```
+
+**Correct**
+
+```go
+signal.Notify(signals, syscall.SIGTERM)
 ```
 
 ## unchecked-csv-writer-error

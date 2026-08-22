@@ -114,6 +114,15 @@ conservative. The rule follows
 Staticcheck SA5005's proven allocation-identity boundary without importing its
 frontend and offers no guessed rewrite.
 
+The standard-library misuse track now admits `uncatchable-signal` as a default
+correctness types rule. Exact calls to `os/signal.Ignore`, `Notify`,
+`NotifyContext`, and `Reset` report direct `os.Kill`, `syscall.SIGKILL`, and
+`syscall.SIGSTOP` arguments because Go cannot catch or alter those signals.
+Typed object identity excludes user-defined lookalikes; local aliases, numeric
+signal values, and unresolved function values remain conservative. Removing a
+sole signal can change a call to its all-signals form, so the rule offers no
+automatic fix.
+
 The deferred-execution track now admits `deferred-function-not-called` as an
 opt-in suspicious rule. A `defer setup()` call reports only when type
 information proves that the deferred call itself returns a function, which is
