@@ -16,15 +16,15 @@ func NewUncatchableSignalRule() Rule {
 
 func (uncatchableSignalRule) Metadata() Metadata {
 	return Metadata{
-		ID:               "uncatchable-signal",
-		Summary:          "detects attempts to handle SIGKILL or SIGSTOP",
-		Documentation:    "SIGKILL and SIGSTOP cannot be caught by a Go program, so passing either signal to os/signal notification or disposition functions cannot make the requested handling take effect.",
-		DefaultSeverity:  SeverityWarn,
-		Presets:          []Preset{PresetCorrectness},
+		ID: "uncatchable-signal",
+		Summary: "detects attempts to handle SIGKILL or SIGSTOP",
+		Documentation: "SIGKILL and SIGSTOP cannot be caught by a Go program, so passing either signal to os/signal notification or disposition functions cannot make the requested handling take effect.",
+		DefaultSeverity: SeverityWarn,
+		Presets: []Preset{PresetCorrectness},
 		MinimumGoVersion: "1.25",
-		Requirement:      RequireTypes,
-		NodeInterests:    []NodeKind{NodeCallExpr},
-		Categories:       []Category{CategoryCorrectness, CategorySafety},
+		Requirement: RequireTypes,
+		NodeInterests: []NodeKind{NodeCallExpr},
+		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"Only direct calls to os/signal.Ignore, Notify, NotifyContext, and Reset are recognized by typed object identity.",
 			"Only direct references to os.Kill, syscall.SIGKILL, and syscall.SIGSTOP are recognized, including references wrapped in explicit type conversions; constants and values copied through local aliases remain conservative.",
@@ -32,18 +32,15 @@ func (uncatchableSignalRule) Metadata() Metadata {
 		},
 		Examples: []Example{
 			{
-				Title:     "Register a signal the program can receive",
+				Title: "Register a signal the program can receive",
 				Incorrect: "signal.Notify(signals, syscall.SIGKILL)",
-				Correct:   "signal.Notify(signals, syscall.SIGTERM)",
+				Correct: "signal.Notify(signals, syscall.SIGTERM)",
 			},
 		},
 	}
 }
 
-func (uncatchableSignalRule) RunTypes(
-	ctx *TypesContext,
-	node ast.Node,
-) ([]Finding, error) {
+func (uncatchableSignalRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
 	call, ok := node.(*ast.CallExpr)
 	if !ok || ctx == nil || ctx.Info() == nil {
 		return nil, fmt.Errorf(
@@ -58,7 +55,7 @@ func (uncatchableSignalRule) RunTypes(
 	if !recognized || firstSignal >= len(call.Args) {
 		return nil, nil
 	}
-	findings := make([]Finding, 0, len(call.Args)-firstSignal)
+	findings := make([]Finding, 0, len(call.Args) - firstSignal)
 	for _, argument := range call.Args[firstSignal:] {
 		if !isUncatchableSignal(ctx.Info(), argument) {
 			continue
@@ -67,12 +64,15 @@ func (uncatchableSignalRule) RunTypes(
 		if err != nil {
 			return nil, err
 		}
-		findings = append(findings, Finding{
-			MessageKey: "uncatchable-signal",
-			Message:    "this signal cannot be caught or affected by os/signal",
-			Range:      range_,
-			Help:       "remove the uncatchable signal from this call",
-		})
+		findings = append(
+			findings,
+			Finding{
+				MessageKey: "uncatchable-signal",
+				Message: "this signal cannot be caught or affected by os/signal",
+				Range: range_,
+				Help: "remove the uncatchable signal from this call",
+			},
+		)
 	}
 	return findings, nil
 }
@@ -90,9 +90,8 @@ func signalArgumentStart(name string) (int, bool) {
 
 func isUncatchableSignal(info *types.Info, expression ast.Expr) bool {
 	expression = ast.Unparen(expression)
-	if conversion, ok := expression.(*ast.CallExpr); ok &&
-		len(conversion.Args) == 1 &&
-		info.Types[conversion.Fun].IsType() {
+	if conversion, ok := expression.(*ast.CallExpr);
+		ok && len(conversion.Args) == 1 && info.Types[conversion.Fun].IsType() {
 		return isUncatchableSignal(info, conversion.Args[0])
 	}
 	object := referencedObject(info, expression)

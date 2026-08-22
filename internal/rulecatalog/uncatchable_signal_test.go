@@ -57,9 +57,11 @@ func run(ctx context.Context, channel chan<- os.Signal) {
 		diagnostic := result.Files[0].Diagnostics[index]
 		if diagnostic.RuleID != "uncatchable-signal" ||
 			diagnostic.MessageKey != "uncatchable-signal" ||
-			diagnostic.Message != "this signal cannot be caught or affected by os/signal" ||
+			diagnostic.Message !=
+				"this signal cannot be caught or affected by os/signal" ||
 			diagnostic.Help != "remove the uncatchable signal from this call" ||
-			diagnostic.Range != (source.Range{Start: offset, End: offset + len(expression)}) ||
+			diagnostic.Range !=
+				(source.Range{Start: offset, End: offset + len(expression)}) ||
 			len(diagnostic.Fixes) != 0 {
 			t.Fatalf("diagnostic %d = %#v", index, diagnostic)
 		}
@@ -198,8 +200,8 @@ func invalid() {
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"./..."},
+			Dir: root,
+			Patterns: []string{"./..."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)
@@ -226,10 +228,12 @@ func invalid() {
 			t.Fatalf("unexpected policy file %q", file.Path)
 		}
 	}
-	selection, err := registry.ResolveOptions(rules.ResolveOptions{
-		Presets:         []rules.Preset{rules.PresetCorrectness},
-		SourceGoVersion: "go1.24",
-	})
+	selection, err := registry.ResolveOptions(
+		rules.ResolveOptions{
+			Presets: []rules.Preset{rules.PresetCorrectness},
+			SourceGoVersion: "go1.24",
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,9 +258,7 @@ func runUncatchableSignal(
 	)
 	writeFixture(t, filepath.Join(root, "sample.go"), input)
 	if overrides == nil {
-		overrides = map[string]rules.Severity{
-			"uncatchable-signal": rules.SeverityWarn,
-		}
+		overrides = map[string]rules.Severity{"uncatchable-signal": rules.SeverityWarn}
 	}
 	registry, err := rulecatalog.NewRegistry()
 	if err != nil {
@@ -266,13 +268,13 @@ func runUncatchableSignal(
 		context.Background(),
 		registry,
 		analysis.RunOptions{
-			Presets:         []rules.Preset{},
-			Overrides:       overrides,
+			Presets: []rules.Preset{},
+			Overrides: overrides,
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"."},
+			Dir: root,
+			Patterns: []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)
@@ -290,15 +292,9 @@ func BenchmarkUncatchableSignalPackageAnalysis(b *testing.B) {
 		"module example.com/uncatchablesignalbenchmark\n\ngo 1.25.0\n",
 	)
 	var input strings.Builder
-	input.WriteString(
-		"package sample\nimport (\"os/signal\"; \"syscall\")\n",
-	)
+	input.WriteString("package sample\nimport (\"os/signal\"; \"syscall\")\n")
 	for index := range 100 {
-		fmt.Fprintf(
-			&input,
-			"func run%d() { signal.Reset(syscall.SIGKILL) }\n",
-			index,
-		)
+		fmt.Fprintf(&input, "func run%d() { signal.Reset(syscall.SIGKILL) }\n", index)
 	}
 	writeFixture(b, filepath.Join(root, "sample.go"), input.String())
 	registry, err := rulecatalog.NewRegistry()
@@ -316,8 +312,8 @@ func BenchmarkUncatchableSignalPackageAnalysis(b *testing.B) {
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"."},
+			Dir: root,
+			Patterns: []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 		100,
