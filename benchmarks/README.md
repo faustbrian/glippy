@@ -9,6 +9,8 @@ blocks, generics, calls, and boolean expressions.
 
 ```sh
 go test ./...
+go test -tags=glippy_runtime_probes -c \
+  -o "${TMPDIR:-/tmp}/glippy-benchmarks.test" ./benchmarks
 go test ./benchmarks -run '^$' -bench 'Benchmark(Scan|Parse|GoFormat|ASTInspect|InspectorBuildAndFilter|TypeCheck)$' -benchmem -count=5
 GOMAXPROCS=1 go test ./benchmarks -run '^$' -bench '^BenchmarkSyntaxRuleTraversalStrategies$' -benchmem -benchtime=500ms -count=7
 go test ./benchmarks -run '^$' -bench '^BenchmarkPackagesLoadSyntax(Cold|Warm)BuildCache$' -benchmem -benchtime=1x -count=3
@@ -26,10 +28,19 @@ go test ./internal/format/doc -run '^$' -fuzz '^FuzzRenderDeterministic$' -fuzzt
   GOWORK=off GOCACHE="$task_cache" go test ./benchmarks -run '^$' -bench '^BenchmarkGlippyEditorStdin$' -benchmem -benchtime=10x -count=5
 )
 ./benchmarks/editor-latency.sh
-./benchmarks/peak-rss.sh
 ```
 
-The first command is a functional check. Benchmark setup that is not part of
+The first two commands match automatic CI's ordinary functional check and
+tagged compile-only probe check. The build tag keeps runtime probes out of the
+first command. Runtime benchmark commands are manual performance work and MUST
+NOT run on a shared development host. `peak-rss.sh`, process-tree sampling,
+signal forwarding, interruption, and descendant-termination behavior are
+excluded from this reproduction section until a non-disruptive evidence policy
+exists. Runtime probe tests are excluded from ordinary `go test` discovery by
+the `glippy_runtime_probes` build tag; automatic CI only compiles that tagged
+source and does not execute it.
+
+Benchmark setup that is not part of
 the measured operation is performed before the timer starts. Package loading
 is measured separately because it invokes Go tooling and is orders of
 magnitude more expensive than file-local work. The cold variant creates an
@@ -367,26 +378,39 @@ runner and broader file-size corpus before a regression threshold can be set.
 ## Peak Resident Memory Probe
 
 `peak-rss.sh` builds one current-tree binary and keeps the build plus measured
-package loads on one task-owned warm Go build cache. It measures peak resident
-memory through the platform `/usr/bin/time` and runs five samples by default
-for two repository-scale, non-writing workloads:
+package loads on one task-owned warm Go build cache. It samples the aggregate
+resident memory of Glippy and every descendant process while retaining the
+platform `/usr/bin/time` value as a per-process floor. It uses the larger value
+and runs five samples by default for two repository-scale, non-writing
+workloads:
 
 - formatter-only check over the default Glippy repository selection; and
-- recursive combined format and opt-in `suspicious` lint check, which selects
-  the current types, CFG, and SSA tiers over all Glippy packages.
+- recursive opt-in `suspicious` lint check, which selects the current types,
+  CFG, and SSA tiers over all Glippy packages.
 
 Exit 1 is an expected completed measurement because either workload may find
 formatting differences or diagnostics. Every other nonzero status fails the
-probe. Results are emitted as CSV with peak RSS normalized to bytes on Darwin
-and Linux. `GLIPPY_PEAK_RSS_RUNS` may select a different positive sample count.
-The script removes its binary, configuration, measurement output, and build
-cache on every exit path.
+probe. Results are emitted as CSV with aggregate process-tree peak RSS
+normalized to bytes on Darwin and Linux. `GLIPPY_PEAK_RSS_RUNS` may select a
+different positive sample count. Process-tree sampling runs every 10
+milliseconds, so the aggregate value is a sampled peak rather than a
+continuous measurement.
+Each measured command runs behind a wrapper that signals only its exact direct
+child. It deliberately does not claim descendant cleanup or process-group
+containment. Automatic CI compiles the wrapper and syntax-checks these scripts
+but does not execute RSS, signal, interruption, or descendant-termination
+probes. Those runtime behaviors therefore remain outside automated evidence.
+On ordinary completion the script removes its binaries, configuration,
+measurement output, and build cache. Its interruption cleanup signals only the
+wrapper and the wrapper's direct child; descendant containment and removal of
+resources still held by descendants are unproven. Do not rely on interrupted
+execution as a cleanup boundary, and inspect the task-owned directory before
+removing it manually.
 
-`GLIPPY_PEAK_RSS_FORMAT_ROOT` may replace only the formatter workload with another
-directory. The typed workload deliberately remains the owned Glippy packages so
-an unrelated module or workspace cannot silently change the selected analysis
-contract. Record the external root's immutable revision, selected-file count,
-provenance, and environment beside any result.
+`GLIPPY_PEAK_RSS_FORMAT_ROOT` and `GLIPPY_PEAK_RSS_TYPED_ROOT` may replace the
+formatter and typed workloads independently. Record each external root's
+immutable revision, selected-file count, provenance, and environment beside
+any result.
 
 Recorded 2026-08-12 at source revision `76035e6` on an Apple M4 Max with
 128 GiB RAM, macOS 27.0 (26A5388g), and Go 1.26.5, `darwin/arm64`:
@@ -454,10 +478,11 @@ retaining the first render's arena through repeat-format validation produced a
 variable for a new claim.
 
 The default Glippy repository is an owned repeatable workload, but it is not a
-release-scale proxy for a large module or workspace. Measurements therefore
-describe one host and revision only. The platform `time` result also does not
-sample the aggregate simultaneous RSS of Glippy and every package-loading
-subprocess. Do not establish a CI or product-wide memory threshold until
+release-scale proxy for a large module or workspace. These historical
+measurements describe one host and revision only and used the platform `time`
+result without sampling the aggregate simultaneous RSS of Glippy and every
+package-loading subprocess. Do not use them as aggregate CI or product-wide
+memory proof until
 representative large repositories run on stable supported hosts and the
 observed variance supports a justified budget. The following campaign adds a
 provisional maximum for the selected formatter workload; it does not establish
@@ -557,9 +582,10 @@ The v0.5 workflow also checks out `sqlc-dev/sqlc` at
 policy plus `-Wsuspicious` within a 105-second and 2-GiB ceiling on every
 native runner. Darwin arm64 additionally binds normalized diagnostic SHA-256
 `13f9c3dd006a105196c13f766a1c849a882754b3083979e9386c78cc2fdb53d2` for the
-current 118-rule catalog. The other native targets intentionally retain their
+118-rule catalog at revision `835a296`. The current 119-rule candidate must
+reprove that fingerprint. The other native targets intentionally retain their
 raw result because build-selected findings may differ. The digest update and
-current-revision arm64 rehearsal are recorded in
+historical arm64 rehearsal are recorded in
 [`../docs/research/v0.5-current-revision-arm64-budget-evidence-2026-08-21.md`](../docs/research/v0.5-current-revision-arm64-budget-evidence-2026-08-21.md).
 The failed calibration run and the complete exact-candidate native rerun are
 recorded in
@@ -584,8 +610,10 @@ typed side-workload, and artifact retention:
 | Linux amd64 | 3.257 ms | 21.520-21.720 s | 1,152,860,160-1,398,861,824 B |
 | Linux arm64 | 3.538 ms | 16.700-16.840 s | 1,231,724,544-1,305,530,368 B |
 
-This establishes the stable 250-millisecond editor, 90-second formatter, and
-2-GiB formatter peak-RSS budgets for native macOS and Linux on amd64 and arm64.
+This historical run established the 250-millisecond editor and 90-second
+formatter latency budgets. Its RSS measurements were per-process maxima, not
+aggregate process-tree peaks, so it does not establish a 2-GiB aggregate
+formatter ceiling.
 
 The 2026-08-21 local rehearsal at `835a296` reran the current binary sources on
 native Darwin arm64 and Docker-hosted Linux arm64 with Go 1.26.5. All 20 editor
@@ -611,5 +639,7 @@ directory:
 | Darwin arm64 | 22.149 ms | 22.660-25.520 s | 1.429-1.631 GB | 62.040 s | 1.406 GB | 1.990-2.860 s |
 | Darwin amd64 | 110.961 ms | 29.600-59.130 s | 1.465-1.675 GB | 87.910 s | 1.503 GB | 3.030-3.460 s |
 
-This validates the stable 105-second and 2-GiB typed release ceilings in
-addition to the existing editor and formatter budgets.
+This validates the stable 105-second typed latency ceiling. The recorded typed
+RSS values are historical per-process maxima and do not validate an aggregate
+2-GiB release ceiling. Aggregate RSS remains unproven until a non-disruptive
+evidence policy exists.

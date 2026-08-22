@@ -7,7 +7,11 @@ defaults, pays only for the analysis tiers enabled rules require, and routes
 all source changes through an explicit conflict-safe transaction.
 
 Glippy v0.5 is under development and is not tagged or published. The current
-catalog contains 118 rules, including 18 rules with safe or suggestion fixes.
+catalog contains 119 rules, including 18 rules with safe or suggestion fixes.
+The current candidate includes independent-review corrections and still needs
+fresh safe verification, independent source review, and exact-candidate CI
+before it is release-ready. Aggregate process-tree memory and process
+containment remain unproven until a non-disruptive evidence policy exists.
 The existing
 v0.1.0 release remains Gox under `github.com/faustbrian/gox`; its module tags,
 binary, archives, and attestations are immutable historical identities. The
@@ -223,7 +227,7 @@ discarded-error = "off"
 blank-error-discard = "warn"
 ```
 
-The v0.2 pedantic catalog includes bounded Go-native simplifications for blank
+The pedantic catalog includes bounded Go-native simplifications for blank
 identifiers, direct closures, nil-and-length checks, time helpers, buffer
 conversions, constant formatting, and case-normalized comparisons. Five narrow
 transformations plus the constant-format operand replacement are available only
@@ -304,7 +308,7 @@ wholesale.
 No Glippy release is published yet. The historical Gox v0.1.0 release remains
 available from its
 [GitHub Release](https://github.com/faustbrian/gox/releases/tag/v0.1.0), but it
-does not provide the `glippy` command or v0.2 catalog. Its provenance can be
+does not provide the `glippy` command or current catalog. Its provenance can be
 verified with:
 
 ```sh

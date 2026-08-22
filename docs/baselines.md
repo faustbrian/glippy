@@ -35,6 +35,12 @@ When `report-stale` is true, unmatched counts in files analyzed by the current
 invocation are findings so teams can shrink the document. Entries for files
 outside the current selection are not reported as stale.
 
+An incomplete package or target-matrix result cannot prove that an unmatched
+entry is stale or that an unobserved expired entry was not exercised by work
+that failed to complete. Glippy therefore omits both findings from incomplete
+results. It retains expired findings already observed in completed results and
+reports the invocation as incomplete through the selected reporter.
+
 Expiry is deterministic and never reads the wall clock. When
 `expiry-cutoff` is configured, entries expiring on or before that date stop
 hiding diagnostics and produce an expired baseline finding. Advancing the

@@ -182,6 +182,479 @@ func failInTest(t *testing.T) {
 	}
 }
 
+func TestWaitGroupMisuseReportsIndirectAddOrdering(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func addInside(group *sync.WaitGroup) {
+	group.Add(1)
+	defer group.Done()
+}
+
+func launchInside(group *sync.WaitGroup) {
+	addInside(group)
+}
+
+func launch() {
+	var group sync.WaitGroup
+	go launchInside(&group)
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("indirect WaitGroup result = %#v", result)
+	}
+	diagnostic := result.Files[0].Diagnostics[0]
+	wantStart := strings.Index(input, "group.Add(1)") + len("group.Add")
+	if diagnostic.RuleID != "waitgroup-misuse" ||
+		diagnostic.Range.Start != wantStart ||
+		diagnostic.Range.End != wantStart {
+		t.Fatalf("indirect WaitGroup diagnostic = %#v", diagnostic)
+	}
+}
+
+func TestWaitGroupMisuseReportsMethodExpressionAddOrdering(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func addInside(group *sync.WaitGroup) {
+	(*sync.WaitGroup).Add(group, 1)
+}
+
+func launch() {
+	var group sync.WaitGroup
+	go (*sync.WaitGroup).Add(&group, 1)
+	go addInside(&group)
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 2 {
+		t.Fatalf("method-expression WaitGroup result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseAllowsNegativeAddInsideGoroutine(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func finish(group *sync.WaitGroup) {
+	group.Add(-1)
+}
+
+func noChange(group *sync.WaitGroup) {
+	group.Add(0)
+}
+
+func change(group *sync.WaitGroup, delta int) {
+	group.Add(delta)
+}
+
+func launch() {
+	var group sync.WaitGroup
+	group.Add(1)
+	go finish(&group)
+	go noChange(&group)
+	go change(&group, -1)
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("negative WaitGroup.Add result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseAllowsNestedRegistrationWithEstablishedCounter(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func launch() {
+	var group sync.WaitGroup
+	group.Add(1)
+	go func() {
+		group.Add(1)
+		go func() { group.Done() }()
+		group.Done()
+	}()
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("established WaitGroup counter result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseAllowsLabeledEstablishedCounter(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func launch() {
+	var group sync.WaitGroup
+	if false { goto registered }
+registered:
+	group.Add(1)
+	go func() {
+		group.Add(1)
+		defer group.Done()
+	}()
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("labeled established WaitGroup counter result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseReportsAfterEstablishedCounterIsBalanced(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func launch() {
+	var group sync.WaitGroup
+	group.Add(1)
+	group.Done()
+	go func() {
+		group.Add(1)
+		defer group.Done()
+	}()
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 1 {
+		t.Fatalf("balanced WaitGroup counter result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseIgnoresUnreachableWait(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func launch() {
+	var group sync.WaitGroup
+	go func() { group.Add(1) }()
+	return
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("unreachable WaitGroup wait result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseIgnoresUnreachableLaunch(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func launch() {
+	var group sync.WaitGroup
+	return
+	go func() { group.Add(1) }()
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("unreachable WaitGroup launch result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseIgnoresLaunchAfterTerminalControlFlow(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func returnBeforeLaunch() {
+	var group sync.WaitGroup
+	if true { return }
+	go func() { group.Add(1) }()
+	group.Wait()
+}
+
+func branchBeforeLaunch() {
+	var group sync.WaitGroup
+	if true { goto done }
+	go func() { group.Add(1) }()
+done:
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("terminal control-flow WaitGroup launch result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseIgnoresLaunchAfterUnprovenNegativeCounter(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func launch() {
+	var group sync.WaitGroup
+	group.Done()
+	go func() { group.Add(1) }()
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("negative pre-launch WaitGroup result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseRequiresDirectReachableLaunchAndWait(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func unreachableNestedLaunch() {
+	var group sync.WaitGroup
+	if false {
+		go func() { group.Add(1) }()
+		group.Wait()
+	}
+}
+
+func unreachableWait() {
+	var group sync.WaitGroup
+	go func() { group.Add(1) }()
+	if true { return }
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("non-direct WaitGroup launch or wait result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseIgnoresWaitAfterLabeledReturn(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func launch() {
+	var group sync.WaitGroup
+	if false { goto finished }
+	go func() { group.Add(1) }()
+finished:
+	return
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("WaitGroup wait after labeled return result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseReportsParameterizedFunctionLiteral(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func launch() {
+	var group sync.WaitGroup
+	go func(current *sync.WaitGroup) {
+		current.Add(1)
+		defer current.Done()
+	}(&group)
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 1 {
+		t.Fatalf("parameterized function literal result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseAllowsHelperOwnedWaitGroup(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+var group sync.WaitGroup
+
+func work() {
+	group.Add(1)
+	go func() { group.Done() }()
+	group.Wait()
+}
+
+func launch() {
+	go work()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("helper-owned WaitGroup result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseAllowsFunctionLiteralOwnedWaitGroup(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func launch() {
+	var group sync.WaitGroup
+	go func() {
+		group.Add(1)
+		go func() { group.Done() }()
+		group.Wait()
+	}()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("function-literal-owned WaitGroup result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseRejectsReassignedWaitReceiverIdentity(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func work(group *sync.WaitGroup) {
+	group.Add(1)
+}
+
+func launch() {
+	var first sync.WaitGroup
+	var second sync.WaitGroup
+	group := &first
+	go work(group)
+	group = &second
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("reassigned WaitGroup receiver result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseRemainsConservativeAcrossSynchronization(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func addAfterReady(group *sync.WaitGroup, ready <-chan struct{}) {
+	<-ready
+	group.Add(1)
+}
+
+func launch() {
+	var group sync.WaitGroup
+	ready := make(chan struct{})
+	go addAfterReady(&group, ready)
+	group.Add(1)
+	close(ready)
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("synchronized WaitGroup result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseAllowsCallerSynchronizationBeforeWait(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func launch() {
+	var group sync.WaitGroup
+	added := make(chan struct{})
+	go func() {
+		group.Add(1)
+		close(added)
+	}()
+	<-added
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("caller-synchronized WaitGroup result = %#v", result)
+	}
+}
+
+func TestWaitGroupMisuseRemainsConservativeWhenLaunchArgumentsSynchronize(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "sync"
+
+func addInside(ready struct{}, group *sync.WaitGroup) {
+	group.Add(1)
+}
+
+func launch(ready <-chan struct{}) {
+	var group sync.WaitGroup
+	go addInside(<-ready, &group)
+	group.Wait()
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"waitgroup-misuse"})
+	if countPackageDiagnostics(result) != 0 {
+		t.Fatalf("synchronized launch argument result = %#v", result)
+	}
+}
+
 func TestInitialVetCompatibilityPackMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -209,11 +682,17 @@ func TestInitialVetCompatibilityPackMetadata(t *testing.T) {
 			) ||
 			metadata.MinimumGoVersion != "1.25" ||
 			metadata.Requirement != rules.RequireTypes ||
-			!reflect.DeepEqual(
-				metadata.NodeInterests,
-				[]rules.NodeKind{rules.NodeFile},
-			) ||
 			metadata.RunOnGenerated {
+			t.Fatalf("%s metadata = %#v", id, metadata)
+		}
+		if id == "waitgroup-misuse" {
+			if len(metadata.NodeInterests) != 0 {
+				t.Fatalf("%s metadata = %#v", id, metadata)
+			}
+		} else if !reflect.DeepEqual(
+			metadata.NodeInterests,
+			[]rules.NodeKind{rules.NodeFile},
+		) {
 			t.Fatalf("%s metadata = %#v", id, metadata)
 		}
 	}
@@ -705,7 +1184,7 @@ func TestVetCompatibilityPackHonorsSharedPolicies(t *testing.T) {
 		},
 		{
 			"waitgroup-misuse",
-			"package sample\nimport \"sync\"\nfunc run() { var group sync.WaitGroup; go func() { group.Add(1) }() }\n",
+			"package sample\nimport \"sync\"\nfunc run() { var group sync.WaitGroup; go func() { group.Add(1) }(); group.Wait() }\n",
 			false,
 		},
 		{

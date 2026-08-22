@@ -58,6 +58,9 @@ func TestNewCheckResultSortsFilesAndCountsFormattingDifferences(t *testing.T) {
 		!result.Summary.Complete {
 		t.Fatalf("NewCheckResult() summary = %#v", result.Summary)
 	}
+	if result.SchemaVersion != 2 {
+		t.Fatalf("NewCheckResult() schema version = %d, want 2", result.SchemaVersion)
+	}
 	if len(result.Files) != 2 ||
 		result.Files[0].Path != first.Path() ||
 		result.Files[0].FormatStatus != CheckFormatDifferent ||
@@ -120,6 +123,25 @@ func TestNewCheckResultRejectsMissingOrMismatchedFormatOutcomes(t *testing.T) {
 			formats: []CheckFormatOutcome{{Path: "source.go", Digest: file.Digest()}},
 			message: "normalized absolute",
 		},
+		{
+			name: "pending in complete result",
+			formats: []CheckFormatOutcome{
+				{Path: file.Path(), Digest: file.Digest(), Pending: true},
+			},
+			message: "complete check result has pending formatting",
+		},
+		{
+			name: "pending and different",
+			formats: []CheckFormatOutcome{
+				{
+					Path: file.Path(),
+					Digest: file.Digest(),
+					Pending: true,
+					Different: true,
+				},
+			},
+			message: "pending with a completed status",
+		},
 	}
 	for _, test := range tests {
 		t.Run(
@@ -144,5 +166,30 @@ func TestNewCheckResultRejectsMissingOrMismatchedFormatOutcomes(t *testing.T) {
 				}
 			},
 		)
+	}
+}
+
+func TestNewCheckResultRepresentsPendingFormatting(t *testing.T) {
+	t.Parallel()
+
+	file, err := source.Load("/project/source.go", []byte("package sample\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := NewCheckResult(
+		"source_error",
+		2,
+		false,
+		[]analysis.Result{{Path: file.Path(), Digest: file.Digest()}},
+		[]CheckFormatOutcome{{Path: file.Path(), Digest: file.Digest(), Pending: true}},
+		[]Error{{Message: "analysis stopped before formatting"}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary.Complete ||
+		len(result.Files) != 1 ||
+		result.Files[0].FormatStatus != CheckFormatPending {
+		t.Fatalf("pending check result = %#v", result)
 	}
 }

@@ -3,6 +3,7 @@ package baseline_test
 import (
 	"bytes"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -293,6 +294,74 @@ func TestApplyDoesNotReportEntriesOutsideAnalyzedFiles(t *testing.T) {
 		t.Fatalf(
 			"Apply() problems = %#v, want none outside analyzed files",
 			result.Problems,
+		)
+	}
+}
+
+func TestApplyIncompleteDoesNotInferProblemsForUnobservedEntries(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	file := loadBaselineFile(t, filepath.Join(root, "pkg", "file.go"))
+	diagnostic := baselineDiagnostic(
+		file,
+		"call-rule",
+		"call",
+		source.Range{Start: 26, End: 34},
+	)
+	document, err := baseline.Generate(
+		root,
+		[]baseline.InputFile{{File: file, Diagnostics: []rules.Diagnostic{diagnostic}}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range
+		[]struct {
+			name string
+			document baseline.Document
+			options baseline.ApplyOptions
+		}{
+			{
+				name: "stale",
+				document: document,
+				options: baseline.ApplyOptions{ReportStale: true, Incomplete: true},
+			},
+			{
+				name: "expired",
+				document: func() baseline.Document {
+					expired := document
+					expired.Entries = slices.Clone(document.Entries)
+					expired.Entries[0].ExpiresOn = "2026-08-13"
+					return expired
+				}(),
+				options: baseline.ApplyOptions{
+					ReportStale: true,
+					ExpiryCutoff: "2026-08-13",
+					Incomplete: true,
+				},
+			},
+		} {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				result, err := baseline.Apply(
+					root,
+					test.document,
+					[]baseline.InputFile{{File: file}},
+					test.options,
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(result.Problems) != 0 {
+					t.Fatalf(
+						"Apply(incomplete) problems = %#v",
+						result.Problems,
+					)
+				}
+			},
 		)
 	}
 }

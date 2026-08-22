@@ -19,7 +19,7 @@ not part of the type system.
 The Go 1.26.6 `waitgroup` analyzer and Staticcheck SA2000 report the separate
 ordering defect where `Add` runs inside the goroutine being counted. Neither
 tracks counter values or reports a direct path-proven underflow, so the native
-rule complements the existing Glippy `waitgroup-misuse` adapter instead of
+rule complements the existing Glippy `waitgroup-misuse` native overlap instead of
 replacing or duplicating it.
 
 The defect family is represented by

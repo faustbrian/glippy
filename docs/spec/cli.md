@@ -101,9 +101,12 @@ documents from the same package into one package load, and republish every open
 document so changes invalidate dependent diagnostics. Document notifications
 MUST NOT block protocol input while analysis runs. Replacement notifications
 MUST use a bounded debounce, cancel superseded analysis, and MUST NOT publish a
-result unless every captured document version remains current. Persistent
-analysis caching remains configuration-controlled. Syntax selections MUST
-remain independent of package loading and persistent caches. Configuration,
+result unless every captured document version remains current. Analysis
+backends MUST return promptly after cancellation; the server serializes active
+analysis and starts only the newest pending snapshot after the canceled backend
+returns so supersession cannot create unbounded goroutine or package-load
+fan-out. Persistent analysis caching remains configuration-controlled. Syntax
+selections MUST remain independent of package loading and persistent caches. Configuration,
 source, package, and analysis failures MUST remain visible document diagnostics
 instead of silently falling back to defaults. Closing a document MUST remove it
 from later snapshots and clear its diagnostics.
@@ -231,7 +234,12 @@ sorted union of target identities; target-specific results MUST remain
 separate. Text, short, JSON, GitHub, and SARIF reporters MUST identify the
 applicable targets. A failure in one target MUST retain already completed
 targets in incomplete machine output while the invocation exits with the
-failure category.
+failure category. Unused-suppression findings MUST be omitted when any target
+is incomplete because use across the complete matrix is then unproven.
+Baseline stale-count findings and unobserved expired-entry findings MUST also
+be omitted from incomplete package or matrix results; completion of every
+applicable target is required to prove those negative observations. Expired
+entries observed by completed targets remain reportable.
 
 Syntax-only lint MUST remain file-oriented even when a matrix is configured.
 The LSP MUST use the base `[analysis]` selection instead of multiplying editor
@@ -426,10 +434,11 @@ or source-model problems are completed source-error results and MUST remain
 reportable with valid formatting and lint results. Successful clean checks are
 silent.
 
-Combined JSON uses command and mode `check`. Each ordered file record carries
-the normalized absolute path, source digest, and format status `unchanged` or
-`different`. Diagnostics and suppression records use the lint schema and MUST
-carry the same path and digest as their file record. The summary includes file,
+Combined JSON uses schema version 2 with command and mode `check`. Each ordered file record carries
+the normalized absolute path, source digest, and format status `pending`,
+`unchanged`, `different`, or `preexisting`. Diagnostics and suppression records
+use the lint schema and MUST carry the same path and digest as their file
+record. The summary includes file,
 formatting-difference, visible diagnostic, suppressed diagnostic, suppression
 problem, unused-suppression, package-diagnostic, and source-problem counts plus
 completeness. Package-aware JSON MUST expose package diagnostics and
@@ -483,9 +492,15 @@ Schema version 1 JSON has this deterministic envelope:
 
 Paths MUST be normalized absolute paths, and arrays MUST retain deterministic
 task order.
-Check statuses are `unchanged` and `different`. Write statuses are `pending`,
-`unchanged`, `formatted`, `conflict`, `failed`, and `possibly_formatted`.
-`pending` means replacement or unchanged-file revalidation was not reached.
+Formatter schema-version-1 check statuses are `unchanged` and `different`.
+Write statuses are `pending`, `unchanged`, `formatted`, `conflict`, `failed`,
+and `possibly_formatted`. For write, `pending` means replacement or
+unchanged-file revalidation was not reached after preparation completed.
+Formatter preparation failures may omit file records and set
+`summary.complete` to false. Combined-check schema version 2 separately uses
+`pending`, `unchanged`, `different`, and `preexisting` format statuses so an
+incomplete package check can retain analyzed files whose formatting comparison
+was not reached.
 `summary.complete` MUST be false when the reported file records or counts do
 not cover a complete invocation. Machine errors MUST NOT include source
 snippets by default. Timing and worker counts MUST NOT form part of result
@@ -495,7 +510,7 @@ Successful reports use mode `check` or `write`. Invalid invocations retain the
 requested path mode when it can be resolved; mode is `invalid` when parsing
 cannot establish one.
 
-Lint JSON uses the same schema version and outcome envelope with a
+Lint JSON uses schema version 1 and the shared outcome envelope with a
 command-specific summary, exact source digests, and half-open physical byte
 ranges. It MUST NOT include original source snippets or fix replacement text by
 default. Suppression problems and unused directives remain distinct arrays;

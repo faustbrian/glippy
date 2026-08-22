@@ -27,6 +27,7 @@ not stable release promises.
 - [defer-in-loop](#defer-in-loop)
 - [deferred-lock](#deferred-lock)
 - [deferred-time-since](#deferred-time-since)
+- [deprecated-ioutil](#deprecated-ioutil)
 - [direct-panic](#direct-panic)
 - [discarded-error](#discarded-error)
 - [duplicate-condition](#duplicate-condition)
@@ -901,7 +902,7 @@ longer than intended. Conditionless loops remain covered by the more precise def
 control-flow rule.
 
 - Default severity: `warn`
-- Presets: `suspicious`
+- Presets: `suspicious`, `performance`
 - Minimum Go: `1.25`
 - Analysis tier: syntax
 - Node interests: `for-stmt`, `range-stmt`
@@ -909,7 +910,7 @@ control-flow rule.
 - Effect facts: not required
 - Generated files: excluded
 - Type-error packages: not applicable
-- Categories: `safety`, `suspicious`
+- Categories: `safety`, `suspicious`, `performance`
 
 ### Fixes
 
@@ -1034,6 +1035,55 @@ defer record(time.Since(start))
 
 ```go
 defer func() { record(time.Since(start)) }()
+```
+
+## deprecated-ioutil
+
+detects uses of deprecated io/ioutil APIs
+
+The io/ioutil package was deprecated in Go 1.16 after its APIs moved to io and os. Keeping the old
+import obscures the supported API surface and delays straightforward toolchain migrations. This
+migration rule reports exact typed io/ioutil references without guessing import edits.
+
+- Default severity: `warn`
+- Presets: `migration`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `file`
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `migration`, `maintainability`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only exact objects imported from io/ioutil are reported; references copied through variables or
+  wrappers are not followed.
+- No fix is offered because replacing the selector also requires coordinated import ownership and
+  may conflict with an existing io or os import alias.
+- The migration group requires explicit targeting; the rule can also be enabled by exact ID.
+
+### Example: Use the current standard-library API
+
+**Incorrect**
+
+```go
+data, err := ioutil.ReadFile(path)
+```
+
+**Correct**
+
+```go
+data, err := os.ReadFile(path)
 ```
 
 ## direct-panic
@@ -1742,7 +1792,7 @@ that was not updated or a condition that no longer selects behavior. The conditi
 effects, so the rule diagnoses the duplication without offering an automatic rewrite.
 
 - Default severity: `warn`
-- Presets: `suspicious`
+- Presets: `suspicious`, `pedantic`
 - Minimum Go: `1.25`
 - Analysis tier: syntax
 - Node interests: `if-stmt`
@@ -5990,15 +6040,18 @@ text := fmt.Sprintf("%s", value)
 
 detects WaitGroup.Add calls made inside launched goroutines
 
-Calling WaitGroup.Add from inside the goroutine being counted races with Wait: the waiting goroutine
-may observe a zero count and return before Add executes. The count must be incremented before
-launching the goroutine. Glippy adapts the standard Go waitgroup analyzer.
+Calling WaitGroup.Add with a positive delta from inside the goroutine being counted races with an
+outside Wait: the waiting goroutine may observe a zero count and return before Add executes. The
+count must be incremented before launching the goroutine. Glippy covers direct launched calls and
+function literals plus bounded same-package helper chains whose receiver maps through exact
+parameters to a stable WaitGroup receiver waited on later in the launching function body's
+straight-line statements.
 
 - Default severity: `warn`
 - Presets: `correctness`
 - Minimum Go: `1.25`
 - Analysis tier: types
-- Node interests: `file`
+- Node interests: none
 - Dependency syntax: not required
 - Effect facts: not required
 - Generated files: excluded
@@ -6015,10 +6068,23 @@ None.
 
 ### Known limitations
 
-- The analyzer reports the direct pattern where WaitGroup.Add is the first statement of a newly
-  launched function literal.
-- More indirect counter ownership and synchronization protocols require separate concurrency
-  analysis.
+- The rule follows only an unconditional first-statement chain from a go statement to an exact
+  sync.WaitGroup.Add call with a constant positive delta.
+- The launching block before the go statement must be straight-line: prior control-flow constructs
+  and calls other than exact counter transitions suppress the finding because launch reachability is
+  otherwise unproven at the types tier.
+- Launches and outside waits nested in conditional, loop, switch, select, case, communication, or
+  standalone blocks remain conservative until the rule uses the shared control-flow tier.
+- A syntactically earlier positive Add on the same receiver suppresses the finding because the
+  counter may already prevent an early Wait return.
+- Findings require a direct outside Wait later in the same launching block, with no intervening
+  assignment to the mapped receiver and no intervening synchronously evaluated call or explicit
+  channel synchronization.
+- Zero, negative, and non-constant deltas remain conservative instead of assuming that they increase
+  the counter.
+- Fields, globals hidden behind helpers, dynamic calls, interface dispatch, side-effecting launch
+  evaluation, nested control-flow waits, synchronization before Add, and helper chains deeper than
+  the fixed bound remain conservative instead of producing speculative findings.
 
 ### Example: Increment before launching
 
@@ -6026,6 +6092,7 @@ None.
 
 ```go
 go func() { wg.Add(1); defer wg.Done() }()
+wg.Wait()
 ```
 
 **Correct**
@@ -6033,6 +6100,26 @@ go func() { wg.Add(1); defer wg.Done() }()
 ```go
 wg.Add(1)
 go func() { defer wg.Done() }()
+wg.Wait()
+```
+
+### Example: Increment before launching a helper
+
+**Incorrect**
+
+```go
+func work(wg *sync.WaitGroup) { wg.Add(1); defer wg.Done() }
+go work(&wg)
+wg.Wait()
+```
+
+**Correct**
+
+```go
+func work(wg *sync.WaitGroup) { defer wg.Done() }
+wg.Add(1)
+go work(&wg)
+wg.Wait()
 ```
 
 ## waitgroup-negative-counter

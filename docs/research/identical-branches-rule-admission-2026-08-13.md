@@ -59,8 +59,10 @@ public Go lint finding provide positive defect evidence.
 
 ## Admission Decision
 
-Admit `identical-branches` to the opt-in `suspicious` preset. Do not add a
-self-assignment rule while the default Go vet `assign` analyzer already owns
-that defect. Revisit adjacent `else if` and switch-branch comparison only after
-separate fixtures and noise evidence define their comment and diagnostic-range
-contracts.
+Admit `identical-branches` to the opt-in `suspicious` preset. The v0.5 catalog
+also selects it through `pedantic`: eliminating duplicated branches is a useful
+review policy even when the duplication is intentional, while `suspicious`
+retains the copied-defect interpretation. Do not add a self-assignment rule
+while the default Go vet `assign` analyzer already owns that defect. Revisit
+adjacent `else if` and switch-branch comparison only after separate fixtures
+and noise evidence define their comment and diagnostic-range contracts.

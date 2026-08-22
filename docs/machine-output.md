@@ -1,9 +1,9 @@
 # Machine Output Reference
 
 Glippy exposes schema-version-1 JSON for path-based formatter checks and writes,
-lint checks and fixes, the combined non-mutating check, and canonical rule
-explanations. Select a reporter for path commands or request rule metadata
-directly:
+lint checks and fixes, canonical rule explanations, and execution statistics.
+The combined non-mutating check uses schema version 2. Select a reporter for
+path commands or request rule metadata directly:
 
 ```sh
 glippy fmt --check --reporter=json ./...
@@ -223,7 +223,7 @@ Each `files` entry has `path` and `status`. The status is one of:
 
 | Status | Meaning |
 | --- | --- |
-| `pending` | Selected but not reached before an incomplete outcome |
+| `pending` | Write mode prepared the file but did not reach replacement or unchanged-file revalidation |
 | `unchanged` | Canonical bytes already matched |
 | `different` | Check mode found a formatting difference |
 | `formatted` | Write mode confirmed replacement |
@@ -446,7 +446,7 @@ typed prerequisite channels. Its summary replaces lint fix counts with
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "command": "check",
   "mode": "check",
   "outcome": {
@@ -479,7 +479,9 @@ typed prerequisite channels. Its summary replaces lint fix counts with
 }
 ```
 
-`format_status` is `unchanged`, `different`, or `preexisting`. The last value
+`format_status` is `pending`, `unchanged`, `different`, or `preexisting`.
+`pending` means analysis completed for the file but the combined check stopped
+before formatting that source version. The last value
 is used only with `--new-from` when canonical formatting differs but the full
 transformation touches a line outside changed-code ownership. Such a file
 increments optional `preexisting_formatting_differences`, not
@@ -495,8 +497,11 @@ identity-based ordering within their channels. Object field order is stable in
 the current encoder, but consumers should bind fields by name rather than use
 textual JSON comparison.
 
-Consumers should ignore unknown fields within schema version 1. They must reject
-an unsupported `schema_version` instead of guessing at field meaning. The
+Consumers should ignore unknown fields within a supported schema version. They
+must reject an unsupported `schema_version` instead of guessing at field
+meaning. Combined-check schema version 2 adds `format_status: "pending"` to the
+version-1 status set so incomplete checks can retain exact per-file progress;
+formatter, lint, rule, and statistics reports remain at version 1. The
 [compatibility policy](compatibility-policy.md#machine-output-and-exit-codes)
 defines which additions can retain a schema version and which changes require a
 new one. The [machine-reporting decision](decisions/0011-machine-reporting-schema.md)

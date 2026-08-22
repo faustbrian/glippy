@@ -245,7 +245,7 @@ func ExportedCommandHelper() {}
 	}
 }
 
-func TestExportedAPIDocumentationMetadataRequiresExactOptIn(t *testing.T) {
+func TestExportedAPIDocumentationMetadataSupportsRestrictionAndExactOptIn(t *testing.T) {
 	t.Parallel()
 
 	registry, err := rulecatalog.NewRegistry()

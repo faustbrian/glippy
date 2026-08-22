@@ -99,6 +99,9 @@ type CodeAction struct {
 }
 
 // Backend reuses Glippy's formatter, analyzer, and fix transaction contracts.
+// Implementations must stop promptly when an operation context is canceled.
+// Serve serializes analysis to bound memory, so a backend that ignores
+// cancellation violates this contract and can delay the latest snapshot.
 type Backend interface {
 	Analyze(context.Context, Document) (Analysis, error)
 	CodeActions(context.Context, Document, Analysis, source.Range) ([]CodeAction, error)
@@ -115,15 +118,24 @@ type WorkspaceAnalysis struct {
 
 // WorkspaceBackend analyzes one immutable snapshot of every editor-owned
 // buffer. Backends that do not need workspace state may implement Backend
-// alone.
+// alone. AnalyzeWorkspace has the same prompt-cancellation requirement as
+// Backend.Analyze.
 type WorkspaceBackend interface {
 	AnalyzeWorkspace(context.Context, []Document) ([]WorkspaceAnalysis, error)
 }
 
+// WorkspaceFileChanges describes one persistent-workspace invalidation.
+// Paths are absolute, cleaned, sorted, and unique. InvalidateAll is exclusive
+// with Paths and discards every cached workspace result.
+type WorkspaceFileChanges struct {
+	Paths []string
+	InvalidateAll bool
+}
+
 // WorkspaceFileBackend invalidates persistent workspace state after editor
-// filesystem notifications. Paths are absolute, cleaned, sorted, and unique.
+// filesystem notifications.
 type WorkspaceFileBackend interface {
-	WorkspaceFilesChanged(context.Context, []string) error
+	WorkspaceFilesChanged(context.Context, WorkspaceFileChanges) error
 }
 
 type rpcMessage struct {
@@ -304,10 +316,9 @@ type server struct {
 	analysisResults chan analysisCompletion
 	analysisGeneration uint64
 	analysisCancel context.CancelFunc
+	analysisPending *analysisRequest
+	pendingWorkspaceChanges WorkspaceFileChanges
 	pendingAnalysisRequests []rpcMessage
-	shutdownID json.RawMessage
-	exitAfterShutdown bool
-	exitRequested bool
 	initialized bool
 	shutdown bool
 	watchingDynamicRegistration bool
@@ -322,6 +333,15 @@ type analysisCompletion struct {
 	workspace []WorkspaceAnalysis
 	workspaceSupported bool
 	err error
+}
+
+type analysisRequest struct {
+	generation uint64
+	trigger Document
+	documents []Document
+	workspaceBackend WorkspaceBackend
+	workspaceSupported bool
+	debounce bool
 }
 
 // Serve runs one LSP 3.17-compatible stdio session until exit or EOF.
@@ -373,9 +393,6 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, backend Backe
 		case completion := <-state.analysisResults:
 			if err := state.completeAnalysis(completion); err != nil {
 				return err
-			}
-			if state.exitRequested {
-				return nil
 			}
 			if readResults == nil && state.analysisCancel == nil {
 				return nil
@@ -458,16 +475,18 @@ func (s *server) handle(message rpcMessage) (bool, error) {
 			return false, s.respondError(message.ID, -32002, "server is not available")
 		}
 		s.shutdown = true
+		if err := s.rejectPendingAnalysisRequests(); err != nil {
+			return false, err
+		}
+		s.analysisGeneration++
+		s.analysisPending = nil
+		s.pendingWorkspaceChanges = WorkspaceFileChanges{}
 		if s.analysisCancel != nil {
-			s.shutdownID = bytes.Clone(message.ID)
-			return false, nil
+			s.analysisCancel()
+			s.analysisCancel = nil
 		}
 		return false, s.respond(message.ID, nil)
 	case "exit":
-		if len(s.shutdownID) != 0 {
-			s.exitAfterShutdown = true
-			return false, nil
-		}
 		s.cancelDocumentAnalysis()
 		return true, nil
 	}
@@ -537,11 +556,9 @@ func (s *server) handle(message rpcMessage) (bool, error) {
 			err != nil {
 			return false, err
 		}
-		if _, supported := s.backend.(WorkspaceBackend); supported {
-			if next, found := s.firstOpenDocument(); found {
-				if err := s.scheduleAnalysis(next, false); err != nil {
-					return false, err
-				}
+		if next, found := s.firstOpenDocument(); found {
+			if err := s.scheduleAnalysis(next, false); err != nil {
+				return false, err
 			}
 		}
 		return false, nil
@@ -550,20 +567,29 @@ func (s *server) handle(message rpcMessage) (bool, error) {
 		if err := decodeParams(message.Params, &params); err != nil {
 			return false, err
 		}
-		paths, err := watchedFilePaths(params.Changes)
+		changes, err := watchedFileChanges(params.Changes)
 		if err != nil {
 			return false, err
 		}
 		backend, supported := s.backend.(WorkspaceFileBackend)
-		if !supported || len(paths) == 0 {
+		if !supported || (!changes.InvalidateAll && len(changes.Paths) == 0) {
 			return false, nil
 		}
 		if err := s.rejectPendingAnalysisRequests(); err != nil {
 			return false, err
 		}
-		s.cancelDocumentAnalysis()
+		active := s.analysisCancel != nil
+		s.analysisGeneration++
+		s.analysisPending = nil
+		if active {
+			s.analysisCancel()
+		}
 		clear(s.analyses)
-		if err := backend.WorkspaceFilesChanged(s.ctx, paths); err != nil {
+		if active {
+			s.queueWorkspaceChanges(changes)
+			return false, nil
+		}
+		if err := backend.WorkspaceFilesChanged(s.ctx, changes); err != nil {
 			return false, err
 		}
 		next, found := s.firstOpenDocument()
@@ -651,29 +677,42 @@ func (s *server) registerWorkspaceFileWatching() error {
 	)
 }
 
-func watchedFilePaths(changes []watchedFileChange) ([]string, error) {
+func watchedFileChanges(changes []watchedFileChange) (WorkspaceFileChanges, error) {
 	if len(changes) > maximumWatchedFileChanges {
-		return nil, fmt.Errorf(
-			"workspace file notification exceeds %d changes",
-			maximumWatchedFileChanges,
-		)
+		return WorkspaceFileChanges{InvalidateAll: true}, nil
 	}
 	paths := make([]string, 0, len(changes))
 	for _, change := range changes {
 		if change.Type < 1 || change.Type > 3 {
-			return nil, fmt.Errorf(
+			return WorkspaceFileChanges{}, fmt.Errorf(
 				"unsupported workspace file change type %d",
 				change.Type,
 			)
 		}
 		path, err := filePath(change.URI)
 		if err != nil {
-			return nil, err
+			return WorkspaceFileChanges{}, err
 		}
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
-	return slices.Compact(paths), nil
+	return WorkspaceFileChanges{Paths: slices.Compact(paths)}, nil
+}
+
+func (s *server) queueWorkspaceChanges(changes WorkspaceFileChanges) {
+	if s.pendingWorkspaceChanges.InvalidateAll {
+		return
+	}
+	if changes.InvalidateAll {
+		s.pendingWorkspaceChanges = WorkspaceFileChanges{InvalidateAll: true}
+		return
+	}
+	s.pendingWorkspaceChanges.Paths = append(s.pendingWorkspaceChanges.Paths, changes.Paths...)
+	sort.Strings(s.pendingWorkspaceChanges.Paths)
+	s.pendingWorkspaceChanges.Paths = slices.Compact(s.pendingWorkspaceChanges.Paths)
+	if len(s.pendingWorkspaceChanges.Paths) > maximumWatchedFileChanges {
+		s.pendingWorkspaceChanges = WorkspaceFileChanges{InvalidateAll: true}
+	}
 }
 
 func (s *server) firstOpenDocument() (Document, bool) {
@@ -692,13 +731,11 @@ func (s *server) scheduleAnalysis(document Document, debounce bool) error {
 	if err := s.rejectPendingAnalysisRequests(); err != nil {
 		return err
 	}
-	s.cancelDocumentAnalysis()
-	backend, workspaceSupported := s.backend.(WorkspaceBackend)
-	if workspaceSupported {
-		clear(s.analyses)
-	} else {
-		delete(s.analyses, document.URI)
+	if s.analysisCancel != nil {
+		s.analysisCancel()
 	}
+	backend, workspaceSupported := s.backend.(WorkspaceBackend)
+	clear(s.analyses)
 	documents := make([]Document, 0, len(s.documents))
 	for _, open := range s.documents {
 		documents = append(documents, cloneDocument(open))
@@ -713,26 +750,44 @@ func (s *server) scheduleAnalysis(document Document, debounce bool) error {
 		},
 	)
 	s.analysisGeneration++
-	generation := s.analysisGeneration
+	request := &analysisRequest{
+		generation: s.analysisGeneration,
+		trigger: cloneDocument(document),
+		documents: documents,
+		workspaceBackend: backend,
+		workspaceSupported: workspaceSupported,
+		debounce: debounce,
+	}
+	if s.analysisCancel != nil {
+		s.analysisPending = request
+		return nil
+	}
+	s.startAnalysis(request)
+	return nil
+}
+
+func (s *server) startAnalysis(request *analysisRequest) {
+	if request == nil {
+		return
+	}
 	analysisCtx, cancel := context.WithCancel(s.ctx)
 	s.analysisCancel = cancel
 	go s.runAnalysis(
 		analysisCtx,
-		generation,
-		cloneDocument(document),
-		documents,
-		backend,
-		workspaceSupported,
-		debounce,
+		request.generation,
+		request.trigger,
+		request.documents,
+		request.workspaceBackend,
+		request.workspaceSupported,
+		request.debounce,
 	)
-	return nil
 }
 
 func (s *server) cancelDocumentAnalysis() {
 	s.analysisGeneration++
+	s.analysisPending = nil
 	if s.analysisCancel != nil {
 		s.analysisCancel()
-		s.analysisCancel = nil
 	}
 }
 
@@ -745,20 +800,25 @@ func (s *server) runAnalysis(
 	workspaceSupported bool,
 	debounce bool,
 ) {
-	if debounce {
-		timer := time.NewTimer(documentAnalysisDebounce)
-		defer timer.Stop()
-		select {
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-		}
-	}
 	completion := analysisCompletion{
 		generation: generation,
 		trigger: trigger,
 		documents: documents,
 		workspaceSupported: workspaceSupported,
+	}
+	if debounce {
+		timer := time.NewTimer(documentAnalysisDebounce)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			completion.err = ctx.Err()
+			select {
+			case s.analysisResults <- completion:
+			case <-s.ctx.Done():
+			}
+			return
+		case <-timer.C:
+		}
 	}
 	if workspaceSupported {
 		completion.workspace, completion.err = workspaceBackend.AnalyzeWorkspace(
@@ -766,7 +826,20 @@ func (s *server) runAnalysis(
 			documents,
 		)
 	} else {
-		completion.analysis, completion.err = s.backend.Analyze(ctx, trigger)
+		completion.workspaceSupported = true
+		completion.workspace = make([]WorkspaceAnalysis, 0, len(documents))
+		for _, document := range documents {
+			analysis, err := s.backend.Analyze(ctx, document)
+			if errors.Is(err, context.Canceled) ||
+				errors.Is(err, context.DeadlineExceeded) {
+				completion.err = err
+				break
+			}
+			completion.workspace = append(
+				completion.workspace,
+				WorkspaceAnalysis{Document: document, Analysis: analysis, Err: err},
+			)
+		}
 	}
 	select {
 	case s.analysisResults <- completion:
@@ -775,12 +848,41 @@ func (s *server) runAnalysis(
 }
 
 func (s *server) completeAnalysis(completion analysisCompletion) error {
-	if completion.generation != s.analysisGeneration {
-		return nil
-	}
 	if s.analysisCancel != nil {
 		s.analysisCancel()
 		s.analysisCancel = nil
+	}
+	if s.pendingWorkspaceChanges.InvalidateAll || len(s.pendingWorkspaceChanges.Paths) != 0 {
+		changes := WorkspaceFileChanges{
+			Paths: slices.Clone(s.pendingWorkspaceChanges.Paths),
+			InvalidateAll: s.pendingWorkspaceChanges.InvalidateAll,
+		}
+		s.pendingWorkspaceChanges = WorkspaceFileChanges{}
+		backend, supported := s.backend.(WorkspaceFileBackend)
+		if !supported {
+			return errors.New("LSP queued workspace changes for an unsupported backend")
+		}
+		if err := backend.WorkspaceFilesChanged(s.ctx, changes); err != nil {
+			return err
+		}
+		s.analysisPending = nil
+		if s.shutdown {
+			return nil
+		}
+		next, found := s.firstOpenDocument()
+		if !found {
+			return s.finishAnalysisCycle()
+		}
+		return s.scheduleAnalysis(next, true)
+	}
+	if completion.generation != s.analysisGeneration {
+		if s.analysisPending != nil {
+			pending := s.analysisPending
+			s.analysisPending = nil
+			s.startAnalysis(pending)
+			return nil
+		}
+		return s.finishAnalysisCycle()
 	}
 	if completion.err != nil {
 		if errors.Is(completion.err, context.Canceled) {
@@ -869,17 +971,6 @@ func (s *server) finishAnalysisCycle() error {
 		if err := s.handleCodeAction(message); err != nil {
 			return err
 		}
-	}
-	if len(s.shutdownID) == 0 {
-		return nil
-	}
-	id := bytes.Clone(s.shutdownID)
-	s.shutdownID = nil
-	if err := s.respond(id, nil); err != nil {
-		return err
-	}
-	if s.exitAfterShutdown {
-		s.exitRequested = true
 	}
 	return nil
 }

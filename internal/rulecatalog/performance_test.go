@@ -9,6 +9,7 @@ import (
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/rulecatalog"
 	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 )
 
 const performanceDefectFixture = `package sample
@@ -20,6 +21,7 @@ import (
 )
 
 func defects(text string, writer io.Writer, data []byte, pool *sync.Pool) {
+	for range data { defer func() {}() }
 	for { regexp.MatchString("constant", text); break }
 	pool.Put(data)
 	for _, runeValue := range []rune(text) { _ = runeValue }
@@ -62,11 +64,13 @@ func ranges(text string) {
 }
 
 func writes(writer io.Writer, bytes []byte) {
+	for range bytes { defer func() {}() }
 	io.WriteString(writer, string(bytes))
 }
 `
 	result := runPerformanceRules(t, input, nil)
 	want := map[string]int{
+		"defer-in-loop": 1,
 		"inefficient-io-string-write": 1,
 		"regexp-compile-in-loop": 3,
 		"string-range-rune-conversion": 2,
@@ -177,16 +181,28 @@ func TestPerformanceRulesExposeStableMetadata(t *testing.T) {
 		if !found {
 			t.Fatalf("missing performance rule %q", ruleID)
 		}
+		wantPresets := []rules.Preset{rules.PresetPerformance}
+		wantRequirement := rules.RequireTypes
+		wantCategories := []rules.Category{rules.CategoryPerformance}
+		if ruleID == "defer-in-loop" {
+			wantPresets = []rules.Preset{
+				rules.PresetSuspicious,
+				rules.PresetPerformance,
+			}
+			wantRequirement = rules.RequireSyntax
+			wantCategories = []rules.Category{
+				rules.CategorySafety,
+				rules.CategorySuspicious,
+				rules.CategoryPerformance,
+			}
+		}
 		if metadata.DefaultSeverity != rules.SeverityWarn ||
-			!slices.Equal(metadata.Presets, []rules.Preset{rules.PresetPerformance}) ||
+			!slices.Equal(metadata.Presets, wantPresets) ||
 			metadata.MinimumGoVersion != "1.25" ||
-			metadata.Requirement != rules.RequireTypes ||
+			metadata.Requirement != wantRequirement ||
 			metadata.RunOnGenerated ||
 			metadata.RunDespiteTypeErrors ||
-			!slices.Equal(
-				metadata.Categories,
-				[]rules.Category{rules.CategoryPerformance},
-			) ||
+			!slices.Equal(metadata.Categories, wantCategories) ||
 			len(metadata.Fixes) != 0 ||
 			len(metadata.Examples) == 0 ||
 			len(metadata.KnownLimitations) == 0 {
@@ -303,9 +319,15 @@ func TestPerformanceRulesHonorSharedPoliciesAndSourceVersions(t *testing.T) {
 				len(file.Suppressed) != len(performanceRuleIDs()) {
 				t.Fatalf("suppressed performance result = %#v", file)
 			}
-		case generatedPath, invalidPath:
+		case generatedPath:
 			if len(file.Diagnostics) != 0 || len(file.Suppressed) != 0 {
 				t.Fatalf("excluded performance result = %#v", file)
+			}
+		case invalidPath:
+			if len(file.Diagnostics) != 1 ||
+				file.Diagnostics[0].RuleID != "defer-in-loop" ||
+				len(file.Suppressed) != 0 {
+				t.Fatalf("type-error performance result = %#v", file)
 			}
 		default:
 			t.Fatalf("unexpected performance policy path %q", file.Path)
@@ -352,6 +374,44 @@ func BenchmarkPerformanceRulesPackageAnalysis(b *testing.B) {
 	}
 	for _, ruleID := range performanceRuleIDs() {
 		ruleID := ruleID
+		if ruleID == "defer-in-loop" {
+			file, loadErr := source.Load(
+				filepath.Join(root, "sample.go"),
+				[]byte(performanceDefectFixture),
+			)
+			if loadErr != nil {
+				b.Fatal(loadErr)
+			}
+			b.Run(
+				ruleID,
+				func(b *testing.B) {
+					options := analysis.RunOptions{
+						Presets: []rules.Preset{},
+						Overrides: map[string]rules.Severity{
+							ruleID: rules.SeverityWarn,
+						},
+						SourceGoVersion: "go1.26",
+					}
+					b.ResetTimer()
+					for range b.N {
+						result, runErr := analysis.Run(
+							context.Background(),
+							file,
+							registry,
+							options,
+						)
+						if runErr != nil || len(result.Diagnostics) != 1 {
+							b.Fatalf(
+								"benchmark result = %#v, error = %v",
+								result,
+								runErr,
+							)
+						}
+					}
+				},
+			)
+			continue
+		}
 		b.Run(
 			ruleID,
 			func(b *testing.B) {
@@ -379,6 +439,7 @@ func BenchmarkPerformanceRulesPackageAnalysis(b *testing.B) {
 
 func performanceRuleIDs() []string {
 	return []string{
+		"defer-in-loop",
 		"inefficient-io-string-write",
 		"regexp-compile-in-loop",
 		"string-range-rune-conversion",

@@ -2,7 +2,8 @@
 
 - Original Phase 0-5 progress: 100%
 - Active development: post-v0.1 Clippy-comparability expansion
-- v0.5 typed peak RSS gate: complete, 53% worst-sample reduction
+- v0.5 typed peak RSS gate: aggregate process-tree behavior unproven; runtime
+  probes excluded until a non-disruptive evidence policy exists
 - v0.5 typed retained-memory attribution: complete
 - v0.5 exact printf fact isolation and 2 GiB reference-host gate: complete
 - v0.5 bounded incremental workspace-result reuse: complete
@@ -33,10 +34,14 @@
 - v0.5 project semantic contracts: complete
 - v0.5 state-transition correctness pack: complete
 - v0.5 restriction policy and exported API documentation: complete
-- v0.5 direction exit audit: engineering, canonical delivery, selected
-  `pkg/prompts` adoption, and exact-candidate release evidence complete
-- v0.5 native macOS/Linux amd64/arm64 release budgets: complete at `724d8a2`;
-  final maintainer review remains open
+- v0.5 direction exit audit: engineering, canonical delivery, and selected
+  `pkg/prompts` adoption complete; corrected exact-candidate evidence pending
+- v0.5 independent review: the fourth review's matrix, LSP, WaitGroup,
+  process-ownership, and documentation findings are corrected locally; final
+  safe verification and a fresh source-only review remain pending
+- v0.5 native macOS/Linux amd64/arm64 release budgets: prior per-process run
+  passed at `724d8a2`; aggregate process-tree runtime evidence is unproven and
+  excluded from automatic execution
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -47,6 +52,23 @@
 The sections below retain chronological evidence from earlier checkpoints.
 Embedded progress statements describe those checkpoints. Post-v0.1 expansion
 does not reopen the completed original phase scale and has no percentage gate.
+
+Successive independent reviews found material gaps in aggregate process-tree
+RSS accounting and interruption ownership, bounded LSP supersession and
+shutdown, external replacement invalidation, conservative RWMutex and
+WaitGroup reasoning, target-matrix suppression and partial-result accounting,
+baseline and changed-code policy on incomplete output, catalog admission, and
+historical evidence attribution. Local corrections cover those boundaries. The
+catalog now contains 119 rules, but its corrected current-candidate evidence is
+still pending. The previous typed 2 GiB evidence measured a per-process maximum
+and does not prove the aggregate concurrent process-tree ceiling. The corrected
+candidate must pass full safe local verification, fresh independent source
+review, and exact-revision CI before delivery. Aggregate RSS and process-
+containment claims require a separate non-disruptive evidence policy and are
+not release evidence in this candidate.
+Routine implementation and review are agent-owned; no maintainer review gate is
+required. Tagging and publication remain prohibited until the candidate is
+genuinely complete and explicit publication authorization applies.
 
 Phase 0 established the reviewed product contracts, shared-frontend and edit
 boundaries, initial hostile-valid corpus, bounded document renderer, controlled
@@ -116,14 +138,16 @@ write rehearsal, and the 4,816-file migration diff has not received human
 readability approval.
 
 The external `pkg/prompts` adoption now pins Glippy candidate `724d8a2` and is
-integrated on `faustbrian/golib` `main` at `5eb1b997`. The refreshed 88-file
-patch changes 79 Go files, removes golangci-lint's competing gofmt/goimports
+integrated on `faustbrian/golib` `main` at `5eb1b997`. The immutable integrated
+tree contains 90 Go files. The final 45-file integration commit includes 42 Go
+files, removes golangci-lint's competing gofmt/goimports
 formatters, and makes module-owned Glippy targets authoritative through the
-canonical repository runner. The complete package gate passes, including
-format, tidy, safety, tests, race, statement coverage, lint, Staticcheck,
-vulnerability, secret, license, SBOM, fuzz, mutation, documentation, API,
-benchmark, and goal checks. NilAway retains its documented advisory findings;
-operational assurance remains separately scoped at 2/11 scenarios. The
+canonical repository runner. The original approved migration retains its
+recorded format, tidy, test, race, vet, documentation, lint, and nested-module
+evidence. The later complete-package gate was reported historically but has no
+retained immutable result artifact and is not current release evidence.
+NilAway retains its documented advisory findings; operational assurance
+remains separately scoped at 2/11 scenarios. The
 maintainer's earlier layout and Phase 2 approval apply to the refreshed
 canonical migration.
 

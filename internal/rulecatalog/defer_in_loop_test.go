@@ -94,7 +94,10 @@ func TestDeferInLoopMetadata(t *testing.T) {
 	metadata, found := registry.Metadata("defer-in-loop")
 	if !found ||
 		metadata.DefaultSeverity != rules.SeverityWarn ||
-		!reflect.DeepEqual(metadata.Presets, []rules.Preset{rules.PresetSuspicious}) ||
+		!reflect.DeepEqual(
+			metadata.Presets,
+			[]rules.Preset{rules.PresetSuspicious, rules.PresetPerformance},
+		) ||
 		metadata.Requirement != rules.RequireSyntax ||
 		!reflect.DeepEqual(
 			metadata.NodeInterests,

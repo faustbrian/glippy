@@ -29,7 +29,7 @@ import (
 
 const lspUsage = "glippy: expected 'lsp [--fix-suggestions] [--fix-unsafe] [--config=<path>]'\n"
 
-const lintRuleDocumentationURL = "https://github.com/faustbrian/gox/blob/main/docs/lint-rules.md#"
+const lintRuleDocumentationURL = "https://github.com/faustbrian/glippy/blob/main/docs/lint-rules.md#"
 
 const maximumLSPWorkspacePackageEntries = 8
 
@@ -465,11 +465,17 @@ func (b *lspBackend) AnalyzeWorkspace(
 	return results, nil
 }
 
-func (b *lspBackend) WorkspaceFilesChanged(ctx context.Context, paths []string) error {
+func (b *lspBackend) WorkspaceFilesChanged(
+	ctx context.Context,
+	changes lsp.WorkspaceFileChanges,
+) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	for _, path := range paths {
+	if changes.InvalidateAll && len(changes.Paths) != 0 {
+		return errors.New("full workspace invalidation cannot include paths")
+	}
+	for _, path := range changes.Paths {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 			return fmt.Errorf("workspace file path %q is not absolute and clean", path)
 		}
@@ -480,13 +486,18 @@ func (b *lspBackend) WorkspaceFilesChanged(ctx context.Context, paths []string) 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if changes.InvalidateAll {
+		b.workspaceChangedFiles = nil
+		b.workspaceInvalidateAll = true
+		return nil
+	}
 	if b.workspaceInvalidateAll {
 		return nil
 	}
 	if b.workspaceChangedFiles == nil {
-		b.workspaceChangedFiles = make(map[string]struct{}, len(paths))
+		b.workspaceChangedFiles = make(map[string]struct{}, len(changes.Paths))
 	}
-	for _, path := range paths {
+	for _, path := range changes.Paths {
 		b.workspaceChangedFiles[path] = struct{}{}
 		if len(b.workspaceChangedFiles) > maximumLSPWorkspaceChangedFiles {
 			b.workspaceChangedFiles = nil
@@ -536,6 +547,8 @@ func captureLSPWorkspaceFilesystem(
 	files := make(map[string]lspWorkspaceFileSnapshot)
 	directories := make(map[string]cache.Digest)
 	directoryPaths := make(map[string]struct{})
+	moduleRoots := map[string]struct{}{task.root: {}}
+	moduleRootCache := make(map[string]string)
 	for _, path := range result.Sources.Paths() {
 		if _, overlaid := overlay[path]; !overlaid {
 			file, found := result.Sources.Lookup(path)
@@ -550,14 +563,27 @@ func captureLSPWorkspaceFilesystem(
 		directory := filepath.Dir(path)
 		if pathWithinLSPWorkspace(task.root, directory) {
 			directoryPaths[directory] = struct{}{}
+			continue
+		}
+		moduleRoot, cached := moduleRootCache[directory]
+		if !cached {
+			moduleRoot = nearestLSPModuleRoot(directory)
+			moduleRootCache[directory] = moduleRoot
+		}
+		if moduleRoot != "" {
+			directoryPaths[directory] = struct{}{}
+			moduleRoots[moduleRoot] = struct{}{}
 		}
 	}
-	controlFiles := []string{
-		filepath.Join(task.root, "go.mod"),
-		filepath.Join(task.root, "go.sum"),
-		filepath.Join(task.root, "go.work"),
-		filepath.Join(task.root, "go.work.sum"),
+	controlFiles := make([]string, 0, len(moduleRoots) * 2 + 2)
+	for moduleRoot := range moduleRoots {
+		controlFiles = append(
+			controlFiles,
+			filepath.Join(moduleRoot, "go.mod"),
+			filepath.Join(moduleRoot, "go.sum"),
+		)
 	}
+	controlFiles = append(controlFiles, lspWorkspaceControlFiles(task)...)
 	if task.options.baseline.Path != "" {
 		controlFiles = append(
 			controlFiles,
@@ -586,6 +612,54 @@ func captureLSPWorkspaceFilesystem(
 		directories[directory] = digest
 	}
 	return files, directories, nil
+}
+
+func lspWorkspaceControlFiles(task lintPackageTask) []string {
+	goWork := ""
+	for _, entry := range packageLoadOptions(task, nil).Env {
+		name, value, found := strings.Cut(entry, "=")
+		if found && name == "GOWORK" {
+			goWork = value
+		}
+	}
+	switch goWork {
+	case "off":
+		return nil
+	case "", "auto":
+		result := make([]string, 0, 4)
+		for current := filepath.Clean(task.root); ; current = filepath.Dir(current) {
+			workspace := filepath.Join(current, "go.work")
+			result = append(result, workspace, filepath.Join(current, "go.work.sum"))
+			if information, err := os.Stat(workspace);
+				err == nil && information.Mode().IsRegular() {
+				return result
+			}
+			parent := filepath.Dir(current)
+			if parent == current {
+				return result
+			}
+		}
+	default:
+		if !filepath.IsAbs(goWork) {
+			goWork = filepath.Join(task.root, goWork)
+		}
+		goWork = filepath.Clean(goWork)
+		return []string{goWork, filepath.Join(filepath.Dir(goWork), "go.work.sum")}
+	}
+}
+
+func nearestLSPModuleRoot(directory string) string {
+	for current := filepath.Clean(directory); ; current = filepath.Dir(current) {
+		if _, err := os.Stat(filepath.Join(current, "go.mod")); err == nil {
+			return current
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return ""
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return ""
+		}
+	}
 }
 
 func lspWorkspaceFilesystemCurrent(entry lspWorkspacePackageEntry) bool {

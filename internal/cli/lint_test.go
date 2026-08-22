@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/types"
 	"io"
@@ -20,6 +21,7 @@ import (
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/baseline"
 	"github.com/faustbrian/glippy/internal/cache"
+	"github.com/faustbrian/glippy/internal/changed"
 	"github.com/faustbrian/glippy/internal/config"
 	"github.com/faustbrian/glippy/internal/filesystem"
 	fixengine "github.com/faustbrian/glippy/internal/fix"
@@ -39,6 +41,11 @@ type cliTypesRule struct {
 	metadata rules.Metadata
 	runs *atomic.Int64
 	cancel context.CancelFunc
+	run func() error
+}
+
+type incompleteMatrixSuppressionRule struct {
+	runs atomic.Int64
 }
 
 type cliTypesFixRule struct {
@@ -839,6 +846,11 @@ func (r cliTypesRule) RunTypes(ctx *rules.TypesContext, node ast.Node) ([]rules.
 	if r.cancel != nil {
 		r.cancel()
 	}
+	if r.run != nil {
+		if err := r.run(); err != nil {
+			return nil, err
+		}
+	}
 	sourceRange, err := ctx.Range(node)
 	if err != nil {
 		return nil, err
@@ -850,6 +862,31 @@ func (r cliTypesRule) RunTypes(ctx *rules.TypesContext, node ast.Node) ([]rules.
 			Range: sourceRange,
 		},
 	}, nil
+}
+
+func (*incompleteMatrixSuppressionRule) Metadata() rules.Metadata {
+	return rules.Metadata{
+		ID: "matrix-suppression",
+		Summary: "exercises incomplete target suppression handling",
+		Documentation: "Exercises incomplete target suppression handling.",
+		DefaultSeverity: rules.SeverityWarn,
+		Presets: []rules.Preset{rules.PresetCorrectness},
+		MinimumGoVersion: "1.22",
+		Requirement: rules.RequireTypes,
+		NodeInterests: []rules.NodeKind{rules.NodeCallExpr},
+		Categories: []rules.Category{rules.CategoryCorrectness},
+		Examples: []rules.Example{{Incorrect: "target()", Correct: "reviewed()"}},
+	}
+}
+
+func (r *incompleteMatrixSuppressionRule) RunTypes(
+	*rules.TypesContext,
+	ast.Node,
+) ([]rules.Finding, error) {
+	if r.runs.Add(1) == 2 {
+		return nil, newPackageAnalysisError(ExitSourceError, "fixture source failure")
+	}
+	return nil, nil
 }
 
 func (r cliTypesFixRule) Metadata() rules.Metadata {
@@ -3765,19 +3802,781 @@ func TestMergeTargetPackageResultsRetainsCompletedTargetOnMergeFailure(t *testin
 	t.Parallel()
 
 	left := analysis.PackageResult{
-		Files: []analysis.Result{{Path: "/project/source.go", Digest: source.Digest{1}}},
+		Files: []analysis.Result{
+			{
+				Path: "/project/first.go",
+				Digest: source.Digest{1},
+				Targets: []string{"linux/amd64"},
+			},
+			{Path: "/project/second.go", Digest: source.Digest{2}},
+		},
 		Requirement: rules.RequireTypes,
 	}
 	right := analysis.PackageResult{
-		Files: []analysis.Result{{Path: "/project/source.go", Digest: source.Digest{2}}},
+		Files: []analysis.Result{
+			{
+				Path: "/project/first.go",
+				Digest: source.Digest{1},
+				Targets: []string{"darwin/arm64"},
+			},
+			{Path: "/project/second.go", Digest: source.Digest{3}},
+		},
 		Requirement: rules.RequireTypes,
 	}
+	want := left
+	want.Files = slices.Clone(left.Files)
 	merged, err := mergeTargetPackageResults(left, right)
 	if err == nil {
 		t.Fatal("mergeTargetPackageResults() accepted incompatible source versions")
 	}
-	if !reflect.DeepEqual(merged, left) {
-		t.Fatalf("mergeTargetPackageResults() partial result = %#v, want %#v", merged, left)
+	if !reflect.DeepEqual(merged, want) {
+		t.Fatalf("mergeTargetPackageResults() partial result = %#v, want %#v", merged, want)
+	}
+}
+
+func TestMergeErroredTargetPackageResultRetainsCurrentPartial(t *testing.T) {
+	t.Parallel()
+
+	current := analysis.PackageResult{
+		Files: []analysis.Result{
+			{
+				Path: "/project/source.go",
+				Digest: source.Digest{1},
+				Diagnostics: []rules.Diagnostic{
+					{RuleID: "typed-call", MessageKey: "call"},
+				},
+			},
+		},
+	}
+	result, err := mergeLintTargetResult(
+		analysis.PackageResult{},
+		current,
+		"linux/amd64",
+		errors.New("cache close failed"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "cache close failed") {
+		t.Fatalf("mergeLintTargetResult() error = %v", err)
+	}
+	if len(result.Files) != 1 ||
+		!slices.Equal(result.Files[0].Targets, []string{"linux/amd64"}) ||
+		len(result.Files[0].Diagnostics) != 1 ||
+		!slices.Equal(result.Files[0].Diagnostics[0].Targets, []string{"linux/amd64"}) {
+		t.Fatalf("mergeLintTargetResult() = %#v", result)
+	}
+}
+
+func TestMergeErroredTargetPackageResultKeepsMostSevereClassification(t *testing.T) {
+	t.Parallel()
+
+	left := analysis.PackageResult{
+		Files: []analysis.Result{{Path: "/project/source.go", Digest: source.Digest{1}}},
+	}
+	right := analysis.PackageResult{
+		Files: []analysis.Result{{Path: "/project/source.go", Digest: source.Digest{2}}},
+	}
+	_, err := mergeLintTargetResult(
+		left,
+		right,
+		"linux/amd64",
+		newPackageAnalysisError(ExitSourceError, "source failed"),
+	)
+	if err == nil {
+		t.Fatal("mergeLintTargetResult() accepted incompatible source versions")
+	}
+	if exitCode := packageAnalysisErrorExitCode(err); exitCode != ExitInternalError {
+		t.Fatalf(
+			"joined target error exit = %d, want %d; error = %v",
+			exitCode,
+			ExitInternalError,
+			err,
+		)
+	}
+}
+
+func TestPackageAnalysisErrorExitCodePreservesSingleClassification(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range
+		[]struct {
+			name string
+			err error
+			want int
+		}{
+			{
+				name: "classified source",
+				err: newPackageAnalysisError(ExitSourceError, "source failed"),
+				want: ExitSourceError,
+			},
+			{
+				name: "source limit",
+				err: fmt.Errorf("load source: %w", source.ErrTooLarge),
+				want: ExitSourceError,
+			},
+			{
+				name: "filesystem",
+				err: &os.PathError{
+					Op: "read",
+					Path: "/project/source.go",
+					Err: os.ErrNotExist,
+				},
+				want: ExitFilesystemError,
+			},
+			{
+				name: "internal",
+				err: errors.New("invariant failed"),
+				want: ExitInternalError,
+			},
+		} {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				if got := packageAnalysisErrorExitCode(test.err); got != test.want {
+					t.Fatalf(
+						"package analysis exit = %d, want %d",
+						got,
+						test.want,
+					)
+				}
+			},
+		)
+	}
+}
+
+func TestFilterChangedPackageResultIsAtomicOnInvalidSource(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/atomicfilter\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "source.go")
+	writeChangedCLIFile(
+		t,
+		path,
+		"package atomicfilter\n\nfunc target() {}\nfunc run() { target() }\n",
+	)
+	runChangedCLIGit(t, root, "init", "-b", "main")
+	runChangedCLIGit(t, root, "config", "user.name", "Glippy Test")
+	runChangedCLIGit(t, root, "config", "user.email", "glippy@example.invalid")
+	runChangedCLIGit(t, root, "add", "go.mod", "source.go")
+	runChangedCLIGit(t, root, "commit", "-m", "baseline")
+
+	result, err := analysis.RunPackages(
+		context.Background(),
+		newCLITypesRegistry(t),
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"typed-call": rules.SeverityWarn},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 {
+		t.Fatalf("fixture package result = %#v", result)
+	}
+	result.Files = append(
+		result.Files,
+		analysis.Result{
+			Path: filepath.Join(root, "missing.go"),
+			Digest: source.Digest{9},
+			Diagnostics: []rules.Diagnostic{
+				{RuleID: "typed-call", MessageKey: "missing"},
+			},
+		},
+	)
+	want := slices.Clone(result.Files)
+	want[0].Diagnostics = slices.Clone(result.Files[0].Diagnostics)
+	want[0].PreexistingDiagnostics = slices.Clone(result.Files[0].PreexistingDiagnostics)
+
+	scope, err := changed.Resolve(context.Background(), root, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := filterChangedPackageResult(scope, &result); err == nil {
+		t.Fatal("filterChangedPackageResult() accepted a missing source")
+	}
+	if !reflect.DeepEqual(result.Files, want) {
+		t.Fatalf(
+			"failed changed-code filter mutated result = %#v, want %#v",
+			result.Files,
+			want,
+		)
+	}
+}
+
+func TestCombinedPackageCheckJSONRetainsAnalyzedFilesWhenFormattingStops(t *testing.T) {
+	t.Parallel()
+
+	first, err := source.Load("/project/first.go", []byte("package sample\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := source.Load("/project/second.go", []byte("package sample\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := analysis.PackageResult{
+		Files: []analysis.Result{
+			{Path: first.Path(), Digest: first.Digest()},
+			{Path: second.Path(), Digest: second.Digest()},
+		},
+	}
+	for _, test := range
+		[]struct {
+			name string
+			executions []checkExecution
+			want []glippyreport.CheckFormatStatus
+		}{
+			{
+				name: "before formatting",
+				executions: []checkExecution{},
+				want: []glippyreport.CheckFormatStatus{
+					glippyreport.CheckFormatPending,
+					glippyreport.CheckFormatPending,
+				},
+			},
+			{
+				name: "after one file",
+				executions: []checkExecution{
+					{file: first, analysis: result.Files[0]},
+				},
+				want: []glippyreport.CheckFormatStatus{
+					glippyreport.CheckFormatUnchanged,
+					glippyreport.CheckFormatPending,
+				},
+			},
+		} {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				exitCode := reportCombinedPackageCheck(
+					checkInvocation{reporter: glippyreport.JSON},
+					nil,
+					&stdout,
+					&stderr,
+					ExitCanceled,
+					false,
+					result,
+					test.executions,
+					context.Canceled,
+				)
+				var reported glippyreport.CheckResult
+				if err := json.Unmarshal(stdout.Bytes(), &reported); err != nil {
+					t.Fatalf(
+						"decode incomplete check JSON: %v; output = %q",
+						err,
+						stdout.String(),
+					)
+				}
+				if exitCode != ExitCanceled ||
+					stderr.Len() != 0 ||
+					reported.Summary.Complete ||
+					len(reported.Files) != 2 ||
+					reported.Files[0].FormatStatus != test.want[0] ||
+					reported.Files[1].FormatStatus != test.want[1] ||
+					len(reported.Errors) != 1 {
+					t.Fatalf(
+						"incomplete package check = exit %d, result %#v, stderr %q",
+						exitCode,
+						reported,
+						stderr.String(),
+					)
+				}
+			},
+		)
+	}
+}
+
+func TestRunCombinedCheckJSONRetainsCompletedTargetWhenLaterTargetFails(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/partialtargets\n\ngo 1.26.0\n",
+	)
+	darwinPath := filepath.Join(root, "source.go")
+	writeChangedCLIFile(
+		t,
+		darwinPath,
+		"package partialtargets\n\nfunc run() { target() }\nfunc target() {}\n",
+	)
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+`,
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	newFailingRegistry := func(t *testing.T) *rules.Registry {
+		t.Helper()
+		var runs atomic.Int64
+		registry := newCLITypesRegistry(t)
+		typedRule, found := registry.Lookup("typed-call")
+		if !found {
+			t.Fatal("typed-call rule is unavailable")
+		}
+		rule := typedRule.(cliTypesRule)
+		rule.run = func() error {
+			if runs.Add(1) == 2 {
+				return newPackageAnalysisError(
+					ExitSourceError,
+					"fixture source failure",
+				)
+			}
+			return nil
+		}
+		registry, err := rules.NewRegistry(rule)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return registry
+	}
+	exitCode := runCombinedCheck(
+		context.Background(),
+		checkInvocation{
+			configPath: configurationPath,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.JSON,
+		},
+		&stdout,
+		&stderr,
+		newFailingRegistry(t),
+	)
+	var reported glippyreport.CheckResult
+	if err := json.Unmarshal(stdout.Bytes(), &reported); err != nil {
+		t.Fatalf("decode partial target check JSON: %v; output = %q", err, stdout.String())
+	}
+	if exitCode != ExitSourceError ||
+		stderr.Len() != 0 ||
+		reported.Summary.Complete ||
+		len(reported.Files) != 1 ||
+		reported.Files[0].Path != darwinPath ||
+		reported.Files[0].FormatStatus != glippyreport.CheckFormatPending ||
+		len(reported.Diagnostics) != 1 ||
+		reported.Diagnostics[0].Path != darwinPath ||
+		!slices.Equal(reported.Diagnostics[0].Targets, []string{"darwin/arm64"}) ||
+		len(reported.Errors) == 0 {
+		t.Fatalf(
+			"runCombinedCheck(partial target JSON) = exit %d, result %#v, stderr %q",
+			exitCode,
+			reported,
+			stderr.String(),
+		)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := runLintGenerateBaseline(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			generateBaseline: "baseline.json",
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.Text,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	);
+		exitCode != ExitSuccess {
+		t.Fatalf(
+			"generate partial-target baseline = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+	baselinePath := filepath.Join(root, "baseline.json")
+	baselineBytes, err := os.ReadFile(baselinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := baseline.Parse(
+		baselinePath,
+		baselineBytes,
+		baseline.ParseOptions{KnownRules: []string{"typed-call"}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failedTargetEntry := document.Entries[0]
+	failedTargetEntry.MessageKey = "failed-target-only"
+	document.Entries = append(document.Entries, failedTargetEntry)
+	baselineBytes, err = baseline.Encode(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(t, baselinePath, string(baselineBytes))
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+
+[lint.baseline]
+path = "baseline.json"
+report-stale = true
+`,
+	)
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = runCombinedCheck(
+		context.Background(),
+		checkInvocation{
+			configPath: configurationPath,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.JSON,
+		},
+		&stdout,
+		&stderr,
+		newFailingRegistry(t),
+	)
+	reported = glippyreport.CheckResult{}
+	if err := json.Unmarshal(stdout.Bytes(), &reported); err != nil {
+		t.Fatalf(
+			"decode baselined partial target JSON: %v; output = %q",
+			err,
+			stdout.String(),
+		)
+	}
+	if exitCode != ExitSourceError ||
+		stderr.Len() != 0 ||
+		reported.Summary.Complete ||
+		reported.Summary.Baselined != 1 ||
+		len(reported.Diagnostics) != 0 ||
+		len(reported.BaselineProblems) != 0 ||
+		len(reported.Errors) == 0 {
+		t.Fatalf(
+			"baselined partial target JSON = exit %d, result %#v, stderr %q",
+			exitCode,
+			reported,
+			stderr.String(),
+		)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = runLintCheck(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.JSON,
+		},
+		&stdout,
+		&stderr,
+		newFailingRegistry(t),
+	)
+	var lintReported glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &lintReported); err != nil {
+		t.Fatalf(
+			"decode baselined partial target lint JSON: %v; output = %q",
+			err,
+			stdout.String(),
+		)
+	}
+	if exitCode != ExitSourceError ||
+		stderr.Len() != 0 ||
+		lintReported.Summary.Complete ||
+		lintReported.Summary.Baselined != 1 ||
+		len(lintReported.Diagnostics) != 0 ||
+		len(lintReported.BaselineProblems) != 0 ||
+		len(lintReported.Errors) == 0 {
+		t.Fatalf(
+			"baselined partial target lint JSON = exit %d, result %#v, stderr %q",
+			exitCode,
+			lintReported,
+			stderr.String(),
+		)
+	}
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+`,
+	)
+	runChangedCLIGit(t, root, "init", "-b", "main")
+	runChangedCLIGit(t, root, "config", "user.name", "Glippy Test")
+	runChangedCLIGit(t, root, "config", "user.email", "glippy@example.invalid")
+	runChangedCLIGit(t, root, "add", "go.mod", ".glippy.toml", "source.go", "baseline.json")
+	runChangedCLIGit(t, root, "commit", "-m", "baseline")
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = runLintCheck(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			newFrom: "HEAD",
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.JSON,
+		},
+		&stdout,
+		&stderr,
+		newFailingRegistry(t),
+	)
+	lintReported = glippyreport.LintResult{}
+	if err := json.Unmarshal(stdout.Bytes(), &lintReported); err != nil {
+		t.Fatalf(
+			"decode changed partial target lint JSON: %v; output = %q",
+			err,
+			stdout.String(),
+		)
+	}
+	if exitCode != ExitSourceError ||
+		stderr.Len() != 0 ||
+		lintReported.Summary.Complete ||
+		lintReported.Summary.Diagnostics != 0 ||
+		lintReported.Summary.PreexistingDiagnostics != 1 ||
+		len(lintReported.Diagnostics) != 0 ||
+		len(lintReported.Errors) == 0 {
+		t.Fatalf(
+			"changed partial target lint JSON = exit %d, result %#v, stderr %q",
+			exitCode,
+			lintReported,
+			stderr.String(),
+		)
+	}
+}
+
+func TestRunLintCheckContinuesTargetMatrixAfterEarlierTargetFails(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/continuetargets\n\ngo 1.26.0\n",
+	)
+	path := filepath.Join(root, "source.go")
+	writeChangedCLIFile(
+		t,
+		path,
+		"package continuetargets\n\nfunc run() { target() }\nfunc target() {}\n",
+	)
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+`,
+	)
+	var runs atomic.Int64
+	registry := newCLITypesRegistry(t)
+	typedRule, found := registry.Lookup("typed-call")
+	if !found {
+		t.Fatal("typed-call rule is unavailable")
+	}
+	rule := typedRule.(cliTypesRule)
+	rule.run = func() error {
+		if runs.Add(1) == 1 {
+			return newPackageAnalysisError(ExitSourceError, "fixture source failure")
+		}
+		return nil
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.JSON,
+		},
+		&stdout,
+		&stderr,
+		registry,
+	)
+	var reported glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &reported); err != nil {
+		t.Fatalf("decode continued target lint JSON: %v; output = %q", err, stdout.String())
+	}
+	if exitCode != ExitSourceError ||
+		stderr.Len() != 0 ||
+		reported.Summary.Complete ||
+		len(reported.Files) != 1 ||
+		reported.Files[0].Path != path ||
+		len(reported.Diagnostics) != 1 ||
+		!slices.Equal(reported.Diagnostics[0].Targets, []string{"linux/amd64"}) ||
+		len(reported.Errors) == 0 ||
+		runs.Load() != 2 {
+		t.Fatalf(
+			"runLintCheck(continued target JSON) = exit %d, runs %d, result %#v, stderr %q",
+			exitCode,
+			runs.Load(),
+			reported,
+			stderr.String(),
+		)
+	}
+}
+
+func TestRunLintCheckOmitsUnusedSuppressionsWhenTargetMatrixIsIncomplete(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/incompletesuppressions\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "source.go"),
+		`package incompletesuppressions
+
+func run() {
+	//glippy:ignore matrix-suppression -- target-specific use is unresolved
+	target()
+}
+
+func target() {}
+`,
+	)
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	writeChangedCLIFile(
+		t,
+		configurationPath,
+		`version = 1
+
+[[analysis.targets]]
+goos = "darwin"
+goarch = "arm64"
+
+[[analysis.targets]]
+goos = "linux"
+goarch = "amd64"
+`,
+	)
+	rule := &incompleteMatrixSuppressionRule{}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.JSON,
+		},
+		&stdout,
+		&stderr,
+		registry,
+	)
+	var reported glippyreport.LintResult
+	if err := json.Unmarshal(stdout.Bytes(), &reported); err != nil {
+		t.Fatalf(
+			"decode incomplete suppression JSON: %v; output = %q",
+			err,
+			stdout.String(),
+		)
+	}
+	if exitCode != ExitSourceError ||
+		stderr.Len() != 0 ||
+		reported.Summary.Complete ||
+		reported.Summary.UnusedSuppressions != 0 ||
+		len(reported.UnusedSuppressions) != 0 ||
+		len(reported.Errors) == 0 ||
+		rule.runs.Load() != 2 {
+		t.Fatalf(
+			"runLintCheck(incomplete suppressions) = exit %d, runs %d, result %#v, stderr %q",
+			exitCode,
+			rule.runs.Load(),
+			reported,
+			stderr.String(),
+		)
+	}
+}
+
+func TestMergeTargetFileResultsRequiresSuppressionUnusedOnEveryTarget(t *testing.T) {
+	t.Parallel()
+
+	directive := suppressions.Directive{
+		Scope: suppressions.ScopeNextLine,
+		RuleID: "typed-call",
+		Range: source.Range{Start: 10, End: 40},
+		Target: source.Range{Start: 41, End: 60},
+		Reason: "platform-specific call",
+	}
+	left := analysis.Result{
+		Path: "/project/source.go",
+		Digest: source.Digest{1},
+		Targets: []string{"darwin/arm64"},
+		UnusedSuppressions: []suppressions.Directive{directive},
+	}
+	right := analysis.Result{
+		Path: "/project/source.go",
+		Digest: source.Digest{1},
+		Targets: []string{"linux/amd64"},
+		Suppressed: []suppressions.SuppressedDiagnostic{{Directive: directive}},
+	}
+	merged, err := mergeTargetFileResults(left, right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(merged.UnusedSuppressions) != 0 {
+		t.Fatalf("merged unused suppressions = %#v", merged.UnusedSuppressions)
+	}
+
+	right.UnusedSuppressions = []suppressions.Directive{directive}
+	right.Suppressed = nil
+	merged, err = mergeTargetFileResults(left, right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(merged.UnusedSuppressions, []suppressions.Directive{directive}) {
+		t.Fatalf("all-target unused suppressions = %#v", merged.UnusedSuppressions)
 	}
 }
 

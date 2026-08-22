@@ -18,7 +18,7 @@ func (identicalBranchesRule) Metadata() Metadata {
 		Summary: "detects identical if and else branches",
 		Documentation: "An if statement whose two direct branches perform the same work usually contains a copied branch that was not updated or a condition that no longer selects behavior. The condition may still have effects, so the rule diagnoses the duplication without offering an automatic rewrite.",
 		DefaultSeverity: SeverityWarn,
-		Presets: []Preset{PresetSuspicious},
+		Presets: []Preset{PresetSuspicious, PresetPedantic},
 		MinimumGoVersion: "1.25",
 		Requirement: RequireSyntax,
 		NodeInterests: []NodeKind{NodeIfStmt},

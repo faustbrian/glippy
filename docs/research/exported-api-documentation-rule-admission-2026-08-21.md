@@ -11,7 +11,8 @@ begin with the documented name.
 The rule runs at the syntax tier, excludes generated files, package `main`,
 and test files by default, and offers no fix. Four typed Boolean options control
 test files, main packages, members, and name-prefix enforcement independently.
-The canonical catalog now contains 118 rules, including six restriction rules.
+The canonical catalog at this admission checkpoint contained 118 rules,
+including six restriction rules.
 
 ## Current Authorities And Product Boundary
 
@@ -109,4 +110,4 @@ Add package documentation only after the syntax scheduler can aggregate a
 package without forcing type loading. Revisit embedded fields when package
 type identity can distinguish promoted public API from private implementation
 without speculative noise. Revisit default option values only from
-human-reviewed adoption evidence, not raw finding counts.
+independently reviewed adoption evidence, not raw finding counts.

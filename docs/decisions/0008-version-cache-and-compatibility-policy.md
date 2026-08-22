@@ -105,7 +105,8 @@ or native amd64 host execution.
 
 GitHub Releases is the selected publication channel. Public tags and releases
 remain prohibited until the full project reaches 100%, the release candidate
-passes the final gates, and the maintainer personally verifies and reviews it.
+passes the final gates, and publication of the exact candidate is explicitly
+authorized.
 An authorized semantic-version tag activates one pinned GitHub Actions workflow
 that builds the existing archives, manifest, and SHA-256 checksums; submits
 every file for GitHub artifact attestation; and publishes the files as a GitHub

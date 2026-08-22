@@ -34,16 +34,24 @@ import (
 	"time"
 )
 
+// Named demonstrates receiver naming.
 type Named struct{}
 
+// First uses the canonical receiver name.
 func (n *Named) First() {}
+// Second uses the canonical receiver name.
 func (n *Named) Second() {}
+// Third deliberately uses another receiver name.
 func (named *Named) Third() {}
 
+// Form demonstrates receiver forms.
 type Form struct{}
 
+// First uses a pointer receiver.
 func (f *Form) First() {}
+// Second uses a pointer receiver.
 func (f *Form) Second() {}
+// Third deliberately uses a value receiver.
 func (f Form) Third() {}
 
 func run(text string) string {

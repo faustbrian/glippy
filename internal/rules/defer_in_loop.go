@@ -20,11 +20,11 @@ func (deferInLoopRule) Metadata() Metadata {
 		Summary: "detects defers accumulated across loop iterations",
 		Documentation: "A defer inside a finite or condition-controlled loop runs when the surrounding function returns, not when the current iteration ends. Repeated iterations can retain resources and defer cleanup much longer than intended. Conditionless loops remain covered by the more precise defer-in-infinite-loop control-flow rule.",
 		DefaultSeverity: SeverityWarn,
-		Presets: []Preset{PresetSuspicious},
+		Presets: []Preset{PresetSuspicious, PresetPerformance},
 		MinimumGoVersion: "1.25",
 		Requirement: RequireSyntax,
 		NodeInterests: []NodeKind{NodeForStmt, NodeRangeStmt},
-		Categories: []Category{CategorySafety, CategorySuspicious},
+		Categories: []Category{CategorySafety, CategorySuspicious, CategoryPerformance},
 		KnownLimitations: []string{
 			"Conditionless for loops are delegated to defer-in-infinite-loop to avoid duplicate diagnostics.",
 			"The rule does not infer a statically single-iteration loop or a deliberate bounded accumulation policy.",

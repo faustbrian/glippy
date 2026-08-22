@@ -33,17 +33,25 @@ import (
 	"time"
 )
 
+// Named demonstrates receiver naming.
 type Named struct{}
 
+// First uses the canonical receiver name.
 func (n *Named) First() {}
+// Second uses the canonical receiver name.
 func (n *Named) Second() {}
+// Third deliberately uses another receiver name.
 //glippy:ignore inconsistent-receiver-name -- retained terminology in an external example
 func (named *Named) Third() {}
 
+// Form demonstrates receiver forms.
 type Form struct{}
 
+// First uses a pointer receiver.
 func (f *Form) First() {}
+// Second uses a pointer receiver.
 func (f *Form) Second() {}
+// Third deliberately uses a value receiver.
 //glippy:ignore mixed-receiver-type -- value receiver intentionally documents copying
 func (f Form) Third() {}
 
@@ -134,8 +142,11 @@ import (
 	"strings"
 	"time"
 )
+// State is an invalid fixture type.
 type State struct{}
+// First uses a value receiver.
 func (s State) First() {}
+// Second uses a pointer receiver.
 func (state *State) Second() {}
 func invalid(text string) string {
 	values := []string{text}

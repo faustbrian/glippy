@@ -1021,7 +1021,7 @@ func TestRunCombinedCheckReportsVersionedJSONFromOneSourceSnapshot(t *testing.T)
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode combined check JSON: %v; output = %q", err, stdout.String())
 	}
-	if result.SchemaVersion != 1 ||
+	if result.SchemaVersion != 2 ||
 		result.Command != "check" ||
 		result.Mode != "check" ||
 		result.Outcome.Category != "findings" ||

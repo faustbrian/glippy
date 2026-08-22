@@ -64,6 +64,12 @@ fi
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH='' cd -- "$script_dir/.." && pwd)
+process_tree_rss_command=${GLIPPY_PROCESS_TREE_RSS_COMMAND:-$script_dir/process-tree-rss.sh}
+if [ ! -x "$process_tree_rss_command" ]; then
+	printf 'process-tree RSS command is not executable: %s\n' \
+		"$process_tree_rss_command" >&2
+	exit 1
+fi
 format_root_input=${GLIPPY_PEAK_RSS_FORMAT_ROOT:-$repo_root}
 if [ ! -d "$format_root_input" ]; then
 	printf 'GLIPPY_PEAK_RSS_FORMAT_ROOT is not a directory: %s\n' \
@@ -156,9 +162,21 @@ if [ -n "$typed_revision" ]; then
 fi
 
 task_root=$(mktemp -d "${TMPDIR:-/tmp}/glippy-peak-rss.XXXXXX")
+measurement_pid=
+sampler_pid=
 
 cleanup() {
 	trap - EXIT HUP INT TERM
+	if [ -n "$sampler_pid" ]; then
+		kill -TERM "$sampler_pid" 2>/dev/null || true
+		wait "$sampler_pid" 2>/dev/null || true
+		sampler_pid=
+	fi
+	if [ -n "$measurement_pid" ]; then
+		kill -TERM "$measurement_pid" 2>/dev/null || true
+		wait "$measurement_pid" 2>/dev/null || true
+		measurement_pid=
+	fi
 	if [ -d "$task_root/modcache" ] &&
 		! GOMODCACHE="$task_root/modcache" go clean -modcache >/dev/null 2>&1; then
 		chmod -R u+w "$task_root/modcache"
@@ -166,7 +184,10 @@ cleanup() {
 	find "$task_root" -mindepth 1 -delete
 	rmdir "$task_root"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 time_output="$task_root/time-output"
 command_output="$task_root/command-output"
@@ -190,6 +211,8 @@ if [ "$typed_root" != "$repo_root" ]; then
 	env -u GOWORK GOFLAGS=-mod=readonly go -C "$typed_root" mod download
 fi
 env -u GOWORK go -C "$repo_root" build -o "$task_root/glippy" ./cmd/glippy
+env -u GOWORK go -C "$repo_root" build \
+	-o "$task_root/process-group" ./benchmarks/cmd/process-group
 
 measure() {
 	label=$1
@@ -198,14 +221,86 @@ measure() {
 	shift 3
 	sample=1
 	while [ "$sample" -le "$runs" ]; do
+		tree_peak_output="$task_root/tree-peak-$label-$sample"
+		tree_sample_ready="$task_root/tree-ready-$label-$sample"
+		tree_sample_done="$task_root/tree-done-$label-$sample"
+		deferred_signal=
+		trap 'deferred_signal=129' HUP
+		trap 'deferred_signal=130' INT
+		trap 'deferred_signal=143' TERM
 		set +e
 		if [ "$time_mode" = darwin ]; then
-			"$time_command" -l "$@" >"$command_output" 2>"$time_output"
+			"$task_root/process-group" "$time_command" -l "$@" \
+				>"$command_output" 2>"$time_output" &
 		else
-			"$time_command" -v "$@" >"$command_output" 2>"$time_output"
+			"$task_root/process-group" "$time_command" -v "$@" \
+				>"$command_output" 2>"$time_output" &
 		fi
-		status=$?
+		measurement_pid=$!
 		set -e
+		trap 'exit 129' HUP
+		trap 'exit 130' INT
+		trap 'exit 143' TERM
+		if [ -n "$deferred_signal" ]; then
+			exit "$deferred_signal"
+		fi
+		(
+			peak=0
+			while [ ! -f "$tree_sample_done" ]; do
+				if current=$("$process_tree_rss_command" "$measurement_pid" 2>/dev/null); then
+					sample_status=0
+				else
+					sample_status=$?
+				fi
+				if [ "$sample_status" -ne 0 ]; then
+					if [ "$sample_status" -eq 5 ] &&
+						[ "$peak" -gt 0 ] &&
+						! kill -0 "$measurement_pid" 2>/dev/null; then
+						printf '%s\n' "$peak" >"$tree_peak_output"
+						exit 0
+					fi
+					printf '%s\n' failed >"$tree_peak_output"
+					exit 0
+				fi
+				case "$current" in
+				''|*[!0-9]*)
+					printf '%s\n' failed >"$tree_peak_output"
+					exit 0
+					;;
+				esac
+				if [ "$current" -le 0 ]; then
+					printf '%s\n' failed >"$tree_peak_output"
+					exit 0
+				fi
+				if [ "$current" -gt "$peak" ]; then
+					peak=$current
+				fi
+				if [ ! -f "$tree_sample_ready" ]; then
+					: >"$tree_sample_ready"
+				fi
+				sleep 0.01
+			done
+			if [ "$peak" -le 0 ]; then
+				printf '%s\n' failed >"$tree_peak_output"
+			else
+				printf '%s\n' "$peak" >"$tree_peak_output"
+			fi
+		) &
+		sampler_pid=$!
+		while [ ! -f "$tree_sample_ready" ] && [ ! -f "$tree_peak_output" ]; do
+			if ! kill -0 "$sampler_pid" 2>/dev/null; then
+				break
+			fi
+			sleep 0.001
+		done
+		set +e
+		wait "$measurement_pid"
+		status=$?
+		measurement_pid=
+		set -e
+		touch "$tree_sample_done"
+		wait "$sampler_pid"
+		sampler_pid=
 		if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
 			printf '%s: command exited %d\n' "$label" "$status" >&2
 			sed -n '1,20p' "$command_output" >&2
@@ -239,26 +334,70 @@ measure() {
 		fi
 		if [ "$time_mode" = darwin ]; then
 			elapsed_seconds=$(awk '/ real / { print $1; exit }' "$time_output")
-			peak_bytes=$(awk '/maximum resident set size/ { print $1; exit }' "$time_output")
+			reported_peak_bytes=$(awk '/maximum resident set size/ { print $1; exit }' "$time_output")
 		else
-			elapsed_seconds=$(awk -F': ' '/Elapsed \(wall clock\) time/ {
-				n = split($2, parts, ":")
+			elapsed_raw=$(awk -F': ' '/Elapsed \(wall clock\) time/ {
+				print $2
+				exit
+			}' "$time_output")
+			if ! awk -v value="$elapsed_raw" 'BEGIN {
+				exit !(value ~ /^([0-9]+:){1,2}[0-9]+([.][0-9]+)?$/)
+			}'; then
+				printf '%s\n' 'failed to parse elapsed time or peak RSS' >&2
+				exit 1
+			fi
+			elapsed_seconds=$(awk -v value="$elapsed_raw" 'BEGIN {
+				n = split(value, parts, ":")
 				if (n == 2) {
 					printf "%.3f\n", parts[1] * 60 + parts[2]
-				} else if (n == 3) {
+				} else {
 					printf "%.3f\n", parts[1] * 3600 + parts[2] * 60 + parts[3]
 				}
-				exit
-			}' "$time_output")
-			peak_bytes=$(awk -F: '/Maximum resident set size \(kbytes\)/ {
+			}')
+			reported_peak_kbytes=$(awk -F: '/Maximum resident set size \(kbytes\)/ {
 				gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2)
-				printf "%.0f\n", $2 * 1024
+				print $2
 				exit
 			}' "$time_output")
+			case "$reported_peak_kbytes" in
+			''|*[!0-9]*)
+				printf '%s\n' 'failed to parse elapsed time or peak RSS' >&2
+				exit 1
+				;;
+			esac
+			reported_peak_bytes=$(awk -v value="$reported_peak_kbytes" \
+				'BEGIN { printf "%.0f\n", value * 1024 }')
 		fi
-		if [ -z "$elapsed_seconds" ] || [ -z "$peak_bytes" ]; then
+		sampled_peak_bytes=$(sed -n '1p' "$tree_peak_output")
+		if [ -z "$elapsed_seconds" ] ||
+			[ -z "$reported_peak_bytes" ]; then
 			printf '%s\n' 'failed to parse elapsed time or peak RSS' >&2
 			exit 1
+		fi
+		if ! awk -v value="$elapsed_seconds" \
+			'BEGIN { exit !(value ~ /^[0-9]+([.][0-9]+)?$/) }'; then
+			printf '%s\n' 'failed to parse elapsed time or peak RSS' >&2
+			exit 1
+		fi
+		case "$reported_peak_bytes" in
+		''|*[!0-9]*)
+			printf '%s\n' 'failed to parse elapsed time or peak RSS' >&2
+			exit 1
+			;;
+		esac
+		case "$sampled_peak_bytes" in
+		''|*[!0-9]*)
+			printf '%s\n' 'process-tree RSS sampling failed' >&2
+			exit 1
+			;;
+		esac
+		if [ "$sampled_peak_bytes" -le 0 ]; then
+			printf '%s\n' 'process-tree RSS sampling produced no positive sample' >&2
+			exit 1
+		fi
+		peak_bytes=$reported_peak_bytes
+		if [ "$sampled_peak_bytes" -gt "$peak_bytes" ]; then
+			peak_bytes=$sampled_peak_bytes
 		fi
 		if [ "$peak_bytes" -gt "$budget_bytes" ]; then
 			printf '%s peak RSS budget exceeded: %s bytes > %s bytes\n' \
@@ -288,7 +427,7 @@ fi
 if [ -n "$typed_revision" ]; then
 	printf 'metadata,typed_revision,%s\n' "$typed_revision"
 fi
-printf '%s\n' 'workload,sample,elapsed_seconds,peak_rss_bytes'
+printf '%s\n' 'workload,sample,elapsed_seconds,peak_process_tree_rss_bytes'
 measure formatter-check "$format_budget_bytes" "$format_budget_seconds" \
 	"$task_root/glippy" fmt --check "$format_root"
 measure typed-lint "$typed_budget_bytes" "$typed_budget_seconds" \

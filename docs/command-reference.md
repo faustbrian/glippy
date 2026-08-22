@@ -1,9 +1,9 @@
 # Command Reference
 
-Glippy v0.3 uses its intended product and binary identity. This reference
+Glippy v0.5 uses its intended product and binary identity. This reference
 documents the implemented command surface; it is not an installation contract
-or release announcement. The source repository has not been remotely renamed
-and no v0.2 tag or release is authorized before maintainer review.
+or release announcement. No tag or release is authorized until the corrected
+candidate passes its complete verification and independent-review gates.
 
 ## Command Summary
 
@@ -209,8 +209,9 @@ source-free location line plus notes, help, and fix names for log-oriented
 human use. JSON uses Glippy's schema-version-1 envelope; GitHub emits
 workflow-command annotations; SARIF emits SARIF 2.1.0. Machine reporters omit
 source snippets and replacement text.
-See the [machine output reference](machine-output.md) for field, range,
-completeness, ordering, and fix-provenance semantics.
+Combined `check --reporter=json` uses schema version 2; other diagnostic JSON
+uses schema version 1. See the [machine output reference](machine-output.md) for
+field, range, completeness, ordering, and fix-provenance semantics.
 
 ### Execution statistics
 

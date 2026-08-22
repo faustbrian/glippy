@@ -114,3 +114,25 @@ authority. The compact
 [`pkg/prompts` adoption review](prompts-adoption-review-2026-08-12.md)
 identifies the exact decision, representative layout classes, highest-value
 files, and current reproduction evidence.
+
+## Delivery Refresh, 2026-08-21
+
+The approved migration was later refreshed onto the evolving module and
+integrated as `5eb1b997c2242b456b5f5318547269e5eeca2219` on
+`faustbrian/golib` `main`. That immutable tree contains 90 Go files under
+`pkg/prompts`. The final integration commit changes 45 module files, including
+42 Go files; the complete tree delta from the original approved baseline
+`8c9c1e7` changes 92 module files, including 82 Go files, because it also
+contains intervening module behavior and test work. Those counts MUST NOT be
+described as one formatter-only patch.
+
+The module Makefile at the integrated revision pins Glippy candidate
+`724d8a26eec0`, makes `format-check` part of the canonical `check` target, and
+removes gofmt as competing formatter authority. The refreshed complete-package
+gate was reported historically but has no retained immutable result artifact,
+so it is not current release evidence. The exact source inventory, remote-main
+ancestry, integrated policy, and verification boundary are recorded in the
+[delivery evidence](prompts-adoption-delivery-evidence-2026-08-22.md). The
+integration supersedes this document's earlier unpushed `d6b0fba8` delivery
+boundary; the original layout decision and its executable evidence remain the
+human-approval record.

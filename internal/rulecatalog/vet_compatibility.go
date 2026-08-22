@@ -12,7 +12,6 @@ import (
 	"golang.org/x/tools/go/analysis/passes/structtag"
 	"golang.org/x/tools/go/analysis/passes/testinggoroutine"
 	"golang.org/x/tools/go/analysis/passes/unmarshal"
-	"golang.org/x/tools/go/analysis/passes/waitgroup"
 
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/rules"
@@ -236,35 +235,7 @@ func invalidUnmarshalTargetRule() (rules.Rule, error) {
 }
 
 func waitgroupMisuseRule() (rules.Rule, error) {
-	return adaptStandardAnalyzer(
-		waitgroup.Analyzer,
-		rules.Metadata{
-			ID: "waitgroup-misuse",
-			Summary: "detects WaitGroup.Add calls made inside launched goroutines",
-			Documentation: "Calling WaitGroup.Add from inside the goroutine being counted races with Wait: the waiting goroutine may observe a zero count and return before Add executes. The count must be incremented before launching the goroutine. Glippy adapts the standard Go waitgroup analyzer.",
-			DefaultSeverity: rules.SeverityWarn,
-			Presets: []rules.Preset{rules.PresetCorrectness},
-			MinimumGoVersion: "1.25",
-			Requirement: rules.RequireTypes,
-			NodeInterests: []rules.NodeKind{rules.NodeFile},
-			Categories: []rules.Category{
-				rules.CategoryCorrectness,
-				rules.CategorySafety,
-			},
-			KnownLimitations: []string{
-				"The analyzer reports the direct pattern where WaitGroup.Add is the first statement of a newly launched function literal.",
-				"More indirect counter ownership and synchronization protocols require separate concurrency analysis.",
-			},
-			Examples: []rules.Example{
-				{
-					Title: "Increment before launching",
-					Incorrect: "go func() { wg.Add(1); defer wg.Done() }()",
-					Correct: "wg.Add(1)\ngo func() { defer wg.Done() }()",
-				},
-			},
-		},
-		nil,
-	)
+	return rules.NewWaitGroupMisuseRule(), nil
 }
 
 func testingGoroutineCallRule() (rules.Rule, error) {

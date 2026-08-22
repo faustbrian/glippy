@@ -547,6 +547,395 @@ func TestServeCancelsSupersededAnalysisAndPublishesOnlyNewestVersion(t *testing.
 	}
 }
 
+func TestServeBoundsNonCooperativeSupersededAnalysis(t *testing.T) {
+	t.Parallel()
+
+	backend := &nonCooperativeAnalysisBackend{
+		started: make(chan int, 8),
+		release: make(chan struct{}, 8),
+	}
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": "file:///project/source.go",
+					"version": 1,
+					"text": "package first\n",
+				},
+			},
+		},
+	)
+	if version := receiveVersion(t, backend.started); version != 1 {
+		t.Fatalf("first analysis version = %d, want 1", version)
+	}
+	for version := 2; version <= 4; version++ {
+		writeLSPMessages(
+			t,
+			writer,
+			changedDocumentMessage(
+				version,
+				fmt.Sprintf("package version%d\n", version),
+			),
+		)
+		barrierID := version + 10
+		writeLSPMessages(
+			t,
+			writer,
+			map[string]any{
+				"jsonrpc": "2.0",
+				"id": barrierID,
+				"method": "textDocument/formatting",
+				"params": map[string]any{
+					"textDocument": map[string]any{
+						"uri": "file:///project/source.go",
+					},
+				},
+			},
+		)
+		if !output.waitContains(ctx, []byte(fmt.Sprintf(`"id":%d`, barrierID))) {
+			t.Fatalf("formatting barrier response missing: %s", output.bytes())
+		}
+	}
+	select {
+	case version := <-backend.started:
+		t.Fatalf(
+			"superseded analysis version %d started before the active backend returned",
+			version,
+		)
+	default:
+	}
+	backend.release <- struct{}{}
+	if version := receiveVersion(t, backend.started); version != 4 {
+		t.Fatalf("next analysis version = %d, want latest version 4", version)
+	}
+	backend.release <- struct{}{}
+	if !output.waitContains(ctx, []byte(`"version":4`)) {
+		t.Fatalf("latest diagnostics were not published: %s", output.bytes())
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 5, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestServeStandaloneBackendRefreshesEveryOpenDocumentAfterSupersession(t *testing.T) {
+	t.Parallel()
+
+	backend := &supersededStandaloneBackend{
+		firstStarted: make(chan struct{}),
+		analyzed: make(chan string, 4),
+	}
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		openDocumentMessage("file:///project/a.go", 1, "package sample\n"),
+	)
+	select {
+	case <-backend.firstStarted:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for first standalone analysis")
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		openDocumentMessage("file:///project/b.go", 1, "package sample\n"),
+	)
+	for _, path := range []string{"/project/a.go", "/project/b.go"} {
+		select {
+		case got := <-backend.analyzed:
+			if got != path {
+				t.Fatalf("standalone analysis path = %q, want %q", got, path)
+			}
+		case <-ctx.Done():
+			t.Fatalf("timed out waiting for standalone analysis of %q", path)
+		}
+	}
+	if !output.waitContains(ctx, []byte(`"uri":"file:///project/a.go"`)) ||
+		!output.waitContains(ctx, []byte(`"uri":"file:///project/b.go"`)) {
+		t.Fatalf("standalone diagnostics omitted an open document: %s", output.bytes())
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestServeStandaloneBackendRefreshesRemainingDocumentAfterClose(t *testing.T) {
+	t.Parallel()
+
+	backend := &closeStandaloneBackend{
+		started: make(chan int, 4),
+		analyzed: make(chan string, 1),
+	}
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		openDocumentMessage("file:///project/a.go", 1, "package sample\n"),
+	)
+	if call := receiveVersion(t, backend.started); call != 1 {
+		t.Fatalf("first standalone analysis call = %d, want 1", call)
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		openDocumentMessage("file:///project/b.go", 1, "package sample\n"),
+	)
+	if call := receiveVersion(t, backend.started); call != 2 {
+		t.Fatalf("multi-document analysis call = %d, want 2", call)
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didClose",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": "file:///project/b.go"},
+			},
+		},
+	)
+	if call := receiveVersion(t, backend.started); call != 3 {
+		t.Fatalf("remaining-document analysis call = %d, want 3", call)
+	}
+	select {
+	case path := <-backend.analyzed:
+		if path != "/project/a.go" {
+			t.Fatalf("remaining standalone analysis path = %q", path)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for remaining standalone analysis")
+	}
+	if !output.waitContains(ctx, []byte(`"uri":"file:///project/a.go"`)) ||
+		!output.waitContains(ctx, []byte("standalone-close-refresh")) {
+		t.Fatalf("remaining document diagnostics were not published: %s", output.bytes())
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestServeSerializesWatchedInvalidationAfterActiveAnalysis(t *testing.T) {
+	t.Parallel()
+
+	backend := &serialWatchedWorkspaceBackend{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+		returned: make(chan struct{}),
+		changed: make(chan struct{}, 1),
+		refreshed: make(chan struct{}, 1),
+	}
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		openDocumentMessage("file:///project/source.go", 1, "package sample\n"),
+	)
+	select {
+	case <-backend.started:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for active workspace analysis")
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "workspace/didChangeWatchedFiles",
+			"params": map[string]any{
+				"changes": []any{
+					map[string]any{
+						"uri": "file:///project/helper.go",
+						"type": 2,
+					},
+				},
+			},
+		},
+	)
+	overlapped := false
+	select {
+	case <-backend.changed:
+		overlapped = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(backend.release)
+	select {
+	case <-backend.returned:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for canceled analysis to return")
+	}
+	select {
+	case <-backend.changed:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for serialized watched invalidation")
+	}
+	select {
+	case <-backend.refreshed:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for refreshed workspace analysis")
+	}
+	if overlapped {
+		t.Fatal("watched invalidation overlapped active analysis")
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestServeDiscardsPendingAnalysisBeforeShutdownCompletes(t *testing.T) {
+	t.Parallel()
+
+	backend := &nonCooperativeAnalysisBackend{
+		started: make(chan int, 4),
+		release: make(chan struct{}, 4),
+	}
+	defer close(backend.release)
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	output := newWaitBuffer()
+	serveDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	go func() {
+		serveDone <- lsp.Serve(ctx, reader, output, backend)
+	}()
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+		map[string]any{
+			"jsonrpc": "2.0",
+			"method": "textDocument/didOpen",
+			"params": map[string]any{
+				"textDocument": map[string]any{
+					"uri": "file:///project/source.go",
+					"version": 1,
+					"text": "package first\n",
+				},
+			},
+		},
+	)
+	if version := receiveVersion(t, backend.started); version != 1 {
+		t.Fatalf("first analysis version = %d, want 1", version)
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		changedDocumentMessage(2, "package second\n"),
+		map[string]any{
+			"jsonrpc": "2.0",
+			"id": 2,
+			"method": "textDocument/formatting",
+			"params": map[string]any{
+				"textDocument": map[string]any{"uri": "file:///project/source.go"},
+			},
+		},
+	)
+	if !output.waitContains(ctx, []byte(`"id":2`)) {
+		t.Fatalf("formatting barrier response missing: %s", output.bytes())
+	}
+	writeLSPMessages(
+		t,
+		writer,
+		map[string]any{"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	)
+	select {
+	case version := <-backend.started:
+		t.Fatalf("pending analysis version %d started during shutdown", version)
+	case err := <-serveDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !output.waitContains(ctx, []byte(`"id":3`)) {
+			t.Fatalf("shutdown response missing: %s", output.bytes())
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("shutdown waited for the non-cooperative analysis")
+	}
+}
+
 func TestServeRejectsQueuedCodeActionWhenAnalysisIsSuperseded(t *testing.T) {
 	t.Parallel()
 
@@ -1181,7 +1570,7 @@ func TestServeReanalyzesOpenWorkspaceAfterWatchedFilesChange(t *testing.T) {
 
 	backend := &watchedWorkspaceBackend{
 		analyses: make(chan int, 2),
-		changes: make(chan []string, 1),
+		changes: make(chan lsp.WorkspaceFileChanges, 1),
 	}
 	reader, writer := io.Pipe()
 	defer reader.Close()
@@ -1238,10 +1627,10 @@ func TestServeReanalyzesOpenWorkspaceAfterWatchedFilesChange(t *testing.T) {
 		},
 	)
 	select {
-	case paths := <-backend.changes:
+	case changes := <-backend.changes:
 		want := []string{"/project/helper.go", "/project/removed.go", "/project/z.go"}
-		if !slices.Equal(paths, want) {
-			t.Fatalf("watched paths = %q", paths)
+		if changes.InvalidateAll || !slices.Equal(changes.Paths, want) {
+			t.Fatalf("watched changes = %#v", changes)
 		}
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for watched-file invalidation")
@@ -1351,6 +1740,138 @@ type supersededAnalysisBackend struct {
 	canceled chan int
 }
 
+type nonCooperativeAnalysisBackend struct {
+	started chan int
+	release chan struct{}
+}
+
+type supersededStandaloneBackend struct {
+	firstStarted chan struct{}
+	analyzed chan string
+	once sync.Once
+}
+
+type closeStandaloneBackend struct {
+	mu sync.Mutex
+	calls int
+	started chan int
+	analyzed chan string
+}
+
+func (b *closeStandaloneBackend) Analyze(
+	ctx context.Context,
+	document lsp.Document,
+) (lsp.Analysis, error) {
+	b.mu.Lock()
+	b.calls++
+	call := b.calls
+	b.mu.Unlock()
+	b.started <- call
+	if call < 3 {
+		<-ctx.Done()
+		return lsp.Analysis{}, ctx.Err()
+	}
+	b.analyzed <- document.Path
+	file, err := source.Load(document.Path, document.Text)
+	if err != nil {
+		return lsp.Analysis{}, err
+	}
+	return lsp.Analysis{
+		File: file,
+		Diagnostics: []lsp.Diagnostic{
+			{
+				Severity: lsp.SeverityWarning,
+				Code: "standalone-close-refresh",
+				Message: "standalone-close-refresh",
+			},
+		},
+	}, nil
+}
+
+func (*closeStandaloneBackend) CodeActions(
+	context.Context,
+	lsp.Document,
+	lsp.Analysis,
+	source.Range,
+) ([]lsp.CodeAction, error) {
+	return nil, nil
+}
+
+func (*closeStandaloneBackend) Format(context.Context, lsp.Document) ([]byte, error) {
+	return nil, nil
+}
+
+func (b *supersededStandaloneBackend) Analyze(
+	ctx context.Context,
+	document lsp.Document,
+) (lsp.Analysis, error) {
+	first := false
+	b.once.Do(
+		func() {
+			first = true
+			close(b.firstStarted)
+		},
+	)
+	if first {
+		<-ctx.Done()
+		return lsp.Analysis{}, ctx.Err()
+	}
+	b.analyzed <- document.Path
+	file, err := source.Load(document.Path, document.Text)
+	if err != nil {
+		return lsp.Analysis{}, err
+	}
+	return lsp.Analysis{
+		File: file,
+		Diagnostics: []lsp.Diagnostic{
+			{
+				Severity: lsp.SeverityWarning,
+				Code: "standalone-refresh",
+				Message: "standalone-refresh",
+			},
+		},
+	}, nil
+}
+
+func (*supersededStandaloneBackend) CodeActions(
+	context.Context,
+	lsp.Document,
+	lsp.Analysis,
+	source.Range,
+) ([]lsp.CodeAction, error) {
+	return nil, nil
+}
+
+func (*supersededStandaloneBackend) Format(context.Context, lsp.Document) ([]byte, error) {
+	return nil, nil
+}
+
+func (b *nonCooperativeAnalysisBackend) Analyze(
+	_ context.Context,
+	document lsp.Document,
+) (lsp.Analysis, error) {
+	b.started <- document.Version
+	<-b.release
+	file, err := source.Load(document.Path, document.Text)
+	if err != nil {
+		return lsp.Analysis{}, err
+	}
+	return lsp.Analysis{File: file}, nil
+}
+
+func (*nonCooperativeAnalysisBackend) CodeActions(
+	context.Context,
+	lsp.Document,
+	lsp.Analysis,
+	source.Range,
+) ([]lsp.CodeAction, error) {
+	return nil, nil
+}
+
+func (*nonCooperativeAnalysisBackend) Format(context.Context, lsp.Document) ([]byte, error) {
+	return nil, errors.New("unexpected format")
+}
+
 type staleWorkspaceBackend struct {
 	started chan struct{}
 	release chan struct{}
@@ -1363,8 +1884,72 @@ type delayedAnalysisBackend struct {
 
 type watchedWorkspaceBackend struct {
 	analyses chan int
-	changes chan []string
+	changes chan lsp.WorkspaceFileChanges
 	count int
+}
+
+type serialWatchedWorkspaceBackend struct {
+	started chan struct{}
+	release chan struct{}
+	returned chan struct{}
+	changed chan struct{}
+	refreshed chan struct{}
+	mu sync.Mutex
+	analyses int
+}
+
+func (*serialWatchedWorkspaceBackend) Analyze(context.Context, lsp.Document) (lsp.Analysis, error) {
+	return lsp.Analysis{}, errors.New("unexpected single-document analysis")
+}
+
+func (b *serialWatchedWorkspaceBackend) AnalyzeWorkspace(
+	ctx context.Context,
+	documents []lsp.Document,
+) ([]lsp.WorkspaceAnalysis, error) {
+	b.mu.Lock()
+	b.analyses++
+	analysis := b.analyses
+	b.mu.Unlock()
+	if analysis == 1 {
+		close(b.started)
+		<-b.release
+		close(b.returned)
+		return nil, ctx.Err()
+	}
+	results := make([]lsp.WorkspaceAnalysis, len(documents))
+	for index, document := range documents {
+		file, err := source.Load(document.Path, document.Text)
+		if err != nil {
+			return nil, err
+		}
+		results[index] = lsp.WorkspaceAnalysis{
+			Document: document,
+			Analysis: lsp.Analysis{File: file},
+		}
+	}
+	b.refreshed <- struct{}{}
+	return results, nil
+}
+
+func (b *serialWatchedWorkspaceBackend) WorkspaceFilesChanged(
+	context.Context,
+	lsp.WorkspaceFileChanges,
+) error {
+	b.changed <- struct{}{}
+	return nil
+}
+
+func (*serialWatchedWorkspaceBackend) CodeActions(
+	context.Context,
+	lsp.Document,
+	lsp.Analysis,
+	source.Range,
+) ([]lsp.CodeAction, error) {
+	return nil, nil
+}
+
+func (*serialWatchedWorkspaceBackend) Format(context.Context, lsp.Document) ([]byte, error) {
+	return nil, nil
 }
 
 func (b *supersededAnalysisBackend) Analyze(
@@ -1494,8 +2079,12 @@ func (b *watchedWorkspaceBackend) AnalyzeWorkspace(
 	return results, nil
 }
 
-func (b *watchedWorkspaceBackend) WorkspaceFilesChanged(_ context.Context, paths []string) error {
-	b.changes <- append([]string(nil), paths...)
+func (b *watchedWorkspaceBackend) WorkspaceFilesChanged(
+	_ context.Context,
+	changes lsp.WorkspaceFileChanges,
+) error {
+	changes.Paths = append([]string(nil), changes.Paths...)
+	b.changes <- changes
 	return nil
 }
 
@@ -1582,6 +2171,20 @@ func changedDocumentMessage(version int, text string) map[string]any {
 	}
 }
 
+func openDocumentMessage(uri string, version int, text string) map[string]any {
+	return map[string]any{
+		"jsonrpc": "2.0",
+		"method": "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri": uri,
+				"version": version,
+				"text": text,
+			},
+		},
+	}
+}
+
 func writeLSPMessages(t *testing.T, writer io.Writer, messages ...map[string]any) {
 	t.Helper()
 	if _, err := writer.Write(framedMessages(t, messages...)); err != nil {
@@ -1616,7 +2219,7 @@ func (b *testBackend) Analyze(_ context.Context, document lsp.Document) (lsp.Ana
 	return result, nil
 }
 
-func (*testBackend) WorkspaceFilesChanged(context.Context, []string) error {
+func (*testBackend) WorkspaceFilesChanged(context.Context, lsp.WorkspaceFileChanges) error {
 	return nil
 }
 

@@ -432,18 +432,21 @@ func filterChangedPackageResult(scope *changed.Scope, result *analysis.PackageRe
 	if result == nil {
 		return errors.New("changed-code filtering requires a package result")
 	}
-	for index := range result.Files {
-		file, found := result.Sources.Lookup(result.Files[index].Path)
+	filtered := slices.Clone(result.Files)
+	for index := range filtered {
+		filtered[index].Diagnostics = slices.Clone(filtered[index].Diagnostics)
+		filtered[index].PreexistingDiagnostics = slices.Clone(
+			filtered[index].PreexistingDiagnostics,
+		)
+		file, found := result.Sources.Lookup(filtered[index].Path)
 		if !found {
-			return fmt.Errorf(
-				"changed-code source %q is missing",
-				result.Files[index].Path,
-			)
+			return fmt.Errorf("changed-code source %q is missing", filtered[index].Path)
 		}
-		if err := filterChangedResult(scope, file, &result.Files[index]); err != nil {
+		if err := filterChangedResult(scope, file, &filtered[index]); err != nil {
 			return err
 		}
 	}
+	result.Files = filtered
 	return nil
 }
 
@@ -871,14 +874,27 @@ func runLintPackageCheck(
 ) int {
 	result, err := runConfiguredPackageAnalysis(ctx, registry, task)
 	if err != nil {
-		return reportLintPackageFailure(
-			invocation,
-			stdout,
-			stderr,
-			packageAnalysisErrorExitCode(err),
-			result,
-			err,
-		)
+		exitCode := packageAnalysisErrorExitCode(err)
+		if baselineErr := applyConfiguredPackageBaselineMode(task, &result, registry, true);
+			baselineErr != nil {
+			exitCode = moreSevereExitCode(
+				exitCode,
+				lintBaselineErrorExitCode(baselineErr),
+			)
+			err = errors.Join(
+				err,
+				fmt.Errorf("apply baseline to partial analysis: %w", baselineErr),
+			)
+		}
+		if changedErr := filterChangedPackageResult(changedScope, &result);
+			changedErr != nil {
+			exitCode = moreSevereExitCode(exitCode, ExitInvalidInvocation)
+			err = errors.Join(
+				err,
+				fmt.Errorf("filter partial changed-code analysis: %w", changedErr),
+			)
+		}
+		return reportLintPackageFailure(invocation, stdout, stderr, exitCode, result, err)
 	}
 	if err := applyConfiguredPackageBaseline(task, &result, registry); err != nil {
 		return reportLintPackageFailure(
@@ -1019,6 +1035,16 @@ func applyConfiguredBaselines(
 	results []analysis.Result,
 	registry *rules.Registry,
 ) error {
+	return applyConfiguredBaselinesMode(tasks, inputs, results, registry, false)
+}
+
+func applyConfiguredBaselinesMode(
+	tasks []lintTask,
+	inputs []glippyreport.LintTextInput,
+	results []analysis.Result,
+	registry *rules.Registry,
+	incomplete bool,
+) error {
 	if len(tasks) != len(inputs) || len(tasks) != len(results) {
 		return errors.New("baseline inputs do not match lint results")
 	}
@@ -1084,6 +1110,7 @@ func applyConfiguredBaselines(
 			baseline.ApplyOptions{
 				ReportStale: current.policy.ReportStale,
 				ExpiryCutoff: current.policy.ExpiryCutoff,
+				Incomplete: incomplete,
 			},
 		)
 		if err != nil {
@@ -1119,6 +1146,15 @@ func applyConfiguredPackageBaseline(
 	result *analysis.PackageResult,
 	registry *rules.Registry,
 ) error {
+	return applyConfiguredPackageBaselineMode(task, result, registry, false)
+}
+
+func applyConfiguredPackageBaselineMode(
+	task lintPackageTask,
+	result *analysis.PackageResult,
+	registry *rules.Registry,
+	incomplete bool,
+) error {
 	if task.options.baseline.Path == "" {
 		return nil
 	}
@@ -1132,7 +1168,7 @@ func applyConfiguredPackageBaseline(
 		inputs = append(inputs, glippyreport.LintTextInput{File: file, Result: analyzed})
 		tasks = append(tasks, lintTask{root: task.root, options: task.options})
 	}
-	return applyConfiguredBaselines(tasks, inputs, result.Files, registry)
+	return applyConfiguredBaselinesMode(tasks, inputs, result.Files, registry, incomplete)
 }
 
 func prepareLintInputPlans(

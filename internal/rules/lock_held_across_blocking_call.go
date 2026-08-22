@@ -87,6 +87,7 @@ type lockKey struct {
 
 type lockValue struct {
 	states lockStateSet
+	guaranteedReadDepth uint8
 	deferred deferredLockOperation
 }
 
@@ -439,13 +440,24 @@ func mergeLockFlowState(existing *lockFlowState, incoming lockFlowState) bool {
 	for key, incomingValue := range incoming.values {
 		value := existing.values[key]
 		states := value.states | incomingValue.states
+		guaranteedReadDepth := uint8(0)
 		if value.states & lockStateUnknown != 0 ||
 			incomingValue.states & lockStateUnknown != 0 {
 			states = lockStateUnknown
+			guaranteedReadDepth = min(
+				lockValueGuaranteedReadDepth(value),
+				lockValueGuaranteedReadDepth(incomingValue),
+			)
 		}
 		deferred := mergeDeferredLockOperation(value.deferred, incomingValue.deferred)
-		if states != value.states || deferred != value.deferred {
-			existing.values[key] = lockValue{states: states, deferred: deferred}
+		if states != value.states ||
+			guaranteedReadDepth != value.guaranteedReadDepth ||
+			deferred != value.deferred {
+			existing.values[key] = lockValue{
+				states: states,
+				guaranteedReadDepth: guaranteedReadDepth,
+				deferred: deferred,
+			}
 			changed = true
 		}
 	}
@@ -491,6 +503,7 @@ func (b *lockAnalysisBuilder) transfer(state lockFlowState, node ast.Node) bool 
 				} else {
 					value := state.values[key]
 					value.states = lockStateUnknown
+					value.guaranteedReadDepth = 0
 					state.values[key] = value
 				}
 				return true
@@ -518,6 +531,7 @@ func (b *lockAnalysisBuilder) transfer(state lockFlowState, node ast.Node) bool 
 		if lockKeyEscapesInNode(b.ctx.Info(), node, key) {
 			value := state.values[key]
 			value.states = lockStateUnknown
+			value.guaranteedReadDepth = 0
 			if value.deferred.present {
 				value.deferred = deferredLockOperation{
 					ambiguous: true,
@@ -540,10 +554,17 @@ func (b *lockAnalysisBuilder) applyOperation(
 	switch operation {
 	case lockOperationLock:
 		value.states = lockStateWrite
+		value.guaranteedReadDepth = 0
 	case lockOperationReadLock:
-		value.states = acquireReadLockStates(value.states)
+		if value.states & lockStateUnknown != 0 {
+			if value.guaranteedReadDepth < 8 {
+				value.guaranteedReadDepth++
+			}
+		} else {
+			value.states = acquireReadLockStates(value.states)
+		}
 	case lockOperationUnlock, lockOperationReadUnlock:
-		states, invalid, reachable := releaseLockStates(value.states, operation)
+		updated, invalid, reachable := releaseLockValue(value, operation)
 		if invalid {
 			b.addIssue(
 				lockIssue{
@@ -560,14 +581,14 @@ func (b *lockAnalysisBuilder) applyOperation(
 		if !reachable {
 			return false
 		}
-		value.states = states
+		value = updated
 	}
 	state.values[key] = value
 	return true
 }
 
 func acquireReadLockStates(states lockStateSet) lockStateSet {
-	if states == 0 || states & lockStateUnknown != 0 {
+	if states == 0 {
 		return lockStateReadOne
 	}
 	if states & lockStateReadEight != 0 {
@@ -579,6 +600,49 @@ func acquireReadLockStates(states lockStateSet) lockStateSet {
 	}
 	result |= shiftReadLockStatesUp(states)
 	return result
+}
+
+func releaseLockValue(value lockValue, operation lockOperation) (lockValue, bool, bool) {
+	if value.states & lockStateUnknown != 0 {
+		if operation == lockOperationReadUnlock && value.guaranteedReadDepth > 0 {
+			value.guaranteedReadDepth--
+			return value, false, true
+		}
+		if operation == lockOperationUnlock && value.guaranteedReadDepth > 0 {
+			return lockValue{}, true, false
+		}
+		value.guaranteedReadDepth = 0
+		return value, false, true
+	}
+	states, invalid, reachable := releaseLockStates(value.states, operation)
+	value.states = states
+	value.guaranteedReadDepth = 0
+	return value, invalid, reachable
+}
+
+func lockValueGuaranteedReadDepth(value lockValue) uint8 {
+	if value.states & lockStateUnknown != 0 {
+		return value.guaranteedReadDepth
+	}
+	if value.states == 0 || value.states & (lockStateUnlocked | lockStateWrite) != 0 {
+		return 0
+	}
+	for depth, state := range
+		[]lockStateSet{
+			lockStateReadOne,
+			lockStateReadTwo,
+			lockStateReadThree,
+			lockStateReadFour,
+			lockStateReadFive,
+			lockStateReadSix,
+			lockStateReadSeven,
+			lockStateReadEight,
+		} {
+		if value.states & state != 0 {
+			return uint8(depth + 1)
+		}
+	}
+	return 0
 }
 
 func shiftReadLockStatesUp(states lockStateSet) lockStateSet {
@@ -662,8 +726,8 @@ func (b *lockAnalysisBuilder) returned(state lockFlowState, returned *ast.Return
 			continue
 		}
 		if value.deferred.present {
-			states, invalid, reachable := releaseLockStates(
-				value.states,
+			updated, invalid, reachable := releaseLockValue(
+				value,
 				value.deferred.operation,
 			)
 			if invalid {
@@ -682,11 +746,9 @@ func (b *lockAnalysisBuilder) returned(state lockFlowState, returned *ast.Return
 			if !reachable {
 				continue
 			}
-			value.states = states
+			value = updated
 		}
-		if value.states == 0 ||
-			value.states & lockStateUnknown != 0 ||
-			value.states & lockStateHeld == 0 {
+		if !lockValueDefinitelyHeld(value) {
 			continue
 		}
 		acquisition := b.latestAcquisition(key, returned.Pos())
@@ -735,9 +797,7 @@ func (b *lockAnalysisBuilder) heldLockAt(
 ) (lockKey, *ast.CallExpr, bool) {
 	for _, key := range b.keys {
 		value := state.values[key]
-		if value.states == 0 ||
-			value.states & lockStateUnknown != 0 ||
-			value.states & lockStateHeld == 0 {
+		if !lockValueDefinitelyHeld(value) {
 			continue
 		}
 		if b.latestAcquisition(key, position) == nil {
@@ -746,6 +806,13 @@ func (b *lockAnalysisBuilder) heldLockAt(
 		return key, b.unambiguousAcquisition(key, position), true
 	}
 	return lockKey{}, nil, false
+}
+
+func lockValueDefinitelyHeld(value lockValue) bool {
+	if value.states & lockStateUnknown != 0 {
+		return value.guaranteedReadDepth > 0
+	}
+	return value.states != 0 && value.states & lockStateHeld != 0
 }
 
 func (b *lockAnalysisBuilder) unambiguousAcquisition(key lockKey, before token.Pos) *ast.CallExpr {
@@ -784,6 +851,7 @@ func (b *lockAnalysisBuilder) applyLockInitialization(state lockFlowState, node 
 			}
 			value := state.values[key]
 			value.states = states
+			value.guaranteedReadDepth = 0
 			state.values[key] = value
 		}
 	case *ast.AssignStmt:
@@ -812,6 +880,7 @@ func (b *lockAnalysisBuilder) applyLockInitialization(state lockFlowState, node 
 				}
 			}
 			value.states = states
+			value.guaranteedReadDepth = 0
 			state.values[key] = value
 		}
 	}

@@ -28,7 +28,7 @@ deferred status is an explicit gate, not silent approval.
 | Deterministic lint baselines | ADR 0015; source-bound generation, stale and expiry policy, fix exclusion, and additive machine reporting implemented |
 | Generated, vendor, and testdata behavior | ADR 0007 and schema-version-1 configuration contract; default policies implemented |
 | Cache inputs and invalidation | ADR 0008 and cache specification; opt-in typed CLI ownership, canonical configuration identity, and bounded post-run pruning implemented |
-| Machine diagnostics | ADR 0011 and public machine-output reference; schema version 1 covers formatter, lint, fix, typed, combined-check, and opt-in statistics reports. ADR 0019 keeps observational cost outside ordinary diagnostics |
+| Machine diagnostics | ADR 0011 and public machine-output reference; schema version 1 covers formatter, lint, fix, typed, rule, and opt-in statistics reports, while combined check uses schema version 2. ADR 0019 keeps observational cost outside ordinary diagnostics |
 | Formatter diff output | ADR 0012; bounded text-only unified differences |
 | Editor architecture | ADR 0013; stdin/stdout formatter accepted, persistent service evidence-gated |
 | Extension mechanism | Syntax and audited typed `go/analysis` adapters plus ADR 0021 static semantic contracts implemented; no dynamic plugin API initially |

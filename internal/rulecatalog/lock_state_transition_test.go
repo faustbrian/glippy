@@ -83,7 +83,6 @@ func blockingAcrossBranch(mu *sync.Mutex, ready bool) {
 		index int
 	}{
 		{"lock-not-released", "return", 0},
-		{"unlock-without-lock", "value.mu.RUnlock()", 0},
 		{"unlock-without-lock", "mu.Unlock()", 1},
 		{"unlock-without-lock", "mu.Unlock()", 2},
 		{"unlock-without-lock", "mu.Unlock()", 4},
@@ -166,6 +165,12 @@ func boundedDeepReadLocks(mu *sync.RWMutex) {
 
 func unknownParameterState(mu *sync.Mutex) {
 	mu.Unlock()
+}
+
+func unknownReadDepth(mu *sync.RWMutex) {
+	mu.RLock()
+	mu.RUnlock()
+	mu.RUnlock()
 }
 
 type guarded struct {

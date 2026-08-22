@@ -45,9 +45,19 @@ jobs:
           export GOENV=off
           export GOTOOLCHAIN=local
 
-          go test ./... -count=1
-          go test -race ./... -count=1
-          go vet ./...
+          package_list="$task_root/packages.txt"
+          go list ./... > "$package_list"
+          mapfile -t packages < "$package_list"
+          test "${#packages[@]}" -gt 0
+          go test "${packages[@]}" -count=1
+          go test -race "${packages[@]}" -count=1
+          go vet "${packages[@]}"
           go mod tidy -diff
           go build -o "$task_root/glippy" ./cmd/glippy
+          go test -tags=glippy_runtime_probes -c \
+            -o "$task_root/benchmarks.test" ./benchmarks
+          go build -o "$task_root/process-group" ./benchmarks/cmd/process-group
+          sh -n benchmarks/editor-latency.sh
+          sh -n benchmarks/peak-rss.sh
+          sh -n benchmarks/process-tree-rss.sh
           "$task_root/glippy" check ./...

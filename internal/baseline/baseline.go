@@ -73,6 +73,7 @@ type Problem struct {
 type ApplyOptions struct {
 	ReportStale bool
 	ExpiryCutoff string
+	Incomplete bool
 }
 
 // AppliedFile separates visible diagnostics from baseline-owned diagnostics.
@@ -184,6 +185,7 @@ func Apply(
 	entries := canonicalEntries(document.Entries)
 	remaining := make(map[entryKey]int, len(entries))
 	expired := make(map[entryKey]bool, len(entries))
+	observed := make(map[entryKey]int, len(entries))
 	for _, entry := range entries {
 		key := keyFromEntry(entry)
 		if options.ExpiryCutoff != "" &&
@@ -218,6 +220,7 @@ func Apply(
 			if err != nil {
 				return ApplyResult{}, err
 			}
+			observed[key]++
 			if !expired[key] && remaining[key] > 0 {
 				remaining[key]--
 				applied.Baselined = append(applied.Baselined, diagnostic)
@@ -232,14 +235,14 @@ func Apply(
 			continue
 		}
 		key := keyFromEntry(entry)
-		if expired[key] {
+		if expired[key] && (!options.Incomplete || observed[key] > 0) {
 			result.Problems = append(
 				result.Problems,
 				Problem{Kind: ProblemExpired, Entry: entry, Remaining: entry.Count},
 			)
 			continue
 		}
-		if options.ReportStale && remaining[key] > 0 {
+		if options.ReportStale && !options.Incomplete && remaining[key] > 0 {
 			result.Problems = append(
 				result.Problems,
 				Problem{

@@ -36,6 +36,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewContextBackgroundRule(),
 		rules.NewContextTODORule(),
 		rules.NewDeferInLoopRule(),
+		rules.NewDeprecatedIOUtilRule(),
 		rules.NewDirectPanicRule(),
 		rules.NewDiscardedErrorRule(),
 		rules.NewEmptyBranchRule(),

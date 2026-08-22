@@ -8,7 +8,7 @@ Run it from a clean source revision with a task-owned disposable `GOCACHE`:
 
 ```text
 go run ./internal/releasecmd \
-  --version v0.2.0 \
+  --version v0.5.0 \
   --revision <complete Git object ID> \
   --output <new output directory>
 ```
@@ -46,15 +46,15 @@ unsupported. Darwin amd64 has Rosetta execution evidence and
 Linux amd64 has Docker architecture-emulation evidence; neither substitutes
 for a native amd64 host claim.
 
-For version `v0.2.0`, the builder emits:
+For version `v0.5.0`, the builder emits:
 
 ```text
-glippy_v0.2.0_darwin_amd64.tar.gz
-glippy_v0.2.0_darwin_arm64.tar.gz
-glippy_v0.2.0_linux_amd64.tar.gz
-glippy_v0.2.0_linux_arm64.tar.gz
-glippy_v0.2.0_manifest.json
-glippy_v0.2.0_checksums.txt
+glippy_v0.5.0_darwin_amd64.tar.gz
+glippy_v0.5.0_darwin_arm64.tar.gz
+glippy_v0.5.0_linux_amd64.tar.gz
+glippy_v0.5.0_linux_arm64.tar.gz
+glippy_v0.5.0_manifest.json
+glippy_v0.5.0_checksums.txt
 ```
 
 Each archive contains the executable `glippy`, the exact tracked 0BSD `LICENSE`,
@@ -126,7 +126,7 @@ gh attestation verify <artifact> --repo faustbrian/glippy
 The builder's checksum file remains the portable offline integrity surface;
 the signed attestation proves repository and workflow provenance when GitHub is
 available. GitHub Release archives and version-pinned `go install` are the
-intended v0.2 installation channels; package-manager metadata remains deferred.
+intended v0.5 installation channels; package-manager metadata remains deferred.
 A signed Git tag is not part of this artifact-provenance claim.
 
 The historical Gox `v0.1.0` release was built from reviewed commit `c0435d6` by

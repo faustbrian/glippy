@@ -38,7 +38,6 @@ behavior.
 | `timeformat` | `time-layout` |
 | `unmarshal` | `invalid-unmarshal-target` |
 | `unusedresult` | `unused-result` |
-| `waitgroup` | `waitgroup-misuse` |
 
 `bools` is adapted only for its contradictory-condition subset. Glippy owns
 other boolean rules under separate contracts and does not expose the complete
@@ -51,6 +50,7 @@ analyzer as one rule.
 | `loopclosure` | `loop-capture` is native and follows Glippy's supported-source-version and range contract. It is not promised to reproduce every `loopclosure` diagnostic. |
 | `lostcancel` | `context-cancel-leak` is native and uses shared CFG. Package-local summaries and exact standard-library terminal APIs are shared, but Glippy does not reproduce `lostcancel`'s complete transitive dependency-fact graph. |
 | `unreachable` | `unreachable-code` is native and preserves the upstream first-statement and run-despite-errors behavior while using Glippy's shared no-return analysis for selected local-source module helpers. |
+| `waitgroup` | `waitgroup-misuse` is native. It preserves the upstream direct positive-`Add` boundary only when an outside `Wait` proves the race, and adds bounded same-package helper tracing when stable exact parameter identity reaches that same waited-on receiver. |
 
 These native rules address the same defect families, but they are documented
 differences rather than analyzer-equivalence claims.

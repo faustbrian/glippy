@@ -161,8 +161,9 @@ release.
 Human wording MAY improve without a version change, but scripts MUST use the
 machine reporter and stable exit categories rather than parse human prose.
 The public [machine output reference](machine-output.md) defines the current
-schema-version-1 fields, values, range semantics, ordering, and completeness
-contract.
+schema-version-1 formatter, lint, rule, and statistics contracts plus the
+combined-check schema-version-2 fields, values, range semantics, ordering, and
+completeness contract.
 
 ## CLI And Platform Contracts
 
@@ -220,10 +221,10 @@ platform, and support change since the previous public release. The audit MUST
 bind its claims to the release candidate and current corpus evidence.
 
 A public tag or release MUST NOT be created until every pre-publication final
-acceptance gate passes and the maintainer personally verifies, reviews, and
-authorizes the exact candidate. Publication and provenance are themselves the
-final acceptance transaction; their successful verification advances a
-candidate from the 95% pre-tag state to 100%.
+acceptance gate passes and publication of the exact candidate is explicitly
+authorized. Publication and provenance are themselves the final acceptance
+transaction; their successful verification advances a candidate from the 95%
+pre-tag state to 100%.
 
 The normative architecture decision is
 [ADR 0008](decisions/0008-version-cache-and-compatibility-policy.md). The

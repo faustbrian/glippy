@@ -38,10 +38,12 @@ replacement, or cancellation prevented a complete outcome; counts
 in an incomplete summary must not be interpreted as totals for work that was
 not reached.
 
-Check file statuses are `unchanged` and `different`. Write statuses are
-`pending`, `unchanged`, `formatted`, `conflict`, `failed`, and
-`possibly_formatted`. A JSON output failure falls back to a concise text error
-on stderr and still discloses completed or possibly completed replacements.
+Formatter schema-version-1 check file statuses are `unchanged` and `different`.
+Write statuses are `pending`, `unchanged`, `formatted`, `conflict`, `failed`, and
+`possibly_formatted`. Formatter preparation failures may omit file records and
+set `summary.complete` to false. A JSON output failure falls back to a concise
+text error on stderr and still discloses completed or possibly completed
+replacements.
 
 Lint check results use the same versioned envelope with command `lint`, mode
 `check`, and a command-specific summary. The summary records analyzed files,
@@ -97,8 +99,14 @@ failure.
 
 The combined `check` command uses command and mode `check` and runs formatter
 comparison plus lint analysis over one immutable source snapshot per file.
-Its summary adds `formatting_differences`; each ordered file carries the exact
-source digest and format status `unchanged` or `different`. Diagnostics,
+Combined-check reports use schema version 2. Its summary adds
+`formatting_differences`; each ordered file carries the exact source digest and
+format status `pending`, `unchanged`, `different`, or `preexisting`. Compared
+with combined-check schema version 1, version 2 adds `pending` so incomplete
+results can preserve files whose analysis finished before formatting was
+reached. Consumers of version 1 must add that enum value before accepting
+version 2. Formatter, lint, fix, rule, and statistics reports remain at schema
+version 1. Diagnostics,
 suppression problems, and unused suppressions reuse the lint schema. The
 constructor rejects missing, extra, or mismatched format outcomes so a machine
 consumer never receives formatting and lint records from different source
@@ -117,8 +125,8 @@ construction, encoding, or output fails after a write, stderr names those
 paths. A stale replacement retains the original analyzed digest and adds a
 `stale-source` rejection for each coordinated fix.
 
-Existing version 1 fields and the text diagnostic grammar will not be silently
-repurposed.
+Existing version 1 and version 2 fields and the text diagnostic grammar will
+not be silently repurposed.
 
 ## Alternatives Rejected
 

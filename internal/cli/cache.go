@@ -18,6 +18,7 @@ import (
 	"github.com/faustbrian/glippy/internal/analysis"
 	"github.com/faustbrian/glippy/internal/cache"
 	"github.com/faustbrian/glippy/internal/rules"
+	"github.com/faustbrian/glippy/internal/source"
 	glippyversion "github.com/faustbrian/glippy/internal/version"
 )
 
@@ -51,19 +52,39 @@ func newPackageAnalysisError(exitCode int, format string, arguments ...any) erro
 }
 
 func packageAnalysisErrorExitCode(err error) int {
-	exitCode := exitCodeForError(ExitInternalError, err)
-	if exitCode == ExitCanceled {
-		return exitCode
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return ExitCanceled
 	}
-	var classified *packageAnalysisError
-	if errors.As(err, &classified) {
-		return classified.exitCode
+	return packageAnalysisTreeExitCode(err)
+}
+
+func packageAnalysisTreeExitCode(err error) int {
+	if err == nil {
+		return ExitSuccess
 	}
-	var pathError *os.PathError
-	if errors.As(err, &pathError) {
+	switch current := err.(type) {
+	case *packageAnalysisError:
+		return current.exitCode
+	case *os.PathError:
 		return ExitFilesystemError
+	case interface {
+		Unwrap() []error
+	}:
+		exitCode := ExitSuccess
+		for _, child := range current.Unwrap() {
+			exitCode = moreSevereExitCode(exitCode, packageAnalysisTreeExitCode(child))
+		}
+		return exitCode
+	case interface {
+		Unwrap() error
+	}:
+		return packageAnalysisTreeExitCode(current.Unwrap())
+	default:
+		if errors.Is(err, source.ErrTooLarge) {
+			return ExitSourceError
+		}
+		return ExitInternalError
 	}
-	return exitCode
 }
 
 func runPackageAnalysis(

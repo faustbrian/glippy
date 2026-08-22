@@ -127,8 +127,9 @@ func TestDefaultRegistryDocumentsIdenticalBranches(t *testing.T) {
 		metadata.DefaultSeverity != rules.SeverityWarn ||
 		metadata.RunOnGenerated ||
 		len(metadata.Fixes) != 0 ||
-		len(metadata.Presets) != 1 ||
-		metadata.Presets[0] != rules.PresetSuspicious {
+		len(metadata.Presets) != 2 ||
+		metadata.Presets[0] != rules.PresetSuspicious ||
+		metadata.Presets[1] != rules.PresetPedantic {
 		t.Fatalf("metadata = %#v, found = %v", metadata, found)
 	}
 }

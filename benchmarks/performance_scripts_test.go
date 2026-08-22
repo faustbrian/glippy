@@ -1,3 +1,5 @@
+//go:build glippy_runtime_probes
+
 package benchmarks_test
 
 import (
@@ -150,6 +152,13 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 test -n "$output"
+case "$output" in
+	*/process-group)
+		printf '%s\n' '#!/bin/sh' 'exec "$@"' >"$output"
+		chmod +x "$output"
+		exit 0
+		;;
+esac
 cat >"$output" <<'SCRIPT'
 #!/bin/sh
 case "${1:-}" in
@@ -172,6 +181,8 @@ SCRIPT
 chmod +x "$output"
 	`,
 	)
+	fakeTreeRSS := filepath.Join(toolDirectory, "tree-rss")
+	writeExecutable(t, fakeTreeRSS, "#!/bin/sh\nprintf '%s\\n' 2048\n")
 	formatRoot := t.TempDir()
 	resolvedTypedRoot, err := filepath.EvalSymlinks(formatRoot)
 	if err != nil {
@@ -287,6 +298,7 @@ chmod +x "$output"
 					"FAKE_GLIPPY_TYPED_OUTPUT=" + test.typedOutput,
 					"GLIPPY_PEAK_RSS_TYPED_OUTPUT_SHA256=" +
 						test.typedOutputSHA256,
+					"GLIPPY_PROCESS_TREE_RSS_COMMAND=" + fakeTreeRSS,
 				)
 				output, err := command.CombinedOutput()
 				if (err != nil) != test.wantError {
@@ -472,6 +484,13 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 test -n "$output"
+case "$output" in
+	*/process-group)
+		printf '%s\n' '#!/bin/sh' 'exec "$@"' >"$output"
+		chmod +x "$output"
+		exit 0
+		;;
+esac
 printf '#!/bin/sh\nexit 1\n' >"$output"
 chmod +x "$output"
 `,
@@ -492,6 +511,8 @@ done
 exit 1
 `,
 	)
+	fakeTreeRSS := filepath.Join(toolDirectory, "tree-rss")
+	writeExecutable(t, fakeTreeRSS, "#!/bin/sh\nprintf '%s\\n' 1024\n")
 
 	command := exec.Command("sh", "peak-rss.sh")
 	command.Dir = "."
@@ -503,6 +524,7 @@ exit 1
 		"GLIPPY_PEAK_RSS_FORMAT_BUDGET_BYTES=2147483648",
 		"GLIPPY_PEAK_RSS_FORMAT_BUDGET_SECONDS=15",
 		"GLIPPY_TIME_COMMAND=" + fakeTime,
+		"GLIPPY_PROCESS_TREE_RSS_COMMAND=" + fakeTreeRSS,
 		"FAKE_TIME_ELAPSED_SECONDS=15.500",
 		"FAKE_TIME_PEAK_BYTES=1024",
 	)
@@ -537,6 +559,13 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 test -n "$output"
+case "$output" in
+	*/process-group)
+		printf '%s\n' '#!/bin/sh' 'exec "$@"' >"$output"
+		chmod +x "$output"
+		exit 0
+		;;
+esac
 printf '#!/bin/sh\nexit 1\n' >"$output"
 chmod +x "$output"
 `,
@@ -547,14 +576,8 @@ chmod +x "$output"
 		fakeTime,
 		`#!/bin/sh
 set -eu
-peak=1024
-for argument in "$@"; do
-	if [ "$argument" = "lint" ]; then
-		peak=2147483649
-	fi
-done
 printf '0.001 real 0.000 user 0.000 sys\n' >&2
-printf '%s maximum resident set size\n' "$peak" >&2
+printf '1024 maximum resident set size\n' >&2
 for argument in "$@"; do
 	if [ "$argument" = "true" ]; then
 		exit 0
@@ -563,6 +586,94 @@ done
 exit 1
 `,
 	)
+	fakeTreeRSS := filepath.Join(toolDirectory, "tree-rss")
+	writeExecutable(t, fakeTreeRSS, "#!/bin/sh\nset -eu\nprintf '%s\\n' 2147483649\n")
+
+	command := exec.Command("sh", "peak-rss.sh")
+	command.Dir = "."
+	command.Env = append(
+		os.Environ(),
+		"PATH=" + toolDirectory + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"GLIPPY_PEAK_RSS_RUNS=1",
+		"GLIPPY_PEAK_RSS_FORMAT_ROOT=" + t.TempDir(),
+		"GLIPPY_PEAK_RSS_FORMAT_BUDGET_BYTES=4294967296",
+		"GLIPPY_TIME_COMMAND=" + fakeTime,
+		"GLIPPY_PROCESS_TREE_RSS_COMMAND=" + fakeTreeRSS,
+	)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatalf("peak-rss.sh succeeded, output = %q", output)
+	}
+	want := "typed-lint peak RSS budget exceeded: 2147483649 bytes > 2147483648 bytes"
+	if !strings.Contains(string(output), want) {
+		t.Fatalf("peak-rss.sh output = %q, want %q", output, want)
+	}
+}
+
+func TestPeakRSSProbeFailsWhenProcessSnapshotFailsAsCommandExits(t *testing.T) {
+	t.Parallel()
+
+	toolDirectory := t.TempDir()
+	writeExecutable(
+		t,
+		filepath.Join(toolDirectory, "go"),
+		`#!/bin/sh
+set -eu
+case "$*" in
+	*' mod download') exit 0 ;;
+esac
+output=
+while [ "$#" -gt 0 ]; do
+	if [ "$1" = "-o" ]; then
+		output=$2
+		break
+	fi
+	shift
+done
+test -n "$output"
+case "$output" in
+	*/process-group)
+		printf '%s\n' '#!/bin/sh' 'exec "$@"' >"$output"
+		chmod +x "$output"
+		exit 0
+		;;
+esac
+printf '#!/bin/sh\nexit 1\n' >"$output"
+chmod +x "$output"
+`,
+	)
+	fakeTime := filepath.Join(toolDirectory, "time")
+	writeExecutable(
+		t,
+		fakeTime,
+		`#!/bin/sh
+set -eu
+printf '0.001 real 0.000 user 0.000 sys\n' >&2
+printf '1024 maximum resident set size\n' >&2
+for argument in "$@"; do
+	if [ "$argument" = "true" ]; then
+		exit 0
+	fi
+done
+exit 1
+`,
+	)
+	fakeTreeRSS := filepath.Join(toolDirectory, "tree-rss")
+	writeExecutable(
+		t,
+		fakeTreeRSS,
+		`#!/bin/sh
+set -eu
+if [ ! -e "$FAKE_TREE_STATE" ]; then
+	touch "$FAKE_TREE_STATE"
+	printf '%s\n' 1024
+	exit 0
+fi
+while kill -0 "$1" 2>/dev/null; do sleep 0.001; done
+exit 3
+`,
+	)
+	fakeTreeState := filepath.Join(toolDirectory, "tree-state")
 
 	command := exec.Command("sh", "peak-rss.sh")
 	command.Dir = "."
@@ -572,14 +683,206 @@ exit 1
 		"GLIPPY_PEAK_RSS_RUNS=1",
 		"GLIPPY_PEAK_RSS_FORMAT_ROOT=" + t.TempDir(),
 		"GLIPPY_TIME_COMMAND=" + fakeTime,
+		"GLIPPY_PROCESS_TREE_RSS_COMMAND=" + fakeTreeRSS,
+		"FAKE_TREE_STATE=" + fakeTreeState,
 	)
 	output, err := command.CombinedOutput()
 	if err == nil {
 		t.Fatalf("peak-rss.sh succeeded, output = %q", output)
 	}
-	want := "typed-lint peak RSS budget exceeded: 2147483649 bytes > 2147483648 bytes"
-	if !strings.Contains(string(output), want) {
+	if want := "process-tree RSS sampling failed"; !strings.Contains(string(output), want) {
 		t.Fatalf("peak-rss.sh output = %q, want %q", output, want)
+	}
+}
+
+func TestPeakRSSProbeRejectsMalformedTimeEvidence(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range
+		[]struct {
+			name string
+			mode string
+			elapsed string
+			peak string
+		}{
+			{
+				name: "darwin elapsed",
+				mode: "darwin",
+				elapsed: "not-a-duration",
+				peak: "1024",
+			},
+			{name: "darwin peak", mode: "darwin", elapsed: "0.001", peak: "not-bytes"},
+			{
+				name: "gnu elapsed",
+				mode: "gnu",
+				elapsed: "0:not-a-duration",
+				peak: "1024",
+			},
+			{name: "gnu peak", mode: "gnu", elapsed: "0:00.001", peak: "not-kbytes"},
+		} {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				toolDirectory := t.TempDir()
+				writeExecutable(
+					t,
+					filepath.Join(toolDirectory, "go"),
+					`#!/bin/sh
+set -eu
+case "$*" in
+	*' mod download') exit 0 ;;
+esac
+output=
+while [ "$#" -gt 0 ]; do
+	if [ "$1" = "-o" ]; then output=$2; break; fi
+	shift
+done
+test -n "$output"
+case "$output" in
+	*/process-group)
+		printf '%s\n' '#!/bin/sh' 'exec "$@"' >"$output"
+		chmod +x "$output"
+		exit 0
+		;;
+esac
+printf '#!/bin/sh\nexit 1\n' >"$output"
+chmod +x "$output"
+`,
+				)
+				fakeTime := filepath.Join(toolDirectory, "time")
+				writeExecutable(
+					t,
+					fakeTime,
+					`#!/bin/sh
+set -eu
+if [ "$FAKE_TIME_MODE" = gnu ]; then
+	if [ "$1" = -l ]; then exit 0; fi
+	printf 'Elapsed (wall clock) time (h:mm:ss or m:ss): %s\n' \
+		"$FAKE_TIME_ELAPSED_SECONDS" >&2
+	printf 'Maximum resident set size (kbytes): %s\n' "$FAKE_TIME_PEAK_BYTES" >&2
+else
+	printf '%s real 0.000 user 0.000 sys\n' "$FAKE_TIME_ELAPSED_SECONDS" >&2
+	printf '%s maximum resident set size\n' "$FAKE_TIME_PEAK_BYTES" >&2
+fi
+for argument in "$@"; do
+	if [ "$argument" = "true" ]; then exit 0; fi
+done
+exit 1
+`,
+				)
+				fakeTreeRSS := filepath.Join(toolDirectory, "tree-rss")
+				writeExecutable(t, fakeTreeRSS, "#!/bin/sh\nprintf '%s\\n' 1024\n")
+				command := exec.Command("sh", "peak-rss.sh")
+				command.Dir = "."
+				command.Env = append(
+					os.Environ(),
+					"PATH=" +
+						toolDirectory +
+						string(os.PathListSeparator) +
+						os.Getenv("PATH"),
+					"GLIPPY_PEAK_RSS_RUNS=1",
+					"GLIPPY_PEAK_RSS_FORMAT_ROOT=" + t.TempDir(),
+					"GLIPPY_TIME_COMMAND=" + fakeTime,
+					"GLIPPY_PROCESS_TREE_RSS_COMMAND=" + fakeTreeRSS,
+					"FAKE_TIME_MODE=" + test.mode,
+					"FAKE_TIME_ELAPSED_SECONDS=" + test.elapsed,
+					"FAKE_TIME_PEAK_BYTES=" + test.peak,
+				)
+				output, err := command.CombinedOutput()
+				if err == nil {
+					t.Fatalf("peak-rss.sh succeeded, output = %q", output)
+				}
+				if want := "failed to parse elapsed time or peak RSS";
+					!strings.Contains(string(output), want) {
+					t.Fatalf("peak-rss.sh output = %q, want %q", output, want)
+				}
+			},
+		)
+	}
+}
+
+func TestProcessTreeRSSSumsRootAndEveryDescendant(t *testing.T) {
+	t.Parallel()
+
+	toolDirectory := t.TempDir()
+	fakePS := filepath.Join(toolDirectory, "ps")
+	writeExecutable(
+		t,
+		fakePS,
+		`#!/bin/sh
+set -eu
+printf '%s\n' \
+  '100 1 100' \
+  '200 100 200' \
+  '300 200 300' \
+  '400 1 400'
+`,
+	)
+	command := exec.Command("sh", "process-tree-rss.sh", "100")
+	command.Dir = "."
+	command.Env = append(os.Environ(), "GLIPPY_PS_COMMAND=" + fakePS)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("process-tree-rss.sh error = %v, output = %q", err, output)
+	}
+	if got, want := strings.TrimSpace(string(output)), "614400"; got != want {
+		t.Fatalf("process tree RSS = %s, want %s", got, want)
+	}
+}
+
+func TestProcessTreeRSSFailsWhenProcessSnapshotIsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	toolDirectory := t.TempDir()
+	emptyPS := filepath.Join(toolDirectory, "empty-ps")
+	writeExecutable(t, emptyPS, "#!/bin/sh\nexit 0\n")
+	missingRootPS := filepath.Join(toolDirectory, "missing-root-ps")
+	writeExecutable(t, missingRootPS, "#!/bin/sh\nprintf '%s\\n' '200 1 128'\n")
+	malformedPS := filepath.Join(toolDirectory, "malformed-ps")
+	writeExecutable(t, malformedPS, "#!/bin/sh\nprintf '%s\\n' '100 1 invalid'\n")
+	extraFieldPS := filepath.Join(toolDirectory, "extra-field-ps")
+	writeExecutable(t, extraFieldPS, "#!/bin/sh\nprintf '%s\\n' '100 1 128 trailing'\n")
+	for _, test := range
+		[]struct {
+			name string
+			command string
+			status int
+		}{
+			{name: "command failure", command: "/usr/bin/false", status: 3},
+			{name: "empty snapshot", command: emptyPS, status: 5},
+			{name: "missing root", command: missingRootPS, status: 5},
+			{name: "malformed snapshot", command: malformedPS, status: 4},
+			{name: "extra snapshot field", command: extraFieldPS, status: 4},
+		} {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				command := exec.Command("sh", "process-tree-rss.sh", "100")
+				command.Dir = "."
+				command.Env = append(
+					os.Environ(),
+					"GLIPPY_PS_COMMAND=" + test.command,
+				)
+				output, err := command.CombinedOutput()
+				if err == nil {
+					t.Fatalf(
+						"process-tree-rss.sh succeeded, output = %q",
+						output,
+					)
+				}
+				exitError, ok := err.(*exec.ExitError)
+				if !ok || exitError.ExitCode() != test.status {
+					t.Fatalf(
+						"process-tree-rss.sh error = %v, want exit %d; output = %q",
+						err,
+						test.status,
+						output,
+					)
+				}
+			},
+		)
 	}
 }
 

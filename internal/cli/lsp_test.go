@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -71,32 +73,33 @@ func TestRunLSPPublishesTypedDiagnosticsAndValidatedSafeAction(t *testing.T) {
 				"context": map[string]any{"diagnostics": []any{}},
 			},
 		},
-		map[string]any{"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
-		map[string]any{"jsonrpc": "2.0", "method": "exit"},
 	)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	exitCode := RunContext(
-		context.Background(),
-		[]string{"lsp"},
-		bytes.NewReader(input),
-		&stdout,
-		&stderr,
+	wantedAction := `"title":"redundant-bool-comparison: simplify-comparison [safe]"`
+	output, stderr, exitCode := runCLILSPPhases(
+		t,
+		input,
+		func(output string) bool {
+			return strings.Contains(output, wantedAction)
+		},
+		cliLSPFrames(
+			t,
+			map[string]any{"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+			map[string]any{"jsonrpc": "2.0", "method": "exit"},
+		),
 	)
-	if exitCode != ExitSuccess || stderr.Len() != 0 {
+	if exitCode != ExitSuccess || stderr != "" {
 		t.Fatalf(
 			"RunContext(lsp) = exit %d, stdout %q, stderr %q",
 			exitCode,
-			stdout.String(),
-			stderr.String(),
+			output,
+			stderr,
 		)
 	}
-	output := stdout.String()
 	if !strings.Contains(output, `"method":"textDocument/publishDiagnostics"`) ||
 		!strings.Contains(output, `"code":"redundant-bool-comparison"`) ||
 		!strings.Contains(
 			output,
-			`"codeDescription":{"href":"https://github.com/faustbrian/gox/blob/main/docs/lint-rules.md#redundant-bool-comparison"}`,
+			`"codeDescription":{"href":"https://github.com/faustbrian/glippy/blob/main/docs/lint-rules.md#redundant-bool-comparison"}`,
 		) ||
 		!strings.Contains(output, `"version":9`) ||
 		!strings.Contains(
@@ -170,26 +173,27 @@ nil-context = "warn"
 				},
 			},
 		},
-		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
-		map[string]any{"jsonrpc": "2.0", "method": "exit"},
 	)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	exitCode := RunContext(
-		context.Background(),
-		[]string{"lsp"},
-		bytes.NewReader(input),
-		&stdout,
-		&stderr,
+	stdout, stderr, exitCode := runCLILSPPhases(
+		t,
+		input,
+		func(output string) bool {
+			return strings.Contains(output, `"code":"nil-context"`)
+		},
+		cliLSPFrames(
+			t,
+			map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+			map[string]any{"jsonrpc": "2.0", "method": "exit"},
+		),
 	)
 	if exitCode != ExitSuccess ||
-		stderr.Len() != 0 ||
-		!strings.Contains(stdout.String(), `"code":"nil-context"`) {
+		stderr != "" ||
+		!strings.Contains(stdout, `"code":"nil-context"`) {
 		t.Fatalf(
 			"RunContext(lsp target policy) = exit %d, stdout %q, stderr %q",
 			exitCode,
-			stdout.String(),
-			stderr.String(),
+			stdout,
+			stderr,
 		)
 	}
 }
@@ -233,27 +237,28 @@ func TestRunLSPUsesProjectContractsWithOpenBufferOverlay(t *testing.T) {
 				},
 			},
 		},
-		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
-		map[string]any{"jsonrpc": "2.0", "method": "exit"},
 	)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if exitCode := RunContext(
-		context.Background(),
-		[]string{"lsp"},
-		bytes.NewReader(input),
-		&stdout,
-		&stderr,
-	);
-		exitCode != ExitSuccess ||
-			stderr.Len() != 0 ||
-			!strings.Contains(stdout.String(), `"code":"unreachable-code"`) ||
-			!strings.Contains(stdout.String(), `"version":4`) {
+	stdout, stderr, exitCode := runCLILSPPhases(
+		t,
+		input,
+		func(output string) bool {
+			return strings.Contains(output, `"code":"unreachable-code"`)
+		},
+		cliLSPFrames(
+			t,
+			map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+			map[string]any{"jsonrpc": "2.0", "method": "exit"},
+		),
+	)
+	if exitCode != ExitSuccess ||
+		stderr != "" ||
+		!strings.Contains(stdout, `"code":"unreachable-code"`) ||
+		!strings.Contains(stdout, `"version":4`) {
 		t.Fatalf(
 			"RunContext(lsp contracts) = exit %d, stdout %q, stderr %q",
 			exitCode,
-			stdout.String(),
-			stderr.String(),
+			stdout,
+			stderr,
 		)
 	}
 	got, err := os.ReadFile(path)
@@ -335,8 +340,6 @@ func TestRunLSPHidesSuggestionActionsUnlessExplicitlyEnabled(t *testing.T) {
 					},
 				},
 			},
-			map[string]any{"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
-			map[string]any{"jsonrpc": "2.0", "method": "exit"},
 		)
 	}
 	for _, test := range
@@ -356,31 +359,39 @@ func TestRunLSPHidesSuggestionActionsUnlessExplicitlyEnabled(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				var stdout bytes.Buffer
-				var stderr bytes.Buffer
-				exitCode := RunContext(
-					context.Background(),
+				stdout, stderr, exitCode := runCLILSPPhasesWithArguments(
+					t,
 					test.arguments,
-					bytes.NewReader(conversation()),
-					&stdout,
-					&stderr,
+					conversation(),
+					func(output string) bool {
+						return strings.Contains(output, `"id":2`)
+					},
+					cliLSPFrames(
+						t,
+						map[string]any{
+							"jsonrpc": "2.0",
+							"id": 3,
+							"method": "shutdown",
+						},
+						map[string]any{"jsonrpc": "2.0", "method": "exit"},
+					),
 				)
-				if exitCode != ExitSuccess || stderr.Len() != 0 {
+				if exitCode != ExitSuccess || stderr != "" {
 					t.Fatalf(
 						"RunContext(lsp) = exit %d, stderr %q",
 						exitCode,
-						stderr.String(),
+						stderr,
 					)
 				}
 				hasAction := strings.Contains(
-					stdout.String(),
+					stdout,
 					`"title":"time-since: use-time-since [suggestion]"`,
 				)
 				if hasAction != test.wantAction {
 					t.Fatalf(
 						"suggestion action present = %t, output %q",
 						hasAction,
-						stdout.String(),
+						stdout,
 					)
 				}
 			},
@@ -421,31 +432,29 @@ func TestRunLSPPublishesRuleLevelWithheldFixReasons(t *testing.T) {
 				},
 			},
 		},
-		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
-		map[string]any{"jsonrpc": "2.0", "method": "exit"},
 	)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	exitCode := RunContext(
-		context.Background(),
-		[]string{"lsp"},
-		bytes.NewReader(input),
-		&stdout,
-		&stderr,
+	wanted := `"withheld_fixes":[{"name":"simplify-comparison","reason":"comments","message":"simplifying this comparison would remove comments"}]`
+	output, stderr, exitCode := runCLILSPPhases(
+		t,
+		input,
+		func(output string) bool {
+			return strings.Contains(output, wanted)
+		},
+		cliLSPFrames(
+			t,
+			map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+			map[string]any{"jsonrpc": "2.0", "method": "exit"},
+		),
 	)
-	if exitCode != ExitSuccess || stderr.Len() != 0 {
+	if exitCode != ExitSuccess || stderr != "" {
 		t.Fatalf(
 			"RunContext(lsp) = exit %d, stdout %q, stderr %q",
 			exitCode,
-			stdout.String(),
-			stderr.String(),
+			output,
+			stderr,
 		)
 	}
-	output := stdout.String()
-	if !strings.Contains(
-		output,
-		`"withheld_fixes":[{"name":"simplify-comparison","reason":"comments","message":"simplifying this comparison would remove comments"}]`,
-	) {
+	if !strings.Contains(output, wanted) {
 		t.Fatalf("LSP output omitted withheld fix reason: %q", output)
 	}
 }
@@ -484,20 +493,21 @@ func TestRunLSPUsesConfiguredPersistentCacheForTypedOverlays(t *testing.T) {
 				},
 			},
 		},
-		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
-		map[string]any{"jsonrpc": "2.0", "method": "exit"},
 	)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if exitCode := RunContext(
-		context.Background(),
-		[]string{"lsp"},
-		bytes.NewReader(input),
-		&stdout,
-		&stderr,
-	);
-		exitCode != ExitSuccess || stderr.Len() != 0 {
-		t.Fatalf("RunContext(lsp) = exit %d, stderr %q", exitCode, stderr.String())
+	_, stderr, exitCode := runCLILSPPhases(
+		t,
+		input,
+		func(output string) bool {
+			return strings.Contains(output, `"code":"redundant-bool-comparison"`)
+		},
+		cliLSPFrames(
+			t,
+			map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+			map[string]any{"jsonrpc": "2.0", "method": "exit"},
+		),
+	)
+	if exitCode != ExitSuccess || stderr != "" {
+		t.Fatalf("RunContext(lsp) = exit %d, stderr %q", exitCode, stderr)
 	}
 	entries := 0
 	err := filepath.WalkDir(
@@ -574,27 +584,24 @@ func TestRunLSPAnalyzesEachDocumentAgainstAllOpenWorkspaceOverlays(t *testing.T)
 				},
 			},
 		},
-		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
-		map[string]any{"jsonrpc": "2.0", "method": "exit"},
 	)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if exitCode := RunContext(
-		context.Background(),
-		[]string{"lsp"},
-		bytes.NewReader(input),
-		&stdout,
-		&stderr,
-	);
-		exitCode != ExitSuccess || stderr.Len() != 0 {
-		t.Fatalf("RunContext(lsp) = exit %d, stderr %q", exitCode, stderr.String())
+	stdout, stderr, exitCode := runCLILSPPhases(
+		t,
+		input,
+		func(output string) bool {
+			return strings.Count(output, `"code":"glippy"`) == 2
+		},
+		cliLSPFrames(
+			t,
+			map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+			map[string]any{"jsonrpc": "2.0", "method": "exit"},
+		),
+	)
+	if exitCode != ExitSuccess || stderr != "" {
+		t.Fatalf("RunContext(lsp) = exit %d, stderr %q", exitCode, stderr)
 	}
-	if got := strings.Count(stdout.String(), `"code":"glippy"`); got != 2 {
-		t.Fatalf(
-			"typed workspace diagnostics = %d, want 2; output = %q",
-			got,
-			stdout.String(),
-		)
+	if got := strings.Count(stdout, `"code":"glippy"`); got != 2 {
+		t.Fatalf("typed workspace diagnostics = %d, want 2; output = %q", got, stdout)
 	}
 }
 
@@ -2291,6 +2298,40 @@ func TestLSPWorkspaceRetypechecksChangedLocalReplacementWithoutFullReload(t *tes
 			statistics,
 		)
 	}
+	writeChangedCLIFile(
+		t,
+		filepath.Join(dependencyRoot, "added.go"),
+		"package dependency\n\nfunc Added() {}\n",
+	)
+	result, err = backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil || len(result) != 1 || result[0].Err != nil {
+		t.Fatalf("added replacement file analysis = %#v, error = %v", result, err)
+	}
+	afterAdded := backend.packageSession.Statistics()
+	if afterAdded.FullLoads + afterAdded.IncrementalLoads <=
+		statistics.FullLoads + statistics.IncrementalLoads {
+		t.Fatalf(
+			"typed package session statistics = %#v, want unchanged-document recheck after replacement membership changed",
+			afterAdded,
+		)
+	}
+	writeChangedCLIFile(
+		t,
+		filepath.Join(dependencyRoot, "go.mod"),
+		"module example.com/dependency\n\ngo 1.26.0\n\n// changed without an editor edit\n",
+	)
+	result, err = backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document})
+	if err != nil || len(result) != 1 || result[0].Err != nil {
+		t.Fatalf("replacement control-file analysis = %#v, error = %v", result, err)
+	}
+	afterControl := backend.packageSession.Statistics()
+	if afterControl.FullLoads + afterControl.IncrementalLoads <=
+		afterAdded.FullLoads + afterAdded.IncrementalLoads {
+		t.Fatalf(
+			"typed package session statistics = %#v, want unchanged-document recheck after replacement control file changed",
+			afterControl,
+		)
+	}
 }
 
 func TestLSPWorkspaceRetypechecksChangedWorkspaceModuleWithoutFullReload(t *testing.T) {
@@ -2374,6 +2415,66 @@ func TestLSPWorkspaceRetypechecksChangedWorkspaceModuleWithoutFullReload(t *test
 			"typed package session statistics = %#v, want workspace-module recheck",
 			statistics,
 		)
+	}
+}
+
+func TestLSPWorkspaceInvalidatesParentActiveWorkspaceFile(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	root := filepath.Join(workspace, "editor")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workspacePath := filepath.Join(workspace, "go.work")
+	writeChangedCLIFile(t, workspacePath, "go 1.26.0\n\nuse ./editor\n")
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/editor\n\ngo 1.26.0\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, ".glippy.toml"),
+		"version = 1\n[lint]\npresets = []\n[lint.rules]\nnil-context = \"warn\"\n",
+	)
+	path := filepath.Join(root, "source.go")
+	text := "package editor\n\nfunc run() {}\n"
+	writeChangedCLIFile(t, path, text)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := 0
+	backend := &lspBackend{
+		registry: registry,
+		runPackageAnalysis: func(
+			ctx context.Context,
+			registry *rules.Registry,
+			task lintPackageTask,
+			overlay map[string][]byte,
+		) (analysis.PackageResult, error) {
+			runs++
+			return runPackageAnalysisWithOverlay(ctx, registry, task, overlay)
+		},
+	}
+	document := lsp.Document{
+		URI: "file://" + filepath.ToSlash(path),
+		Path: path,
+		Version: 1,
+		Text: []byte(text),
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document});
+		err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(t, workspacePath, "go 1.26.0\n\nuse ./editor\n\n// changed\n")
+	if _, err := backend.AnalyzeWorkspace(context.Background(), []lsp.Document{document});
+		err != nil {
+		t.Fatal(err)
+	}
+	if runs != 2 {
+		t.Fatalf("package runs = %d, want parent active workspace invalidation", runs)
 	}
 }
 
@@ -3259,7 +3360,10 @@ func TestLSPWorkspaceWatchInvalidatesPackageAndReverseDependent(t *testing.T) {
 	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
 		t.Fatal(err)
 	}
-	if err := backend.WorkspaceFilesChanged(context.Background(), []string{helperPath});
+	if err := backend.WorkspaceFilesChanged(
+		context.Background(),
+		lsp.WorkspaceFileChanges{Paths: []string{helperPath}},
+	);
 		err != nil {
 		t.Fatal(err)
 	}
@@ -3339,17 +3443,34 @@ func TestLSPWorkspaceWatchOverflowInvalidatesAllPackages(t *testing.T) {
 	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
 		t.Fatal(err)
 	}
-	changes := make([]string, maximumLSPWorkspaceChangedFiles + 1)
-	for index := range changes {
-		changes[index] = filepath.Join(root, "changes", fmt.Sprintf("%d.go", index))
-	}
-	if err := backend.WorkspaceFilesChanged(context.Background(), changes); err != nil {
+	if err := backend.WorkspaceFilesChanged(
+		context.Background(),
+		lsp.WorkspaceFileChanges{InvalidateAll: true},
+	);
+		err != nil {
 		t.Fatal(err)
 	}
 	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
 		t.Fatal(err)
 	}
 	if runs != 4 {
+		t.Fatalf("package runs = %d, want every package explicitly invalidated", runs)
+	}
+	changes := make([]string, maximumLSPWorkspaceChangedFiles + 1)
+	for index := range changes {
+		changes[index] = filepath.Join(root, "changes", fmt.Sprintf("%d.go", index))
+	}
+	if err := backend.WorkspaceFilesChanged(
+		context.Background(),
+		lsp.WorkspaceFileChanges{Paths: changes},
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
+		t.Fatal(err)
+	}
+	if runs != 6 {
 		t.Fatalf("package runs = %d, want every package invalidated after overflow", runs)
 	}
 }
@@ -3401,7 +3522,10 @@ func TestLSPWorkspaceWatchRetainsChangesAfterCanceledAnalysis(t *testing.T) {
 	if _, err := backend.AnalyzeWorkspace(context.Background(), documents); err != nil {
 		t.Fatal(err)
 	}
-	if err := backend.WorkspaceFilesChanged(context.Background(), []string{helperPath});
+	if err := backend.WorkspaceFilesChanged(
+		context.Background(),
+		lsp.WorkspaceFileChanges{Paths: []string{helperPath}},
+	);
 		err != nil {
 		t.Fatal(err)
 	}
@@ -3481,7 +3605,11 @@ func TestLSPWorkspaceWatchDoesNotWaitForCanceledAnalysis(t *testing.T) {
 	}
 	changedDone := make(chan error, 1)
 	go func() {
-		changedDone <- backend.WorkspaceFilesChanged(context.Background(), []string{path})
+		changedDone <-
+			backend.WorkspaceFilesChanged(
+				context.Background(),
+				lsp.WorkspaceFileChanges{Paths: []string{path}},
+			)
 	}()
 	var changedErr error
 	returnedPromptly := false
@@ -4135,27 +4263,24 @@ func TestRunLSPClosingOverlayRefreshesRemainingWorkspaceDiagnostics(t *testing.T
 				"textDocument": map[string]any{"uri": definitionURI},
 			},
 		},
-		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
-		map[string]any{"jsonrpc": "2.0", "method": "exit"},
 	)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if exitCode := RunContext(
-		context.Background(),
-		[]string{"lsp"},
-		bytes.NewReader(input),
-		&stdout,
-		&stderr,
-	);
-		exitCode != ExitSuccess || stderr.Len() != 0 {
-		t.Fatalf("RunContext(lsp) = exit %d, stderr %q", exitCode, stderr.String())
+	stdout, stderr, exitCode := runCLILSPPhases(
+		t,
+		input,
+		func(output string) bool {
+			return strings.Count(output, `"diagnostics":[]`) == 2
+		},
+		cliLSPFrames(
+			t,
+			map[string]any{"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+			map[string]any{"jsonrpc": "2.0", "method": "exit"},
+		),
+	)
+	if exitCode != ExitSuccess || stderr != "" {
+		t.Fatalf("RunContext(lsp) = exit %d, stderr %q", exitCode, stderr)
 	}
-	if got := strings.Count(stdout.String(), `"diagnostics":[]`); got != 2 {
-		t.Fatalf(
-			"workspace diagnostic clears = %d, want 2; output = %q",
-			got,
-			stdout.String(),
-		)
+	if got := strings.Count(stdout, `"diagnostics":[]`); got != 2 {
+		t.Fatalf("workspace diagnostic clears = %d, want 2; output = %q", got, stdout)
 	}
 }
 
@@ -4219,26 +4344,25 @@ func TestRunLSPValidatesTypedActionsAgainstTheWorkspaceSnapshot(t *testing.T) {
 				},
 			},
 		},
-		map[string]any{"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
-		map[string]any{"jsonrpc": "2.0", "method": "exit"},
 	)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if exitCode := RunContext(
-		context.Background(),
-		[]string{"lsp"},
-		bytes.NewReader(input),
-		&stdout,
-		&stderr,
-	);
-		exitCode != ExitSuccess || stderr.Len() != 0 {
-		t.Fatalf("RunContext(lsp) = exit %d, stderr %q", exitCode, stderr.String())
+	wantedAction := `"title":"redundant-bool-comparison: simplify-comparison [safe]"`
+	stdout, stderr, exitCode := runCLILSPPhases(
+		t,
+		input,
+		func(output string) bool {
+			return strings.Contains(output, wantedAction)
+		},
+		cliLSPFrames(
+			t,
+			map[string]any{"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+			map[string]any{"jsonrpc": "2.0", "method": "exit"},
+		),
+	)
+	if exitCode != ExitSuccess || stderr != "" {
+		t.Fatalf("RunContext(lsp) = exit %d, stderr %q", exitCode, stderr)
 	}
-	if !strings.Contains(
-		stdout.String(),
-		`"title":"redundant-bool-comparison: simplify-comparison [safe]"`,
-	) {
-		t.Fatalf("workspace-backed code action missing: %q", stdout.String())
+	if !strings.Contains(stdout, wantedAction) {
+		t.Fatalf("workspace-backed code action missing: %q", stdout)
 	}
 }
 
@@ -4322,4 +4446,76 @@ func cliLSPFrames(t *testing.T, messages ...map[string]any) []byte {
 		result.Write(encoded)
 	}
 	return result.Bytes()
+}
+
+type cliLSPOutput struct {
+	mu sync.Mutex
+	bytes.Buffer
+}
+
+func (output *cliLSPOutput) Write(data []byte) (int, error) {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	return output.Buffer.Write(data)
+}
+
+func (output *cliLSPOutput) String() string {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	return output.Buffer.String()
+}
+
+func runCLILSPPhases(
+	t *testing.T,
+	before []byte,
+	ready func(string) bool,
+	after []byte,
+) (string, string, int) {
+	t.Helper()
+	return runCLILSPPhasesWithArguments(t, []string{"lsp"}, before, ready, after)
+}
+
+func runCLILSPPhasesWithArguments(
+	t *testing.T,
+	arguments []string,
+	before []byte,
+	ready func(string) bool,
+	after []byte,
+) (string, string, int) {
+	t.Helper()
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	output := &cliLSPOutput{}
+	var stderr bytes.Buffer
+	done := make(chan int, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 30 * time.Second)
+	defer cancel()
+	go func() {
+		done <- RunContext(ctx, arguments, reader, output, &stderr)
+	}()
+	if _, err := writer.Write(before); err != nil {
+		t.Fatal(err)
+	}
+	for !ready(output.String()) {
+		select {
+		case exitCode := <-done:
+			t.Fatalf(
+				"RunContext(lsp) exited before analysis completed: exit %d, stdout %q, stderr %q",
+				exitCode,
+				output.String(),
+				stderr.String(),
+			)
+		case <-ctx.Done():
+			t.Fatalf("timed out waiting for LSP analysis: %s", output.String())
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if _, err := writer.Write(after); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	exitCode := <-done
+	return output.String(), stderr.String(), exitCode
 }

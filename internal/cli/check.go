@@ -515,14 +515,34 @@ func runCombinedPackageCheck(
 ) int {
 	result, err := runConfiguredPackageAnalysis(ctx, registry, task)
 	if err != nil {
+		exitCode := packageAnalysisErrorExitCode(err)
+		if baselineErr := applyConfiguredPackageBaselineMode(task, &result, registry, true);
+			baselineErr != nil {
+			exitCode = moreSevereExitCode(
+				exitCode,
+				lintBaselineErrorExitCode(baselineErr),
+			)
+			err = errors.Join(
+				err,
+				fmt.Errorf("apply baseline to partial analysis: %w", baselineErr),
+			)
+		}
+		if changedErr := filterChangedPackageResult(changedScope, &result);
+			changedErr != nil {
+			exitCode = moreSevereExitCode(exitCode, ExitInvalidInvocation)
+			err = errors.Join(
+				err,
+				fmt.Errorf("filter partial changed-code analysis: %w", changedErr),
+			)
+		}
 		return reportCombinedPackageCheck(
 			invocation,
 			registry,
 			stdout,
 			stderr,
-			packageAnalysisErrorExitCode(err),
+			exitCode,
 			false,
-			packageCheckResult(result, nil),
+			result,
 			nil,
 			err,
 		)
@@ -563,7 +583,7 @@ func runCombinedPackageCheck(
 				stderr,
 				ExitCanceled,
 				false,
-				packageCheckResult(result, executions),
+				result,
 				executions,
 				err,
 			)
@@ -581,7 +601,7 @@ func runCombinedPackageCheck(
 				stderr,
 				ExitInternalError,
 				false,
-				packageCheckResult(result, executions),
+				result,
 				executions,
 				err,
 			)
@@ -595,7 +615,7 @@ func runCombinedPackageCheck(
 				stderr,
 				ExitInternalError,
 				false,
-				packageCheckResult(result, executions),
+				result,
 				executions,
 				fmt.Errorf("format %q: %w", file.Path(), err),
 			)
@@ -613,7 +633,7 @@ func runCombinedPackageCheck(
 				stderr,
 				ExitInvalidInvocation,
 				false,
-				packageCheckResult(result, executions),
+				result,
 				executions,
 				err,
 			)
@@ -671,17 +691,6 @@ func runCombinedPackageCheck(
 	)
 }
 
-func packageCheckResult(
-	result analysis.PackageResult,
-	executions []checkExecution,
-) analysis.PackageResult {
-	result.Files = make([]analysis.Result, len(executions))
-	for index, execution := range executions {
-		result.Files[index] = execution.analysis
-	}
-	return result
-}
-
 func reportCombinedPackageCheck(
 	invocation checkInvocation,
 	registry *rules.Registry,
@@ -692,16 +701,8 @@ func reportCombinedPackageCheck(
 	executions []checkExecution,
 	err error,
 ) int {
+	formats := packageCheckFormatOutcomes(result.Files, executions)
 	if invocation.reporter == glippyreport.JSON {
-		formats := make([]glippyreport.CheckFormatOutcome, len(executions))
-		for index, execution := range executions {
-			formats[index] = glippyreport.CheckFormatOutcome{
-				Path: execution.file.Path(),
-				Digest: execution.file.Digest(),
-				Different: execution.formatChanged,
-				Preexisting: execution.formatPreexisting,
-			}
-		}
 		errs := []glippyreport.Error{}
 		if err != nil {
 			errs = append(errs, glippyreport.Error{Message: err.Error()})
@@ -748,15 +749,6 @@ func reportCombinedPackageCheck(
 				err = inputErr
 			}
 			inputs = nil
-		}
-		formats := make([]glippyreport.CheckFormatOutcome, len(executions))
-		for index, execution := range executions {
-			formats[index] = glippyreport.CheckFormatOutcome{
-				Path: execution.file.Path(),
-				Digest: execution.file.Digest(),
-				Different: execution.formatChanged,
-				Preexisting: execution.formatPreexisting,
-			}
 		}
 		return reportIntegrationOutput(
 			"check",
@@ -818,6 +810,30 @@ func reportCombinedPackageCheck(
 		}
 	}
 	return exitCode
+}
+
+func packageCheckFormatOutcomes(
+	files []analysis.Result,
+	executions []checkExecution,
+) []glippyreport.CheckFormatOutcome {
+	executionsByPath := make(map[string]checkExecution, len(executions))
+	for _, execution := range executions {
+		executionsByPath[execution.file.Path()] = execution
+	}
+	formats := make([]glippyreport.CheckFormatOutcome, len(files))
+	for index, analyzed := range files {
+		execution, formatted := executionsByPath[analyzed.Path]
+		formats[index] = glippyreport.CheckFormatOutcome{
+			Path: analyzed.Path,
+			Digest: analyzed.Digest,
+			Pending: !formatted,
+		}
+		if formatted {
+			formats[index].Different = execution.formatChanged
+			formats[index].Preexisting = execution.formatPreexisting
+		}
+	}
+	return formats
 }
 
 func reportInvalidCheckInvocation(arguments []string, stdout, stderr io.Writer) int {

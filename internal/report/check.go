@@ -10,6 +10,11 @@ import (
 	"github.com/faustbrian/glippy/internal/source"
 )
 
+// CheckSchemaVersion is the combined-check machine-report schema. It differs
+// from the version-1 formatter and lint schemas because incomplete checks can
+// report the additional pending format status.
+const CheckSchemaVersion = 2
+
 type CheckSummary struct {
 	Files int `json:"files"`
 	FormattingDifferences int `json:"formatting_differences"`
@@ -29,6 +34,7 @@ type CheckSummary struct {
 type CheckFormatStatus string
 
 const (
+	CheckFormatPending CheckFormatStatus = "pending"
 	CheckFormatUnchanged CheckFormatStatus = "unchanged"
 	CheckFormatDifferent CheckFormatStatus = "different"
 	CheckFormatPreexisting CheckFormatStatus = "preexisting"
@@ -44,6 +50,7 @@ type CheckFile struct {
 type CheckFormatOutcome struct {
 	Path string
 	Digest source.Digest
+	Pending bool
 	Different bool
 	Preexisting bool
 }
@@ -121,7 +128,7 @@ func newCheckResult(lintResult LintResult, formats []CheckFormatOutcome) (CheckR
 		)
 	}
 	result := CheckResult{
-		SchemaVersion: SchemaVersion,
+		SchemaVersion: CheckSchemaVersion,
 		Command: "check",
 		Mode: "check",
 		Outcome: lintResult.Outcome,
@@ -165,13 +172,27 @@ func newCheckResult(lintResult LintResult, formats []CheckFormatOutcome) (CheckR
 			)
 		}
 		status := CheckFormatUnchanged
+		if format.Pending && (format.Different || format.Preexisting) {
+			return CheckResult{}, fmt.Errorf(
+				"check format outcome %q is pending with a completed status",
+				format.Path,
+			)
+		}
+		if lintResult.Summary.Complete && format.Pending {
+			return CheckResult{}, fmt.Errorf(
+				"complete check result has pending formatting for %q",
+				format.Path,
+			)
+		}
 		if format.Different && format.Preexisting {
 			return CheckResult{}, fmt.Errorf(
 				"check format outcome %q is both changed and pre-existing",
 				format.Path,
 			)
 		}
-		if format.Different {
+		if format.Pending {
+			status = CheckFormatPending
+		} else if format.Different {
 			status = CheckFormatDifferent
 			result.Summary.FormattingDifferences++
 		} else if format.Preexisting {

@@ -4,9 +4,13 @@ Date: 2026-08-13
 
 ## Decision
 
-Admit `defer-in-loop` to the opt-in `suspicious` preset at the syntax tier. It
-reports defers directly enclosed by a finite, conditional, or range loop and
-excludes nested function literals and conditionless loops.
+Admit `defer-in-loop` to the opt-in `suspicious` and `performance` presets at
+the syntax tier. It reports defers directly enclosed by a finite, conditional,
+or range loop and excludes nested function literals and conditionless loops.
+The suspicious placement reflects the contextual judgment around deliberately
+bounded accumulation. Performance membership reflects the structurally proven
+retention cost: each reached iteration adds another deferred call and retains
+its captured resources until the surrounding function returns.
 
 ## Evidence
 

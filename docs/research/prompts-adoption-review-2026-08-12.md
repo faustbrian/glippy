@@ -176,3 +176,20 @@ separate human judgment that the complete layout is acceptable for daily use.
 6. `theme.go`: the original line-comment-after-operator regression boundary.
 
 This order remains the review map for the approved canonical formatter output.
+
+## Integrated Refresh, 2026-08-21
+
+The approved layout was refreshed onto the module's later source and integrated
+as `5eb1b997c2242b456b5f5318547269e5eeca2219` on `faustbrian/golib` `main`.
+The immutable integrated tree contains 90 Go files under `pkg/prompts`. The
+integration commit changes 45 module files, including 42 Go files. Compared
+with the original approved baseline `8c9c1e7`, the complete branch changes 92
+module files, including 82 Go files, because later behavior and test changes
+are also present; it is not one formatter-only delta.
+
+The integrated Makefile pins Glippy candidate `724d8a26eec0`, delegates the
+canonical format gate to Glippy, and includes that gate in the module's complete
+`check` target. Exact source and delivery evidence is maintained in the
+[integrated delivery record](prompts-adoption-delivery-evidence-2026-08-22.md).
+The later complete-package gate was reported historically but has no retained
+immutable result artifact and is not current release evidence.

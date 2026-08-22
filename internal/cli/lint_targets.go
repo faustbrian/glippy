@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -26,6 +27,7 @@ func runLintTargetMatrix(
 		},
 	)
 	var combined analysis.PackageResult
+	var matrixErr error
 	for _, target := range targets {
 		selected := task
 		selected.options.buildSelection = config.Analysis{
@@ -36,19 +38,61 @@ func runLintTargetMatrix(
 			ContractFiles: slices.Clone(task.options.buildSelection.ContractFiles),
 			Contracts: task.options.buildSelection.Contracts,
 		}
-		result, err := runPackageAnalysis(ctx, registry, selected)
-		if err != nil {
-			return combined, fmt.Errorf("analyze target %s: %w", target.ID(), err)
+		result, analysisErr := runPackageAnalysis(ctx, registry, selected)
+		var targetErr error
+		combined, targetErr = mergeLintTargetResult(
+			combined,
+			result,
+			target.ID(),
+			analysisErr,
+		)
+		matrixErr = errors.Join(matrixErr, targetErr)
+		if errors.Is(targetErr, context.Canceled) ||
+			errors.Is(targetErr, context.DeadlineExceeded) {
+			omitUnprovenMatrixUnusedSuppressions(&combined)
+			return combined, matrixErr
 		}
-		if err := tagPackageResult(&result, target.ID()); err != nil {
-			return combined, fmt.Errorf("tag target %s: %w", target.ID(), err)
-		}
-		combined, err = mergeTargetPackageResults(combined, result)
-		if err != nil {
-			return combined, err
+		if contextErr := ctx.Err(); contextErr != nil {
+			omitUnprovenMatrixUnusedSuppressions(&combined)
+			return combined, errors.Join(matrixErr, contextErr)
 		}
 	}
-	return combined, nil
+	if matrixErr != nil {
+		omitUnprovenMatrixUnusedSuppressions(&combined)
+	}
+	return combined, matrixErr
+}
+
+func omitUnprovenMatrixUnusedSuppressions(result *analysis.PackageResult) {
+	if result == nil {
+		return
+	}
+	for index := range result.Files {
+		result.Files[index].UnusedSuppressions = nil
+	}
+}
+
+func mergeLintTargetResult(
+	combined analysis.PackageResult,
+	result analysis.PackageResult,
+	target string,
+	analysisErr error,
+) (analysis.PackageResult, error) {
+	var resultErr error
+	if analysisErr != nil {
+		resultErr = fmt.Errorf("analyze target %s: %w", target, analysisErr)
+	}
+	if err := tagPackageResult(&result, target); err != nil {
+		return combined, errors.Join(
+			resultErr,
+			fmt.Errorf("tag target %s: %w", target, err),
+		)
+	}
+	merged, err := mergeTargetPackageResults(combined, result)
+	if err != nil {
+		return merged, errors.Join(resultErr, err)
+	}
+	return merged, resultErr
 }
 
 func tagPackageResult(result *analysis.PackageResult, target string) error {
@@ -95,6 +139,7 @@ func mergeTargetPackageResults(
 		return right, nil
 	}
 	partial := left
+	left.Files = slices.Clone(left.Files)
 	mergedSources, err := analysis.MergePackageSourceSets(left.Sources, right.Sources)
 	if err != nil {
 		return partial, err
@@ -166,7 +211,7 @@ func mergeTargetFileResults(left, right analysis.Result) (analysis.Result, error
 	left.Baselined = mergeRuleDiagnostics(left.Baselined, right.Baselined)
 	left.BaselineProblems = mergeComparableValues(left.BaselineProblems, right.BaselineProblems)
 	left.Suppressed = mergeSuppressedDiagnostics(left.Suppressed, right.Suppressed)
-	left.UnusedSuppressions = mergeComparableValues(
+	left.UnusedSuppressions = intersectComparableValues(
 		left.UnusedSuppressions,
 		right.UnusedSuppressions,
 	)
@@ -304,6 +349,19 @@ func mergeComparableValues[T any](left, right []T) []T {
 		}
 		if !found {
 			result = append(result, candidate)
+		}
+	}
+	return result
+}
+
+func intersectComparableValues[T any](left, right []T) []T {
+	result := make([]T, 0, min(len(left), len(right)))
+	for _, candidate := range left {
+		for _, existing := range right {
+			if reflect.DeepEqual(existing, candidate) {
+				result = append(result, candidate)
+				break
+			}
 		}
 	}
 	return result

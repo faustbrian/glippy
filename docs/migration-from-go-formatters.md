@@ -101,23 +101,27 @@ leave Glippy-formatted source under a gofmt, gofumpt, or golines gate.
 
 ## Current Dogfood Evidence
 
-A dedicated migration of the external `pkg/prompts` module changes 65 of 77 Go
-files and reaches a zero-difference second Glippy check. Its tests, race tests,
-vet, module-metadata, documentation, lint, and nested comparison test gates
-pass. The current formatter retains one source-authored blank line between
-statement groups, including all 168 exact `t.Parallel()` grouping gaps in this
-snapshot. Sixty-three files are not gofmt fixed points, so the migration
-replaces the module's gofmt and goimports authorities.
+A refreshed adoption of the external `pkg/prompts` module is integrated at
+`5eb1b997`. That immutable tree contains 90 Go files. The original approved
+migration reached a zero-difference second Glippy check and passed its recorded
+formatting, module metadata, test, race, vet, documentation, lint, and nested
+module gates. The formatter retains source-authored blank lines between
+statement groups while making Glippy the module's sole formatting authority.
 
-The maintainer approved Phase 2 and the complete
-`go-libraries/pkg/prompts` adoption layout on 2026-08-13. The dedicated
-`feature/glippy-prompts-adoption` commit therefore provides the required human
-readability decision as well as passing code gates. It remains unpushed and
-unintegrated pending a separate delivery decision. The first lint run exposed
-and drove a Glippy fix for external `//nolint` physical-line ownership; the
-refreshed lint gate passes. See the
+The maintainer approved Phase 2 and the complete `go-libraries/pkg/prompts`
+adoption layout on 2026-08-13. The current adoption pins Glippy candidate
+`724d8a2` on `faustbrian/golib` `main`. Its final integration commit changes 45
+module files, including 42 Go files; the 92-file delta from the original
+approved baseline also contains intervening behavior and test work and MUST NOT
+be represented as one formatter-only patch. The first lint run exposed and
+drove a Glippy fix for external `//nolint`
+physical-line ownership; the refreshed lint gate passes. See the
 [external dogfood record](research/external-dogfood-2026-08-11.md) for the
-bounded evidence.
+bounded evidence and the
+[integrated delivery record](research/prompts-adoption-delivery-evidence-2026-08-22.md)
+for exact current source counts and ancestry. The later complete-package gate
+was reported historically but has no retained immutable result artifact and is
+not current release evidence.
 The dedicated
 [`pkg/prompts` adoption review](research/prompts-adoption-review-2026-08-12.md)
 provides the maintainer decision boundary and representative before/after
