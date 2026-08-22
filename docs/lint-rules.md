@@ -15,6 +15,7 @@ not stable release promises.
 - [bad-bit-mask](#bad-bit-mask)
 - [blank-error-discard](#blank-error-discard)
 - [buffer-string-conversion](#buffer-string-conversion)
+- [busy-select-loop](#busy-select-loop)
 - [channel-used-after-close](#channel-used-after-close)
 - [context-background](#context-background)
 - [context-cancel-leak](#context-cancel-leak)
@@ -423,6 +424,68 @@ text := string(buffer.Bytes())
 
 ```go
 text := buffer.String()
+```
+
+## busy-select-loop
+
+detects conditionless for-select loops with an empty default
+
+A conditionless for loop whose only statement is a select with an empty default never blocks when no
+communication is ready. It immediately begins the next iteration and can consume an entire CPU core
+while doing no work.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: syntax
+- Node interests: `for-stmt`
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: not applicable
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only a conditionless for loop whose body consists solely of the select statement is reported;
+  loops with conditions, init or post statements, or surrounding work remain outside this exact
+  busy-spin boundary.
+- An intentionally busy-polling loop is valid Go and requires a narrow suppression.
+- No fix is offered because removing the default changes blocking behavior and may also move or
+  discard comments.
+- Generated files are excluded.
+
+### Example: Let the select block until communication is ready
+
+**Incorrect**
+
+```go
+for {
+	select {
+	case value := <-updates:
+		consume(value)
+	default:
+	}
+}
+```
+
+**Correct**
+
+```go
+for {
+	select {
+	case value := <-updates:
+		consume(value)
+	}
+}
 ```
 
 ## channel-used-after-close

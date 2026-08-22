@@ -114,6 +114,15 @@ result, so the rule remains outside `correctness` and provides no guessed fix.
 An exact project `must-use-result` contract owns the same call location when
 both rules are enabled.
 
+The concurrency track now admits `busy-select-loop` as an opt-in suspicious
+syntax rule. It reports the exact `for { select { ... } }` shape when the select
+has an empty default and is the loop's only statement. That default prevents
+blocking when no communication is ready and can consume a CPU core without
+doing work. Conditions, init or post statements, surrounding work, nonempty
+defaults, and blocking selects remain outside the rule. Intentional busy-poll
+stress loops require contextual judgment, so the rule stays outside the
+default correctness preset and offers no behavior-changing fix.
+
 The same track now admits `typed-nil-error-return` as an opt-in suspicious
 rule. It reports only concrete error values proven nil at an explicit return;
 untyped nil, interface operands, unknown values, bare returns, and tuple calls
