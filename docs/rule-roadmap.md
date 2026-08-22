@@ -103,6 +103,17 @@ reassignment, address-taking, closure capture, and ambiguous joins remain
 conservative. The rule complements the standard vet catalog and follows
 Staticcheck SA9008's proven defect boundary without adopting its frontend.
 
+The resource-lifetime track now admits `finalizer-captures-object` as a default
+correctness SSA rule. An exact `runtime.SetFinalizer` call reports only when the
+registered closure binds the same escaping variable cell used to load the
+finalized object. That capture keeps the object reachable, so the finalizer can
+never run and the object cannot be collected. Finalizers that use their
+argument, named finalizers, unrelated captures, user-defined functions, object
+aliases, unresolved function calls, and ambiguous value flow remain
+conservative. The rule follows
+Staticcheck SA5005's proven allocation-identity boundary without importing its
+frontend and offers no guessed rewrite.
+
 The deferred-execution track now admits `deferred-function-not-called` as an
 opt-in suspicious rule. A `defer setup()` call reports only when type
 information proves that the deferred call itself returns a function, which is

@@ -7,7 +7,7 @@ defaults, pays only for the analysis tiers enabled rules require, and routes
 all source changes through an explicit conflict-safe transaction.
 
 Glippy v0.5 is under development and is not tagged or published. The current
-catalog contains 124 rules, including 19 rules with safe or suggestion fixes.
+catalog contains 125 rules, including 19 rules with safe or suggestion fixes.
 The current candidate is an unreleased engineering snapshot. Aggregate
 process-tree memory and process containment remain unproven until a
 non-disruptive evidence policy exists.

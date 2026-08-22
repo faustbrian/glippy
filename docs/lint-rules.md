@@ -41,6 +41,7 @@ not stable release promises.
 - [exec-pipe-run](#exec-pipe-run)
 - [exported-api-documentation](#exported-api-documentation)
 - [failed-type-assertion-value](#failed-type-assertion-value)
+- [finalizer-captures-object](#finalizer-captures-object)
 - [http-canonical-header-key](#http-canonical-header-key)
 - [http-response-before-error](#http-response-before-error)
 - [http-response-body-not-closed](#http-response-body-not-closed)
@@ -1777,6 +1778,60 @@ if text, ok := value.(string); ok {
 } else {
 	return fmt.Sprintf("unexpected %T", value)
 }
+```
+
+## finalizer-captures-object
+
+detects finalizers that retain the object they finalize
+
+A runtime finalizer runs only after its object becomes unreachable. A finalizer closure that
+captures the same object keeps it reachable through the closure registered with the runtime, so the
+finalizer never runs and the object cannot be collected. The closure must use the object passed to
+its finalizer parameter instead of capturing the outer variable.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: SSA
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only exact static calls to runtime.SetFinalizer with a directly proven closure are considered.
+- The rule reports only when SSA identifies the exact captured variable cell used to load the
+  finalized object; object aliases, helper returns, unresolved function calls, and ambiguous value
+  flow remain conservative.
+- No automatic fix is offered because rewriting the closure to use its parameter requires
+  application-specific naming and behavior decisions.
+- Generated files and packages with type errors are excluded.
+
+### Example: Use the finalizer parameter
+
+**Incorrect**
+
+```go
+value := &resource{}
+runtime.SetFinalizer(value, func(*resource) { value.Close() })
+```
+
+**Correct**
+
+```go
+value := &resource{}
+runtime.SetFinalizer(value, func(current *resource) { current.Close() })
 ```
 
 ## http-canonical-header-key
