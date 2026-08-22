@@ -1,0 +1,168 @@
+name: Pinned corpus
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Repository ID from benchmarks/corpus/manifest.json, or all
+        required: true
+        default: all
+        type: string
+  pull_request:
+    paths:
+      - .github/workflows/corpus.yml
+      - benchmarks/cmd/corpus-runner/**
+      - benchmarks/corpus/**
+      - internal/corpus/**
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate corpus harness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out Glippy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install the recorded Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: 1.26.6
+          cache: false
+      - name: Validate manifest and runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_root=$(mktemp -d "$RUNNER_TEMP/glippy-corpus-validate.XXXXXX")
+          cleanup() {
+            trap - EXIT HUP INT TERM
+            find "$task_root" -type d -exec chmod u+w {} +
+            find "$task_root" -mindepth 1 -delete
+            rmdir "$task_root"
+          }
+          trap cleanup EXIT HUP INT TERM
+          export GOCACHE="$task_root/gocache"
+          export GOMODCACHE="$task_root/modcache"
+          export GOENV=off
+          export GOTOOLCHAIN=local
+          export XDG_CACHE_HOME="$task_root/xdg-cache"
+          export XDG_CONFIG_HOME="$task_root/xdg-config"
+          mkdir -p "$XDG_CONFIG_HOME/go/telemetry"
+          printf 'off\n' > "$XDG_CONFIG_HOME/go/telemetry/mode"
+          go test ./internal/corpus ./benchmarks/cmd/corpus-runner -count=1
+          go run ./benchmarks/cmd/corpus-runner \
+            --manifest benchmarks/corpus/manifest.json \
+            --validate-only
+
+  matrix:
+    name: Resolve corpus matrix
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      repositories: ${{ steps.matrix.outputs.repositories }}
+    steps:
+      - name: Check out Glippy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build matrix from the canonical manifest
+        id: matrix
+        shell: bash
+        env:
+          CORPUS_SELECTION: ${{ inputs.repository }}
+        run: |
+          set -euo pipefail
+          repositories=$(jq -c --arg selection "$CORPUS_SELECTION" '{include: [.repositories[] |
+            select($selection == "all" or .id == $selection) | {
+            id,
+            revision,
+            repository: (.repository | sub("^https://github.com/"; "") | sub("\\.git$"; ""))
+          }]}' benchmarks/corpus/manifest.json)
+          test "$(jq '.include | length' <<<"$repositories")" -gt 0
+          printf 'repositories=%s\n' "$repositories" >> "$GITHUB_OUTPUT"
+
+  audit:
+    name: Audit ${{ matrix.id }}
+    needs: matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.matrix.outputs.repositories) }}
+    steps:
+      - name: Check out Glippy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          path: glippy
+      - name: Check out exact corpus revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.revision }}
+          persist-credentials: false
+          path: checkouts/${{ matrix.id }}
+      - name: Install the recorded Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: 1.26.6
+          cache: false
+      - name: Build pinned tools and fetch module inputs
+        shell: bash
+        working-directory: glippy
+        run: |
+          set -euo pipefail
+          task_root=$(mktemp -d "$RUNNER_TEMP/glippy-corpus-${{ matrix.id }}.XXXXXX")
+          printf 'GLIPPY_CORPUS_TASK_ROOT=%s\n' "$task_root" >> "$GITHUB_ENV"
+          mkdir -p "$task_root/bin" "$task_root/cache/gomodcache"
+          export GOBIN="$task_root/bin"
+          export GOCACHE="$task_root/build-cache"
+          export GOMODCACHE="$task_root/cache/gomodcache"
+          export GOENV=off
+          export GOTOOLCHAIN=local
+          export XDG_CACHE_HOME="$task_root/xdg-cache"
+          export XDG_CONFIG_HOME="$task_root/xdg-config"
+          mkdir -p "$XDG_CONFIG_HOME/go/telemetry"
+          printf 'off\n' > "$XDG_CONFIG_HOME/go/telemetry/mode"
+          go build -o "$task_root/bin/glippy" ./cmd/glippy
+          go build -o "$task_root/bin/corpus-runner" ./benchmarks/cmd/corpus-runner
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+          cd "$GITHUB_WORKSPACE/checkouts/${{ matrix.id }}"
+          GOFLAGS=-mod=readonly go mod download
+      - name: Run the non-mutating corpus audit
+        shell: bash
+        working-directory: glippy
+        run: |
+          set -euo pipefail
+          "$GLIPPY_CORPUS_TASK_ROOT/bin/corpus-runner" \
+            --manifest benchmarks/corpus/manifest.json \
+            --checkouts "$GITHUB_WORKSPACE/checkouts" \
+            --output "$GLIPPY_CORPUS_TASK_ROOT/results" \
+            --cache "$GLIPPY_CORPUS_TASK_ROOT/cache" \
+            --glippy "$GLIPPY_CORPUS_TASK_ROOT/bin/glippy" \
+            --staticcheck "$GLIPPY_CORPUS_TASK_ROOT/bin/staticcheck" \
+            --repository '${{ matrix.id }}'
+      - name: Upload normalized corpus evidence
+        if: always() && env.GLIPPY_CORPUS_TASK_ROOT != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: glippy-corpus-${{ matrix.id }}
+          path: ${{ env.GLIPPY_CORPUS_TASK_ROOT }}/results
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Remove task-owned resources
+        if: always() && env.GLIPPY_CORPUS_TASK_ROOT != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_root="$GLIPPY_CORPUS_TASK_ROOT"
+          find "$task_root" -type d -exec chmod u+w {} +
+          find "$task_root" -mindepth 1 -delete
+          rmdir "$task_root"

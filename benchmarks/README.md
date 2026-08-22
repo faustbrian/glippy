@@ -5,6 +5,10 @@ Glippy expects to compose. They are baselines, not product performance claims or
 CI thresholds. The workload is an owned, valid, comment-bearing Go file with
 blocks, generics, calls, and boolean expressions.
 
+The [pinned external corpus](corpus/README.md) is a separate isolated-CI
+validation harness. It audits exact public repository revisions without
+modifying them and is never part of the local reproduction commands below.
+
 ## Reproduction
 
 ```sh

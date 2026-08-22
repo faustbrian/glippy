@@ -195,6 +195,10 @@ The initial product MUST NOT:
 - rewrite syntactically invalid files in place;
 - load types, CFG, or SSA for rules that do not require them;
 - use unrestricted dynamic Go plugins as the first extension mechanism;
+- ship a reusable GitHub Action, editor plugin, rule marketplace, contract
+  package ecosystem, hosted service, or package-manager integration as a v1
+  requirement;
+- treat public-repository validation as an upstream adoption campaign;
 - depend on network access during ordinary formatting or linting;
 - send source, diagnostics, or telemetry outside the machine by default;
 - hide nondeterminism behind parallel execution;
@@ -1303,32 +1307,34 @@ and workspace shapes, syntax-only invocations remain fast and independent,
 caches invalidate correctly, and deeper rules demonstrate high signal without
 unbounded resource use.
 
-## Phase 5: Ecosystem Integration And Stable Release, 90% To 100%
+## Phase 5: Large-Repository Hardening And Stable Release, 90% To 100%
 
 ### Objective
 
 Deliver Glippy as a trustworthy, documented, supportable formatter-and-linter
-product with a stable adoption path.
+CLI with stable behavior and release evidence over substantial Go repositories.
 
 ### Required Work
 
 - Stabilize CLI, configuration, diagnostics, rule IDs, and exit codes.
 - Complete the final binary and module naming audit.
-- Provide editor integration, initially through reliable stdin/stdout and
-  documented code-action ordering.
-- Add an LSP or editor service only if it materially improves latency,
-  diagnostics, fixes, or shared cache behavior.
+- Stabilize reliable stdin/stdout and the existing LSP; document generic editor
+  invocation without building editor-specific plugins.
 - Provide GitHub and SARIF output where validated consumers require them.
-- Document pre-commit and continuous-integration adoption.
+- Document copy-paste pre-commit, GitHub Actions, Woodpecker, and generic shell
+  CI commands without publishing a reusable Action.
 - Document migration from gofmt, gofumpt, and golines workflows.
 - Publish exact formatter divergences and compatibility expectations.
-- Add shell completions and installation paths where supported.
-- Produce signed, reproducible release artifacts and checksums.
+- Add shell completions and the `go install` plus GitHub Releases installation
+  paths.
+- Produce reproducible release archives, checksums, and GitHub provenance.
 - Establish vulnerability reporting and supported-version policies.
 - Establish formatter change, rule deprecation, and configuration migration
   policies.
 - Run final corpus, fuzz, race, integration, and performance gates.
-- Run dogfood adoption in multiple representative Go repositories.
+- Run the complete pinned public-repository corpus without modifying or
+  proposing changes to those repositories; adjudicate every default and
+  recommended finding.
 - Review the complete product against current Oxfmt and Oxlint experiences,
   explicitly recording deliberate differences caused by Go.
 - Publish a roadmap for additional rules only after the foundation audit passes.
@@ -1556,12 +1562,14 @@ behavior.
 - [ ] Modules, workspaces, tests, build tags, GOOS, and GOARCH are covered.
 - [ ] Cancellation and bounded concurrency are proven.
 - [ ] Cache keys cover every result-changing input and corruption is recoverable.
-- [ ] Editor and CI integrations use stable supported interfaces.
-- [ ] Release artifacts are reproducible, signed, and checksummed.
+- [ ] Editor and CI examples use stable generic interfaces without requiring
+  first-party plugins or Actions.
+- [ ] Release artifacts are reproducible and checksummed with GitHub provenance.
 - [ ] Naming and module-path audits are complete.
 - [ ] Supported-version and vulnerability policies are published.
 - [ ] Final corpus, fuzz, race, integration, and performance gates pass.
-- [ ] Multiple real Go repositories have completed documented dogfood adoption.
+- [ ] The pinned public-repository corpus has complete documented validation and
+  default/recommended adjudication without requiring upstream adoption.
 
 ### Architecture
 
