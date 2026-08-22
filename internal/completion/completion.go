@@ -51,7 +51,7 @@ func Render(shell Shell, ruleIDs []string) ([]byte, error) {
 }
 
 func renderBash(ruleIDs []string) string {
-	lintTargets := "warnings correctness suspicious performance complexity style pedantic " +
+	lintTargets := "warnings correctness suspicious performance complexity style pedantic nursery " +
 		strings.Join(ruleIDs, " ")
 	return `# bash completion for glippy
 _glippy_completion() {
@@ -103,7 +103,7 @@ _glippy_completion() {
 			return
 			;;
 		rules:--preset)
-			COMPREPLY=( $(compgen -W "correctness suspicious performance complexity style pedantic restriction migration" -- "$current") )
+			COMPREPLY=( $(compgen -W "correctness suspicious performance complexity style pedantic nursery restriction migration" -- "$current") )
 			return
 			;;
 		rules:--tier)
@@ -158,7 +158,7 @@ complete -F _glippy_completion glippy
 }
 
 func renderZsh(ruleIDs []string) string {
-	lintTargets := "warnings correctness suspicious performance complexity style pedantic " +
+	lintTargets := "warnings correctness suspicious performance complexity style pedantic nursery " +
 		strings.Join(ruleIDs, " ")
 	return `#compdef glippy
 
@@ -275,7 +275,7 @@ _glippy() {
 			;;
 		rules)
 			_arguments \
-				'--preset=[filter by preset]:preset:(correctness suspicious performance complexity style pedantic restriction migration)' \
+				'--preset=[filter by preset]:preset:(correctness suspicious performance complexity style pedantic nursery restriction migration)' \
 				'--fixable[show only rules with fixes]' \
 				'--tier=[filter by exact analysis tier]:tier:(lexical syntax types cfg ssa)'
 			;;
@@ -298,7 +298,7 @@ _glippy "$@"
 
 func renderFish(ruleIDs []string) string {
 	var output strings.Builder
-	lintTargets := "warnings correctness suspicious performance complexity style pedantic " +
+	lintTargets := "warnings correctness suspicious performance complexity style pedantic nursery " +
 		strings.Join(ruleIDs, " ")
 	output.WriteString(
 		`complete -c glippy -f
@@ -358,7 +358,7 @@ complete -c glippy -n '__fish_seen_subcommand_from lint check' -l new-from -r -d
 complete -c glippy -n '__fish_seen_subcommand_from lsp' -l fix-suggestions -d 'Offer suggestion code actions'
 complete -c glippy -n '__fish_seen_subcommand_from lsp' -l fix-unsafe -d 'Offer unsafe code actions'
 
-complete -c glippy -n '__fish_seen_subcommand_from rules' -l preset -r -a 'correctness suspicious performance complexity style pedantic restriction migration' -d 'Filter by preset'
+complete -c glippy -n '__fish_seen_subcommand_from rules' -l preset -r -a 'correctness suspicious performance complexity style pedantic nursery restriction migration' -d 'Filter by preset'
 complete -c glippy -n '__fish_seen_subcommand_from rules' -l fixable -d 'Show only rules with fixes'
 complete -c glippy -n '__fish_seen_subcommand_from rules' -l tier -r -a 'lexical syntax types cfg ssa' -d 'Filter by exact analysis tier'
 complete -c glippy -n '__fish_seen_subcommand_from explain' -l json -d 'Render versioned JSON'

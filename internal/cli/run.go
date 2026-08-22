@@ -572,6 +572,7 @@ func parseRulePreset(value string) (rules.Preset, bool) {
 		rules.PresetComplexity,
 		rules.PresetStyle,
 		rules.PresetPedantic,
+		rules.PresetNursery,
 		rules.PresetRestriction,
 		rules.PresetMigration:
 		return preset, true

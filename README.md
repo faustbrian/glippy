@@ -52,8 +52,9 @@ inside formatting, and layout policy is not duplicated as lint noise.
 - **Deterministic layout:** a document IR selects one flat or canonical broken
   form with bounded fit work.
 - **High-signal linting:** correctness is the default preset group;
-  suspicious, performance, complexity, style, and pedantic groups are
-  composable opt-ins, while restriction rules remain individually selected.
+  suspicious, performance, complexity, style, pedantic, and nursery groups are
+  composable opt-ins. Nursery rules are explicitly unstable validation
+  candidates, while restriction rules remain individually selected.
 - **Demand-driven analysis:** syntax-only work does not construct types, CFG,
   or SSA; deeper representations are shared within one package run. CFG and
   SSA consumers share demand-driven no-return and nil/error return summaries,
@@ -216,6 +217,12 @@ exact rule IDs, selectable groups, or the currently enabled `warnings` set.
 Later directives override earlier ones, except that a forbidden rule cannot be
 lowered. `explain --json` exposes the same canonical metadata through a
 schema-versioned machine contract.
+
+The `nursery` group is never included by `default`, `recommended`, `strict`,
+or `pedantic`. It contains opt-in rules still undergoing broad corpus
+validation and may change membership or behavior before promotion. Select it
+explicitly with `lint.presets = ["nursery"]`, `-Wnursery`, or
+`glippy rules --preset=nursery`.
 
 ```toml
 [[lint.overrides]]

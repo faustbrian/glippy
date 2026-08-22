@@ -167,7 +167,7 @@ func TestParseSupportsComposablePresetsAndWarningEscalation(t *testing.T) {
 			`version = 1
 
 [lint]
-presets = ["pedantic", "correctness", "suspicious"]
+presets = ["nursery", "pedantic", "correctness", "suspicious"]
 warnings-as-errors = true
 `,
 		),
@@ -180,6 +180,7 @@ warnings-as-errors = true
 		config.PresetCorrectness,
 		config.PresetSuspicious,
 		config.PresetPedantic,
+		config.PresetNursery,
 	}
 	if !slices.Equal(configured.Lint.Presets, want) || !configured.Lint.WarningsAsErrors {
 		t.Fatalf(

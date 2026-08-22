@@ -444,12 +444,15 @@ func TestRegistryComposesPresetGroupsAndEscalatesWarnings(t *testing.T) {
 	style.Presets = []rules.Preset{rules.PresetStyle}
 	pedantic := validMetadata("pedantic-rule")
 	pedantic.Presets = []rules.Preset{rules.PresetPedantic}
+	nursery := validMetadata("nursery-rule")
+	nursery.Presets = []rules.Preset{rules.PresetNursery}
 	restriction := validMetadata("restriction-rule")
 	restriction.Presets = []rules.Preset{rules.PresetRestriction}
 	registry, err := rules.NewRegistry(
 		metadataRule{metadata: restriction},
 		metadataRule{metadata: style},
 		metadataRule{metadata: pedantic},
+		metadataRule{metadata: nursery},
 		metadataRule{metadata: correctness},
 	)
 	if err != nil {
@@ -458,7 +461,11 @@ func TestRegistryComposesPresetGroupsAndEscalatesWarnings(t *testing.T) {
 
 	selection, err := registry.ResolveOptions(
 		rules.ResolveOptions{
-			Presets: []rules.Preset{rules.PresetCorrectness, rules.PresetPedantic},
+			Presets: []rules.Preset{
+				rules.PresetCorrectness,
+				rules.PresetPedantic,
+				rules.PresetNursery,
+			},
 			Overrides: map[string]rules.Severity{
 				"restriction-rule": rules.SeverityWarn,
 				"style-rule": rules.SeverityOff,
@@ -469,13 +476,15 @@ func TestRegistryComposesPresetGroupsAndEscalatesWarnings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(selection) != 3 ||
+	if len(selection) != 4 ||
 		selection[0].ID != "correctness-rule" ||
 		selection[0].Severity != rules.SeverityError ||
-		selection[1].ID != "pedantic-rule" ||
+		selection[1].ID != "nursery-rule" ||
 		selection[1].Severity != rules.SeverityError ||
-		selection[2].ID != "restriction-rule" ||
-		selection[2].Severity != rules.SeverityError {
+		selection[2].ID != "pedantic-rule" ||
+		selection[2].Severity != rules.SeverityError ||
+		selection[3].ID != "restriction-rule" ||
+		selection[3].Severity != rules.SeverityError {
 		t.Fatalf("ResolveOptions() = %#v", selection)
 	}
 

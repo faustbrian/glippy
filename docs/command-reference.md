@@ -256,8 +256,8 @@ whose costs would need a separate transaction profile.
 | `-F <target>` or `-F<target>` | `--forbid=<target>` | Enable matching rules as errors and prevent later lowering |
 
 A target is an exact rule ID, one of `correctness`, `suspicious`,
-`performance`, `complexity`, `style`, or `pedantic`, or the special target
-`warnings`. Comma-separated targets are accepted without whitespace.
+`performance`, `complexity`, `style`, `pedantic`, or `nursery`, or the special
+target `warnings`. Comma-separated targets are accepted without whitespace.
 `restriction` must use exact rule IDs, and `migration` remains unavailable
 without an explicit migration target.
 
@@ -356,14 +356,17 @@ not change the exit status. Lint diagnostics use the same changed-line filter.
 ```sh
 glippy rules
 glippy rules --preset pedantic --fixable
+glippy rules --preset nursery
 glippy rules --tier ssa
 glippy explain duplicate-condition
 glippy explain duplicate-condition --json
 ```
 
 `rules` lists rule IDs in deterministic order with default severity, preset
-membership, exact analysis tier, and fix safety. Filters compose by metadata;
-accepted tier values are `lexical`, `syntax`, `types`, `cfg`, and `ssa`.
+membership, exact analysis tier, and fix safety. Filters compose by metadata.
+The `nursery` filter exposes opt-in rules undergoing corpus validation; no
+curated profile enables them. Accepted tier values are `lexical`, `syntax`,
+`types`, `cfg`, and `ssa`.
 
 `explain` accepts exactly one registered rule ID and an optional `--json` flag
 before or after the ID. Its text and schema-version-1 JSON derive from the same

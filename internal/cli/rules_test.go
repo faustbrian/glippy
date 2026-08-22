@@ -17,6 +17,20 @@ func TestRunRulesListsAndFiltersCanonicalMetadata(t *testing.T) {
 	registry, err := rules.NewRegistry(
 		explainMetadataRule{
 			metadata: rules.Metadata{
+				ID: "delta-rule",
+				Summary: "delta",
+				Documentation: "Delta.",
+				DefaultSeverity: rules.SeverityOff,
+				Presets: []rules.Preset{rules.PresetNursery},
+				MinimumGoVersion: "1.22",
+				Requirement: rules.RequireTypes,
+				NodeInterests: []rules.NodeKind{rules.NodeCallExpr},
+				Categories: []rules.Category{rules.CategorySuspicious},
+				Examples: []rules.Example{{Incorrect: "bad()", Correct: "good()"}},
+			},
+		},
+		explainMetadataRule{
+			metadata: rules.Metadata{
 				ID: "alpha-rule",
 				Summary: "alpha",
 				Documentation: "Alpha.",
@@ -75,7 +89,12 @@ func TestRunRulesListsAndFiltersCanonicalMetadata(t *testing.T) {
 			arguments: []string{"rules"},
 			want: "alpha-rule\tdefault=warn\tpresets=correctness\ttier=syntax\tfixes=none\n" +
 				"beta-rule\tdefault=off\tpresets=pedantic\ttier=ssa\tfixes=suggestion\n" +
+				"delta-rule\tdefault=off\tpresets=nursery\ttier=types\tfixes=none\n" +
 				"gamma-rule\tdefault=warn\tpresets=correctness\ttier=ssa\tfixes=none\n",
+		},
+		{
+			arguments: []string{"rules", "--preset=nursery"},
+			want: "delta-rule\tdefault=off\tpresets=nursery\ttier=types\tfixes=none\n",
 		},
 		{
 			arguments: []string{"rules", "--preset", "correctness", "--tier=ssa"},

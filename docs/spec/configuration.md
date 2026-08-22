@@ -107,24 +107,28 @@ Omitting `lint.profile`, `lint.preset`, and `lint.presets` MUST select the
 
 A configuration MUST NOT combine `lint.profile` with `lint.preset` or
 `lint.presets`. Selecting either preset field explicitly disables profile
-composition, including when `lint.presets = []`. Restriction rules remain
-exact-ID-only and migration rules remain unavailable without an explicit
-target; no profile includes either group.
+composition, including when `lint.presets = []`. Nursery rules are explicit
+opt-ins and no profile includes them. Restriction rules remain exact-ID-only
+and migration rules remain unavailable without an explicit target; no profile
+includes either group.
 
 `lint.presets` MUST be an order-independent list of unique preset groups. Glippy
 MUST canonicalize configured groups in this order: `correctness`, `suspicious`,
-`performance`, `complexity`, `style`, then `pedantic`. Omission defaults to the
-`default` profile; an explicitly empty list selects no group and permits only
-rules enabled through `lint.rules`. A rule belonging to any selected group is
-enabled once at its metadata severity before exact profile or explicit rule
-policy applies.
+`performance`, `complexity`, `style`, `pedantic`, then `nursery`. Omission
+defaults to the `default` profile; an explicitly empty list selects no group
+and permits only rules enabled through `lint.rules`. A rule belonging to any
+selected group is enabled once at its metadata severity before exact profile or
+explicit rule policy applies.
 
 `lint.preset` remains a compatibility alias for selecting one group. A
-configuration MUST NOT specify both singular and plural fields. A `restriction`
-rule MUST be enabled only through its exact ID in `lint.rules`; the restriction
-group MUST NOT be selected wholesale. The `migration` group remains unavailable
-until configuration supplies an explicit migration target. Unknown groups,
-duplicates, wholesale `restriction`, and untargeted `migration` MUST fail.
+configuration MUST NOT specify both singular and plural fields. The `nursery`
+group MAY be selected explicitly, but its membership and rule behavior are not
+stable until individual rules graduate through the admission process. A
+`restriction` rule MUST be enabled only through its exact ID in `lint.rules`;
+the restriction group MUST NOT be selected wholesale. The `migration` group
+remains unavailable until configuration supplies an explicit migration target.
+Unknown groups, duplicates, wholesale `restriction`, and untargeted `migration`
+MUST fail.
 
 `lint.warnings-as-errors` MUST default to `false`. When `true`, Glippy MUST
 escalate every enabled rule whose final severity after group selection and

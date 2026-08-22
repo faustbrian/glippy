@@ -57,6 +57,7 @@ const (
 	PresetComplexity = rules.PresetComplexity
 	PresetStyle = rules.PresetStyle
 	PresetPedantic = rules.PresetPedantic
+	PresetNursery = rules.PresetNursery
 	PresetRestriction = rules.PresetRestriction
 	PresetMigration = rules.PresetMigration
 )
@@ -1100,7 +1101,8 @@ func validSelectablePreset(value Preset) bool {
 		PresetPerformance,
 		PresetComplexity,
 		PresetStyle,
-		PresetPedantic:
+		PresetPedantic,
+		PresetNursery:
 		return true
 	default:
 		return false
@@ -1121,8 +1123,10 @@ func presetOrder(value Preset) int {
 		return 4
 	case PresetPedantic:
 		return 5
-	default:
+	case PresetNursery:
 		return 6
+	default:
+		return 7
 	}
 }
 

@@ -723,6 +723,7 @@ func validPreset(value Preset) bool {
 		PresetComplexity,
 		PresetStyle,
 		PresetPedantic,
+		PresetNursery,
 		PresetRestriction,
 		PresetMigration:
 		return true

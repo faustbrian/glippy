@@ -81,6 +81,7 @@ const (
 	PresetComplexity Preset = "complexity"
 	PresetStyle Preset = "style"
 	PresetPedantic Preset = "pedantic"
+	PresetNursery Preset = "nursery"
 	PresetRestriction Preset = "restriction"
 	PresetMigration Preset = "migration"
 )

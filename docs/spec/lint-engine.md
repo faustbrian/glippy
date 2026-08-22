@@ -281,9 +281,11 @@ admitted; cache ownership remains the caller's responsibility.
 
 The default `correctness` preset group is limited to incorrect, unsafe,
 ineffective, misleading, or highly suspicious behavior with measured signal.
-Suspicious, performance, complexity, style, and pedantic groups are composable
-opt-ins. Restriction rules are selected individually rather than as a group;
-migration rules require an explicit target contract.
+Suspicious, performance, complexity, style, pedantic, and nursery groups are
+composable opt-ins. Nursery rules remain outside curated profiles while their
+signal and cost are validated over the pinned corpus. Restriction rules are
+selected individually rather than as a group; migration rules require an
+explicit target contract.
 
 The file driver MUST union selected preset groups, apply explicit rule
 overrides, apply ordered command-line lint levels, escalate warnings when

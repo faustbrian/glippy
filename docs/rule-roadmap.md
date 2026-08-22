@@ -7,9 +7,11 @@ foundation boundary. This roadmap therefore starts rule-growth planning; it
 does not reserve rule IDs, promise a rule count, or weaken the admission gate.
 
 The current catalog remains intentionally small. `correctness` is the default
-preset group. `suspicious`, `performance`, `complexity`, `style`, and
-`pedantic` are composable adoption choices. Restriction rules are enabled
-individually, and migration rules require an explicit target.
+preset group. `suspicious`, `performance`, `complexity`, `style`, `pedantic`,
+and `nursery` are composable opt-in choices. Nursery holds rules that still
+need broad corpus validation and is excluded from every curated profile.
+Restriction rules are enabled individually, and migration rules require an
+explicit target.
 
 ## Priorities
 
@@ -29,6 +31,11 @@ Work proceeds in this order:
    group-specific cost and noise evidence. Restriction remains rule-by-rule;
    migration requires a target. None justifies increasing default analysis
    cost.
+5. **Validate nursery candidates.** A nursery rule must start from a concrete
+   defect hypothesis and focused positive and negative fixtures, then earn
+   promotion through pinned-corpus adjudication, bounded cost, and a documented
+   false-positive boundary. Nursery is not a bypass around the rule admission
+   gate.
 
 Formatter-owned layout never enters this queue. A semantic transformation is
 considered through the fix coordinator, not hidden inside formatting.

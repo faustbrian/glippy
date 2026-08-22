@@ -149,6 +149,9 @@ severity, preset membership, exact analysis tier, and available fix safety.
 `--preset` MUST filter exact preset membership, `--fixable` MUST require at
 least one declared fix, and `--tier` MUST accept exactly `lexical`, `syntax`,
 `types`, `cfg`, or `ssa`. Filters MUST compose and MUST NOT load project state.
+The accepted preset filters MUST include `nursery`, while `restriction` and
+`migration` remain discoverable metadata filters rather than selectable
+configuration groups.
 
 `glippy explain <rule>` MUST accept exactly one rule ID and an optional `--json`
 flag before or after it. Text MUST render the complete human documentation and
@@ -257,10 +260,11 @@ and MUST apply consistently to checks, baselines, and fixes.
 `lint` and combined `check` MUST accept ordered `-A`/`--allow`,
 `-W`/`--warn`, `-D`/`--deny`, and `-F`/`--forbid` directives. Each directive
 MUST target one or more comma-separated exact rule IDs, selectable preset
-groups, or the special `warnings` set. Restriction MUST target exact rule IDs,
-and migration MUST remain target-gated. Directives MUST apply in argument order
-after configured policy and `--only` eligibility; `--except` MUST remain an
-absolute exclusion, and configured warning escalation MUST apply last. The
+groups including `nursery`, or the special `warnings` set. Restriction MUST
+target exact rule IDs, and migration MUST remain target-gated. Directives MUST
+apply in argument order after configured policy and `--only` eligibility;
+`--except` MUST remain an absolute exclusion, and configured warning escalation
+MUST apply last. The
 `warnings` target MUST affect only rules currently at warning severity and MUST
 NOT enable disabled rules. A later `allow` or `warn` that would lower a
 forbidden rule MUST fail as an invalid invocation. The resolved selection and

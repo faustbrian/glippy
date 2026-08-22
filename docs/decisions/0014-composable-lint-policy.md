@@ -32,11 +32,13 @@ configuration identity. The legacy singular `lint.preset` selects one group
 and remains accepted, but singular and plural forms are mutually exclusive.
 
 Selectable groups are `correctness`, `suspicious`, `performance`,
-`complexity`, `style`, and `pedantic`. Restriction metadata exists so rules can
-be classified consistently, but the group cannot be enabled wholesale;
-projects opt into exact restriction rule IDs. Migration metadata remains
-valid, while selecting the migration group is rejected until a target version
-or API contract exists.
+`complexity`, `style`, `pedantic`, and `nursery`. Nursery is an explicit
+validation group for rules that have not yet earned stable membership through
+large-corpus signal and cost evidence. No curated profile selects it.
+Restriction metadata exists so rules can be classified consistently, but the
+group cannot be enabled wholesale; projects opt into exact restriction rule
+IDs. Migration metadata remains valid, while selecting the migration group is
+rejected until a target version or API contract exists.
 
 Formatting remains outside lint policy. No preset may add line length,
 spacing, brace placement, wrapping, or another layout diagnostic owned by
@@ -89,6 +91,11 @@ non-default group can create a new diagnostic and follows the published lint
 compatibility process. The default remains correctness only. Cache identity
 changes when group membership or warning escalation changes.
 
+Nursery provides an honest holding area for evidence-backed candidates whose
+false-positive boundary, cost, or fix contract still needs broader validation.
+Its opt-in contract does not grant rule-ID or behavior stability, and promotion
+requires the ordinary admission evidence for the destination group.
+
 One invocation can evaluate or temporarily strengthen policy without editing
 project configuration. Because directives are ordered, scripts must preserve
 argument order. The effective command-line policy is invocation state rather
@@ -105,6 +112,7 @@ extra work preserves one shared package load and deterministic results.
 ## Revisit Trigger
 
 Revisit when migration rules have an explicit target contract, a stable preset
-needs removal or renaming, dogfood shows that group union creates ambiguous
-severity or cost behavior, or a proven use case requires path-scoped options
-or nested configuration despite the package-analysis cost.
+needs removal or renaming, nursery usage shows that an additional lifecycle
+state is necessary, dogfood shows that group union creates ambiguous severity
+or cost behavior, or a proven use case requires path-scoped options or nested
+configuration despite the package-analysis cost.

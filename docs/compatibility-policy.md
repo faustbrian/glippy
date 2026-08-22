@@ -94,6 +94,13 @@ highly suspicious behavior; style, performance, complexity, and migration
 policy MUST remain opt-in unless their admission and compatibility evidence
 explicitly justifies a default change.
 
+The `nursery` group is an explicitly unstable pre-admission surface. No curated
+profile includes it. Nursery rule IDs, membership, severity, reporting
+boundaries, and fix availability MAY change between pre-1.0 minor releases when
+the release documents the corpus evidence and migration impact. Promotion from
+nursery to a stable group follows that destination group's ordinary admission
+and compatibility requirements.
+
 Profile names and composition become compatibility surfaces with Glippy's first
 public release. Adding a rule to `default` or `recommended`, or adding a group
 to `strict` or `pedantic`, MUST be announced as an adoption-affecting change,
