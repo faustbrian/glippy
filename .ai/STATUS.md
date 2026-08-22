@@ -35,10 +35,10 @@
 - v0.5 state-transition correctness pack: complete
 - v0.5 restriction policy and exported API documentation: complete
 - v0.5 direction exit audit: engineering, canonical delivery, and selected
-  `pkg/prompts` adoption complete; corrected exact-candidate evidence pending
-- v0.5 independent review: the fourth review's matrix, LSP, WaitGroup,
-  process-ownership, and documentation findings are corrected locally; final
-  safe verification and a fresh source-only review remain pending
+  `pkg/prompts` adoption complete; corrected code candidate `a4de9b3` passed
+  exact-revision CI `32547111862`
+- v0.5 independent review: complete for the bounded engineering milestone;
+  the final source-only review reported no findings
 - v0.5 native macOS/Linux amd64/arm64 release budgets: prior per-process run
   passed at `724d8a2`; aggregate process-tree runtime evidence is unproven and
   excluded from automatic execution
@@ -58,17 +58,23 @@ RSS accounting and interruption ownership, bounded LSP supersession and
 shutdown, external replacement invalidation, conservative RWMutex and
 WaitGroup reasoning, target-matrix suppression and partial-result accounting,
 baseline and changed-code policy on incomplete output, catalog admission, and
-historical evidence attribution. Local corrections cover those boundaries. The
-catalog now contains 119 rules, but its corrected current-candidate evidence is
-still pending. The previous typed 2 GiB evidence measured a per-process maximum
-and does not prove the aggregate concurrent process-tree ceiling. The corrected
-candidate must pass full safe local verification, fresh independent source
-review, and exact-revision CI before delivery. Aggregate RSS and process-
-containment claims require a separate non-disruptive evidence policy and are
-not release evidence in this candidate.
+historical evidence attribution. Candidate `2571025` corrected those
+boundaries, and `a4de9b3` aligned the CLI compatibility fixture with the
+conservative WaitGroup proof contract. The corrected candidate passed the
+complete ordinary package and race suites, focused WaitGroup and CLI coverage,
+generated-document freshness, vet, tidy, supported-target builds, default
+self-check, tagged-probe compile-only checks, shell validation, and final
+source-only review with no findings. Exact-revision GitHub CI
+[`32547111862`](https://github.com/faustbrian/glippy/actions/runs/32547111862)
+also passed on `a4de9b3`. This closes the bounded v0.5 engineering milestone.
+The previous typed 2 GiB evidence measured a per-process maximum and does not
+prove the aggregate concurrent process-tree ceiling. Aggregate RSS, signal,
+interruption, descendant cleanup, and process-containment behavior remain
+unproven and are not release evidence in this candidate.
 Routine implementation and review are agent-owned; no maintainer review gate is
-required. Tagging and publication remain prohibited until the candidate is
-genuinely complete and explicit publication authorization applies.
+required. Tagging and publication remain prohibited until the complete product
+is genuinely ready and the maintainer has reviewed it and explicitly
+authorizes publication.
 
 Phase 0 established the reviewed product contracts, shared-frontend and edit
 boundaries, initial hostile-valid corpus, bounded document renderer, controlled
@@ -2612,3 +2618,18 @@ was refreshed from current `golib` main, reviewed, passed the complete package
 gate, pushed, and integrated on `faustbrian/golib` `main` at `5eb1b997`. The
 engineering and delivery gates are complete. Final maintainer review remains
 required before any tag or release; no tag or release was created.
+
+The corrected v0.5 code candidate is
+`a4de9b3099e88116b72c8a64c55655b7115cf295`. Engineering commit `2571025`
+closed the reviewed LSP, invalidation, conservative reasoning, target-matrix,
+incomplete-output, catalog, process-ownership, and evidence-attribution gaps;
+`a4de9b3` aligned the CLI compatibility fixture with the WaitGroup rule's
+proven straight-line boundary. The complete safe local verification set passed,
+and the final independent source-only review reported no findings. Public
+exact-revision CI run `32547111862` also passed. This closes the bounded v0.5
+engineering milestone. Aggregate runtime RSS, signals, interruption,
+descendant cleanup, process containment, and the refreshed external full-gate
+result remain unproven and outside the milestone. No v0.5 tag or release was
+created. The complete product goal remains active, and publication remains
+prohibited until the product is genuinely ready and the maintainer has reviewed
+it and explicitly authorizes publication.
