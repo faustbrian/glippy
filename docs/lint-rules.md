@@ -37,6 +37,7 @@ not stable release promises.
 - [excessive-nesting](#excessive-nesting)
 - [exec-pipe-run](#exec-pipe-run)
 - [exported-api-documentation](#exported-api-documentation)
+- [failed-type-assertion-value](#failed-type-assertion-value)
 - [http-canonical-header-key](#http-canonical-header-key)
 - [http-response-before-error](#http-response-before-error)
 - [http-response-body-not-closed](#http-response-body-not-closed)
@@ -1549,6 +1550,64 @@ func Open(path string) (*File, error) { return nil, nil }
 ```go
 // Open opens path for reading.
 func Open(path string) (*File, error) { return nil, nil }
+```
+
+## failed-type-assertion-value
+
+detects reads of a shadowed zero value after a failed type assertion
+
+A short type assertion such as `if value, ok := value.(T); ok` shadows the original value throughout
+both branches. In the else branch the new value is the zero value of T, not the interface value that
+failed the assertion. Reading it can silently discard the original value or substitute nil, zero, or
+an empty value in error handling and fallback paths.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: SSA
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only short assertions of the exact form `if value, ok := value.(T); ok` are recognized; renamed
+  results, assignments, type switches, and compound conditions remain conservative.
+- Only else-branch reads that SSA proves still refer to the failed assertion result report;
+  reassignment, address-taking, closure capture, and ambiguous joins are excluded.
+- Generated files and packages with type errors are excluded.
+
+### Example: Keep the original value available to the failure branch
+
+**Incorrect**
+
+```go
+if value, ok := value.(string); ok {
+	return value
+} else {
+	return fmt.Sprintf("unexpected %T", value)
+}
+```
+
+**Correct**
+
+```go
+if text, ok := value.(string); ok {
+	return text
+} else {
+	return fmt.Sprintf("unexpected %T", value)
+}
 ```
 
 ## http-canonical-header-key

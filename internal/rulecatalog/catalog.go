@@ -42,6 +42,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewEmptyBranchRule(),
 		rules.NewExecPipeRunRule(),
 		rules.NewExportedAPIDocumentationRule(),
+		rules.NewFailedTypeAssertionValueRule(),
 		rules.NewHTTPCanonicalHeaderKeyRule(),
 		rules.NewHTTPResponseBodyNotClosedRule(),
 		rules.NewHTTPResponseBodyUsedAfterCloseRule(),
