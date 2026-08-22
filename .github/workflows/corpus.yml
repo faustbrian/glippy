@@ -135,7 +135,9 @@ jobs:
           go build -o "$task_root/bin/corpus-runner" ./benchmarks/cmd/corpus-runner
           go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
           cd "$GITHUB_WORKSPACE/checkouts/${{ matrix.id }}"
-          GOFLAGS=-mod=readonly go mod download
+          # Prefetch only the root module so an ignored go.work.sum cannot
+          # contaminate the exact pinned checkout before the runner verifies it.
+          GOWORK=off GOFLAGS=-mod=readonly go mod download
       - name: Run the non-mutating corpus audit
         shell: bash
         working-directory: glippy
