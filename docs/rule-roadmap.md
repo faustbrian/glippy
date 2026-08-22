@@ -123,6 +123,20 @@ signal values, and unresolved function values remain conservative. Removing a
 sole signal can change a call to its all-signals form, so the rule offers no
 automatic fix.
 
+The standard-library misuse track also admits `overlapping-encoder-slices` as
+a default correctness SSA rule. Exact calls to the expanding encoders in
+`encoding/ascii85`, `encoding/hex`, `encoding/base32`, and `encoding/base64`
+report when destination and source are the same typed variable, the same
+normalized SSA value, or slices of the same normalized base with equal lower
+bounds. Same-file package variables initialized directly by `make` or a
+composite literal, method expressions, and statically resolved function and
+bound-method aliases retain exact destination ranges. Package initializer
+aliases, unknown values, and cross-file declarations remain conservative unless
+SSA independently proves overlap. This follows Staticcheck SA1031's proven
+data-corruption boundary. Distinct buffers, differing or unproven lower bounds,
+dynamic calls, lookalikes, decoders, and append encoders remain conservative.
+The rule offers no guessed allocation or relocation fix.
+
 The deferred-execution track now admits `deferred-function-not-called` as an
 opt-in suspicious rule. A `defer setup()` call reports only when type
 information proves that the deferred call itself returns a function, which is

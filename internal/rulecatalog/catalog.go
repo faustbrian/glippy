@@ -72,6 +72,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewNonOctalFileModeRule(),
 		rules.NewNonSliceSortRule(),
 		rules.NewOverwrittenErrorRule(),
+		rules.NewOverlappingEncoderSlicesRule(),
 		rules.NewProcessExitRule(),
 		rules.NewShadowedErrorRule(),
 		rules.NewRedundantClosureRule(),

@@ -85,6 +85,7 @@ not stable release promises.
 - [nilness](#nilness)
 - [non-octal-file-mode](#non-octal-file-mode)
 - [non-slice-sort](#non-slice-sort)
+- [overlapping-encoder-slices](#overlapping-encoder-slices)
 - [oversized-shift](#oversized-shift)
 - [overwritten-error](#overwritten-error)
 - [printf-arguments](#printf-arguments)
@@ -4027,6 +4028,61 @@ sort.Slice(&values, less)
 
 ```go
 sort.Slice(values, less)
+```
+
+## overlapping-encoder-slices
+
+detects overlapping destination and source encoder buffers
+
+Expanding byte encoders write multiple destination bytes while continuing to read the source. When
+destination and source share the same starting storage, earlier writes can overwrite source bytes
+before the encoder reads them and silently corrupt the result.
+
+- Default severity: `warn`
+- Presets: `correctness`
+- Minimum Go: `1.25`
+- Analysis tier: SSA
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `safety`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only exact static calls to encoding/ascii85.Encode, encoding/hex.Encode, and the Encode methods of
+  encoding/base32.Encoding and encoding/base64.Encoding are recognized.
+- The rule reports identical typed variable references, identical normalized SSA slice values, and
+  slices proven to share one base and lower bound; aliases or overlapping ranges with different
+  unproven offsets remain conservative.
+- Package-initializer variable fallback is limited to same-file declarations initialized directly by
+  make or a composite literal; aliases, unknown initializers, and cross-file declarations remain
+  conservative unless SSA independently proves overlap.
+- No automatic fix is offered because allocating, reusing, or relocating the destination depends on
+  ownership and capacity requirements.
+- Generated files and packages with type errors are excluded.
+
+### Example: Encode into separate destination storage
+
+**Incorrect**
+
+```go
+hex.Encode(buffer, buffer)
+```
+
+**Correct**
+
+```go
+hex.Encode(destination, source)
 ```
 
 ## oversized-shift
