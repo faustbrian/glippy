@@ -30,7 +30,13 @@ type debugSSARule struct {
 	ssaRule
 }
 
+type initializerSSARule struct {
+	ssaRule
+}
+
 func (debugSSARule) RequiresSSADebug() {}
+
+func (initializerSSARule) RunsOnSSAInitializers() {}
 
 func (r ambiguousSSARule) RunControlFlow(*rules.ControlFlowContext) ([]rules.Finding, error) {
 	return nil, nil
@@ -176,6 +182,79 @@ func (owner) method() {}
 		if len(values) != 2 || values[0] != values[1] {
 			t.Fatalf("function at %d received SSA functions %#v", start, values)
 		}
+	}
+}
+
+func TestRunSSAInvokesInitializerRulesPerPhysicalFile(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "first.go"),
+		"package project\n\nvar value = build()\n\nfunc build() int { return 1 }\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "second.go"),
+		"package project\n\nfunc use() int { return value }\n",
+	)
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireSSA,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	initializerVisits := 0
+	ordinaryInitializerVisits := 0
+	newRule := func(id string, visits *int) ssaRule {
+		return ssaRule{
+			metadata: ssaMetadata(id),
+			run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
+				if _, initializer := ctx.Syntax().(*ast.File); initializer {
+					(*visits)++
+					if ctx.Function().Synthetic != "package initializer" {
+						t.Fatalf(
+							"initializer SSA function = %#v",
+							ctx.Function(),
+						)
+					}
+				}
+				return nil, nil
+			},
+		}
+	}
+	initializer := initializerSSARule{ssaRule: newRule("initializer-ssa", &initializerVisits)}
+	ordinary := newRule("ordinary-ssa", &ordinaryInitializerVisits)
+	registry, err := rules.NewRegistry(initializer, ordinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunSSA(context.Background(), loaded, registry, selection);
+		err != nil {
+		t.Fatal(err)
+	}
+	if initializerVisits != 2 || ordinaryInitializerVisits != 0 {
+		t.Fatalf(
+			"initializer visits = %d, ordinary visits = %d",
+			initializerVisits,
+			ordinaryInitializerVisits,
+		)
 	}
 }
 

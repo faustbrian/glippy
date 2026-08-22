@@ -217,6 +217,14 @@ type SSARule interface {
 	RunSSA(*SSAContext) ([]Finding, error)
 }
 
+// SSAInitializerRule marks an SSA rule that also needs package-level variable
+// initializer instructions. The scheduler invokes RunSSA once per physical
+// source file with the synthetic package init function and that file's AST.
+type SSAInitializerRule interface {
+	SSARule
+	RunsOnSSAInitializers()
+}
+
 // SSADebugRule marks an SSA rule that needs source-expression-to-value
 // mappings. The scheduler enables the more expensive x/tools debug mapping
 // only when at least one selected SSA rule declares this requirement.
@@ -681,8 +689,8 @@ type EffectFacts interface {
 	CleanupManagedResult(*types.Func, int) bool
 }
 
-// SSAContext binds one source function to its shared SSA program, typed
-// package, and exact immutable physical source.
+// SSAContext binds one source function or package initializer to its shared SSA
+// program, typed package, and exact immutable physical source.
 type SSAContext struct {
 	typesContext *TypesContext
 	program *ssa.Program
@@ -756,7 +764,9 @@ func (c *SSAContext) Function() *ssa.Function {
 	return c.function
 }
 
-// Syntax returns the function declaration or literal represented by Function.
+// Syntax returns the declaration or literal represented by Function. An
+// initializer context returns the physical file AST whose package-level
+// initializer expressions are eligible to report.
 func (c *SSAContext) Syntax() ast.Node {
 	if c == nil {
 		return nil

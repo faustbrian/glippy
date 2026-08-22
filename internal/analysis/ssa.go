@@ -247,6 +247,64 @@ func runSSAProgramPackage(
 				active.options,
 			)
 		}
+		runRule := func(
+			active activeSSARule,
+			function *ssa.Function,
+			syntax ast.Node,
+		) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			ruleContext := rules.NewSSAContext(
+				typesContexts[active.metadata.ID],
+				program,
+				ssaPackage,
+				function,
+				syntax,
+				effects,
+			)
+			ruleStarted := beginStatisticsMeasurement(statistics)
+			findings, err := active.rule.RunSSA(ruleContext)
+			statistics.recordRule(
+				active.metadata.ID,
+				active.metadata.Requirement,
+				ruleStarted,
+			)
+			if contextErr := ctx.Err(); contextErr != nil {
+				return contextErr
+			}
+			if err != nil {
+				return fmt.Errorf("%s: %w", active.metadata.ID, err)
+			}
+			for _, finding := range findings {
+				diagnostic, err := diagnosticForFinding(
+					file.source,
+					active.metadata,
+					active.severity,
+					finding,
+				)
+				if err != nil {
+					return fmt.Errorf("%s: %w", active.metadata.ID, err)
+				}
+				diagnostics = append(diagnostics, diagnostic)
+			}
+			return nil
+		}
+		initializer := ssaPackage.Func("init")
+		for _, active := range activeRules {
+			if _, eligible := active.rule.(rules.SSAInitializerRule); !eligible {
+				continue
+			}
+			if initializer == nil {
+				return nil, fmt.Errorf("package %q has no SSA initializer", pkg.ID)
+			}
+			if file.source.Metadata().Generated && !active.metadata.RunOnGenerated {
+				continue
+			}
+			if err := runRule(active, initializer, file.syntax); err != nil {
+				return nil, err
+			}
+		}
 		for _, sourceFunction := range functionBodies(file.syntax) {
 			if err := ctx.Err(); err != nil {
 				return nil, err
@@ -263,42 +321,9 @@ func runSSAProgramPackage(
 					!active.metadata.RunOnGenerated {
 					continue
 				}
-				ruleContext := rules.NewSSAContext(
-					typesContexts[active.metadata.ID],
-					program,
-					ssaPackage,
-					function,
-					sourceFunction.function,
-					effects,
-				)
-				ruleStarted := beginStatisticsMeasurement(statistics)
-				findings, err := active.rule.RunSSA(ruleContext)
-				statistics.recordRule(
-					active.metadata.ID,
-					active.metadata.Requirement,
-					ruleStarted,
-				)
-				if contextErr := ctx.Err(); contextErr != nil {
-					return nil, contextErr
-				}
-				if err != nil {
-					return nil, fmt.Errorf("%s: %w", active.metadata.ID, err)
-				}
-				for _, finding := range findings {
-					diagnostic, err := diagnosticForFinding(
-						file.source,
-						active.metadata,
-						active.severity,
-						finding,
-					)
-					if err != nil {
-						return nil, fmt.Errorf(
-							"%s: %w",
-							active.metadata.ID,
-							err,
-						)
-					}
-					diagnostics = append(diagnostics, diagnostic)
+				if err := runRule(active, function, sourceFunction.function);
+					err != nil {
+					return nil, err
 				}
 			}
 		}

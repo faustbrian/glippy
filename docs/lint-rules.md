@@ -23,6 +23,7 @@ not stable release promises.
 - [context-todo](#context-todo)
 - [contradictory-condition](#contradictory-condition)
 - [copied-lock](#copied-lock)
+- [dangerous-remove-all](#dangerous-remove-all)
 - [defer-before-error-check](#defer-before-error-check)
 - [defer-in-infinite-loop](#defer-in-infinite-loop)
 - [defer-in-loop](#defer-in-loop)
@@ -851,6 +852,60 @@ func clone(value *state) state { return *value }
 
 ```go
 func share(value *state) *state { return value }
+```
+
+## dangerous-remove-all
+
+detects deletion of complete user or system directories
+
+Passing the direct result of os.TempDir, os.UserCacheDir, os.UserConfigDir, or os.UserHomeDir to
+os.RemoveAll deletes the complete directory rather than a child created within it. This is commonly
+caused by confusing os.TempDir with os.MkdirTemp or by forgetting to append a project-specific path.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: SSA
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `safety`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only exact static calls to os.RemoveAll and the four exact standard-library directory functions
+  are recognized.
+- Direct SSA value flow and equivalent phi values are followed; helper returns, pointer loads,
+  dynamic function calls, and transformed paths remain conservative.
+- The rule intentionally reports no fix because choosing a safe child directory requires application
+  intent.
+- Generated files and packages with type errors are excluded.
+
+### Example: Delete only an owned temporary directory
+
+**Incorrect**
+
+```go
+directory := os.TempDir()
+defer os.RemoveAll(directory)
+```
+
+**Correct**
+
+```go
+directory, err := os.MkdirTemp("", "project-*")
+if err != nil { return err }
+defer os.RemoveAll(directory)
 ```
 
 ## defer-before-error-check
