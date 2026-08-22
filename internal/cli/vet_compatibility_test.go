@@ -518,15 +518,15 @@ func (writer) WriteTo(io.Writer) error { return nil }
 func target() {}
 
 func defects(data []byte, value uint8, number int, items []int, host string, start time.Time, t *testing.T) {
-	var decoded payload
-	json.Unmarshal(data, decoded)
-	fmt.Printf("%d", "text")
 	var group sync.WaitGroup
 	go func() {
 		group.Add(1)
 		defer group.Done()
 	}()
 	group.Wait()
+	var decoded payload
+	json.Unmarshal(data, decoded)
+	fmt.Printf("%d", "text")
 	go func() { t.Fatal("worker failed") }()
 	_ = value << 8
 	_ = string(number)
