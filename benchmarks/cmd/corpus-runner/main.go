@@ -47,6 +47,11 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 		"",
 		"validate an adjudication document against result artifacts",
 	)
+	adjudicationReportPath := flags.String(
+		"adjudication-report",
+		"",
+		"write a deterministic report for an adjudication document",
+	)
 	validateOnly := flags.Bool(
 		"validate-only",
 		false,
@@ -75,7 +80,9 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 		fmt.Fprintf(stderr, "corpus-runner: %v\n", err)
 		return 2
 	}
-	adjudicationMode := *adjudicationTemplate || *adjudicationPath != ""
+	adjudicationMode := *adjudicationTemplate ||
+		*adjudicationPath != "" ||
+		*adjudicationReportPath != ""
 	if *validateOnly && adjudicationMode {
 		fmt.Fprintln(
 			stderr,
@@ -83,11 +90,18 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 		)
 		return 2
 	}
-	if *adjudicationTemplate && *adjudicationPath != "" {
-		fmt.Fprintln(
-			stderr,
-			"corpus-runner: --adjudication-template and --adjudication are mutually exclusive",
-		)
+	adjudicationModeCount := 0
+	if *adjudicationTemplate {
+		adjudicationModeCount++
+	}
+	if *adjudicationPath != "" {
+		adjudicationModeCount++
+	}
+	if *adjudicationReportPath != "" {
+		adjudicationModeCount++
+	}
+	if adjudicationModeCount > 1 {
+		fmt.Fprintln(stderr, "corpus-runner: adjudication modes are mutually exclusive")
 		return 2
 	}
 	if adjudicationMode {
@@ -122,6 +136,36 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 				fmt.Fprintf(
 					stderr,
 					"corpus-runner: write adjudication template: %v\n",
+					writeErr,
+				)
+				return 1
+			}
+			return 0
+		}
+		if *adjudicationReportPath != "" {
+			adjudicationInput, readErr := os.ReadFile(*adjudicationReportPath)
+			if readErr != nil {
+				fmt.Fprintf(
+					stderr,
+					"corpus-runner: read adjudication: %v\n",
+					readErr,
+				)
+				return 2
+			}
+			report, reportErr := corpus.BuildAdjudicationReport(
+				manifest,
+				input,
+				*resultsRoot,
+				adjudicationInput,
+			)
+			if reportErr != nil {
+				fmt.Fprintf(stderr, "corpus-runner: %v\n", reportErr)
+				return 1
+			}
+			if _, writeErr := stdout.Write(report); writeErr != nil {
+				fmt.Fprintf(
+					stderr,
+					"corpus-runner: write adjudication report: %v\n",
 					writeErr,
 				)
 				return 1

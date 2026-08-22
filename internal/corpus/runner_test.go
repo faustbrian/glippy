@@ -638,7 +638,7 @@ func (e *corpusExecutor) Run(
 				1,
 			)
 		}
-		statistics := `{"schema_version":1,"command":"lint","outcome":{"category":"findings","exit_code":1},"complete":true,"duration_ns":1}`
+		statistics := `{"schema_version":1,"command":"lint","outcome":{"category":"findings","exit_code":1},"complete":true,"maximum_tier":"syntax","packages":1,"files":1,"loaded_files":1,"total":{"calls":1,"duration_ns":1,"allocations":1,"allocated_bytes":1},"phases":[],"tiers":[],"rules":[],"cache":{"lookups":0,"hits":0,"misses":0,"invalidations":0,"writes":0},"dependency_syntax":{"loaded":false,"reasons":[]},"effect_facts":{"loaded":false,"reasons":[]}}`
 		if len(e.statistics) != 0 {
 			statistics = e.statistics[0]
 			e.statistics = e.statistics[1:]

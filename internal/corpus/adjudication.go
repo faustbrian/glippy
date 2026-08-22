@@ -16,7 +16,7 @@ import (
 	"strings"
 )
 
-const AdjudicationSchemaVersion = 1
+const AdjudicationSchemaVersion = 2
 
 var (
 	adjudicationProfiles = []string{"default", "recommended"}
@@ -51,7 +51,13 @@ type repositoryAdjudication struct {
 	ResultSHA256 string `json:"result_sha256"`
 	IncompleteProfiles []string `json:"incomplete_profiles"`
 	IncompleteComparators []string `json:"incomplete_comparators"`
+	Measurements []measurementBinding `json:"measurements"`
 	Profiles []profileAdjudication `json:"profiles"`
+}
+
+type measurementBinding struct {
+	Profile string `json:"profile"`
+	StatisticsSHA256 string `json:"statistics_sha256"`
 }
 
 type profileAdjudication struct {
@@ -117,6 +123,14 @@ var (
 			"result_sha256": jsonString,
 			"incomplete_profiles": {Element: jsonString},
 			"incomplete_comparators": {Element: jsonString},
+			"measurements": {
+				Element: &jsonShape{
+					Fields: map[string]*jsonShape{
+						"profile": jsonString,
+						"statistics_sha256": jsonString,
+					},
+				},
+			},
 			"profiles": {Element: profileAdjudicationShape},
 		},
 	}
@@ -289,6 +303,24 @@ func ValidateAdjudication(
 				repository.ID,
 			)
 		}
+		for _, measurement := range repository.Measurements {
+			statisticsDigest, err := loadBoundStatisticsDigest(
+				resultRoot,
+				manifestRepository,
+				repository.ResultSHA256,
+				measurement.Profile,
+			)
+			if err != nil {
+				return AdjudicationSummary{}, err
+			}
+			if statisticsDigest != measurement.StatisticsSHA256 {
+				return AdjudicationSummary{}, fmt.Errorf(
+					"%s statistics digest mismatch for %q",
+					measurement.Profile,
+					repository.ID,
+				)
+			}
+		}
 		for _, profile := range repository.Profiles {
 			findings, complete, err := loadBoundFindings(
 				resultRoot,
@@ -377,7 +409,26 @@ func BuildAdjudicationTemplate(
 			ResultSHA256: resultSHA256,
 			IncompleteProfiles: []string{},
 			IncompleteComparators: state.IncompleteComparators,
+			Measurements: make([]measurementBinding, 0, len(corpusProfiles)),
 			Profiles: make([]profileAdjudication, 0, len(adjudicationProfiles)),
+		}
+		for _, profile := range corpusProfiles {
+			statisticsDigest, err := loadBoundStatisticsDigest(
+				resultRoot,
+				repository,
+				entry.ResultSHA256,
+				profile,
+			)
+			if err != nil {
+				return nil, err
+			}
+			entry.Measurements = append(
+				entry.Measurements,
+				measurementBinding{
+					Profile: profile,
+					StatisticsSHA256: statisticsDigest,
+				},
+			)
 		}
 		for _, profile := range adjudicationProfiles {
 			findings, complete, err := loadBoundFindings(
@@ -512,6 +563,32 @@ func (d adjudicationDocument) validate(manifest Manifest, manifestInput []byte) 
 				)
 			}
 		}
+		if len(repository.Measurements) != len(corpusProfiles) {
+			return fmt.Errorf(
+				"repository %q measurement count = %d, want %d",
+				repository.ID,
+				len(repository.Measurements),
+				len(corpusProfiles),
+			)
+		}
+		for measurementIndex, measurement := range repository.Measurements {
+			if measurement.Profile != corpusProfiles[measurementIndex] {
+				return fmt.Errorf(
+					"repository %q measurement %d = %q, want %q",
+					repository.ID,
+					measurementIndex,
+					measurement.Profile,
+					corpusProfiles[measurementIndex],
+				)
+			}
+			if !digestPattern.MatchString(measurement.StatisticsSHA256) {
+				return fmt.Errorf(
+					"repository %q profile %q has invalid statistics digest",
+					repository.ID,
+					measurement.Profile,
+				)
+			}
+		}
 		if len(repository.Profiles) != len(adjudicationProfiles) {
 			return fmt.Errorf(
 				"repository %q profile count = %d, want %d",
@@ -608,6 +685,7 @@ func validateFindingReferences(findings []findingAdjudication) error {
 }
 
 func validateCorpusGaps(gaps []corpusGap, repositories map[string]struct{}) error {
+	ruleDispositions := make(map[string]string)
 	for index, gap := range gaps {
 		if !repositoryIDPattern.MatchString(gap.ID) {
 			return fmt.Errorf("gap %d has invalid ID %q", index, gap.ID)
@@ -660,6 +738,16 @@ func validateCorpusGaps(gaps []corpusGap, repositories map[string]struct{}) erro
 			}
 		} else if !repositoryIDPattern.MatchString(gap.RuleID) {
 			return fmt.Errorf("gap %q has invalid rule_id %q", gap.ID, gap.RuleID)
+		} else if disposition, found := ruleDispositions[gap.RuleID];
+			found && disposition != gap.Disposition {
+			return fmt.Errorf(
+				"rule %q has conflicting dispositions %q and %q",
+				gap.RuleID,
+				disposition,
+				gap.Disposition,
+			)
+		} else {
+			ruleDispositions[gap.RuleID] = gap.Disposition
 		}
 	}
 	return nil

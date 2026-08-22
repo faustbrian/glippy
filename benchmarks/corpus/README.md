@@ -55,6 +55,10 @@ disposable checkouts and caches, fetches module inputs before the offline audit,
 uploads normalized artifacts, and removes task-owned resources. It does not
 publish an Action, modify upstream repositories, submit changes, or claim that
 an optional-profile finding is a defect before manual adjudication.
+An `all` run also collects the exact-run repository artifacts and initial
+adjudication template into one review bundle. The aggregate report is generated
+only after the required manual classifications and incomplete-run gaps have
+been recorded.
 The current corpus harness uses Go 1.26.6 because several pinned repositories
 declare that patch level; this is evidence metadata rather than a change to the
 separately documented Glippy release toolchain.
@@ -86,12 +90,13 @@ specific reason for every finding. Supported classifications are:
 - `unsupported-build`; and
 - `unresolved`.
 
-Each repository entry binds the exact `result.json` digest. Validation also
-checks the recorded tool versions, canonical profile results, normalized
-diagnostics, finding inventories, and the digested `go vet` and Staticcheck
-outputs. Reusing an adjudication with a different run or edited artifact is an
-error. All repository results must carry the same run ID and exact Glippy, Go,
-and Staticcheck version strings. The manual workflow derives that ID from the
+Each repository entry binds the exact `result.json` digest and the statistics
+digest for all four profiles. Validation also checks the recorded tool
+versions, canonical profile results, normalized diagnostics, finding
+inventories, and the digested `go vet` and Staticcheck outputs. Reusing an
+adjudication with a different run or edited artifact is an error. All
+repository results must carry the same run ID and exact Glippy, Go, and
+Staticcheck version strings. The manual workflow derives that ID from the
 Glippy source revision and GitHub workflow run.
 
 Record demonstrated omissions in the ordered `gaps` list. A gap names its
@@ -124,3 +129,23 @@ reports zero unresolved default or recommended findings, profiles, and
 comparators. It exits nonzero while unresolved evidence remains. This command
 reads artifacts only; it does not rerun repositories or modify their
 checkouts.
+
+Generate the canonical aggregate after any adjudication edit:
+
+```sh
+go run ./benchmarks/cmd/corpus-runner \
+  --manifest benchmarks/corpus/manifest.json \
+  --results /path/to/results \
+  --adjudication-report corpus-adjudication.json > corpus-report.json
+```
+
+The report revalidates the adjudication and exact result set. It records
+classification counts, gap counts, deterministic per-profile totals, every
+per-repository statistics digest, and one evidence-backed queue entry for each
+backlog or nursery rule candidate. Multiple gaps for one rule must use one
+consistent disposition. The duration and allocation fields come from Glippy's
+process-local statistics. `allocated_bytes` is allocation volume, not peak RSS
+or aggregate process-tree memory; those budgets require isolated CI evidence.
+An incomplete profile whose statistics output is not JSON remains in the
+report with its bound artifact digest and `measured: false`; its crash or
+unsupported gap is not discarded merely because cost data is unavailable.

@@ -76,6 +76,12 @@ func TestRunRejectsAdjudicationModesWithoutResultArtifacts(t *testing.T) {
 				"--adjudication",
 				"review.json",
 			},
+			{
+				"--manifest",
+				filepath.Join("..", "..", "corpus", "manifest.json"),
+				"--adjudication-report",
+				"review.json",
+			},
 		} {
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
@@ -122,6 +128,19 @@ func TestRunRejectsConflictingCorpusModes(t *testing.T) {
 					"results",
 					"--adjudication-template",
 					"--adjudication",
+					"review.json",
+				},
+				want: "mutually exclusive",
+			},
+			{
+				arguments: []string{
+					"--manifest",
+					manifestPath,
+					"--results",
+					"results",
+					"--adjudication",
+					"review.json",
+					"--adjudication-report",
 					"review.json",
 				},
 				want: "mutually exclusive",
@@ -224,6 +243,71 @@ func TestRunBuildsAndValidatesAdjudicationFromBoundResults(t *testing.T) {
 	if stdout.String() !=
 		"valid corpus adjudication: 17 repositories, 0 findings, 0 gaps, 0 unresolved\n" {
 		t.Fatalf("validation stdout = %q", stdout.String())
+	}
+}
+
+func TestRunWritesDeterministicAdjudicationReport(t *testing.T) {
+	t.Parallel()
+
+	manifestPath := filepath.Join("..", "..", "corpus", "manifest.json")
+	manifestInput, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := corpus.ParseManifest(manifestInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resultsRoot := filepath.Join(t.TempDir(), "results")
+	writeEmptyResultArtifacts(t, manifest, resultsRoot, false)
+	template, err := corpus.BuildAdjudicationTemplate(manifest, manifestInput, resultsRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adjudicationPath := filepath.Join(t.TempDir(), "adjudication.json")
+	if err := os.WriteFile(adjudicationPath, template, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := run(
+		context.Background(),
+		[]string{
+			"--manifest",
+			manifestPath,
+			"--results",
+			resultsRoot,
+			"--adjudication-report",
+			adjudicationPath,
+		},
+		&stdout,
+		&stderr,
+	)
+	if exitCode != 0 || stderr.Len() != 0 {
+		t.Fatalf("report run = exit %d, stderr %q", exitCode, stderr.String())
+	}
+	var report struct {
+		SchemaVersion int `json:"schema_version"`
+		Summary struct {
+			Repositories int `json:"repositories"`
+			Unresolved int `json:"unresolved"`
+		} `json:"summary"`
+		Profiles []struct {
+			Profile string `json:"profile"`
+			Repositories int `json:"repositories"`
+		} `json:"profiles"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.SchemaVersion != corpus.AdjudicationReportSchemaVersion ||
+		report.Summary.Repositories != len(manifest.Repositories) ||
+		report.Summary.Unresolved != 0 ||
+		len(report.Profiles) != 4 ||
+		report.Profiles[0].Profile != "default" ||
+		report.Profiles[0].Repositories != len(manifest.Repositories) {
+		t.Fatalf("report = %#v", report)
 	}
 }
 
@@ -397,6 +481,45 @@ func writeEmptyResultArtifacts(
 			if err := os.WriteFile(
 				filepath.Join(profileRoot, "findings.json"),
 				input,
+				0o600,
+			);
+				err != nil {
+				t.Fatal(err)
+			}
+			statistics := map[string]any{
+				"schema_version": 1,
+				"command": "lint",
+				"outcome": map[string]any{"category": "success", "exit_code": 0},
+				"complete": complete,
+				"maximum_tier": "syntax",
+				"packages": 1,
+				"files": 1,
+				"loaded_files": 1,
+				"total": map[string]any{
+					"calls": 1,
+					"duration_ns": 1,
+					"allocations": 1,
+					"allocated_bytes": 1,
+				},
+				"phases": []any{},
+				"tiers": []any{},
+				"rules": []any{},
+				"cache": map[string]any{
+					"lookups": 0,
+					"hits": 0,
+					"misses": 0,
+					"invalidations": 0,
+					"writes": 0,
+				},
+				"dependency_syntax": map[string]any{
+					"loaded": false,
+					"reasons": []any{},
+				},
+				"effect_facts": map[string]any{"loaded": false, "reasons": []any{}},
+			}
+			if err := os.WriteFile(
+				filepath.Join(profileRoot, "statistics.json"),
+				marshalJSON(t, statistics),
 				0o600,
 			);
 				err != nil {

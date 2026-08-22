@@ -167,3 +167,64 @@ jobs:
           find "$task_root" -type d -exec chmod u+w {} +
           find "$task_root" -mindepth 1 -delete
           rmdir "$task_root"
+
+  collect:
+    name: Collect corpus evidence
+    if: inputs.repository == 'all'
+    needs:
+      - matrix
+      - audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out Glippy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          path: glippy
+      - name: Install the recorded Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: 1.26.6
+          cache: false
+      - name: Download exact-run repository evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: glippy-corpus-*
+          path: ${{ runner.temp }}/glippy-corpus-collection/results
+          merge-multiple: true
+      - name: Build the initial adjudication
+        shell: bash
+        working-directory: glippy
+        run: |
+          set -euo pipefail
+          task_root="$RUNNER_TEMP/glippy-corpus-collection"
+          export GOCACHE="$task_root/gocache"
+          export GOMODCACHE="$task_root/modcache"
+          export GOENV=off
+          export GOTOOLCHAIN=local
+          go build -o "$task_root/corpus-runner" ./benchmarks/cmd/corpus-runner
+          "$task_root/corpus-runner" \
+            --manifest benchmarks/corpus/manifest.json \
+            --results "$task_root/results" \
+            --adjudication-template > "$task_root/corpus-adjudication.json"
+      - name: Upload combined review evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: glippy-corpus-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/glippy-corpus-collection/results
+            ${{ runner.temp }}/glippy-corpus-collection/corpus-adjudication.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove task-owned resources
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_root="$RUNNER_TEMP/glippy-corpus-collection"
+          if test -d "$task_root"; then
+            find "$task_root" -type d -exec chmod u+w {} +
+            find "$task_root" -mindepth 1 -delete
+            rmdir "$task_root"
+          fi

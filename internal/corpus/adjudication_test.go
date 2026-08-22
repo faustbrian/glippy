@@ -36,7 +36,9 @@ func TestValidateAdjudicationBindsEveryRequiredFindingAndGap(t *testing.T) {
 	)
 	resultDigest := fileDigest(t, filepath.Join(options.OutputRoot, "alpha", "result.json"))
 	input := adjudicationJSON(
+		t,
 		manifestInput,
+		options.OutputRoot,
 		resultDigest,
 		defaultFingerprint,
 		recommendedFingerprint,
@@ -56,6 +58,311 @@ func TestValidateAdjudicationBindsEveryRequiredFindingAndGap(t *testing.T) {
 		summary.Gaps != 1 ||
 		summary.Unresolved != 0 {
 		t.Fatalf("ValidateAdjudication() summary = %#v", summary)
+	}
+}
+
+func TestBuildAdjudicationReportAggregatesClassificationsMeasurementsAndRuleQueue(t *testing.T) {
+	t.Parallel()
+
+	manifestInput := []byte(singleRepositoryManifestJSON())
+	manifest, err := corpus.ParseManifest(manifestInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, options, _, _ := newRunFixture(t)
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	writeCorpusStatistics(t, options.OutputRoot, "alpha", "default", 2, 3, 4, 11, 13, 17)
+	writeCorpusStatistics(t, options.OutputRoot, "alpha", "recommended", 5, 7, 8, 19, 23, 29)
+	writeCorpusStatistics(t, options.OutputRoot, "alpha", "strict", 31, 37, 41, 43, 47, 53)
+	writeCorpusStatistics(t, options.OutputRoot, "alpha", "pedantic", 59, 61, 67, 71, 73, 79)
+	defaultFingerprint := readFindingFingerprint(
+		t,
+		filepath.Join(options.OutputRoot, "alpha", "default", "findings.json"),
+	)
+	recommendedFingerprint := readFindingFingerprint(
+		t,
+		filepath.Join(options.OutputRoot, "alpha", "recommended", "findings.json"),
+	)
+	resultDigest := fileDigest(t, filepath.Join(options.OutputRoot, "alpha", "result.json"))
+	adjudication := []byte(
+		adjudicationJSON(
+			t,
+			manifestInput,
+			options.OutputRoot,
+			resultDigest,
+			defaultFingerprint,
+			recommendedFingerprint,
+		),
+	)
+
+	report, err := corpus.BuildAdjudicationReport(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		adjudication,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		SchemaVersion int `json:"schema_version"`
+		Summary struct {
+			Repositories int `json:"repositories"`
+			Findings int `json:"findings"`
+			Gaps int `json:"gaps"`
+			Unresolved int `json:"unresolved"`
+		} `json:"summary"`
+		Classifications []struct {
+			Profile string `json:"profile"`
+			Classification string `json:"classification"`
+			Count int `json:"count"`
+		} `json:"classifications"`
+		Profiles []struct {
+			Profile string `json:"profile"`
+			Repositories int `json:"repositories"`
+			CompleteRepositories int `json:"complete_repositories"`
+			MeasuredRepositories int `json:"measured_repositories"`
+			Findings int `json:"findings"`
+			Packages int `json:"packages"`
+			Files int `json:"files"`
+			LoadedFiles int `json:"loaded_files"`
+			DurationNanoseconds int64 `json:"duration_ns"`
+			Allocations uint64 `json:"allocations"`
+			AllocatedBytes uint64 `json:"allocated_bytes"`
+		} `json:"profiles"`
+		RuleQueue []struct {
+			RuleID string `json:"rule_id"`
+			Disposition string `json:"disposition"`
+			Evidence []struct {
+				GapID string `json:"gap_id"`
+				Repository string `json:"repository"`
+				Source string `json:"source"`
+				Kind string `json:"kind"`
+				Summary string `json:"summary"`
+				Evidence string `json:"evidence"`
+				Reason string `json:"reason"`
+			} `json:"evidence"`
+		} `json:"rule_queue"`
+	}
+	if err := json.Unmarshal(report, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document.SchemaVersion != 1 ||
+		document.Summary.Repositories != 1 ||
+		document.Summary.Findings != 2 ||
+		document.Summary.Gaps != 1 ||
+		document.Summary.Unresolved != 0 {
+		t.Fatalf("report summary = %#v", document.Summary)
+	}
+	wantClassifications := []struct {
+		profile string
+		classification string
+		count int
+	}{
+		{profile: "default", classification: "true-positive", count: 1},
+		{profile: "recommended", classification: "duplicate-staticcheck", count: 1},
+	}
+	if len(document.Classifications) != len(wantClassifications) {
+		t.Fatalf("classifications = %#v", document.Classifications)
+	}
+	for index, want := range wantClassifications {
+		got := document.Classifications[index]
+		if got.Profile != want.profile ||
+			got.Classification != want.classification ||
+			got.Count != want.count {
+			t.Fatalf("classification %d = %#v, want %#v", index, got, want)
+		}
+	}
+	if len(document.Profiles) != 4 {
+		t.Fatalf("profiles = %#v", document.Profiles)
+	}
+	defaultProfile := document.Profiles[0]
+	if defaultProfile.Profile != "default" ||
+		defaultProfile.Repositories != 1 ||
+		defaultProfile.CompleteRepositories != 1 ||
+		defaultProfile.MeasuredRepositories != 1 ||
+		defaultProfile.Findings != 1 ||
+		defaultProfile.Packages != 2 ||
+		defaultProfile.Files != 3 ||
+		defaultProfile.LoadedFiles != 4 ||
+		defaultProfile.DurationNanoseconds != 11 ||
+		defaultProfile.Allocations != 13 ||
+		defaultProfile.AllocatedBytes != 17 {
+		t.Fatalf("default profile = %#v", defaultProfile)
+	}
+	if strictProfile := document.Profiles[2];
+		strictProfile.Profile != "strict" || strictProfile.Findings != 1 {
+		t.Fatalf("strict profile = %#v", strictProfile)
+	}
+	if len(document.RuleQueue) != 1 ||
+		document.RuleQueue[0].RuleID != "resource-not-closed" ||
+		document.RuleQueue[0].Disposition != "nursery" ||
+		len(document.RuleQueue[0].Evidence) != 1 ||
+		document.RuleQueue[0].Evidence[0].GapID != "manual-missed-cleanup" ||
+		document.RuleQueue[0].Evidence[0].Repository != "alpha" ||
+		document.RuleQueue[0].Evidence[0].Evidence != "sample.go:1" {
+		t.Fatalf("rule queue = %#v", document.RuleQueue)
+	}
+
+	repeated, err := corpus.BuildAdjudicationReport(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		adjudication,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(repeated) != string(report) {
+		t.Fatalf("report is not deterministic:\nfirst: %s\nsecond: %s", report, repeated)
+	}
+	statisticsPath := filepath.Join(options.OutputRoot, "alpha", "strict", "statistics.json")
+	input, err := os.ReadFile(statisticsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statisticsPath, append(input, ' '), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = corpus.BuildAdjudicationReport(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		adjudication,
+	)
+	if err == nil || !strings.Contains(err.Error(), "statistics digest mismatch") {
+		t.Fatalf(
+			"BuildAdjudicationReport() error = %v, want statistics digest mismatch",
+			err,
+		)
+	}
+}
+
+func TestBuildAdjudicationReportRejectsInvalidStatistics(t *testing.T) {
+	t.Parallel()
+
+	manifestInput := []byte(singleRepositoryManifestJSON())
+	manifest, err := corpus.ParseManifest(manifestInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, options, _, _ := newRunFixture(t)
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	template, err := corpus.BuildAdjudicationTemplate(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statisticsPath := filepath.Join(options.OutputRoot, "alpha", "default", "statistics.json")
+	beforeDigest := fileDigest(t, statisticsPath)
+	if err := os.WriteFile(
+		statisticsPath,
+		[]byte(`{"schema_version":1,"command":"lint","complete":true,"packages":-1}`),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	afterDigest := fileDigest(t, statisticsPath)
+	template = []byte(strings.Replace(string(template), beforeDigest, afterDigest, 1))
+
+	_, err = corpus.BuildAdjudicationReport(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		template,
+	)
+	if err == nil || !strings.Contains(err.Error(), "invalid statistics") {
+		t.Fatalf("BuildAdjudicationReport() error = %v, want invalid statistics", err)
+	}
+}
+
+func TestBuildAdjudicationReportRetainsIncompleteUnmeasuredProfile(t *testing.T) {
+	t.Parallel()
+
+	manifestInput := []byte(singleRepositoryManifestJSON())
+	manifest, err := corpus.ParseManifest(manifestInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, options, _, _ := newRunFixture(t)
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	makeDefaultDiagnosticsNonJSON(t, options.OutputRoot)
+	makeDefaultStatisticsNonJSON(t, options.OutputRoot)
+	template, err := corpus.BuildAdjudicationTemplate(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var adjudication map[string]any
+	if err := json.Unmarshal(template, &adjudication); err != nil {
+		t.Fatal(err)
+	}
+	adjudication["gaps"] = []any{
+		map[string]any{
+			"id": "alpha-default-crash",
+			"repository": "alpha",
+			"source": "manual",
+			"kind": "crash",
+			"summary": "default analysis did not complete",
+			"evidence": "alpha/default/statistics.txt",
+			"disposition": "not-actionable",
+			"rule_id": "",
+			"reason": "requires a successful rerun before release",
+		},
+	}
+
+	report, err := corpus.BuildAdjudicationReport(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		marshalJSONValue(t, adjudication),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Profiles []struct {
+			Profile string `json:"profile"`
+			CompleteRepositories int `json:"complete_repositories"`
+			MeasuredRepositories int `json:"measured_repositories"`
+		} `json:"profiles"`
+		Measurements []struct {
+			Repository string `json:"repository"`
+			Profile string `json:"profile"`
+			StatisticsSHA256 string `json:"statistics_sha256"`
+			Complete bool `json:"complete"`
+			Measured bool `json:"measured"`
+		} `json:"measurements"`
+	}
+	if err := json.Unmarshal(report, &document); err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Profiles) != 4 ||
+		document.Profiles[0].Profile != "default" ||
+		document.Profiles[0].CompleteRepositories != 0 ||
+		document.Profiles[0].MeasuredRepositories != 0 {
+		t.Fatalf("default profile = %#v", document.Profiles)
+	}
+	if len(document.Measurements) != 4 ||
+		document.Measurements[0].Repository != "alpha" ||
+		document.Measurements[0].Profile != "default" ||
+		document.Measurements[0].StatisticsSHA256 == "" ||
+		document.Measurements[0].Complete ||
+		document.Measurements[0].Measured {
+		t.Fatalf("default measurement = %#v", document.Measurements)
 	}
 }
 
@@ -129,6 +436,72 @@ func TestValidateAdjudicationRejectsChangedResultSet(t *testing.T) {
 	_, err = corpus.ValidateAdjudication(manifest, manifestInput, options.OutputRoot, template)
 	if err == nil || !strings.Contains(err.Error(), "result digest mismatch") {
 		t.Fatalf("ValidateAdjudication() error = %v, want result digest mismatch", err)
+	}
+}
+
+func TestValidateAdjudicationRejectsConflictingRuleQueueDisposition(t *testing.T) {
+	t.Parallel()
+
+	manifestInput := []byte(singleRepositoryManifestJSON())
+	manifest, err := corpus.ParseManifest(manifestInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, options, _, _ := newRunFixture(t)
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	defaultFingerprint := readFindingFingerprint(
+		t,
+		filepath.Join(options.OutputRoot, "alpha", "default", "findings.json"),
+	)
+	recommendedFingerprint := readFindingFingerprint(
+		t,
+		filepath.Join(options.OutputRoot, "alpha", "recommended", "findings.json"),
+	)
+	resultDigest := fileDigest(t, filepath.Join(options.OutputRoot, "alpha", "result.json"))
+	var document map[string]any
+	if err := json.Unmarshal(
+		[]byte(
+			adjudicationJSON(
+				t,
+				manifestInput,
+				options.OutputRoot,
+				resultDigest,
+				defaultFingerprint,
+				recommendedFingerprint,
+			),
+		),
+		&document,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	gaps := document["gaps"].([]any)
+	gaps = append(
+		gaps,
+		map[string]any{
+			"id": "staticcheck-missed-cleanup",
+			"repository": "alpha",
+			"source": "staticcheck",
+			"kind": "missed-defect",
+			"summary": "resource cleanup is also reported by Staticcheck",
+			"evidence": "sample.go:1",
+			"disposition": "backlog",
+			"rule_id": "resource-not-closed",
+			"reason": "requires the same ownership evidence",
+		},
+	)
+	document["gaps"] = gaps
+
+	_, err = corpus.ValidateAdjudication(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		marshalJSONValue(t, document),
+	)
+	if err == nil || !strings.Contains(err.Error(), "conflicting dispositions") {
+		t.Fatalf("ValidateAdjudication() error = %v, want conflicting dispositions", err)
 	}
 }
 
@@ -378,7 +751,9 @@ func TestValidateAdjudicationRejectsIncompleteOrNonCanonicalEvidence(t *testing.
 	)
 	resultDigest := fileDigest(t, filepath.Join(options.OutputRoot, "alpha", "result.json"))
 	valid := adjudicationJSON(
+		t,
 		manifestInput,
+		options.OutputRoot,
 		resultDigest,
 		defaultFingerprint,
 		recommendedFingerprint,
@@ -392,13 +767,13 @@ func TestValidateAdjudicationRejectsIncompleteOrNonCanonicalEvidence(t *testing.
 	}{
 		{
 			name: "duplicate field",
-			old: `"schema_version": 1,`,
-			new: `"schema_version": 1, "schema_version": 1,`,
+			old: `"schema_version": 2,`,
+			new: `"schema_version": 2, "schema_version": 2,`,
 			want: "duplicate field",
 		},
 		{
 			name: "case-folded field",
-			old: `"schema_version": 1,`,
+			old: `"schema_version": 2,`,
 			new: `"SCHEMA_VERSION": 1,`,
 			want: "unknown field",
 		},
@@ -766,6 +1141,31 @@ func makeDefaultDiagnosticsNonJSON(t *testing.T, root string) {
 	replaceFileText(t, resultPath, `"complete": true`, `"complete": false`)
 }
 
+func makeDefaultStatisticsNonJSON(t *testing.T, root string) {
+	t.Helper()
+	profileRoot := filepath.Join(root, "alpha", "default")
+	textPath := filepath.Join(profileRoot, "statistics.txt")
+	if err := os.WriteFile(textPath, []byte("statistics unavailable\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resultPath := filepath.Join(root, "alpha", "result.json")
+	replaceFileText(t, resultPath, `"file": "statistics.json"`, `"file": "statistics.txt"`)
+	resultInput, err := os.ReadFile(resultPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(resultInput, &result); err != nil {
+		t.Fatal(err)
+	}
+	profiles := result["profiles"].([]any)
+	statistics := profiles[0].(map[string]any)["statistics"].(map[string]any)
+	statistics["valid_json"] = false
+	if err := os.WriteFile(resultPath, marshalJSONValue(t, result), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func readFindingFingerprint(t *testing.T, path string) string {
 	t.Helper()
 	input, err := os.ReadFile(path)
@@ -787,12 +1187,22 @@ func readFindingFingerprint(t *testing.T, path string) string {
 }
 
 func adjudicationJSON(
+	t *testing.T,
 	manifest []byte,
+	resultRoot string,
 	resultDigest, defaultFingerprint, recommendedFingerprint string,
 ) string {
+	t.Helper()
+	statisticsDigests := make([]string, 4)
+	for index, profile := range []string{"default", "recommended", "strict", "pedantic"} {
+		statisticsDigests[index] = fileDigest(
+			t,
+			filepath.Join(resultRoot, "alpha", profile, "statistics.json"),
+		)
+	}
 	return fmt.Sprintf(
 		`{
-  "schema_version": 1,
+  "schema_version": 2,
   "manifest_sha256": %q,
   "run": {
     "id": "source-aaaaaaaa-run-1",
@@ -807,6 +1217,12 @@ func adjudicationJSON(
       "result_sha256": %q,
       "incomplete_profiles": [],
       "incomplete_comparators": [],
+      "measurements": [
+        {"profile": "default", "statistics_sha256": %q},
+        {"profile": "recommended", "statistics_sha256": %q},
+        {"profile": "strict", "statistics_sha256": %q},
+        {"profile": "pedantic", "statistics_sha256": %q}
+      ],
       "profiles": [
         {
           "profile": "default",
@@ -839,6 +1255,10 @@ func adjudicationJSON(
 }`,
 		manifestDigest(manifest),
 		resultDigest,
+		statisticsDigests[0],
+		statisticsDigests[1],
+		statisticsDigests[2],
+		statisticsDigests[3],
 		defaultFingerprint,
 		recommendedFingerprint,
 	)
@@ -852,6 +1272,52 @@ func fileDigest(t *testing.T, path string) string {
 	}
 	digest := sha256.Sum256(input)
 	return hex.EncodeToString(digest[:])
+}
+
+func writeCorpusStatistics(
+	t *testing.T,
+	root, repository, profile string,
+	packages, files, loadedFiles int,
+	duration int64,
+	allocations, allocatedBytes uint64,
+) {
+	t.Helper()
+	statistics := map[string]any{
+		"schema_version": 1,
+		"command": "lint",
+		"outcome": map[string]any{"category": "findings", "exit_code": 1},
+		"complete": true,
+		"maximum_tier": "syntax",
+		"packages": packages,
+		"files": files,
+		"loaded_files": loadedFiles,
+		"total": map[string]any{
+			"calls": 1,
+			"duration_ns": duration,
+			"allocations": allocations,
+			"allocated_bytes": allocatedBytes,
+		},
+		"phases": []any{},
+		"tiers": []any{},
+		"rules": []any{},
+		"cache": map[string]any{
+			"lookups": 0,
+			"hits": 0,
+			"misses": 0,
+			"invalidations": 0,
+			"writes": 0,
+		},
+		"dependency_syntax": map[string]any{"loaded": false, "reasons": []any{}},
+		"effect_facts": map[string]any{"loaded": false, "reasons": []any{}},
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, repository, profile, "statistics.json"),
+		marshalJSONValue(t, statistics),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
 }
 
 func marshalJSONValue(t *testing.T, value any) []byte {
