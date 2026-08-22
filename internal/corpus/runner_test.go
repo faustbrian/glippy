@@ -69,6 +69,7 @@ func TestRunAuditsProfilesAndComparatorsWithoutMutatingCheckout(t *testing.T) {
 		context.Background(),
 		manifest,
 		corpus.RunOptions{
+			RunID: "source-aaaaaaaa-run-1",
 			CheckoutRoot: checkoutRoot,
 			OutputRoot: outputRoot,
 			CacheRoot: cacheRoot,
@@ -93,6 +94,19 @@ func TestRunAuditsProfilesAndComparatorsWithoutMutatingCheckout(t *testing.T) {
 			executor.statusRuns,
 		)
 	}
+	if !slices.ContainsFunc(
+		executor.commands,
+		func(command corpus.Command) bool {
+			return command.Path == "go" &&
+				len(command.Args) >= 4 &&
+				slices.Equal(
+					command.Args[:4],
+					[]string{"list", "-deps", "-test", "-export"},
+				)
+		},
+	) {
+		t.Fatal("analysis package preflight did not run")
+	}
 
 	findings, err := os.ReadFile(filepath.Join(outputRoot, "alpha", "default", "findings.json"))
 	if err != nil {
@@ -100,7 +114,8 @@ func TestRunAuditsProfilesAndComparatorsWithoutMutatingCheckout(t *testing.T) {
 	}
 	if strings.Contains(string(findings), checkout) ||
 		!strings.Contains(string(findings), `"path": "sample.go"`) ||
-		!strings.Contains(string(findings), `"rule_id": "sample-rule"`) {
+		!strings.Contains(string(findings), `"rule_id": "sample-rule"`) ||
+		!strings.Contains(string(findings), `"fingerprint": "`) {
 		t.Fatalf("normalized findings = %s", findings)
 	}
 	result, err := os.ReadFile(filepath.Join(outputRoot, "alpha", "result.json"))
@@ -108,6 +123,7 @@ func TestRunAuditsProfilesAndComparatorsWithoutMutatingCheckout(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(result), checkout) ||
+		!strings.Contains(string(result), `"run_id": "source-aaaaaaaa-run-1"`) ||
 		!strings.Contains(string(result), `"staticcheck_version": "v0.8.1"`) ||
 		!strings.Contains(string(result), `"exit_code": 1`) {
 		t.Fatalf("result artifact = %s", result)
@@ -189,6 +205,7 @@ func TestRunRejectsDirtyOrMismatchedCheckoutsBeforeAnalysis(t *testing.T) {
 					context.Background(),
 					manifest,
 					corpus.RunOptions{
+						RunID: "source-aaaaaaaa-run-1",
 						CheckoutRoot: checkoutRoot,
 						OutputRoot: filepath.Join(root, "results"),
 						CacheRoot: filepath.Join(root, "cache"),
@@ -508,6 +525,7 @@ func newRunFixture(t *testing.T) (corpus.Manifest, corpus.RunOptions, *corpusExe
 		checkout: checkout,
 	}
 	return manifest, corpus.RunOptions{
+		RunID: "source-aaaaaaaa-run-1",
 		CheckoutRoot: checkoutRoot,
 		OutputRoot: filepath.Join(root, "results"),
 		CacheRoot: filepath.Join(root, "cache"),
@@ -630,6 +648,10 @@ func (e *corpusExecutor) Run(
 			Stderr: []byte(statistics),
 			ExitCode: 1,
 		}, nil
+	case command.Path == "go" &&
+		len(command.Args) >= 4 &&
+		slices.Equal(command.Args[:4], []string{"list", "-deps", "-test", "-export"}):
+		return corpus.CommandResult{}, nil
 	case command.Path == "go" && len(command.Args) > 0 && command.Args[0] == "vet":
 		e.vetRuns++
 		if e.includeTaskPath {

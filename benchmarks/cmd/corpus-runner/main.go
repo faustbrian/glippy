@@ -35,6 +35,18 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 	cacheRoot := flags.String("cache", "", "task-owned Go and tool cache root")
 	glippyPath := flags.String("glippy", "", "Glippy binary to audit")
 	staticcheckPath := flags.String("staticcheck", "", "Staticcheck binary to compare")
+	runID := flags.String("run-id", "", "shared source and workflow run identity")
+	resultsRoot := flags.String("results", "", "root containing corpus result artifacts")
+	adjudicationTemplate := flags.Bool(
+		"adjudication-template",
+		false,
+		"write an adjudication template for result artifacts",
+	)
+	adjudicationPath := flags.String(
+		"adjudication",
+		"",
+		"validate an adjudication document against result artifacts",
+	)
 	validateOnly := flags.Bool(
 		"validate-only",
 		false,
@@ -63,6 +75,96 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 		fmt.Fprintf(stderr, "corpus-runner: %v\n", err)
 		return 2
 	}
+	adjudicationMode := *adjudicationTemplate || *adjudicationPath != ""
+	if *validateOnly && adjudicationMode {
+		fmt.Fprintln(
+			stderr,
+			"corpus-runner: --validate-only cannot be combined with adjudication modes",
+		)
+		return 2
+	}
+	if *adjudicationTemplate && *adjudicationPath != "" {
+		fmt.Fprintln(
+			stderr,
+			"corpus-runner: --adjudication-template and --adjudication are mutually exclusive",
+		)
+		return 2
+	}
+	if adjudicationMode {
+		if *resultsRoot == "" {
+			fmt.Fprintln(stderr, "corpus-runner: --results is required")
+			return 2
+		}
+		if *checkoutRoot != "" ||
+			*outputRoot != "" ||
+			*cacheRoot != "" ||
+			*glippyPath != "" ||
+			*staticcheckPath != "" ||
+			*runID != "" ||
+			len(repositories) != 0 {
+			fmt.Fprintln(
+				stderr,
+				"corpus-runner: adjudication modes cannot be combined with execution inputs",
+			)
+			return 2
+		}
+		if *adjudicationTemplate {
+			template, templateErr := corpus.BuildAdjudicationTemplate(
+				manifest,
+				input,
+				*resultsRoot,
+			)
+			if templateErr != nil {
+				fmt.Fprintf(stderr, "corpus-runner: %v\n", templateErr)
+				return 1
+			}
+			if _, writeErr := stdout.Write(template); writeErr != nil {
+				fmt.Fprintf(
+					stderr,
+					"corpus-runner: write adjudication template: %v\n",
+					writeErr,
+				)
+				return 1
+			}
+			return 0
+		}
+		adjudicationInput, readErr := os.ReadFile(*adjudicationPath)
+		if readErr != nil {
+			fmt.Fprintf(stderr, "corpus-runner: read adjudication: %v\n", readErr)
+			return 2
+		}
+		summary, validationErr := corpus.ValidateAdjudication(
+			manifest,
+			input,
+			*resultsRoot,
+			adjudicationInput,
+		)
+		if validationErr != nil {
+			fmt.Fprintf(stderr, "corpus-runner: %v\n", validationErr)
+			return 1
+		}
+		status := "valid"
+		if summary.Unresolved != 0 {
+			status = "incomplete"
+		}
+		fmt.Fprintf(
+			stdout,
+			"%s corpus adjudication: %d repositories, %d findings, %d gaps, %d unresolved\n",
+			status,
+			summary.Repositories,
+			summary.Findings,
+			summary.Gaps,
+			summary.Unresolved,
+		)
+		if summary.Unresolved != 0 {
+			return 1
+		}
+		return 0
+	}
+	if *resultsRoot != "" {
+		fmt.Fprintln(stderr, "corpus-runner: --results requires an adjudication mode")
+		return 2
+	}
 	if *validateOnly {
 		fmt.Fprintf(
 			stdout,
@@ -81,6 +183,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 			{name: "--cache", value: *cacheRoot},
 			{name: "--glippy", value: *glippyPath},
 			{name: "--staticcheck", value: *staticcheckPath},
+			{name: "--run-id", value: *runID},
 		} {
 		if required.value == "" {
 			fmt.Fprintf(stderr, "corpus-runner: %s is required\n", required.name)
@@ -92,6 +195,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 		ctx,
 		manifest,
 		corpus.RunOptions{
+			RunID: *runID,
 			CheckoutRoot: *checkoutRoot,
 			OutputRoot: *outputRoot,
 			CacheRoot: *cacheRoot,

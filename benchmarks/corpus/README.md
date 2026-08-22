@@ -14,8 +14,11 @@ license file, and tracked, untracked, and ignored status before and after
 analysis. Tools run against a task-owned read-only source snapshot, never the
 checkout itself. It runs the `default`, `recommended`, `strict`, and `pedantic`
 profiles with Glippy's cache disabled, then compares the same package patterns
-with `go vet` and exact Staticcheck v0.8.1. Go build, module, configuration,
-telemetry, and temporary state is isolated outside every checkout. Audit
+with `go vet` and exact Staticcheck v0.8.1. A non-executing package-build
+preflight (`go list -deps -test -export`) distinguishes analyzer findings from
+package loading, type-checking, or build failure. Go build, module,
+configuration, telemetry, and temporary state is isolated outside every
+checkout. Audit
 processes receive only a small compiler/runtime environment allowlist; caller
 credentials and unrelated environment variables are not inherited. Go package
 loading is offline during the audit, including direct version-control access.
@@ -26,7 +29,8 @@ Each repository result contains:
 - a sorted finding inventory per profile;
 - normalized `go vet` and Staticcheck output; and
 - one result document binding the repository, revision, tool versions, exit
-  codes, completeness state, and deterministic artifact digests.
+  codes, completeness state, shared source/workflow run identity, and
+  deterministic artifact digests.
 
 Statistics retain measured durations and allocations and are intentionally
 volatile. `result.json` records their filename and JSON validity, but does not
@@ -60,3 +64,63 @@ false positive, duplicate of vet or Staticcheck, unsupported source/build
 state, or unresolved before it can support a release claim. Strict and
 pedantic results are calibration inputs unless a separate review records a
 stronger conclusion.
+
+After downloading all result artifacts from one exact manifest run, create the
+canonical review document:
+
+```sh
+go run ./benchmarks/cmd/corpus-runner \
+  --manifest benchmarks/corpus/manifest.json \
+  --results /path/to/results \
+  --adjudication-template > corpus-adjudication.json
+```
+
+Replace every `unresolved` classification that can be decided and retain a
+specific reason for every finding. Supported classifications are:
+
+- `true-positive`;
+- `false-positive`;
+- `duplicate-vet`;
+- `duplicate-staticcheck`;
+- `unsupported-source`;
+- `unsupported-build`; and
+- `unresolved`.
+
+Each repository entry binds the exact `result.json` digest. Validation also
+checks the recorded tool versions, canonical profile results, normalized
+diagnostics, finding inventories, and the digested `go vet` and Staticcheck
+outputs. Reusing an adjudication with a different run or edited artifact is an
+error. All repository results must carry the same run ID and exact Glippy, Go,
+and Staticcheck version strings. The manual workflow derives that ID from the
+Glippy source revision and GitHub workflow run.
+
+Record demonstrated omissions in the ordered `gaps` list. A gap names its
+repository and evidence, identifies `manual`, `vet`, or `staticcheck` as the
+source, and classifies the issue as a crash, missed defect, or unsupported
+construct. Its disposition is `backlog`, `nursery`, or `not-actionable`.
+Backlog and nursery gaps require a proposed rule ID; not-actionable gaps must
+not name one.
+
+The template records incomplete default or recommended runs in
+`incomplete_profiles` and failed comparator executions in
+`incomplete_comparators`. Each affected repository requires a crash or
+unsupported-construct gap, and every incomplete profile or comparator
+contributes to the reported unresolved count even when its finding inventory
+is empty. This keeps an unsuccessful analysis from appearing as clean release
+evidence.
+
+Validate the completed review against the exact manifest, revisions, result
+schema, Staticcheck version, artifact digests, and finding fingerprints:
+
+```sh
+go run ./benchmarks/cmd/corpus-runner \
+  --manifest benchmarks/corpus/manifest.json \
+  --results /path/to/results \
+  --adjudication corpus-adjudication.json
+```
+
+The adjudication is complete for release evidence only when the validator
+reports zero unresolved default or recommended findings, profiles, and
+comparators. It exits nonzero while unresolved evidence remains. This command
+reads artifacts only; it does not rerun repositories or modify their
+checkouts.

@@ -27,6 +27,7 @@ const (
 var (
 	corpusProfiles = []string{"default", "recommended", "strict", "pedantic"}
 	staticcheckOutputVersionPattern = regexp.MustCompile(`\((v?[0-9]+\.[0-9]+\.[0-9]+)\)`)
+	runIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 )
 
 // Command is one bounded external corpus operation.
@@ -51,6 +52,7 @@ type Executor interface {
 
 // RunOptions binds pre-existing clean checkouts to task-owned output and cache roots.
 type RunOptions struct {
+	RunID string
 	CheckoutRoot string
 	OutputRoot string
 	CacheRoot string
@@ -63,6 +65,7 @@ type RunOptions struct {
 
 type repositoryResult struct {
 	SchemaVersion int `json:"schema_version"`
+	RunID string `json:"run_id"`
 	Repository Repository `json:"repository"`
 	StaticcheckVersion string `json:"staticcheck_version"`
 	Tools toolVersions `json:"tools"`
@@ -122,6 +125,7 @@ type findingInventory struct {
 }
 
 type finding struct {
+	Fingerprint string `json:"fingerprint,omitempty"`
 	RuleID string `json:"rule_id"`
 	Severity string `json:"severity"`
 	MessageKey string `json:"message_key"`
@@ -254,11 +258,12 @@ func runRepository(
 
 	result := repositoryResult{
 		SchemaVersion: ResultSchemaVersion,
+		RunID: options.RunID,
 		Repository: repository,
 		StaticcheckVersion: manifest.StaticcheckVersion,
 		Tools: versions,
 		Profiles: make([]profileResult, 0, len(corpusProfiles)),
-		Comparators: make([]comparatorResult, 0, 2),
+		Comparators: make([]comparatorResult, 0, 3),
 	}
 	for _, profile := range corpusProfiles {
 		profileResult, err := runProfile(
@@ -367,6 +372,11 @@ func runProfile(
 			return profileResult{}, fmt.Errorf("decode normalized diagnostics: %w", err)
 		}
 		inventory.Diagnostics = slices.Clone(lintResult.Diagnostics)
+		for index := range inventory.Diagnostics {
+			inventory.Diagnostics[index].Fingerprint = findingFingerprint(
+				inventory.Diagnostics[index],
+			)
+		}
 		sortFindings(inventory.Diagnostics)
 		complete = lintResult.Summary.Complete
 	}
@@ -403,6 +413,14 @@ func runComparators(
 		path string
 		arguments []string
 	}{
+		{
+			name: "analysis-preflight",
+			path: "go",
+			arguments: append(
+				[]string{"list", "-deps", "-test", "-export"},
+				repository.Patterns...,
+			),
+		},
 		{
 			name: "go-vet",
 			path: "go",
@@ -719,6 +737,11 @@ func isolatedEnvironment(
 }
 
 func resolveRunOptions(options RunOptions) (RunOptions, error) {
+	if !runIDPattern.MatchString(options.RunID) {
+		return RunOptions{}, errors.New(
+			"run ID is required and must contain only letters, digits, dot, colon, underscore, or hyphen",
+		)
+	}
 	for name, value := range
 		map[string]string{
 			"checkout root": options.CheckoutRoot,
@@ -920,6 +943,27 @@ func sortFindings(findings []finding) {
 			return lessFinding(leftFinding, rightFinding)
 		},
 	)
+}
+
+func findingFingerprint(value finding) string {
+	identity := struct {
+		RuleID string `json:"rule_id"`
+		Severity string `json:"severity"`
+		MessageKey string `json:"message_key"`
+		Message string `json:"message"`
+		Path string `json:"path"`
+		Range findingRange `json:"range"`
+	}{
+		RuleID: value.RuleID,
+		Severity: value.Severity,
+		MessageKey: value.MessageKey,
+		Message: value.Message,
+		Path: value.Path,
+		Range: value.Range,
+	}
+	encoded, _ := json.Marshal(identity)
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:])
 }
 
 func lessFinding(left, right finding) bool {
