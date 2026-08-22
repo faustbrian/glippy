@@ -82,6 +82,7 @@ not stable release promises.
 - [nil-function-comparison](#nil-function-comparison)
 - [nil-map-write](#nil-map-write)
 - [nilness](#nilness)
+- [non-octal-file-mode](#non-octal-file-mode)
 - [non-slice-sort](#non-slice-sort)
 - [oversized-shift](#oversized-shift)
 - [overwritten-error](#overwritten-error)
@@ -3871,6 +3872,56 @@ if channel == nil { use(channel) }
 ```go
 channel := make(chan int)
 use(channel)
+```
+
+## non-octal-file-mode
+
+detects decimal file modes that look unintentionally non-octal
+
+File permissions are conventionally written in octal. A three-digit decimal os.FileMode made
+entirely of octal digits usually means the prefix was omitted, so 644 evaluates to mode 0o1204
+rather than 0o644.
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `call-expr`
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `safety`, `suspicious`
+
+### Fixes
+
+- `use-octal-file-mode` (`suggestion`): spell the file mode as an octal literal
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only direct three-digit decimal integer literals whose digits are all valid in octal are reported.
+- The argument must resolve to the exact standard os.FileMode or io/fs.FileMode type; distinct
+  defined modes, constants, variables, and calculations remain conservative.
+- The suggestion changes runtime permissions and therefore requires explicit suggestion-fix
+  authorization.
+- Generated files and packages with type errors are excluded.
+
+### Example: Write permissions in octal
+
+**Incorrect**
+
+```go
+err := os.WriteFile(path, data, 644)
+```
+
+**Correct**
+
+```go
+err := os.WriteFile(path, data, 0o644)
 ```
 
 ## non-slice-sort

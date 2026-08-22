@@ -68,6 +68,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewNilContextRule(),
 		rules.NewNilErrorWrapRule(),
 		rules.NewNetIPBytesEqualRule(),
+		rules.NewNonOctalFileModeRule(),
 		rules.NewNonSliceSortRule(),
 		rules.NewOverwrittenErrorRule(),
 		rules.NewProcessExitRule(),

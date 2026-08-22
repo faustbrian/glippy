@@ -123,6 +123,15 @@ defaults, and blocking selects remain outside the rule. Intentional busy-poll
 stress loops require contextual judgment, so the rule stays outside the
 default correctness preset and offers no behavior-changing fix.
 
+The file-safety track now admits `non-octal-file-mode` as an opt-in suspicious
+types rule. It reports a direct three-digit decimal integer made only of octal
+digits when `go/types` resolves that argument to the exact standard FileMode
+identity. Such a literal usually omitted its octal prefix and therefore grants
+different permissions than its digits imply. Canonical octal forms, constants,
+variables, calculations, and distinct defined modes remain outside the rule.
+The explicit `use-octal-file-mode` suggestion changes runtime permissions and
+is never selected by ordinary safe fixing.
+
 The same track now admits `typed-nil-error-return` as an opt-in suspicious
 rule. It reports only concrete error values proven nil at an explicit return;
 untyped nil, interface operands, unknown values, bare returns, and tuple calls
