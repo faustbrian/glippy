@@ -279,6 +279,38 @@ func run() {
 	}
 }
 
+func TestMustUseResultSupersedesDeferredFunctionDiscardWhenSelected(t *testing.T) {
+	t.Parallel()
+
+	set, err := contracts.ParseFiles(
+		[]contracts.File{
+			{
+				Path: "contracts.toml",
+				Bytes: []byte(
+					"version = 1\n[[functions]]\nsymbol = \"example.com/mustuseresult.setup\"\nmust-use = [0]\n",
+				),
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := runMustUseResultWithOverrides(
+		t,
+		"package sample\nfunc setup() func() { return func() {} }\nfunc run() { defer setup() }\n",
+		set,
+		map[string]rules.Severity{
+			"deferred-function-not-called": rules.SeverityWarn,
+			"must-use-result": rules.SeverityWarn,
+		},
+	)
+	if len(result.Files) != 1 ||
+		len(result.Files[0].Diagnostics) != 1 ||
+		result.Files[0].Diagnostics[0].RuleID != "must-use-result" {
+		t.Fatalf("deferred specific result = %#v", result)
+	}
+}
+
 func TestMustUseResultAppliesExternalExportContractWithoutLintingDependency(t *testing.T) {
 	t.Parallel()
 

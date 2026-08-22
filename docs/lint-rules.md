@@ -25,6 +25,7 @@ not stable release promises.
 - [defer-before-error-check](#defer-before-error-check)
 - [defer-in-infinite-loop](#defer-in-infinite-loop)
 - [defer-in-loop](#defer-in-loop)
+- [deferred-function-not-called](#deferred-function-not-called)
 - [deferred-lock](#deferred-lock)
 - [deferred-time-since](#deferred-time-since)
 - [deprecated-ioutil](#deprecated-ioutil)
@@ -940,6 +941,55 @@ for _, path := range paths { file := open(path); defer file.Close() }
 
 ```go
 for _, path := range paths { process(path) }
+```
+
+## deferred-function-not-called
+
+detects deferred calls whose returned function is never invoked
+
+A common setup or tracing helper performs work immediately and returns a cleanup function. Writing
+defer setup() defers the setup call itself and discards the returned cleanup function when the
+surrounding function exits. The intended form is usually defer setup()().
+
+- Default severity: `warn`
+- Presets: `suspicious`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `defer-stmt`
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Any function-valued result is reported, including named function types and functions requiring
+  arguments; Glippy does not guess how the returned function should be invoked.
+- Deferring a call for its own side effects while intentionally discarding a returned function is
+  valid Go and requires a narrow suppression.
+- Generated files and packages with type errors are excluded.
+
+### Example: Invoke the cleanup function returned by the setup helper
+
+**Incorrect**
+
+```go
+defer beginTrace()
+```
+
+**Correct**
+
+```go
+defer beginTrace()()
 ```
 
 ## deferred-lock

@@ -103,6 +103,17 @@ reassignment, address-taking, closure capture, and ambiguous joins remain
 conservative. The rule complements the standard vet catalog and follows
 Staticcheck SA9008's proven defect boundary without adopting its frontend.
 
+The deferred-execution track now admits `deferred-function-not-called` as an
+opt-in suspicious rule. A `defer setup()` call reports only when type
+information proves that the deferred call itself returns a function, which is
+usually an uninvoked cleanup or completion closure. Named function results,
+methods, function variables, and returned functions requiring arguments share
+the same type boundary. Ordinary results and an invoked `defer setup()()` stay
+silent. Intentional deferred side effects can validly discard a function
+result, so the rule remains outside `correctness` and provides no guessed fix.
+An exact project `must-use-result` contract owns the same call location when
+both rules are enabled.
+
 The same track now admits `typed-nil-error-return` as an opt-in suspicious
 rule. It reports only concrete error values proven nil at an explicit return;
 untyped nil, interface operands, unknown values, bare returns, and tuple calls

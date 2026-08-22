@@ -41,12 +41,12 @@ func describe(value any) string {
 		diagnostic.Severity != rules.SeverityWarn ||
 		diagnostic.MessageKey != "failed-type-assertion-value" ||
 		diagnostic.Range.Start != wantStart ||
-		diagnostic.Range.End != wantStart+len("value") ||
+		diagnostic.Range.End != wantStart + len("value") ||
 		len(diagnostic.Related) != 2 ||
 		diagnostic.Related[0].Range.Start != shadowStart ||
-		diagnostic.Related[0].Range.End != shadowStart+len("value") ||
+		diagnostic.Related[0].Range.End != shadowStart + len("value") ||
 		diagnostic.Related[1].Range.Start != originalStart ||
-		diagnostic.Related[1].Range.End != originalStart+len("value") ||
+		diagnostic.Related[1].Range.End != originalStart + len("value") ||
 		len(diagnostic.Fixes) != 0 {
 		t.Fatalf("failed-type-assertion-value diagnostic = %#v", diagnostic)
 	}
@@ -68,10 +68,7 @@ func describe(value any) string {
 	result := runFailedTypeAssertionValueWithOptions(
 		t,
 		input,
-		analysis.RunOptions{
-			Preset:          rules.PresetCorrectness,
-			SourceGoVersion: "go1.25",
-		},
+		analysis.RunOptions{Preset: rules.PresetCorrectness, SourceGoVersion: "go1.25"},
 	)
 	if result.Requirement != rules.RequireSSA ||
 		len(result.Files[0].Diagnostics) != 1 ||
@@ -115,11 +112,7 @@ func chained(value any) string {
 }
 `
 	result := runFailedTypeAssertionValue(t, input)
-	markers := []string{
-		"return value == nil",
-		"return value == nil",
-		`else if value == ""`,
-	}
+	markers := []string{"return value == nil", "return value == nil", `else if value == ""`}
 	if len(result.Files[0].Diagnostics) != len(markers) {
 		t.Fatalf("failed-type-assertion-value result = %#v", result)
 	}
@@ -127,14 +120,22 @@ func chained(value any) string {
 	for index, marker := range markers {
 		relative := strings.Index(input[searchStart:], marker)
 		if relative < 0 {
-			t.Fatalf("fixture does not contain marker %q after byte %d", marker, searchStart)
+			t.Fatalf(
+				"fixture does not contain marker %q after byte %d",
+				marker,
+				searchStart,
+			)
 		}
 		markerStart := searchStart + relative
 		valueStart := markerStart + strings.Index(marker, "value")
 		diagnostic := result.Files[0].Diagnostics[index]
 		if diagnostic.Range.Start != valueStart ||
-			diagnostic.Range.End != valueStart+len("value") {
-			t.Fatalf("failed-type-assertion-value diagnostic[%d] = %#v", index, diagnostic)
+			diagnostic.Range.End != valueStart + len("value") {
+			t.Fatalf(
+				"failed-type-assertion-value diagnostic[%d] = %#v",
+				index,
+				diagnostic,
+			)
 		}
 		searchStart = markerStart + len(marker)
 	}
@@ -323,20 +324,18 @@ func invalid(value any) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	overrides := map[string]rules.Severity{
-		"failed-type-assertion-value": rules.SeverityError,
-	}
+	overrides := map[string]rules.Severity{"failed-type-assertion-value": rules.SeverityError}
 	result, err := analysis.RunPackages(
 		context.Background(),
 		registry,
 		analysis.RunOptions{
-			Presets:         []rules.Preset{},
-			Overrides:       overrides,
+			Presets: []rules.Preset{},
+			Overrides: overrides,
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"./..."},
+			Dir: root,
+			Patterns: []string{"./..."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)
@@ -351,9 +350,13 @@ func invalid(value any) string {
 		case "suppressed.go":
 			if len(file.Diagnostics) != 0 ||
 				len(file.Suppressed) != 1 ||
-				file.Suppressed[0].Diagnostic.RuleID != "failed-type-assertion-value" ||
+				file.Suppressed[0].Diagnostic.RuleID !=
+					"failed-type-assertion-value" ||
 				file.Suppressed[0].Diagnostic.Severity != rules.SeverityError {
-				t.Fatalf("suppressed failed-type-assertion-value result = %#v", file)
+				t.Fatalf(
+					"suppressed failed-type-assertion-value result = %#v",
+					file,
+				)
 			}
 		case "generated.go", "invalid.go":
 			if len(file.Diagnostics) != 0 || len(file.Suppressed) != 0 {
@@ -365,8 +368,8 @@ func invalid(value any) string {
 	}
 	selection, err := registry.ResolveOptions(
 		rules.ResolveOptions{
-			Presets:         []rules.Preset{},
-			Overrides:       overrides,
+			Presets: []rules.Preset{},
+			Overrides: overrides,
 			SourceGoVersion: "go1.24",
 		},
 	)
@@ -378,10 +381,7 @@ func invalid(value any) string {
 	}
 }
 
-func runFailedTypeAssertionValue(
-	t *testing.T,
-	input string,
-) analysis.PackageResult {
+func runFailedTypeAssertionValue(t *testing.T, input string) analysis.PackageResult {
 	t.Helper()
 	return runFailedTypeAssertionValueWithOptions(
 		t,
@@ -418,16 +418,15 @@ func runFailedTypeAssertionValueWithOptions(
 		registry,
 		options,
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"."},
+			Dir: root,
+			Patterns: []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 1 ||
-		!strings.HasSuffix(result.Files[0].Path, "sample.go") {
+	if len(result.Files) != 1 || !strings.HasSuffix(result.Files[0].Path, "sample.go") {
 		t.Fatalf("failed-type-assertion-value result = %#v", result)
 	}
 	return result
@@ -465,8 +464,8 @@ func BenchmarkFailedTypeAssertionValuePackageAnalysis(b *testing.B) {
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"."},
+			Dir: root,
+			Patterns: []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 		100,

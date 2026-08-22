@@ -167,10 +167,11 @@ The default-correctness `must-use-result` rule MUST treat call statements,
 discarding the corresponding configured results. Direct non-blank assignment,
 return, and argument use count as consumption. Dynamic calls and function
 values MUST remain unmatched because their exact contracted identity is not
-statically proven. When selected `must-use-result` and `discarded-error` rules
-produce diagnostics with the same source identity and exact call range, the
-contract-specific diagnostic MUST own the condition and supersede the generic
-diagnostic before suppression or baseline policy is applied.
+statically proven. When selected `must-use-result` and either
+`discarded-error` or `deferred-function-not-called` produce diagnostics with
+the same source identity and exact call range, the contract-specific diagnostic
+MUST own the condition and supersede each matching generic diagnostic before
+suppression or baseline policy is applied.
 
 An exact `returns-alias` relationship MUST preserve an outstanding resource,
 transaction, or cancellation obligation when the contracted result is

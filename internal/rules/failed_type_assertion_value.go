@@ -19,14 +19,14 @@ func NewFailedTypeAssertionValueRule() Rule {
 
 func (failedTypeAssertionValueRule) Metadata() Metadata {
 	return Metadata{
-		ID:               "failed-type-assertion-value",
-		Summary:          "detects reads of a shadowed zero value after a failed type assertion",
-		Documentation:    "A short type assertion such as `if value, ok := value.(T); ok` shadows the original value throughout both branches. In the else branch the new value is the zero value of T, not the interface value that failed the assertion. Reading it can silently discard the original value or substitute nil, zero, or an empty value in error handling and fallback paths.",
-		DefaultSeverity:  SeverityWarn,
-		Presets:          []Preset{PresetCorrectness},
+		ID: "failed-type-assertion-value",
+		Summary: "detects reads of a shadowed zero value after a failed type assertion",
+		Documentation: "A short type assertion such as `if value, ok := value.(T); ok` shadows the original value throughout both branches. In the else branch the new value is the zero value of T, not the interface value that failed the assertion. Reading it can silently discard the original value or substitute nil, zero, or an empty value in error handling and fallback paths.",
+		DefaultSeverity: SeverityWarn,
+		Presets: []Preset{PresetCorrectness},
 		MinimumGoVersion: "1.25",
-		Requirement:      RequireSSA,
-		Categories:       []Category{CategoryCorrectness, CategorySafety},
+		Requirement: RequireSSA,
+		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"Only short assertions of the exact form `if value, ok := value.(T); ok` are recognized; renamed results, assignments, type switches, and compound conditions remain conservative.",
 			"Only else-branch reads that SSA proves still refer to the failed assertion result report; reassignment, address-taking, closure capture, and ambiguous joins are excluded.",
@@ -34,9 +34,9 @@ func (failedTypeAssertionValueRule) Metadata() Metadata {
 		},
 		Examples: []Example{
 			{
-				Title:     "Keep the original value available to the failure branch",
+				Title: "Keep the original value available to the failure branch",
 				Incorrect: "if value, ok := value.(string); ok {\n\treturn value\n} else {\n\treturn fmt.Sprintf(\"unexpected %T\", value)\n}",
-				Correct:   "if text, ok := value.(string); ok {\n\treturn text\n} else {\n\treturn fmt.Sprintf(\"unexpected %T\", value)\n}",
+				Correct: "if text, ok := value.(string); ok {\n\treturn text\n} else {\n\treturn fmt.Sprintf(\"unexpected %T\", value)\n}",
 			},
 		},
 	}
@@ -45,10 +45,7 @@ func (failedTypeAssertionValueRule) Metadata() Metadata {
 func (failedTypeAssertionValueRule) RequiresSSADebug() {}
 
 func (failedTypeAssertionValueRule) RunSSA(ctx *SSAContext) ([]Finding, error) {
-	if ctx == nil ||
-		ctx.Function() == nil ||
-		ctx.Syntax() == nil ||
-		ctx.Info() == nil {
+	if ctx == nil || ctx.Function() == nil || ctx.Syntax() == nil || ctx.Info() == nil {
 		return nil, fmt.Errorf(
 			"failed-type-assertion-value requires a complete SSA context",
 		)
@@ -76,10 +73,7 @@ func (failedTypeAssertionValueRule) RunSSA(ctx *SSAContext) ([]Finding, error) {
 	return findings, nil
 }
 
-func failedTypeAssertionElseReads(
-	ctx *SSAContext,
-	statement *ast.IfStmt,
-) ([]Finding, error) {
+func failedTypeAssertionElseReads(ctx *SSAContext, statement *ast.IfStmt) ([]Finding, error) {
 	assignment, _ := statement.Init.(*ast.AssignStmt)
 	condition, _ := ast.Unparen(statement.Cond).(*ast.Ident)
 	if assignment == nil ||
@@ -159,11 +153,11 @@ func failedTypeAssertionElseReads(
 					Range: range_,
 					Related: []Related{
 						{
-							Range:   shadowRange,
+							Range: shadowRange,
 							Message: "this assertion result shadows the original value",
 						},
 						{
-							Range:   assertedRange,
+							Range: assertedRange,
 							Message: "this is the original value being asserted",
 						},
 					},

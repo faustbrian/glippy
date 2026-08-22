@@ -35,6 +35,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewContextCancelLeakRule(),
 		rules.NewContextBackgroundRule(),
 		rules.NewContextTODORule(),
+		rules.NewDeferredFunctionNotCalledRule(),
 		rules.NewDeferInLoopRule(),
 		rules.NewDeprecatedIOUtilRule(),
 		rules.NewDirectPanicRule(),

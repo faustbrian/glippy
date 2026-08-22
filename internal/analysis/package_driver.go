@@ -285,27 +285,30 @@ func preferSpecificDiagnostics(diagnostics []rules.Diagnostic) []rules.Diagnosti
 	}
 	supersededLocations := make(map[string]map[diagnosticLocation]struct{})
 	for _, diagnostic := range diagnostics {
-		genericRule := ""
+		genericRules := []string(nil)
 		switch diagnostic.RuleID {
 		case "must-use-result":
-			genericRule = "discarded-error"
+			genericRules = []string{"deferred-function-not-called", "discarded-error"}
 		case "writer-not-finalized":
-			genericRule = "resource-not-closed"
+			genericRules = []string{"resource-not-closed"}
 		}
-		if genericRule == "" {
+		if len(genericRules) == 0 {
 			continue
 		}
-		locations := supersededLocations[genericRule]
-		if locations == nil {
-			locations = make(map[diagnosticLocation]struct{})
-			supersededLocations[genericRule] = locations
-		}
-		locations[diagnosticLocation{
+		location := diagnosticLocation{
 			path: diagnostic.Path,
 			digest: diagnostic.Digest,
 			start: diagnostic.Range.Start,
 			end: diagnostic.Range.End,
-		}] = struct{}{}
+		}
+		for _, genericRule := range genericRules {
+			locations := supersededLocations[genericRule]
+			if locations == nil {
+				locations = make(map[diagnosticLocation]struct{})
+				supersededLocations[genericRule] = locations
+			}
+			locations[location] = struct{}{}
+		}
 	}
 	if len(supersededLocations) == 0 {
 		return diagnostics

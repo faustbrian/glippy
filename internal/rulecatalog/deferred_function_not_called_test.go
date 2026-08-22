@@ -1,0 +1,244 @@
+package rulecatalog_test
+
+import (
+	"context"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/rulecatalog"
+	"github.com/faustbrian/glippy/internal/rules"
+)
+
+func TestDeferredFunctionNotCalledReportsReturnedFunctions(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+type cleanup func()
+type cleanupAlias = func()
+
+type worker struct{}
+
+func setup() func() { return func() {} }
+func setupNamed() cleanup { return func() {} }
+func setupAlias() cleanupAlias { return func() {} }
+func setupWithArgument() func(int) { return func(int) {} }
+func setupGeneric[T any]() func(T) { return func(T) {} }
+func (worker) setup() func() { return func() {} }
+
+func broken(value worker) {
+	defer setup()
+	defer setupNamed()
+	defer setupAlias()
+	defer setupWithArgument()
+	defer setupGeneric[string]()
+	defer value.setup()
+	factory := setup
+	defer factory()
+	defer func() func() { return func() {} }()
+}
+`
+	result := runOnePedanticRule(t, "deferred-function-not-called", input)
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 8 {
+		t.Fatalf("deferred-function-not-called result = %#v", result)
+	}
+	want := []string{
+		"defer setup()",
+		"defer setupNamed()",
+		"defer setupAlias()",
+		"defer setupWithArgument()",
+		"defer setupGeneric[string]()",
+		"defer value.setup()",
+		"defer factory()",
+		"defer func() func() { return func() {} }()",
+	}
+	searchFrom := 0
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		relative := strings.Index(input[searchFrom:], want[index])
+		if relative < 0 {
+			t.Fatalf("missing fixture marker %q", want[index])
+		}
+		statementStart := searchFrom + relative
+		start := statementStart + len("defer ")
+		if diagnostic.RuleID != "deferred-function-not-called" ||
+			diagnostic.Severity != rules.SeverityWarn ||
+			diagnostic.MessageKey != "deferred-function-not-called" ||
+			diagnostic.Message !=
+				"deferred call returns a function that is never invoked" ||
+			diagnostic.Range.Start != start ||
+			diagnostic.Range.End != statementStart + len(want[index]) ||
+			len(diagnostic.Fixes) != 0 {
+			t.Fatalf(
+				"deferred-function-not-called diagnostic[%d] = %#v",
+				index,
+				diagnostic,
+			)
+		}
+		searchFrom = statementStart + len(want[index])
+	}
+}
+
+func TestDeferredFunctionNotCalledExcludesExecutedAndNonFunctionResults(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+func setup() func() { return func() {} }
+func setupWithResult() func() int { return func() int { return 1 } }
+func ordinary() error { return nil }
+func noResult() {}
+
+func valid() {
+	defer setup()()
+	defer setupWithResult()()
+	defer ordinary()
+	defer noResult()
+	cleanup := setup()
+	defer cleanup()
+}
+`
+	result := runOnePedanticRule(t, "deferred-function-not-called", input)
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 0 {
+		t.Fatalf("valid deferred-function-not-called result = %#v", result)
+	}
+}
+
+func TestDeferredFunctionNotCalledMetadata(t *testing.T) {
+	t.Parallel()
+
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, found := registry.Metadata("deferred-function-not-called")
+	if !found ||
+		metadata.DefaultSeverity != rules.SeverityWarn ||
+		!reflect.DeepEqual(metadata.Presets, []rules.Preset{rules.PresetSuspicious}) ||
+		metadata.MinimumGoVersion != "1.25" ||
+		metadata.Requirement != rules.RequireTypes ||
+		!reflect.DeepEqual(metadata.NodeInterests, []rules.NodeKind{rules.NodeDeferStmt}) ||
+		metadata.RunOnGenerated ||
+		metadata.RunDespiteTypeErrors ||
+		!reflect.DeepEqual(
+			metadata.Categories,
+			[]rules.Category{rules.CategoryCorrectness, rules.CategorySuspicious},
+		) ||
+		len(metadata.Fixes) != 0 ||
+		len(metadata.Examples) == 0 ||
+		len(metadata.KnownLimitations) == 0 {
+		t.Fatalf("deferred-function-not-called metadata = %#v, found = %v", metadata, found)
+	}
+	selection, err := registry.ResolveOptions(
+		rules.ResolveOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"deferred-function-not-called": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.24",
+		},
+	)
+	if err != nil || len(selection) != 0 {
+		t.Fatalf(
+			"pre-minimum deferred-function-not-called selection = %#v, %v",
+			selection,
+			err,
+		)
+	}
+}
+
+func TestDeferredFunctionNotCalledHonorsSharedPolicies(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/deferredfunctionpolicy\n\ngo 1.25.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "suppressed.go"),
+		`package sample
+
+func setup() func() { return func() {} }
+
+func suppressed() {
+	//glippy:ignore deferred-function-not-called -- the outer call intentionally runs only on return
+	defer setup()
+}
+`,
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "generated.go"),
+		`// Code generated by fixture. DO NOT EDIT.
+package sample
+
+func generated() { defer setup() }
+`,
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "invalid", "invalid.go"),
+		`package invalid
+
+func setup() func() { return func() {} }
+
+func invalid() {
+	var broken string = 1
+	_ = broken
+	defer setup()
+}
+`,
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"deferred-function-not-called": rules.SeverityError,
+			},
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"./..."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 3 || len(result.LoadDiagnostics) == 0 {
+		t.Fatalf("deferred-function-not-called policy result = %#v", result)
+	}
+	for _, file := range result.Files {
+		switch filepath.Base(file.Path) {
+		case "suppressed.go":
+			if len(file.Diagnostics) != 0 ||
+				len(file.Suppressed) != 1 ||
+				file.Suppressed[0].Diagnostic.RuleID !=
+					"deferred-function-not-called" ||
+				file.Suppressed[0].Diagnostic.Severity != rules.SeverityError {
+				t.Fatalf(
+					"suppressed deferred-function-not-called result = %#v",
+					file,
+				)
+			}
+		case "generated.go", "invalid.go":
+			if len(file.Diagnostics) != 0 || len(file.Suppressed) != 0 {
+				t.Fatalf("excluded deferred-function-not-called result = %#v", file)
+			}
+		default:
+			t.Fatalf("unexpected policy file %q", file.Path)
+		}
+	}
+}
