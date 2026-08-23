@@ -543,6 +543,339 @@ func nextWriter(output io.Writer) (*tabwriter.Writer, error) {
 	}
 }
 
+func TestUncheckedWriterErrorExcludesStableInMemoryWriterChains(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"bufio"
+	"bytes"
+	"compress/gzip"
+	"encoding/xml"
+	"io"
+	"strings"
+	"text/tabwriter"
+)
+
+func direct() {
+	var bytesOutput bytes.Buffer
+	bufio.NewWriter(&bytesOutput).Flush()
+	gzip.NewWriter(&bytesOutput).Close()
+	bufio.NewWriter(bufio.NewWriter(&bytesOutput)).Flush()
+
+	var stringOutput strings.Builder
+	tabwriter.NewWriter(&stringOutput, 1, 8, 1, ' ', 0).Flush()
+}
+
+func stableChain() {
+	var output bytes.Buffer
+	table := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	buffered := bufio.NewWriter(table)
+	buffered.Flush()
+
+	inner := bufio.NewWriter(&output)
+	outer := bufio.NewWriter(inner)
+	outer.Flush()
+}
+
+func resetChain(output io.Writer) {
+	var memory bytes.Buffer
+	inner := bufio.NewWriter(&memory)
+	pooled := bufio.NewWriter(output)
+	pooled.Reset(inner)
+	pooled.Flush()
+}
+
+func resetGzip(output io.Writer) {
+	var memory bytes.Buffer
+	pooled := gzip.NewWriter(output)
+	pooled.Reset(&memory)
+	pooled.Close()
+}
+
+func initializeTabwriter(output io.Writer) {
+	var memory strings.Builder
+	pooled := tabwriter.NewWriter(output, 1, 8, 1, ' ', 0)
+	pooled.Init(&memory, 1, 8, 1, ' ', 0)
+	pooled.Flush()
+}
+
+func invalidGzipHeader() {
+	var output bytes.Buffer
+	writer := gzip.NewWriter(&output)
+	header := &writer.Header
+	header.Name = "snowman: ☃"
+	writer.Close()
+}
+
+func invalidDirectGzipName() {
+	var output bytes.Buffer
+	writer := gzip.NewWriter(&output)
+	writer.Name = "snowman: ☃"
+	writer.Close()
+}
+
+func invalidDirectGzipComment() {
+	var output bytes.Buffer
+	writer := gzip.NewWriter(&output)
+	writer.Comment = "snowman: ☃"
+	writer.Close()
+}
+
+func invalidDirectGzipExtra() {
+	var output bytes.Buffer
+	writer := gzip.NewWriter(&output)
+	writer.Extra = make([]byte, 1<<16)
+	writer.Close()
+}
+
+func callerOwned(
+	buffered *bufio.Writer,
+	compressed *gzip.Writer,
+	table *tabwriter.Writer,
+) {
+	var output bytes.Buffer
+	buffered.Reset(&output)
+	buffered.Flush()
+	compressed.Reset(&output)
+	compressed.Close()
+	table.Init(&output, 1, 8, 1, ' ', 0)
+	table.Flush()
+}
+
+func identityWriter(writer *bufio.Writer) *bufio.Writer { return writer }
+
+func indirectCallerOwned(writer *bufio.Writer) {
+	var output bytes.Buffer
+	local := identityWriter(writer)
+	local.Reset(&output)
+	local.Flush()
+}
+
+func conditionalReset(output io.Writer, reset bool) {
+	var memory bytes.Buffer
+	writer := bufio.NewWriter(output)
+	if reset {
+		writer.Reset(&memory)
+	}
+	writer.Flush()
+}
+
+func loopReset(output io.Writer, reset bool) {
+	var memory bytes.Buffer
+	writer := bufio.NewWriter(output)
+	for reset {
+		writer.Reset(&memory)
+		break
+	}
+	writer.Flush()
+}
+
+func consumeWriter(*bufio.Writer) {}
+
+func escapedReset(output io.Writer) {
+	var memory bytes.Buffer
+	writer := bufio.NewWriter(output)
+	consumeWriter(writer)
+	writer.Reset(&memory)
+	writer.Flush()
+}
+
+func independentFinalizer() {
+	var output bytes.Buffer
+	xml.NewEncoder(&output).Close()
+}
+
+func fallible(output io.Writer, pooled *bufio.Writer) {
+	bufio.NewWriter(output).Flush()
+	gzip.NewWriter(output).Close()
+	tabwriter.NewWriter(output, 1, 8, 1, ' ', 0).Flush()
+	pooled.Reset(output)
+	pooled.Flush()
+}
+
+func mutatedInner(output io.Writer) {
+	var memory bytes.Buffer
+	inner := bufio.NewWriter(&memory)
+	outer := bufio.NewWriter(inner)
+	inner.Reset(output)
+	outer.Flush()
+}
+
+func reboundNestedWriter(output io.Writer) {
+	var memory bytes.Buffer
+	inner := bufio.NewWriterSize(output, 1)
+	outer := bufio.NewWriterSize(inner, 1)
+	_, _ = outer.Write([]byte("xx"))
+	inner.Reset(&memory)
+	outer.Flush()
+}
+
+func transitiveReboundNestedWriter(output io.Writer) {
+	var memory bytes.Buffer
+	inner := bufio.NewWriterSize(output, 1)
+	middle := bufio.NewWriterSize(inner, 1)
+	outer := bufio.NewWriterSize(middle, 1)
+	_, _ = outer.Write([]byte("xxx"))
+	inner.Reset(&memory)
+	outer.Flush()
+}
+
+func resetReboundNestedWriter(output io.Writer) {
+	var memory bytes.Buffer
+	inner := bufio.NewWriterSize(output, 1)
+	outer := bufio.NewWriterSize(&memory, 1)
+	outer.Reset(inner)
+	_, _ = outer.Write([]byte("xx"))
+	inner.Reset(&memory)
+	outer.Flush()
+}
+
+func inlineReboundNestedWriter(output io.Writer) {
+	var memory bytes.Buffer
+	inner := bufio.NewWriterSize(output, 1)
+	outer := bufio.NewWriterSize(bufio.NewWriterSize(inner, 1), 1)
+	_, _ = outer.Write([]byte("xxx"))
+	inner.Reset(&memory)
+	outer.Flush()
+}
+
+func interfaceSink() {
+	var output io.Writer = &bytes.Buffer{}
+	bufio.NewWriter(output).Flush()
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwriterchains\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", false)
+	assertUncheckedWriterDiagnostics(
+		t,
+		input,
+		result,
+		[]string{
+			"writer.Close()",
+			"writer.Close()",
+			"writer.Close()",
+			"writer.Close()",
+			"buffered.Flush()",
+			"compressed.Close()",
+			"table.Flush()",
+			"local.Flush()",
+			"writer.Flush()",
+			"writer.Flush()",
+			"writer.Flush()",
+			"xml.NewEncoder(&output).Close()",
+			"bufio.NewWriter(output).Flush()",
+			"gzip.NewWriter(output).Close()",
+			"tabwriter.NewWriter(output, 1, 8, 1, ' ', 0).Flush()",
+			"pooled.Flush()",
+			"outer.Flush()",
+			"outer.Flush()",
+			"outer.Flush()",
+			"outer.Flush()",
+			"outer.Flush()",
+			"bufio.NewWriter(output).Flush()",
+		},
+	)
+}
+
+func TestUncheckedWriterErrorExcludesOnlyUnusedInMemoryTarFinalization(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"archive/tar"
+	"bytes"
+	"fmt"
+	"io"
+	"strings"
+)
+
+func empty() {
+	var output bytes.Buffer
+	writer := tar.NewWriter(&output)
+	writer.Close()
+	tar.NewWriter(&output).Close()
+	var text strings.Builder
+	tar.NewWriter(&text).Close()
+}
+
+func used() {
+	var output bytes.Buffer
+	usedWriter := tar.NewWriter(&output)
+	_ = usedWriter.WriteHeader(&tar.Header{Name: "entry"})
+	usedWriter.Close()
+}
+
+func interfaceSink() {
+	var output io.Writer = &bytes.Buffer{}
+	interfaceWriter := tar.NewWriter(output)
+	interfaceWriter.Close()
+}
+
+func argumentUse() {
+	var output bytes.Buffer
+	argumentWriter := tar.NewWriter(&output)
+	fmt.Fprint(argumentWriter, "payload")
+	argumentWriter.Close()
+}
+
+func methodValueUse() {
+	var output bytes.Buffer
+	methodValueWriter := tar.NewWriter(&output)
+	writeHeader := methodValueWriter.WriteHeader
+	_ = writeHeader(&tar.Header{Name: "entry"})
+	methodValueWriter.Close()
+}
+
+func deferredEmpty() {
+	var output bytes.Buffer
+	defer tar.NewWriter(&output).Close()
+}
+
+func asynchronousEmpty() {
+	var output bytes.Buffer
+	go tar.NewWriter(&output).Close()
+}
+
+func deferredUsed() {
+	var output bytes.Buffer
+	deferredWriter := tar.NewWriter(&output)
+	defer deferredWriter.Close()
+	_ = deferredWriter.WriteHeader(&tar.Header{Name: "entry"})
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedemptytar\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", false)
+	assertUncheckedWriterDiagnostics(
+		t,
+		input,
+		result,
+		[]string{
+			"usedWriter.Close()",
+			"interfaceWriter.Close()",
+			"argumentWriter.Close()",
+			"methodValueWriter.Close()",
+			"tar.NewWriter(&output).Close()",
+			"tar.NewWriter(&output).Close()",
+			"deferredWriter.Close()",
+		},
+	)
+}
+
 func TestUncheckedWriterErrorDiagnosesDeferredTabwriterReinitialization(t *testing.T) {
 	t.Parallel()
 

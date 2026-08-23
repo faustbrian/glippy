@@ -81,6 +81,30 @@ returns no error and instead requires a later `Writer.Error` observation; the
 separately admitted `unchecked-csv-writer-error` rule owns that path-sensitive
 protocol.
 
+The v0.6 public-corpus audit extends the in-memory precision boundary to exact
+`bytes.Buffer` and `strings.Builder` sinks behind stable local `bufio.Writer`,
+`gzip.Writer`, and `tabwriter.Writer` constructor or `Reset`/`Init` chains.
+The gzip exclusion additionally requires an unmodified default header because
+header validation can fail independently of the underlying writer. Only
+straight-line reinitialization of an already tracked, unescaped local writer is
+accepted. Conditional, loop-contained, caller-owned, interface-typed, escaped,
+cyclic, reassigned, and otherwise unproven chains remain diagnostics, as do
+writer types such as XML whose finalizers can fail independently of the sink.
+Rebinding a nested writer invalidates every dependent outer chain so an error
+buffered through the earlier sink cannot be reclassified from later bindings.
+One narrower tar exception covers an unused exact `archive/tar.Writer`
+closed immediately over an exact `bytes.Buffer` or `strings.Builder`: with no
+entry or payload operation, `Close` only emits the end markers to an infallible
+sink. Used, deferred, interface-backed, escaped, or otherwise unproven tar
+writers remain diagnostics.
+
+The remaining Moby `writer-not-finalized` false positive aborts an
+`io.PipeWriter` through `CloseWithError` before the tar writer can finalize.
+Resolving it requires a source-derived parameter-to-result effect proving that
+the exact returned writer aliases the helper parameter and that every relevant
+path terminates it. Import-path recognition of wrapper helpers is unsound under
+module replacement and is not admitted as a precision exception.
+
 No fix is registered. A deferred call may require a named result, an explicit
 close before return, joined body and finalization errors, logging, or a product
 specific best-effort policy; no single rewrite preserves every surrounding
