@@ -55,6 +55,11 @@ disposable checkouts and caches, fetches module inputs before the offline audit,
 uploads normalized artifacts, and removes task-owned resources. It does not
 publish an Action, modify upstream repositories, submit changes, or claim that
 an optional-profile finding is a defect before manual adjudication.
+Every corpus child command receives Go's `GOMEMLIMIT=4GiB` soft limit so a
+single large analysis degrades into recorded incomplete evidence instead of
+exhausting the isolated CI worker. This is a harness containment policy, not a
+release peak-memory budget.
+
 An `all` run also collects the exact-run repository artifacts and initial
 adjudication template into one review bundle. The aggregate report is generated
 only after the required manual classifications and incomplete-run gaps have

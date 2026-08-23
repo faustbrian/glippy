@@ -21,6 +21,7 @@ import (
 
 const (
 	ResultSchemaVersion = 1
+	corpusCommandMemoryLimit = "4GiB"
 	maximumCommandOutput = 256 << 20
 )
 
@@ -715,6 +716,7 @@ func isolatedEnvironment(
 			"GIT_TERMINAL_PROMPT": "0",
 			"GOCACHE": goCache,
 			"GOCACHEPROG": "",
+			"GOMEMLIMIT": corpusCommandMemoryLimit,
 			"GOMODCACHE": moduleCache,
 			"GOENV": "off",
 			"GOFLAGS": "",

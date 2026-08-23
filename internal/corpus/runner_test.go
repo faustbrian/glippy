@@ -286,6 +286,7 @@ func TestRunUsesIsolatedEnvironmentAndReadOnlyCheckoutSnapshot(t *testing.T) {
 		"PATH=/usr/bin",
 		"HOME=/users/real",
 		"GOFLAGS=-mod=vendor",
+		"GOMEMLIMIT=off",
 		"GOWORK=/users/real/go.work",
 		"GOCACHEPROG=remote-cache",
 		"GIT_DIR=/users/real/other.git",
@@ -317,6 +318,7 @@ func TestRunUsesIsolatedEnvironmentAndReadOnlyCheckoutSnapshot(t *testing.T) {
 			[]string{
 				"HOME=/users/real",
 				"GOFLAGS=-mod=vendor",
+				"GOMEMLIMIT=off",
 				"GOWORK=/users/real/go.work",
 				"GOCACHEPROG=remote-cache",
 				"GIT_DIR=/users/real/other.git",
@@ -337,6 +339,7 @@ func TestRunUsesIsolatedEnvironmentAndReadOnlyCheckoutSnapshot(t *testing.T) {
 				"GIT_CONFIG_NOSYSTEM=1",
 				"GIT_OPTIONAL_LOCKS=0",
 				"GIT_TERMINAL_PROMPT=0",
+				"GOMEMLIMIT=4GiB",
 				"GOFLAGS=",
 				"GOWORK=off",
 				"GOCACHEPROG=",
