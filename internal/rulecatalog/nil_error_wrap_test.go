@@ -438,6 +438,14 @@ func tupleImported() error {
 	return fmt.Errorf("tuple: %w", err)
 }
 
+func impossibleNonNilBranch() error {
+	err := helper.Nil()
+	if err != nil {
+		return fmt.Errorf("impossible non-nil branch: %w", err)
+	}
+	return nil
+}
+
 func delegatedImported() error {
 	return fmt.Errorf("delegated imported: %w", delegate.Nil())
 }

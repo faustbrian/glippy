@@ -104,7 +104,11 @@ func (nilErrorWrapRule) RunSSA(ctx *SSAContext) ([]Finding, error) {
 						value,
 						instruction.Block(),
 					) &&
-					!resultStateProvesErrorNil(ctx, value) {
+					!resultStateProvesErrorNilAt(
+						ctx,
+						value,
+						instruction.Block(),
+					) {
 					continue
 				}
 				range_, err := ctx.Range(argument)
@@ -130,8 +134,11 @@ func (nilErrorWrapRule) RunSSA(ctx *SSAContext) ([]Finding, error) {
 	return findings, nil
 }
 
-func resultStateProvesErrorNil(ctx *SSAContext, value ssa.Value) bool {
-	if ctx == nil || value == nil {
+func resultStateProvesErrorNilAt(ctx *SSAContext, value ssa.Value, target *ssa.BasicBlock) bool {
+	if ctx == nil ||
+		value == nil ||
+		target == nil ||
+		ssaValueDefinitelyNonNilAt(ctx.Function(), value, target) {
 		return false
 	}
 	resultIndex := 0
