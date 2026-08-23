@@ -437,6 +437,119 @@ func TestRunBindsTheWorkspaceInsideTheReadOnlySnapshot(t *testing.T) {
 	t.Fatal("Glippy lint command did not run")
 }
 
+func TestRunPreflightsTheOfflineWorkspaceBeforeGlippyProfiles(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, checkout := newRunFixture(t)
+	if err := os.WriteFile(
+		filepath.Join(checkout, "go.work"),
+		[]byte("go 1.26\n\nuse .\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	preflightIndex := -1
+	profileIndex := -1
+	var preflight, profile corpus.Command
+	for index, command := range executor.commands {
+		switch {
+		case command.Path == "go" &&
+			len(command.Args) >= 4 &&
+			slices.Equal(
+				command.Args[:4],
+				[]string{"list", "-deps", "-test", "-export"},
+			):
+			preflightIndex = index
+			preflight = command
+		case command.Path == "/tools/glippy" &&
+			len(command.Args) > 0 &&
+			command.Args[0] == "lint" &&
+			profileIndex == -1:
+			profileIndex = index
+			profile = command
+		}
+	}
+	if preflightIndex == -1 || profileIndex == -1 || preflightIndex >= profileIndex {
+		t.Fatalf(
+			"command order has preflight %d and first profile %d, want preflight first",
+			preflightIndex,
+			profileIndex,
+		)
+	}
+	if environmentValue(preflight.Env, "GOPROXY") != "off" ||
+		environmentValue(preflight.Env, "GOWORK") !=
+			filepath.Join(preflight.Dir, "go.work") {
+		t.Fatalf(
+			"preflight environment = %v, want offline snapshot workspace",
+			corpusEnvironment(preflight.Env),
+		)
+	}
+	if environmentValue(preflight.Env, "GOMODCACHE") == "" ||
+		environmentValue(preflight.Env, "GOMODCACHE") !=
+			environmentValue(profile.Env, "GOMODCACHE") {
+		t.Fatalf(
+			"preflight and profile module caches differ: %v, %v",
+			corpusEnvironment(preflight.Env),
+			corpusEnvironment(profile.Env),
+		)
+	}
+	if environmentValue(preflight.Env, "GOCACHE") == "" ||
+		environmentValue(preflight.Env, "GOCACHE") ==
+			environmentValue(profile.Env, "GOCACHE") {
+		t.Fatalf(
+			"preflight reused profile build cache: %v, %v",
+			corpusEnvironment(preflight.Env),
+			corpusEnvironment(profile.Env),
+		)
+	}
+	canonicalCacheRoot, err := filepath.EvalSymlinks(options.CacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPreflightCache := filepath.Join(
+		canonicalCacheRoot,
+		"repositories",
+		"alpha",
+		"preflight",
+		"gocache",
+	)
+	wantProfileCache := filepath.Join(
+		canonicalCacheRoot,
+		"repositories",
+		"alpha",
+		"analysis",
+		"gocache",
+	)
+	if environmentValue(preflight.Env, "GOCACHE") != wantPreflightCache ||
+		environmentValue(profile.Env, "GOCACHE") != wantProfileCache {
+		t.Fatalf(
+			"preflight and profile caches = %q, %q; want %q, %q",
+			environmentValue(preflight.Env, "GOCACHE"),
+			environmentValue(profile.Env, "GOCACHE"),
+			wantPreflightCache,
+			wantProfileCache,
+		)
+	}
+}
+
+func TestRunStopsBeforeProfilesWhenOfflinePreflightFails(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, _ := newRunFixture(t)
+	executor.preflightExitCode = 1
+	err := corpus.Run(context.Background(), manifest, options)
+	if err == nil || !strings.Contains(err.Error(), "analysis preflight") {
+		t.Fatalf("Run() error = %v, want analysis preflight failure", err)
+	}
+	if len(executor.profiles) != 0 {
+		t.Fatalf("profiles ran after failed preflight: %v", executor.profiles)
+	}
+}
+
 func TestRunPrefetchesEveryWorkspaceModuleBeforeOfflineAnalysis(t *testing.T) {
 	t.Parallel()
 
@@ -779,6 +892,7 @@ type corpusExecutor struct {
 	staticcheckVersion string
 	statistics []string
 	analysisError error
+	preflightExitCode int
 	commands []corpus.Command
 	moduleDownloads []corpus.Command
 	probeReadOnly bool
@@ -886,7 +1000,7 @@ func (e *corpusExecutor) Run(
 	case command.Path == "go" &&
 		len(command.Args) >= 4 &&
 		slices.Equal(command.Args[:4], []string{"list", "-deps", "-test", "-export"}):
-		return corpus.CommandResult{}, nil
+		return corpus.CommandResult{ExitCode: e.preflightExitCode}, nil
 	case command.Path == "go" && len(command.Args) > 0 && command.Args[0] == "vet":
 		e.vetRuns++
 		if e.includeTaskPath {

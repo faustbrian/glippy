@@ -99,6 +99,12 @@ type comparatorResult struct {
 	Output artifactResult `json:"output"`
 }
 
+type comparatorCommand struct {
+	name string
+	path string
+	arguments []string
+}
+
 type artifactResult struct {
 	File string `json:"file"`
 	SHA256 string `json:"sha256"`
@@ -264,6 +270,34 @@ func runRepository(
 	if err != nil {
 		return err
 	}
+	preflightEnvironment, err := repositoryEnvironmentForScope(
+		options,
+		repository,
+		executionCheckout,
+		filepath.Join("repositories", repository.ID, "preflight"),
+	)
+	if err != nil {
+		return err
+	}
+	preflight, err := runComparator(
+		ctx,
+		options,
+		repository,
+		executionCheckout,
+		repositoryOutput,
+		preflightEnvironment,
+		analysisPreflightCommand(repository),
+	)
+	if err != nil {
+		return err
+	}
+	if preflight.ExitCode != 0 {
+		return fmt.Errorf(
+			"analysis preflight for %q exited with status %d",
+			repository.ID,
+			preflight.ExitCode,
+		)
+	}
 
 	result := repositoryResult{
 		SchemaVersion: ResultSchemaVersion,
@@ -274,6 +308,7 @@ func runRepository(
 		Profiles: make([]profileResult, 0, len(corpusProfiles)),
 		Comparators: make([]comparatorResult, 0, 3),
 	}
+	result.Comparators = append(result.Comparators, preflight)
 	for _, profile := range corpusProfiles {
 		profileResult, err := runProfile(
 			ctx,
@@ -301,7 +336,7 @@ func runRepository(
 	if err != nil {
 		return err
 	}
-	result.Comparators = comparators
+	result.Comparators = append(result.Comparators, comparators...)
 	if _, err := writeJSON(filepath.Join(repositoryOutput, "result.json"), result); err != nil {
 		return err
 	}
@@ -635,19 +670,7 @@ func runComparators(
 	checkout, repositoryOutput string,
 	environment []string,
 ) ([]comparatorResult, error) {
-	commands := []struct {
-		name string
-		path string
-		arguments []string
-	}{
-		{
-			name: "analysis-preflight",
-			path: "go",
-			arguments: append(
-				[]string{"list", "-deps", "-test", "-export"},
-				repository.Patterns...,
-			),
-		},
+	commands := []comparatorCommand{
 		{
 			name: "go-vet",
 			path: "go",
@@ -661,43 +684,74 @@ func runComparators(
 	}
 	results := make([]comparatorResult, 0, len(commands))
 	for _, comparator := range commands {
-		execution, err := options.Executor.Run(
+		result, err := runComparator(
 			ctx,
-			Command{
-				Path: comparator.path,
-				Args: comparator.arguments,
-				Dir: checkout,
-				Env: environment,
-			},
-		)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"run %s for %q: %w",
-				comparator.name,
-				repository.ID,
-				err,
-			)
-		}
-		output := append(slices.Clone(execution.Stdout), execution.Stderr...)
-		output = normalizeText(output, newArtifactNormalizer(checkout, options))
-		artifact, err := writeArtifact(
-			filepath.Join(repositoryOutput, comparator.name + ".txt"),
-			output,
-			false,
+			options,
+			repository,
+			checkout,
+			repositoryOutput,
+			environment,
+			comparator,
 		)
 		if err != nil {
 			return nil, err
 		}
-		results = append(
-			results,
-			comparatorResult{
-				Name: comparator.name,
-				ExitCode: execution.ExitCode,
-				Output: artifact,
-			},
-		)
+		results = append(results, result)
 	}
 	return results, nil
+}
+
+func analysisPreflightCommand(repository Repository) comparatorCommand {
+	return comparatorCommand{
+		name: "analysis-preflight",
+		path: "go",
+		arguments: append(
+			[]string{"list", "-deps", "-test", "-export"},
+			repository.Patterns...,
+		),
+	}
+}
+
+func runComparator(
+	ctx context.Context,
+	options RunOptions,
+	repository Repository,
+	checkout, repositoryOutput string,
+	environment []string,
+	comparator comparatorCommand,
+) (comparatorResult, error) {
+	execution, err := options.Executor.Run(
+		ctx,
+		Command{
+			Path: comparator.path,
+			Args: comparator.arguments,
+			Dir: checkout,
+			Env: environment,
+		},
+	)
+	if err != nil {
+		return comparatorResult{}, fmt.Errorf(
+			"run %s for %q: %w",
+			comparator.name,
+			repository.ID,
+			err,
+		)
+	}
+	output := append(slices.Clone(execution.Stdout), execution.Stderr...)
+	output = normalizeText(output, newArtifactNormalizer(checkout, options))
+	artifact, err := writeArtifact(
+		filepath.Join(repositoryOutput, comparator.name + ".txt"),
+		output,
+		false,
+	)
+	if err != nil {
+		return comparatorResult{}, err
+	}
+	return comparatorResult{
+		Name: comparator.name,
+		ExitCode: execution.ExitCode,
+		Output: artifact,
+	}, nil
 }
 
 func inspectToolVersions(ctx context.Context, options RunOptions) (toolVersions, error) {
@@ -890,6 +944,19 @@ func repositoryEnvironment(
 	repository Repository,
 	checkout string,
 ) ([]string, error) {
+	return repositoryEnvironmentForScope(
+		options,
+		repository,
+		checkout,
+		filepath.Join("repositories", repository.ID, "analysis"),
+	)
+}
+
+func repositoryEnvironmentForScope(
+	options RunOptions,
+	repository Repository,
+	checkout, scope string,
+) ([]string, error) {
 	workspace := "off"
 	workspacePath := filepath.Join(checkout, "go.work")
 	if info, err := os.Stat(workspacePath); err == nil && info.Mode().IsRegular() {
@@ -897,7 +964,7 @@ func repositoryEnvironment(
 	} else if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("inspect corpus workspace: %w", err)
 	}
-	return isolatedEnvironment(options, repository.ID, repository.CGO, workspace)
+	return isolatedEnvironment(options, scope, repository.CGO, workspace)
 }
 
 func isolatedEnvironment(
