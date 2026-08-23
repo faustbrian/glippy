@@ -52,8 +52,11 @@ runner execute only the inert validator and unit tests.
 
 The manual workflow accepts `all` or one manifest repository ID. It creates
 disposable checkouts and caches, copies each exact checkout into a read-only
-snapshot, fetches every module selected by its `go.work` with workspace mode
-disabled and module metadata read-only, then performs the audit offline. It
+snapshot, resolves the complete transitive dependency graph selected by each
+module or aggregate `go.work`, including workspace replacements, with module
+metadata read-only, fetches the resolved exact module versions outside module
+and workspace source context through disposable task-owned module metadata,
+then performs the audit offline. It
 uploads normalized artifacts and removes task-owned resources. It does not
 publish an Action, modify upstream repositories, submit changes, or claim that
 an optional-profile finding is a defect before manual adjudication.

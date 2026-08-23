@@ -25,6 +25,8 @@ const (
 	ResultSchemaVersion = 1
 	corpusCommandMemoryLimit = "4GiB"
 	maximumCommandOutput = 256 << 20
+	maximumModuleDownloadArguments = 128
+	maximumModuleDownloadArgumentBytes = 32 << 10
 )
 
 var (
@@ -360,22 +362,99 @@ func prefetchRepositoryModules(
 	if err != nil {
 		return err
 	}
-	for _, module := range modules {
+	graphRoots := modules
+	graphWorkspace := "off"
+	workspacePath := filepath.Join(checkout, "go.work")
+	workspaceInfo, err := os.Stat(workspacePath)
+	switch {
+	case err == nil && !workspaceInfo.Mode().IsRegular():
+		return fmt.Errorf(
+			"resolve module graph for %q: workspace is not a regular file",
+			repository.ID,
+		)
+	case err == nil:
+		graphRoots = []string{checkout}
+		graphWorkspace = workspacePath
+	case !os.IsNotExist(err):
+		return fmt.Errorf(
+			"resolve module graph for %q: inspect workspace: %w",
+			repository.ID,
+			err,
+		)
+	}
+	graphEnvironment := replaceEnvironment(
+		environment,
+		map[string]string{"GOWORK": graphWorkspace},
+	)
+	downloads := make(map[string]struct{})
+	for _, module := range graphRoots {
 		result, err := options.Executor.Run(
 			ctx,
 			Command{
 				Path: "go",
-				Args: []string{"mod", "download"},
+				Args: []string{"list", "-mod=readonly", "-m", "-json", "all"},
 				Dir: module,
-				Env: environment,
+				Env: graphEnvironment,
 			},
 		)
 		if err != nil {
-			return fmt.Errorf("prefetch module for %q: %w", repository.ID, err)
+			return fmt.Errorf("resolve module graph for %q: %w", repository.ID, err)
 		}
 		if result.ExitCode != 0 {
 			return fmt.Errorf(
-				"prefetch module for %q: exit %d: %s",
+				"resolve module graph for %q: exit %d: %s",
+				repository.ID,
+				result.ExitCode,
+				strings.TrimSpace(string(result.Stderr)),
+			)
+		}
+		resolved, err := resolvedModuleDownloads(result.Stdout)
+		if err != nil {
+			return fmt.Errorf("resolve module graph for %q: %w", repository.ID, err)
+		}
+		for _, download := range resolved {
+			downloads[download] = struct{}{}
+		}
+	}
+	if len(downloads) == 0 {
+		return nil
+	}
+	downloadDirectory, err := os.MkdirTemp(
+		options.CacheRoot,
+		repository.ID + "-module-download-",
+	)
+	if err != nil {
+		return fmt.Errorf("create module download directory for %q: %w", repository.ID, err)
+	}
+	defer os.RemoveAll(downloadDirectory)
+	if err := os.WriteFile(
+		filepath.Join(downloadDirectory, "go.mod"),
+		[]byte("module glippy.invalid/corpus-prefetch\n\ngo 1.25\n"),
+		0o600,
+	);
+		err != nil {
+		return fmt.Errorf("create module download metadata for %q: %w", repository.ID, err)
+	}
+	downloadEnvironment := replaceEnvironment(
+		environment,
+		map[string]string{"GOFLAGS": "", "GOWORK": "off"},
+	)
+	for _, arguments := range moduleDownloadBatches(downloads) {
+		result, err := options.Executor.Run(
+			ctx,
+			Command{
+				Path: "go",
+				Args: append([]string{"mod", "download"}, arguments...),
+				Dir: downloadDirectory,
+				Env: downloadEnvironment,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("prefetch module graph for %q: %w", repository.ID, err)
+		}
+		if result.ExitCode != 0 {
+			return fmt.Errorf(
+				"prefetch module graph for %q: exit %d: %s",
 				repository.ID,
 				result.ExitCode,
 				strings.TrimSpace(string(result.Stderr)),
@@ -383,6 +462,69 @@ func prefetchRepositoryModules(
 		}
 	}
 	return nil
+}
+
+type listedModule struct {
+	Path string
+	Version string
+	Main bool
+	Replace *listedModule
+}
+
+func resolvedModuleDownloads(input []byte) ([]string, error) {
+	decoder := json.NewDecoder(bytes.NewReader(input))
+	downloads := make(map[string]struct{})
+	for {
+		var listed listedModule
+		if err := decoder.Decode(&listed); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return nil, fmt.Errorf("decode module graph: %w", err)
+		}
+		selected := &listed
+		if listed.Replace != nil {
+			selected = listed.Replace
+		}
+		if listed.Main || selected.Path == "" || selected.Version == "" {
+			continue
+		}
+		downloads[selected.Path + "@" + selected.Version] = struct{}{}
+	}
+	result := make([]string, 0, len(downloads))
+	for download := range downloads {
+		result = append(result, download)
+	}
+	sort.Strings(result)
+	return result, nil
+}
+
+func moduleDownloadBatches(downloads map[string]struct{}) [][]string {
+	ordered := make([]string, 0, len(downloads))
+	for download := range downloads {
+		ordered = append(ordered, download)
+	}
+	sort.Strings(ordered)
+	batches := make(
+		[][]string,
+		0,
+		(len(ordered) + maximumModuleDownloadArguments - 1) /
+			maximumModuleDownloadArguments,
+	)
+	for len(ordered) > 0 {
+		count := 0
+		bytes := 0
+		for count < len(ordered) && count < maximumModuleDownloadArguments {
+			argumentBytes := len(ordered[count]) + 1
+			if count > 0 && bytes + argumentBytes > maximumModuleDownloadArgumentBytes {
+				break
+			}
+			bytes += argumentBytes
+			count++
+		}
+		batches = append(batches, slices.Clone(ordered[:count]))
+		ordered = ordered[count:]
+	}
+	return batches
 }
 
 func repositoryModuleDirectories(checkout string) ([]string, error) {

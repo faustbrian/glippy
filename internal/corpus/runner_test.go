@@ -353,7 +353,11 @@ func TestRunUsesIsolatedEnvironmentAndReadOnlyCheckoutSnapshot(t *testing.T) {
 				)
 			}
 		}
-		if command.Path == "go" && slices.Equal(command.Args, []string{"mod", "download"}) {
+		if command.Path == "go" &&
+			slices.Equal(
+				command.Args,
+				[]string{"list", "-mod=readonly", "-m", "-json", "all"},
+			) {
 			for _, required := range
 				[]string{
 					"GOFLAGS=-mod=readonly",
@@ -363,6 +367,25 @@ func TestRunUsesIsolatedEnvironmentAndReadOnlyCheckoutSnapshot(t *testing.T) {
 				if !slices.Contains(command.Env, required) {
 					t.Fatalf(
 						"module download environment is missing %q: %v",
+						required,
+						corpusEnvironment(command.Env),
+					)
+				}
+			}
+			continue
+		}
+		if command.Path == "go" &&
+			len(command.Args) > 2 &&
+			slices.Equal(command.Args[:2], []string{"mod", "download"}) {
+			for _, required := range
+				[]string{
+					"GOFLAGS=",
+					"GOPROXY=https://proxy.golang.org,direct",
+					"GOVCS=public:git|hg,private:off",
+				} {
+				if !slices.Contains(command.Env, required) {
+					t.Fatalf(
+						"exact module download environment is missing %q: %v",
 						required,
 						corpusEnvironment(command.Env),
 					)
@@ -577,30 +600,27 @@ func TestRunPrefetchesEveryWorkspaceModuleBeforeOfflineAnalysis(t *testing.T) {
 	if err := corpus.Run(context.Background(), manifest, options); err != nil {
 		t.Fatal(err)
 	}
-	if len(executor.moduleDownloads) != 2 {
+	if len(executor.moduleResolutions) != 1 {
 		t.Fatalf(
-			"workspace module downloads = %v, want root and nested module",
-			executor.moduleDownloads,
+			"workspace module resolutions = %v, want one aggregate workspace graph",
+			executor.moduleResolutions,
 		)
 	}
-	rootDownload := executor.moduleDownloads[0]
-	nestedDownload := executor.moduleDownloads[1]
-	if filepath.Base(rootDownload.Dir) != "source" ||
-		nestedDownload.Dir != filepath.Join(rootDownload.Dir, "nested") {
+	rootResolution := executor.moduleResolutions[0]
+	if filepath.Base(rootResolution.Dir) != "source" {
 		t.Fatalf(
-			"workspace module download directories = %q, %q",
-			rootDownload.Dir,
-			nestedDownload.Dir,
+			"workspace module resolution directory = %q, want snapshot root",
+			rootResolution.Dir,
 		)
 	}
-	for _, command := range executor.moduleDownloads {
+	for _, command := range executor.moduleResolutions {
 		if pathAtOrWithinForTest(checkout, command.Dir) {
-			t.Fatalf("module download used writable checkout %q", command.Dir)
+			t.Fatalf("module resolution used writable checkout %q", command.Dir)
 		}
 		for _, required := range
 			[]string{
 				"GOFLAGS=-mod=readonly",
-				"GOWORK=off",
+				"GOWORK=" + filepath.Join(rootResolution.Dir, "go.work"),
 				"GOCACHEPROG=",
 				"GONOPROXY=none",
 			} {
@@ -614,10 +634,34 @@ func TestRunPrefetchesEveryWorkspaceModuleBeforeOfflineAnalysis(t *testing.T) {
 		}
 		if environmentValue(command.Env, "GOPROXY") == "off" {
 			t.Fatalf(
-				"module download disabled its network source: %v",
+				"module resolution disabled its network source: %v",
 				corpusEnvironment(command.Env),
 			)
 		}
+	}
+	if len(executor.moduleDownloads) != 1 {
+		t.Fatalf(
+			"workspace module downloads = %v, want one batch",
+			executor.moduleDownloads,
+		)
+	}
+	download := executor.moduleDownloads[0]
+	if !slices.Equal(
+		download.Args,
+		[]string{
+			"mod",
+			"download",
+			"example.com/nested-dependency@v1.0.0",
+			"example.com/root-dependency@v1.0.0",
+		},
+	) {
+		t.Fatalf(
+			"workspace module download = %v, want exact resolved versions",
+			download.Args,
+		)
+	}
+	if pathAtOrWithinForTest(rootResolution.Dir, download.Dir) {
+		t.Fatalf("exact module download ran inside source module %q", download.Dir)
 	}
 }
 
@@ -637,7 +681,9 @@ func TestRunRejectsWorkspaceModulesOutsideTheReadOnlySnapshot(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "outside the checkout") {
 		t.Fatalf("Run() error = %v, want workspace boundary refusal", err)
 	}
-	if len(executor.moduleDownloads) != 0 || len(executor.profiles) != 0 {
+	if len(executor.moduleResolutions) != 0 ||
+		len(executor.moduleDownloads) != 0 ||
+		len(executor.profiles) != 0 {
 		t.Fatalf(
 			"commands ran after workspace boundary refusal: downloads %v, profiles %v",
 			executor.moduleDownloads,
@@ -664,7 +710,9 @@ func TestRunRejectsWorkspaceReplacementsOutsideTheReadOnlySnapshot(t *testing.T)
 		!strings.Contains(err.Error(), "outside the checkout") {
 		t.Fatalf("Run() error = %v, want workspace replacement boundary refusal", err)
 	}
-	if len(executor.moduleDownloads) != 0 || len(executor.profiles) != 0 {
+	if len(executor.moduleResolutions) != 0 ||
+		len(executor.moduleDownloads) != 0 ||
+		len(executor.profiles) != 0 {
 		t.Fatalf(
 			"commands ran after workspace replacement refusal: downloads %v, profiles %v",
 			executor.moduleDownloads,
@@ -694,7 +742,9 @@ func TestRunRejectsLocalModuleReplacementsOutsideTheReadOnlySnapshot(t *testing.
 		!strings.Contains(err.Error(), "outside the checkout") {
 		t.Fatalf("Run() error = %v, want module replacement boundary refusal", err)
 	}
-	if len(executor.moduleDownloads) != 0 || len(executor.profiles) != 0 {
+	if len(executor.moduleResolutions) != 0 ||
+		len(executor.moduleDownloads) != 0 ||
+		len(executor.profiles) != 0 {
 		t.Fatalf(
 			"commands ran after module replacement refusal: downloads %v, profiles %v",
 			executor.moduleDownloads,
@@ -744,7 +794,9 @@ func TestRunAllowsLocalReplacementsInsideTheReadOnlySnapshot(t *testing.T) {
 	if err := corpus.Run(context.Background(), manifest, options); err != nil {
 		t.Fatal(err)
 	}
-	if len(executor.moduleDownloads) != 1 || len(executor.profiles) != 4 {
+	if len(executor.moduleResolutions) != 1 ||
+		len(executor.moduleDownloads) != 1 ||
+		len(executor.profiles) != 4 {
 		t.Fatalf(
 			"commands after valid local replacements: downloads %v, profiles %v",
 			executor.moduleDownloads,
@@ -894,6 +946,7 @@ type corpusExecutor struct {
 	analysisError error
 	preflightExitCode int
 	commands []corpus.Command
+	moduleResolutions []corpus.Command
 	moduleDownloads []corpus.Command
 	probeReadOnly bool
 	snapshotWriteError error
@@ -939,7 +992,34 @@ func (e *corpusExecutor) Run(
 		return corpus.CommandResult{Stdout: []byte("staticcheck 2026.1.1 (0.8.1)\n")}, nil
 	case command.Path == "go" && slices.Equal(command.Args, []string{"version"}):
 		return corpus.CommandResult{Stdout: []byte("go version go1.26.0 test/arch\n")}, nil
-	case command.Path == "go" && slices.Equal(command.Args, []string{"mod", "download"}):
+	case command.Path == "go" &&
+		slices.Equal(command.Args, []string{"list", "-mod=readonly", "-m", "-json", "all"}):
+		e.moduleResolutions = append(e.moduleResolutions, command)
+		if environmentValue(command.Env, "GOWORK") != "off" {
+			return corpus.CommandResult{
+				Stdout: []byte(
+					"{\"Path\":\"example.com/main\",\"Main\":true}\n" +
+						"{\"Path\":\"example.com/nested-dependency\",\"Version\":\"v1.0.0\"}\n" +
+						"{\"Path\":\"example.com/root-dependency\",\"Version\":\"v1.0.0\"}\n",
+				),
+			}, nil
+		}
+		dependency := "example.com/root-dependency"
+		if filepath.Base(command.Dir) == "nested" {
+			dependency = "example.com/nested-dependency"
+		}
+		return corpus.CommandResult{
+			Stdout: []byte(
+				"{\"Path\":\"example.com/main\",\"Main\":true}\n" +
+					fmt.Sprintf(
+						"{\"Path\":%q,\"Version\":\"v1.0.0\"}\n",
+						dependency,
+					),
+			),
+		}, nil
+	case command.Path == "go" &&
+		len(command.Args) > 2 &&
+		slices.Equal(command.Args[:2], []string{"mod", "download"}):
 		e.moduleDownloads = append(e.moduleDownloads, command)
 		return corpus.CommandResult{}, nil
 	case command.Path == "/tools/glippy" && len(command.Args) > 5 && command.Args[0] == "lint":
