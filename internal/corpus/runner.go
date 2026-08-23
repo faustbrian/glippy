@@ -17,6 +17,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"golang.org/x/mod/modfile"
 )
 
 const (
@@ -62,6 +64,7 @@ type RunOptions struct {
 	RepositoryIDs []string
 	Environment []string
 	Executor Executor
+	downloadEnvironment []string
 }
 
 type repositoryResult struct {
@@ -167,6 +170,7 @@ func Run(ctx context.Context, manifest Manifest, options RunOptions) error {
 	if err := os.MkdirAll(resolved.CacheRoot, 0o755); err != nil {
 		return fmt.Errorf("create corpus cache root: %w", err)
 	}
+	resolved.downloadEnvironment = slices.Clone(resolved.Environment)
 	resolved.Environment, err = isolatedEnvironment(resolved, "tools", false, "off")
 	if err != nil {
 		return err
@@ -243,6 +247,10 @@ func runRepository(
 			err,
 		)
 	}
+	if err := prefetchRepositoryModules(ctx, options, repository, executionCheckout);
+		err != nil {
+		return err
+	}
 	repositoryOutput := filepath.Join(options.OutputRoot, repository.ID)
 	if err := os.MkdirAll(repositoryOutput, 0o755); err != nil {
 		return fmt.Errorf("create output for %q: %w", repository.ID, err)
@@ -298,6 +306,224 @@ func runRepository(
 		return err
 	}
 	return nil
+}
+
+func prefetchRepositoryModules(
+	ctx context.Context,
+	options RunOptions,
+	repository Repository,
+	checkout string,
+) error {
+	modules, err := repositoryModuleDirectories(checkout)
+	if err != nil {
+		return fmt.Errorf("discover modules for %q: %w", repository.ID, err)
+	}
+	if err := validateLocalModuleReplacements(checkout, modules); err != nil {
+		return fmt.Errorf("validate modules for %q: %w", repository.ID, err)
+	}
+	environment, err := moduleDownloadEnvironment(options, repository)
+	if err != nil {
+		return err
+	}
+	for _, module := range modules {
+		result, err := options.Executor.Run(
+			ctx,
+			Command{
+				Path: "go",
+				Args: []string{"mod", "download"},
+				Dir: module,
+				Env: environment,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("prefetch module for %q: %w", repository.ID, err)
+		}
+		if result.ExitCode != 0 {
+			return fmt.Errorf(
+				"prefetch module for %q: exit %d: %s",
+				repository.ID,
+				result.ExitCode,
+				strings.TrimSpace(string(result.Stderr)),
+			)
+		}
+	}
+	return nil
+}
+
+func repositoryModuleDirectories(checkout string) ([]string, error) {
+	workspacePath := filepath.Join(checkout, "go.work")
+	input, err := os.ReadFile(workspacePath)
+	if os.IsNotExist(err) {
+		return []string{checkout}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read workspace: %w", err)
+	}
+	workspace, err := modfile.ParseWork(workspacePath, input, nil)
+	if err != nil {
+		return nil, fmt.Errorf("parse workspace: %w", err)
+	}
+	canonicalCheckout, err := canonicalAbsolute(checkout)
+	if err != nil {
+		return nil, fmt.Errorf("resolve checkout: %w", err)
+	}
+	if err := validateLocalReplacementTargets(
+		canonicalCheckout,
+		filepath.Dir(workspacePath),
+		workspace.Replace,
+		"workspace",
+	);
+		err != nil {
+		return nil, err
+	}
+	modules := make([]string, 0, len(workspace.Use))
+	seen := make(map[string]struct{}, len(workspace.Use))
+	for _, use := range workspace.Use {
+		module := filepath.FromSlash(use.Path)
+		if !filepath.IsAbs(module) {
+			module = filepath.Join(filepath.Dir(workspacePath), module)
+		}
+		module, err = canonicalAbsolute(module)
+		if err != nil {
+			return nil, fmt.Errorf("resolve workspace module %q: %w", use.Path, err)
+		}
+		if !pathAtOrWithin(canonicalCheckout, module) {
+			return nil, fmt.Errorf(
+				"workspace module %q is outside the checkout",
+				use.Path,
+			)
+		}
+		info, statErr := os.Lstat(filepath.Join(module, "go.mod"))
+		if statErr != nil {
+			return nil, fmt.Errorf("inspect workspace module %q: %w", use.Path, statErr)
+		}
+		if !info.Mode().IsRegular() || info.Mode() & os.ModeSymlink != 0 {
+			return nil, fmt.Errorf(
+				"workspace module %q has no regular go.mod",
+				use.Path,
+			)
+		}
+		if _, duplicate := seen[module]; duplicate {
+			continue
+		}
+		seen[module] = struct{}{}
+		modules = append(modules, module)
+	}
+	if len(modules) == 0 {
+		return nil, fmt.Errorf("workspace does not select a module")
+	}
+	sort.Strings(modules)
+	return modules, nil
+}
+
+func validateLocalModuleReplacements(checkout string, modules []string) error {
+	canonicalCheckout, err := canonicalAbsolute(checkout)
+	if err != nil {
+		return fmt.Errorf("resolve checkout: %w", err)
+	}
+	for _, moduleDirectory := range modules {
+		modulePath := filepath.Join(moduleDirectory, "go.mod")
+		info, err := os.Lstat(modulePath)
+		if err != nil {
+			return fmt.Errorf("inspect module file %q: %w", modulePath, err)
+		}
+		if !info.Mode().IsRegular() || info.Mode() & os.ModeSymlink != 0 {
+			return fmt.Errorf("module file %q is not a regular file", modulePath)
+		}
+		input, err := os.ReadFile(modulePath)
+		if err != nil {
+			return fmt.Errorf("read module file %q: %w", modulePath, err)
+		}
+		module, err := modfile.Parse(modulePath, input, nil)
+		if err != nil {
+			return fmt.Errorf("parse module file %q: %w", modulePath, err)
+		}
+		if err := validateLocalReplacementTargets(
+			canonicalCheckout,
+			moduleDirectory,
+			module.Replace,
+			"module",
+		);
+			err != nil {
+			return fmt.Errorf("module file %q: %w", modulePath, err)
+		}
+	}
+	return nil
+}
+
+func validateLocalReplacementTargets(
+	checkout, baseDirectory string,
+	replacements []*modfile.Replace,
+	kind string,
+) error {
+	for _, replacement := range replacements {
+		if replacement.New.Version != "" {
+			continue
+		}
+		target := filepath.FromSlash(replacement.New.Path)
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(baseDirectory, target)
+		}
+		canonicalTarget, err := canonicalAbsolute(target)
+		if err != nil {
+			return fmt.Errorf(
+				"resolve local %s replacement %q: %w",
+				kind,
+				replacement.New.Path,
+				err,
+			)
+		}
+		if !pathAtOrWithin(checkout, canonicalTarget) {
+			return fmt.Errorf(
+				"local %s replacement %q is outside the checkout",
+				kind,
+				replacement.New.Path,
+			)
+		}
+		targetInfo, err := os.Stat(canonicalTarget)
+		if err != nil {
+			return fmt.Errorf(
+				"inspect local %s replacement %q: %w",
+				kind,
+				replacement.New.Path,
+				err,
+			)
+		}
+		if !targetInfo.IsDir() {
+			return fmt.Errorf(
+				"local %s replacement %q is not a directory",
+				kind,
+				replacement.New.Path,
+			)
+		}
+	}
+	return nil
+}
+
+func moduleDownloadEnvironment(options RunOptions, repository Repository) ([]string, error) {
+	downloadOptions := options
+	downloadOptions.Environment = options.downloadEnvironment
+	environment, err := isolatedEnvironment(
+		downloadOptions,
+		repository.ID + "-download",
+		repository.CGO,
+		"off",
+	)
+	if err != nil {
+		return nil, err
+	}
+	return replaceEnvironment(
+		environment,
+		map[string]string{
+			"GOFLAGS": "-mod=readonly",
+			"GONOSUMDB": "",
+			"GOPRIVATE": "",
+			"GOPROXY": "https://proxy.golang.org,direct",
+			"GOSUMDB": "sum.golang.org",
+			"GOVCS": "public:git|hg,private:off",
+			"GOWORK": "off",
+		},
+	), nil
 }
 
 func runProfile(

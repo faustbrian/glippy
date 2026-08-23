@@ -340,12 +340,37 @@ func TestRunUsesIsolatedEnvironmentAndReadOnlyCheckoutSnapshot(t *testing.T) {
 				"GIT_OPTIONAL_LOCKS=0",
 				"GIT_TERMINAL_PROMPT=0",
 				"GOMEMLIMIT=4GiB",
-				"GOFLAGS=",
 				"GOWORK=off",
 				"GOCACHEPROG=",
 				"GONOPROXY=none",
-				"GOVCS=*:off",
 			} {
+			if !slices.Contains(command.Env, required) {
+				t.Fatalf(
+					"%s environment is missing %q: %v",
+					command.Path,
+					required,
+					corpusEnvironment(command.Env),
+				)
+			}
+		}
+		if command.Path == "go" && slices.Equal(command.Args, []string{"mod", "download"}) {
+			for _, required := range
+				[]string{
+					"GOFLAGS=-mod=readonly",
+					"GOPROXY=https://proxy.golang.org,direct",
+					"GOVCS=public:git|hg,private:off",
+				} {
+				if !slices.Contains(command.Env, required) {
+					t.Fatalf(
+						"module download environment is missing %q: %v",
+						required,
+						corpusEnvironment(command.Env),
+					)
+				}
+			}
+			continue
+		}
+		for _, required := range []string{"GOFLAGS=", "GOVCS=*:off"} {
 			if !slices.Contains(command.Env, required) {
 				t.Fatalf(
 					"%s environment is missing %q: %v",
@@ -410,6 +435,209 @@ func TestRunBindsTheWorkspaceInsideTheReadOnlySnapshot(t *testing.T) {
 		}
 	}
 	t.Fatal("Glippy lint command did not run")
+}
+
+func TestRunPrefetchesEveryWorkspaceModuleBeforeOfflineAnalysis(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, checkout := newRunFixture(t)
+	nested := filepath.Join(checkout, "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(nested, "go.mod"),
+		[]byte("module example.com/alpha/nested\n\ngo 1.26\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(checkout, "go.work"),
+		[]byte("go 1.26\n\nuse (\n\t./nested\n\t.\n)\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	if len(executor.moduleDownloads) != 2 {
+		t.Fatalf(
+			"workspace module downloads = %v, want root and nested module",
+			executor.moduleDownloads,
+		)
+	}
+	rootDownload := executor.moduleDownloads[0]
+	nestedDownload := executor.moduleDownloads[1]
+	if filepath.Base(rootDownload.Dir) != "source" ||
+		nestedDownload.Dir != filepath.Join(rootDownload.Dir, "nested") {
+		t.Fatalf(
+			"workspace module download directories = %q, %q",
+			rootDownload.Dir,
+			nestedDownload.Dir,
+		)
+	}
+	for _, command := range executor.moduleDownloads {
+		if pathAtOrWithinForTest(checkout, command.Dir) {
+			t.Fatalf("module download used writable checkout %q", command.Dir)
+		}
+		for _, required := range
+			[]string{
+				"GOFLAGS=-mod=readonly",
+				"GOWORK=off",
+				"GOCACHEPROG=",
+				"GONOPROXY=none",
+			} {
+			if !slices.Contains(command.Env, required) {
+				t.Fatalf(
+					"module download environment is missing %q: %v",
+					required,
+					corpusEnvironment(command.Env),
+				)
+			}
+		}
+		if environmentValue(command.Env, "GOPROXY") == "off" {
+			t.Fatalf(
+				"module download disabled its network source: %v",
+				corpusEnvironment(command.Env),
+			)
+		}
+	}
+}
+
+func TestRunRejectsWorkspaceModulesOutsideTheReadOnlySnapshot(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, checkout := newRunFixture(t)
+	if err := os.WriteFile(
+		filepath.Join(checkout, "go.work"),
+		[]byte("go 1.26\n\nuse ../outside\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	err := corpus.Run(context.Background(), manifest, options)
+	if err == nil || !strings.Contains(err.Error(), "outside the checkout") {
+		t.Fatalf("Run() error = %v, want workspace boundary refusal", err)
+	}
+	if len(executor.moduleDownloads) != 0 || len(executor.profiles) != 0 {
+		t.Fatalf(
+			"commands ran after workspace boundary refusal: downloads %v, profiles %v",
+			executor.moduleDownloads,
+			executor.profiles,
+		)
+	}
+}
+
+func TestRunRejectsWorkspaceReplacementsOutsideTheReadOnlySnapshot(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, checkout := newRunFixture(t)
+	if err := os.WriteFile(
+		filepath.Join(checkout, "go.work"),
+		[]byte("go 1.26\n\nuse .\n\n" + "replace example.com/outside => ../outside\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	err := corpus.Run(context.Background(), manifest, options)
+	if err == nil ||
+		!strings.Contains(err.Error(), "replacement") ||
+		!strings.Contains(err.Error(), "outside the checkout") {
+		t.Fatalf("Run() error = %v, want workspace replacement boundary refusal", err)
+	}
+	if len(executor.moduleDownloads) != 0 || len(executor.profiles) != 0 {
+		t.Fatalf(
+			"commands ran after workspace replacement refusal: downloads %v, profiles %v",
+			executor.moduleDownloads,
+			executor.profiles,
+		)
+	}
+}
+
+func TestRunRejectsLocalModuleReplacementsOutsideTheReadOnlySnapshot(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, checkout := newRunFixture(t)
+	if err := os.WriteFile(
+		filepath.Join(checkout, "go.mod"),
+		[]byte(
+			"module example.com/alpha\n\ngo 1.26\n\n" +
+				"replace example.com/outside => ../outside\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	err := corpus.Run(context.Background(), manifest, options)
+	if err == nil ||
+		!strings.Contains(err.Error(), "replacement") ||
+		!strings.Contains(err.Error(), "outside the checkout") {
+		t.Fatalf("Run() error = %v, want module replacement boundary refusal", err)
+	}
+	if len(executor.moduleDownloads) != 0 || len(executor.profiles) != 0 {
+		t.Fatalf(
+			"commands ran after module replacement refusal: downloads %v, profiles %v",
+			executor.moduleDownloads,
+			executor.profiles,
+		)
+	}
+}
+
+func TestRunAllowsLocalReplacementsInsideTheReadOnlySnapshot(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, checkout := newRunFixture(t)
+	nested := filepath.Join(checkout, "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(nested, "go.mod"),
+		[]byte("module example.com/nested\n\ngo 1.26\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(checkout, "go.mod"),
+		[]byte(
+			"module example.com/alpha\n\ngo 1.26\n\n" +
+				"replace example.com/module-dependency => ./nested\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(checkout, "go.work"),
+		[]byte(
+			"go 1.26\n\nuse .\n\n" +
+				"replace example.com/workspace-dependency => ./nested\n",
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	if len(executor.moduleDownloads) != 1 || len(executor.profiles) != 4 {
+		t.Fatalf(
+			"commands after valid local replacements: downloads %v, profiles %v",
+			executor.moduleDownloads,
+			executor.profiles,
+		)
+	}
 }
 
 func TestRunAlwaysPerformsPostRunCheckoutVerification(t *testing.T) {
@@ -552,6 +780,7 @@ type corpusExecutor struct {
 	statistics []string
 	analysisError error
 	commands []corpus.Command
+	moduleDownloads []corpus.Command
 	probeReadOnly bool
 	snapshotWriteError error
 	includeTaskPath bool
@@ -596,6 +825,9 @@ func (e *corpusExecutor) Run(
 		return corpus.CommandResult{Stdout: []byte("staticcheck 2026.1.1 (0.8.1)\n")}, nil
 	case command.Path == "go" && slices.Equal(command.Args, []string{"version"}):
 		return corpus.CommandResult{Stdout: []byte("go version go1.26.0 test/arch\n")}, nil
+	case command.Path == "go" && slices.Equal(command.Args, []string{"mod", "download"}):
+		e.moduleDownloads = append(e.moduleDownloads, command)
+		return corpus.CommandResult{}, nil
 	case command.Path == "/tools/glippy" && len(command.Args) > 5 && command.Args[0] == "lint":
 		if e.probeReadOnly && e.snapshotWriteError == nil {
 			e.snapshotWriteError = os.WriteFile(
@@ -686,6 +918,13 @@ func environmentValue(environment []string, name string) string {
 		}
 	}
 	return ""
+}
+
+func pathAtOrWithinForTest(parent, child string) bool {
+	relative, err := filepath.Rel(parent, child)
+	return err == nil &&
+		relative != ".." &&
+		!strings.HasPrefix(relative, ".." + string(filepath.Separator))
 }
 
 func corpusEnvironment(environment []string) []string {

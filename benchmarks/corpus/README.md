@@ -51,8 +51,10 @@ not safe for a shared workstation. Pull requests that change the manifest or
 runner execute only the inert validator and unit tests.
 
 The manual workflow accepts `all` or one manifest repository ID. It creates
-disposable checkouts and caches, fetches module inputs before the offline audit,
-uploads normalized artifacts, and removes task-owned resources. It does not
+disposable checkouts and caches, copies each exact checkout into a read-only
+snapshot, fetches every module selected by its `go.work` with workspace mode
+disabled and module metadata read-only, then performs the audit offline. It
+uploads normalized artifacts and removes task-owned resources. It does not
 publish an Action, modify upstream repositories, submit changes, or claim that
 an optional-profile finding is a defect before manual adjudication.
 Every corpus child command receives Go's `GOMEMLIMIT=4GiB` soft limit so a
