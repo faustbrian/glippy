@@ -255,9 +255,36 @@ func runRepository(
 			err,
 		)
 	}
+	workspaceSumMutable, err := permitWorkspaceSumUpdate(executionCheckout)
+	if err != nil {
+		return fmt.Errorf(
+			"prepare workspace sum for %q: %w",
+			repository.ID,
+			err,
+		)
+	}
 	if err := prefetchRepositoryModules(ctx, options, repository, executionCheckout);
 		err != nil {
 		return err
+	}
+	if err := validateModuleGraphSnapshot(
+		checkout,
+		executionCheckout,
+		workspaceSumMutable,
+	);
+		err != nil {
+		return fmt.Errorf(
+			"module graph changed checkout snapshot outside go.work.sum for %q: %w",
+			repository.ID,
+			err,
+		)
+	}
+	if err := makeTreeReadOnly(executionCheckout); err != nil {
+		return fmt.Errorf(
+			"restore read-only checkout snapshot for %q: %w",
+			repository.ID,
+			err,
+		)
 	}
 	repositoryOutput := filepath.Join(options.OutputRoot, repository.ID)
 	if err := os.MkdirAll(repositoryOutput, 0o755); err != nil {
@@ -1701,8 +1728,12 @@ func copyReadOnlyCheckout(source, destination string) error {
 	if err != nil {
 		return err
 	}
+	return makeTreeReadOnly(destination)
+}
+
+func makeTreeReadOnly(root string) error {
 	return filepath.Walk(
-		destination,
+		root,
 		func(path string, info os.FileInfo, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
@@ -1713,6 +1744,154 @@ func copyReadOnlyCheckout(source, destination string) error {
 			return os.Chmod(path, info.Mode().Perm() &^ 0o222)
 		},
 	)
+}
+
+func permitWorkspaceSumUpdate(root string) (bool, error) {
+	workspaceInfo, err := os.Lstat(filepath.Join(root, "go.work"))
+	switch {
+	case os.IsNotExist(err):
+		return false, nil
+	case err != nil:
+		return false, err
+	case !workspaceInfo.Mode().IsRegular():
+		return false, fmt.Errorf("workspace is not a regular file")
+	}
+
+	sumPath := filepath.Join(root, "go.work.sum")
+	sumInfo, err := os.Lstat(sumPath)
+	switch {
+	case err == nil && !sumInfo.Mode().IsRegular():
+		return false, fmt.Errorf("workspace sum is not a regular file")
+	case err == nil:
+		if err := os.Chmod(sumPath, sumInfo.Mode().Perm() | 0o200); err != nil {
+			return false, err
+		}
+	case !os.IsNotExist(err):
+		return false, err
+	}
+
+	rootInfo, err := os.Stat(root)
+	if err != nil {
+		return false, err
+	}
+	if err := os.Chmod(root, rootInfo.Mode().Perm() | 0o200); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+type checkoutSnapshotEntry struct {
+	kind string
+	digest string
+	link string
+}
+
+func validateModuleGraphSnapshot(source, snapshot string, allowWorkspaceSum bool) error {
+	sourceEntries, err := checkoutSnapshotInventory(source, allowWorkspaceSum)
+	if err != nil {
+		return fmt.Errorf("inventory source checkout: %w", err)
+	}
+	snapshotEntries, err := checkoutSnapshotInventory(snapshot, allowWorkspaceSum)
+	if err != nil {
+		return fmt.Errorf("inventory execution snapshot: %w", err)
+	}
+	paths := make([]string, 0, len(sourceEntries) + len(snapshotEntries))
+	for path := range sourceEntries {
+		paths = append(paths, path)
+	}
+	for path := range snapshotEntries {
+		if _, found := sourceEntries[path]; !found {
+			paths = append(paths, path)
+		}
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		sourceEntry, sourceFound := sourceEntries[path]
+		snapshotEntry, snapshotFound := snapshotEntries[path]
+		if !sourceFound || !snapshotFound || sourceEntry != snapshotEntry {
+			return fmt.Errorf("unexpected change at %q", path)
+		}
+	}
+	if allowWorkspaceSum {
+		sourceInfo, sourceErr := os.Lstat(filepath.Join(source, "go.work.sum"))
+		if sourceErr != nil && !os.IsNotExist(sourceErr) {
+			return fmt.Errorf("inspect source workspace sum: %w", sourceErr)
+		}
+		snapshotInfo, snapshotErr := os.Lstat(filepath.Join(snapshot, "go.work.sum"))
+		if snapshotErr != nil && !os.IsNotExist(snapshotErr) {
+			return fmt.Errorf("inspect snapshot workspace sum: %w", snapshotErr)
+		}
+		if sourceErr == nil && os.IsNotExist(snapshotErr) {
+			return fmt.Errorf("workspace sum was removed")
+		}
+		if sourceErr == nil && !sourceInfo.Mode().IsRegular() {
+			return fmt.Errorf("source workspace sum is not a regular file")
+		}
+		if snapshotErr == nil && !snapshotInfo.Mode().IsRegular() {
+			return fmt.Errorf("workspace sum is not a regular file")
+		}
+	}
+	return nil
+}
+
+func checkoutSnapshotInventory(root string, skipWorkspaceSum bool) (map[string]checkoutSnapshotEntry, error) {
+	entries := make(map[string]checkoutSnapshotEntry)
+	err := filepath.WalkDir(
+		root,
+		func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			relative, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			if relative == ".git" ||
+				strings.HasPrefix(relative, ".git" + string(filepath.Separator)) {
+				if entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if skipWorkspaceSum && relative == "go.work.sum" {
+				return nil
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			fingerprint := checkoutSnapshotEntry{}
+			switch {
+			case entry.IsDir():
+				fingerprint.kind = "directory"
+			case info.Mode().IsRegular():
+				fingerprint.kind = "regular"
+				file, err := os.Open(path)
+				if err != nil {
+					return err
+				}
+				hash := sha256.New()
+				_, copyErr := io.Copy(hash, file)
+				closeErr := file.Close()
+				if err := errors.Join(copyErr, closeErr); err != nil {
+					return err
+				}
+				fingerprint.digest = hex.EncodeToString(hash.Sum(nil))
+			case info.Mode() & os.ModeSymlink != 0:
+				fingerprint.kind = "symlink"
+				link, err := os.Readlink(path)
+				if err != nil {
+					return err
+				}
+				fingerprint.link = link
+			default:
+				return fmt.Errorf("unsupported file type at %q", relative)
+			}
+			entries[relative] = fingerprint
+			return nil
+		},
+	)
+	return entries, err
 }
 
 func copyRegularFile(source, destination string, mode os.FileMode) error {

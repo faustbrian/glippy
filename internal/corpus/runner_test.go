@@ -435,6 +435,65 @@ func TestRunUsesIsolatedEnvironmentAndReadOnlyCheckoutSnapshot(t *testing.T) {
 	}
 }
 
+func TestRunMaterializesWorkspaceSumInsideSnapshotBeforeLockdown(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, checkout := newRunFixture(t)
+	if err := os.WriteFile(
+		filepath.Join(checkout, "go.work"),
+		[]byte("go 1.26\n\nuse .\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	executor.materializeWorkspaceSum = true
+	executor.probeReadOnly = true
+
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	if executor.moduleGraphWriteError != nil {
+		t.Fatalf("materialize snapshot go.work.sum: %v", executor.moduleGraphWriteError)
+	}
+	if !executor.workspaceSumObserved {
+		t.Fatal("analysis did not observe the materialized snapshot go.work.sum")
+	}
+	if _, err := os.Stat(filepath.Join(checkout, "go.work.sum")); !os.IsNotExist(err) {
+		t.Fatalf("source checkout go.work.sum changed: %v", err)
+	}
+	if executor.snapshotWriteError == nil {
+		t.Fatal("analysis snapshot unexpectedly permits source writes")
+	}
+}
+
+func TestRunRejectsModuleGraphChangesOutsideWorkspaceSum(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, checkout := newRunFixture(t)
+	if err := os.WriteFile(
+		filepath.Join(checkout, "go.work"),
+		[]byte("go 1.26\n\nuse .\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	executor.materializeWorkspaceSum = true
+	executor.createModuleGraphSourceFile = true
+
+	err := corpus.Run(context.Background(), manifest, options)
+	if err == nil || !strings.Contains(err.Error(), "outside go.work.sum") {
+		t.Fatalf("Run() error = %v, want snapshot delta rejection", err)
+	}
+	if executor.moduleGraphSourceWriteError != nil {
+		t.Fatalf("create task-owned snapshot mutation: %v", executor.moduleGraphSourceWriteError)
+	}
+	if _, err := os.Stat(filepath.Join(checkout, "mutation.txt")); !os.IsNotExist(err) {
+		t.Fatalf("source checkout mutation.txt changed: %v", err)
+	}
+}
+
 func TestRunBindsTheWorkspaceInsideTheReadOnlySnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -996,6 +1055,11 @@ type corpusExecutor struct {
 	moduleDownloads []corpus.Command
 	probeReadOnly bool
 	snapshotWriteError error
+	materializeWorkspaceSum bool
+	createModuleGraphSourceFile bool
+	moduleGraphWriteError error
+	moduleGraphSourceWriteError error
+	workspaceSumObserved bool
 	includeTaskPath bool
 }
 
@@ -1042,6 +1106,26 @@ func (e *corpusExecutor) Run(
 		slices.Equal(command.Args, []string{"list", "-mod=readonly", "-m", "-json", "all"}):
 		e.moduleResolutions = append(e.moduleResolutions, command)
 		if environmentValue(command.Env, "GOWORK") != "off" {
+			if e.materializeWorkspaceSum {
+				e.moduleGraphWriteError = os.WriteFile(
+					filepath.Join(command.Dir, "go.work.sum"),
+					[]byte("example.com/dependency v1.0.0 h1:fixture\n"),
+					0o600,
+				)
+				if e.moduleGraphWriteError != nil {
+					return corpus.CommandResult{
+						Stderr: []byte(e.moduleGraphWriteError.Error()),
+						ExitCode: 1,
+					}, nil
+				}
+			}
+			if e.createModuleGraphSourceFile {
+				e.moduleGraphSourceWriteError = os.WriteFile(
+					filepath.Join(command.Dir, "mutation.txt"),
+					[]byte("mutation\n"),
+					0o600,
+				)
+			}
 			return corpus.CommandResult{
 				Stdout: []byte(
 					"{\"Path\":\"example.com/main\",\"Main\":true}\n" +
@@ -1069,6 +1153,10 @@ func (e *corpusExecutor) Run(
 		e.moduleDownloads = append(e.moduleDownloads, command)
 		return corpus.CommandResult{}, nil
 	case command.Path == "/tools/glippy" && len(command.Args) > 5 && command.Args[0] == "lint":
+		if e.materializeWorkspaceSum {
+			_, err := os.Stat(filepath.Join(command.Dir, "go.work.sum"))
+			e.workspaceSumObserved = err == nil
+		}
 		if e.probeReadOnly && e.snapshotWriteError == nil {
 			e.snapshotWriteError = os.WriteFile(
 				filepath.Join(command.Dir, "mutation.txt"),
