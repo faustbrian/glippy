@@ -308,7 +308,16 @@ func runRepository(
 	if err != nil {
 		return err
 	}
-	preflight, err := runComparator(
+	if workspaceSumMutable {
+		if err := permitExistingWorkspaceSumUpdate(executionCheckout); err != nil {
+			return fmt.Errorf(
+				"prepare workspace sum for offline preflight of %q: %w",
+				repository.ID,
+				err,
+			)
+		}
+	}
+	preflight, preflightErr := runComparator(
 		ctx,
 		options,
 		repository,
@@ -317,7 +326,32 @@ func runRepository(
 		preflightEnvironment,
 		analysisPreflightCommand(repository),
 	)
-	if err != nil {
+	var preflightSnapshotErr error
+	if err := validateModuleGraphSnapshot(
+		checkout,
+		executionCheckout,
+		workspaceSumMutable,
+	);
+		err != nil {
+		preflightSnapshotErr = fmt.Errorf(
+			"offline preflight changed checkout snapshot outside go.work.sum for %q: %w",
+			repository.ID,
+			err,
+		)
+	}
+	var preflightLockErr error
+	if err := makeTreeReadOnly(executionCheckout); err != nil {
+		preflightLockErr = fmt.Errorf(
+			"restore read-only checkout snapshot after preflight for %q: %w",
+			repository.ID,
+			err,
+		)
+	}
+	if err := errors.Join(
+		preflightErr,
+		preflightSnapshotErr,
+		preflightLockErr,
+	); err != nil {
 		return err
 	}
 	result := repositoryResult{
@@ -1757,6 +1791,14 @@ func permitWorkspaceSumUpdate(root string) (bool, error) {
 		return false, fmt.Errorf("workspace is not a regular file")
 	}
 
+	rootInfo, err := os.Stat(root)
+	if err != nil {
+		return false, err
+	}
+	if err := os.Chmod(root, rootInfo.Mode().Perm() | 0o200); err != nil {
+		return false, err
+	}
+
 	sumPath := filepath.Join(root, "go.work.sum")
 	sumInfo, err := os.Lstat(sumPath)
 	switch {
@@ -1766,18 +1808,34 @@ func permitWorkspaceSumUpdate(root string) (bool, error) {
 		if err := os.Chmod(sumPath, sumInfo.Mode().Perm() | 0o200); err != nil {
 			return false, err
 		}
-	case !os.IsNotExist(err):
-		return false, err
-	}
-
-	rootInfo, err := os.Stat(root)
-	if err != nil {
-		return false, err
-	}
-	if err := os.Chmod(root, rootInfo.Mode().Perm() | 0o200); err != nil {
+	case os.IsNotExist(err):
+		workspaceSum, createErr := os.OpenFile(
+			sumPath,
+			os.O_CREATE|os.O_EXCL|os.O_WRONLY,
+			0o600,
+		)
+		if createErr != nil {
+			return false, createErr
+		}
+		if closeErr := workspaceSum.Close(); closeErr != nil {
+			return false, closeErr
+		}
+	case err != nil:
 		return false, err
 	}
 	return true, nil
+}
+
+func permitExistingWorkspaceSumUpdate(root string) error {
+	sumPath := filepath.Join(root, "go.work.sum")
+	sumInfo, err := os.Lstat(sumPath)
+	if err != nil {
+		return err
+	}
+	if !sumInfo.Mode().IsRegular() {
+		return fmt.Errorf("workspace sum is not a regular file")
+	}
+	return os.Chmod(sumPath, sumInfo.Mode().Perm() | 0o200)
 }
 
 type checkoutSnapshotEntry struct {

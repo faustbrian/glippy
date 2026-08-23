@@ -467,6 +467,49 @@ func TestRunMaterializesWorkspaceSumInsideSnapshotBeforeLockdown(t *testing.T) {
 	}
 }
 
+func TestRunAllowsOnlyWorkspaceSumUpdateDuringOfflinePreflight(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, checkout := newRunFixture(t)
+	if err := os.WriteFile(
+		filepath.Join(checkout, "go.work"),
+		[]byte("go 1.26\n\nuse .\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	executor.materializeWorkspaceSum = true
+	executor.updateWorkspaceSumDuringPreflight = true
+	executor.createPreflightSourceFile = true
+	executor.probeReadOnly = true
+
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	if executor.preflightWorkspaceSumWriteError != nil {
+		t.Fatalf(
+			"update snapshot go.work.sum during preflight: %v",
+			executor.preflightWorkspaceSumWriteError,
+		)
+	}
+	if executor.preflightSourceWriteError == nil {
+		t.Fatal("offline preflight unexpectedly permits other source writes")
+	}
+	if executor.workspaceSumWriteAfterPreflightError == nil {
+		t.Fatal("analysis snapshot unexpectedly permits go.work.sum writes")
+	}
+	if _, err := os.Stat(filepath.Join(checkout, "go.work.sum")); !os.IsNotExist(err) {
+		t.Fatalf("source checkout go.work.sum changed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(checkout, "preflight-mutation.txt")); !os.IsNotExist(err) {
+		t.Fatalf("source checkout preflight-mutation.txt changed: %v", err)
+	}
+	if len(executor.profiles) != 4 {
+		t.Fatalf("profiles after preflight = %v, want all profiles", executor.profiles)
+	}
+}
+
 func TestRunRejectsModuleGraphChangesOutsideWorkspaceSum(t *testing.T) {
 	t.Parallel()
 
@@ -1057,8 +1100,13 @@ type corpusExecutor struct {
 	snapshotWriteError error
 	materializeWorkspaceSum bool
 	createModuleGraphSourceFile bool
+	updateWorkspaceSumDuringPreflight bool
+	createPreflightSourceFile bool
 	moduleGraphWriteError error
 	moduleGraphSourceWriteError error
+	preflightWorkspaceSumWriteError error
+	preflightSourceWriteError error
+	workspaceSumWriteAfterPreflightError error
 	workspaceSumObserved bool
 	includeTaskPath bool
 }
@@ -1156,6 +1204,17 @@ func (e *corpusExecutor) Run(
 		if e.materializeWorkspaceSum {
 			_, err := os.Stat(filepath.Join(command.Dir, "go.work.sum"))
 			e.workspaceSumObserved = err == nil
+			if e.probeReadOnly && e.workspaceSumWriteAfterPreflightError == nil {
+				workspaceSum, err := os.OpenFile(
+					filepath.Join(command.Dir, "go.work.sum"),
+					os.O_WRONLY,
+					0,
+				)
+				if err == nil {
+					err = workspaceSum.Close()
+				}
+				e.workspaceSumWriteAfterPreflightError = err
+			}
 		}
 		if e.probeReadOnly && e.snapshotWriteError == nil {
 			e.snapshotWriteError = os.WriteFile(
@@ -1214,6 +1273,33 @@ func (e *corpusExecutor) Run(
 	case command.Path == "go" &&
 		len(command.Args) >= 4 &&
 		slices.Equal(command.Args[:4], []string{"list", "-deps", "-test", "-export"}):
+		if e.updateWorkspaceSumDuringPreflight {
+			workspaceSum, err := os.OpenFile(
+				filepath.Join(command.Dir, "go.work.sum"),
+				os.O_APPEND|os.O_WRONLY,
+				0,
+			)
+			if err == nil {
+				_, writeErr := workspaceSum.WriteString(
+					"example.com/preflight v1.0.0 h1:fixture\n",
+				)
+				err = errors.Join(writeErr, workspaceSum.Close())
+			}
+			e.preflightWorkspaceSumWriteError = err
+			if err != nil {
+				return corpus.CommandResult{
+					Stderr: []byte(err.Error()),
+					ExitCode: 1,
+				}, nil
+			}
+		}
+		if e.createPreflightSourceFile {
+			e.preflightSourceWriteError = os.WriteFile(
+				filepath.Join(command.Dir, "preflight-mutation.txt"),
+				[]byte("mutation\n"),
+				0o600,
+			)
+		}
 		return corpus.CommandResult{ExitCode: e.preflightExitCode}, nil
 	case command.Path == "go" && len(command.Args) > 0 && command.Args[0] == "vet":
 		e.vetRuns++
