@@ -1117,6 +1117,7 @@ func isolatedEnvironment(
 ) ([]string, error) {
 	repositoryCache := filepath.Join(options.CacheRoot, scope)
 	goCache := filepath.Join(repositoryCache, "gocache")
+	goPath := filepath.Join(options.CacheRoot, "gopath")
 	moduleCache := filepath.Join(options.CacheRoot, "gomodcache")
 	temporary := filepath.Join(repositoryCache, "tmp")
 	xdgCache := filepath.Join(repositoryCache, "xdg-cache")
@@ -1124,7 +1125,16 @@ func isolatedEnvironment(
 	xdgData := filepath.Join(repositoryCache, "xdg-data")
 	xdgState := filepath.Join(repositoryCache, "xdg-state")
 	for _, directory := range
-		[]string{goCache, moduleCache, temporary, xdgCache, xdgConfig, xdgData, xdgState} {
+		[]string{
+			goCache,
+			goPath,
+			moduleCache,
+			temporary,
+			xdgCache,
+			xdgConfig,
+			xdgData,
+			xdgState,
+		} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return nil, fmt.Errorf("create corpus cache directory: %w", err)
 		}
@@ -1153,6 +1163,7 @@ func isolatedEnvironment(
 			"GOCACHEPROG": "",
 			"GOMEMLIMIT": corpusCommandMemoryLimit,
 			"GOMODCACHE": moduleCache,
+			"GOPATH": goPath,
 			"GOENV": "off",
 			"GOFLAGS": "",
 			"GONOPROXY": "none",

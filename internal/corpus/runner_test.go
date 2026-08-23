@@ -288,6 +288,7 @@ func TestRunUsesIsolatedEnvironmentAndReadOnlyCheckoutSnapshot(t *testing.T) {
 		"GOFLAGS=-mod=vendor",
 		"GOMEMLIMIT=off",
 		"GOWORK=/users/real/go.work",
+		"GOPATH=/users/real/go",
 		"GOCACHEPROG=remote-cache",
 		"GIT_DIR=/users/real/other.git",
 		"SECRET_TOKEN=do-not-inherit",
@@ -301,6 +302,10 @@ func TestRunUsesIsolatedEnvironmentAndReadOnlyCheckoutSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	canonicalCheckout, err := filepath.EvalSymlinks(checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalCacheRoot, err := filepath.EvalSymlinks(options.CacheRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,6 +325,7 @@ func TestRunUsesIsolatedEnvironmentAndReadOnlyCheckoutSnapshot(t *testing.T) {
 				"GOFLAGS=-mod=vendor",
 				"GOMEMLIMIT=off",
 				"GOWORK=/users/real/go.work",
+				"GOPATH=/users/real/go",
 				"GOCACHEPROG=remote-cache",
 				"GIT_DIR=/users/real/other.git",
 				"SECRET_TOKEN=do-not-inherit",
@@ -343,6 +349,7 @@ func TestRunUsesIsolatedEnvironmentAndReadOnlyCheckoutSnapshot(t *testing.T) {
 				"GOWORK=off",
 				"GOCACHEPROG=",
 				"GONOPROXY=none",
+				"GOPATH=" + filepath.Join(canonicalCacheRoot, "gopath"),
 			} {
 			if !slices.Contains(command.Env, required) {
 				t.Fatalf(
