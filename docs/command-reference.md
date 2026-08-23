@@ -47,6 +47,11 @@ Typed lint and check selections must resolve to one project root and one
 configuration. A heterogeneous typed selection fails instead of silently
 analyzing only part of the request. Package loading includes test variants and
 uses the build tags, GOOS, GOARCH, and cgo policy selected by configuration.
+When the effective module or workspace declares Go 1.14 or newer and has a
+matching `vendor/modules.txt`, typed commands use that vendor tree. They
+otherwise use offline read-only module resolution. An inconsistent selected
+vendor tree is reported as a source error; Glippy never falls back to
+mutation-enabled module resolution or downloads a missing dependency.
 
 For CI, `[[analysis.targets]]` can select up to 32 explicit GOOS, GOARCH,
 build-tag, and cgo combinations. Package-aware lint, check, and baseline

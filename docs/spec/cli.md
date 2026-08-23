@@ -224,10 +224,11 @@ choosing an analysis path. When the maximum enabled tier is syntax, recursive
 patterns use deterministic physical-file discovery and MUST NOT invoke
 `go/packages`. When at least one enabled rule requires types, CFG, or SSA, every
 input MUST resolve to one project root and configuration; the CLI converts
-files, directories, and recursive patterns into one read-only package load
-with test variants enabled. Heterogeneous typed roots or configurations MUST
-fail as an invalid invocation until a per-path package configuration design is
-accepted.
+files, directories, and recursive patterns into one package load with test
+variants enabled. That load MUST use compatible module or workspace vendoring
+when available and read-only module mode otherwise. Heterogeneous typed roots
+or configurations MUST fail as an invalid invocation until a per-path package
+configuration design is accepted.
 
 When package analysis is selected and `analysis.targets` is non-empty, `lint`
 MUST execute the complete canonical target matrix. Combined `check` and
@@ -393,11 +394,12 @@ finding.
 
 Typed package fixing is cache-independent even when persistent analysis caching
 is enabled for non-mutating lint. The initial plan and each candidate validation
-use fresh package loads in read-only module mode with test variants enabled.
-Every package load uses the same resolved `[analysis]` build tags, GOOS,
-GOARCH, and cgo selection as non-mutating typed lint and combined check; ambient
-target and cgo variables do not select a different package graph. Candidate
-overlay validation and final reselection MUST retain that selection.
+use fresh package loads in the same automatically selected vendor or read-only
+module mode with test variants enabled. Every package load uses the same resolved
+`[analysis]` build tags, GOOS, GOARCH, and cgo selection as non-mutating typed
+lint and combined check; ambient target and cgo variables do not select a
+different package graph. Candidate overlay validation and final reselection MUST
+retain that selection.
 Package or source-model problems in the initial plan fail with source error
 before replacement; the same problems caused by a candidate become a stable
 validation rejection and preserve the original file. A final fresh package

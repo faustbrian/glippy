@@ -1966,6 +1966,182 @@ func TestRunLintCheckRoutesTypedPackagePatternsToPackageAnalysis(t *testing.T) {
 	}
 }
 
+func TestRunLintCheckUsesVendoredDependencyOffline(t *testing.T) {
+	root := t.TempDir()
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\n" +
+			"go 1.26.0\n\n" +
+			"require example.com/dependency v1.0.0\n",
+	)
+	if err := os.MkdirAll(filepath.Join(root, "vendor", "example.com", "dependency"), 0o700);
+		err != nil {
+		t.Fatal(err)
+	}
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "vendor", "modules.txt"),
+		"# example.com/dependency v1.0.0\n" +
+			"## explicit; go 1.25.0\n" +
+			"example.com/dependency\n",
+	)
+	writeChangedCLIFile(
+		t,
+		filepath.Join(root, "vendor", "example.com", "dependency", "dependency.go"),
+		"package dependency\n\nfunc Call() {}\n",
+	)
+	path := filepath.Join(root, "source.go")
+	writeChangedCLIFile(
+		t,
+		path,
+		"package project\n\n" +
+			"import \"example.com/dependency\"\n\n" +
+			"func run() { dependency.Call() }\n",
+	)
+	t.Setenv("GOMODCACHE", filepath.Join(t.TempDir(), "modcache"))
+	t.Setenv("GOPROXY", "off")
+	t.Setenv("GOSUMDB", "off")
+	t.Setenv("GOWORK", "off")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{paths: []string{path}, reporter: glippyreport.Short},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+
+	want := path + ":5:14: warn[typed-call]: typed call requires review\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(vendored dependency) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
+func TestRunLintCheckUsesWorkspaceVendoredDependencyOffline(t *testing.T) {
+	root := t.TempDir()
+	module := filepath.Join(root, "module")
+	workspace := filepath.Join(root, "go.work")
+	writePackageModuleModeFile(t, workspace, "go 1.26.0\n\nuse ./module\n")
+	writePackageModuleModeFile(
+		t,
+		filepath.Join(module, "go.mod"),
+		"module example.com/project\n\n" +
+			"go 1.26.0\n\n" +
+			"require example.com/dependency v1.0.0\n",
+	)
+	writePackageModuleModeFile(
+		t,
+		filepath.Join(root, "vendor", "modules.txt"),
+		"## workspace\n" +
+			"# example.com/dependency v1.0.0\n" +
+			"## explicit; go 1.25.0\n" +
+			"example.com/dependency\n",
+	)
+	writePackageModuleModeFile(
+		t,
+		filepath.Join(root, "vendor", "example.com", "dependency", "dependency.go"),
+		"package dependency\n\nfunc Call() {}\n",
+	)
+	path := filepath.Join(module, "source.go")
+	writePackageModuleModeFile(
+		t,
+		path,
+		"package project\n\n" +
+			"import \"example.com/dependency\"\n\n" +
+			"func run() { dependency.Call() }\n",
+	)
+	t.Setenv("GOMODCACHE", filepath.Join(t.TempDir(), "modcache"))
+	t.Setenv("GOPROXY", "off")
+	t.Setenv("GOSUMDB", "off")
+	t.Setenv("GOWORK", workspace)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{paths: []string{path}, reporter: glippyreport.Short},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+
+	want := path + ":5:14: warn[typed-call]: typed call requires review\n"
+	if exitCode != ExitFindings || stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf(
+			"runLintCheck(workspace vendor) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
+func TestRunLintCheckReportsInconsistentVendorManifest(t *testing.T) {
+	root := t.TempDir()
+	writePackageModuleModeFile(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\n" +
+			"go 1.26.0\n\n" +
+			"require example.com/dependency v1.0.0\n",
+	)
+	writePackageModuleModeFile(
+		t,
+		filepath.Join(root, "vendor", "modules.txt"),
+		"# example.com/dependency v2.0.0\n" +
+			"## explicit; go 1.25.0\n" +
+			"example.com/dependency\n",
+	)
+	writePackageModuleModeFile(
+		t,
+		filepath.Join(root, "vendor", "example.com", "dependency", "dependency.go"),
+		"package dependency\n\nfunc Call() {}\n",
+	)
+	path := filepath.Join(root, "source.go")
+	writePackageModuleModeFile(
+		t,
+		path,
+		"package project\n\n" +
+			"import \"example.com/dependency\"\n\n" +
+			"func run() { dependency.Call() }\n",
+	)
+	t.Setenv("GOMODCACHE", filepath.Join(t.TempDir(), "modcache"))
+	t.Setenv("GOPROXY", "off")
+	t.Setenv("GOSUMDB", "off")
+	t.Setenv("GOWORK", "off")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runLintCheck(
+		context.Background(),
+		lintInvocation{paths: []string{path}, reporter: glippyreport.Short},
+		&stdout,
+		&stderr,
+		newCLITypesRegistry(t),
+	)
+
+	if exitCode != ExitSourceError ||
+		stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "inconsistent vendoring") ||
+		strings.Contains(stderr.String(), "missing go.sum") ||
+		strings.Contains(stderr.String(), "module lookup disabled") {
+		t.Fatalf(
+			"runLintCheck(inconsistent vendor) = exit %d, stdout %q, stderr %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+}
+
 func TestRunPackageCommandsReuseConfiguredPersistentCache(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(

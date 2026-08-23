@@ -103,7 +103,13 @@ func runPackageAnalysisWithOverlay(
 ) (analysis.PackageResult, error) {
 	loadOptions := packageLoadOptions(task, overlay)
 	if !task.options.cache.Enabled {
-		return analysis.RunPackages(ctx, registry, task.options.analysis, loadOptions)
+		result, err := analysis.RunPackages(
+			ctx,
+			registry,
+			task.options.analysis,
+			loadOptions,
+		)
+		return result, classifyPackageRunError(err)
 	}
 
 	cgoEnabled := task.options.buildSelection.CGOEnabled
@@ -173,7 +179,14 @@ func runPackageAnalysisWithOverlay(
 			closeErr,
 		)
 	}
-	return result, errors.Join(runErr, pruneErr, closeErr)
+	return result, errors.Join(classifyPackageRunError(runErr), pruneErr, closeErr)
+}
+
+func classifyPackageRunError(err error) error {
+	if analysis.IsPackageConfigurationError(err) {
+		return newPackageAnalysisError(ExitSourceError, "%w", err)
+	}
+	return err
 }
 
 func currentCacheToolIdentity() (string, error) {

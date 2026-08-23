@@ -222,15 +222,21 @@ build-system drivers requires a separate security and identity contract.
 
 The CLI selects this package boundary only when the enabled rule plan requires
 types or higher. It converts exact files, directories, and terminal `...`
-filesystem patterns into one read-only, test-aware package request after every
-input resolves to the same project root and configuration. Syntax-only patterns
-remain on physical-file discovery and cannot invoke `go/packages`. Required
-package or source-model diagnostics map to source-error exit code 2 without
-discarding valid partial rule results. Typed fixes use the same boundary without
-persistent result reuse: the initial selection and every formatted candidate
-receive fresh package loads, with candidate bytes supplied as an exact-path
-overlay before the single-file transaction may replace source. One final fresh
-load supplies complete reporting results after every serialized transaction.
+filesystem patterns into one non-mutating, test-aware package request after
+every input resolves to the same project root and configuration. The CLI uses
+vendor mode when the effective Go module or workspace declares Go 1.14 or
+newer and has a readable `vendor/modules.txt` whose workspace marker matches
+that selection; otherwise it uses read-only mode. The Go toolchain remains the
+authority for complete vendor consistency, and an inconsistent selected vendor
+tree is a source error rather than an implicit fallback to module resolution.
+Syntax-only patterns remain on physical-file discovery and cannot invoke
+`go/packages`. Required package or source-model diagnostics map to source-error
+exit code 2 without discarding valid partial rule results. Typed fixes use the
+same selected module mode and boundary without persistent result reuse: the
+initial selection and every formatted candidate receive fresh package loads,
+with candidate bytes supplied as an exact-path overlay before the single-file
+transaction may replace source. One final fresh load supplies complete reporting
+results after every serialized transaction.
 
 An admitted fact-bearing analyzer may declare one versioned audited external
 execution mode when exact in-process fact propagation cannot satisfy the

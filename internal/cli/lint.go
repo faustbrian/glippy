@@ -73,6 +73,7 @@ type lintTask struct {
 type lintPackageTask struct {
 	root string
 	patterns []string
+	moduleMode analysis.ModuleMode
 	options lintTaskOptions
 }
 
@@ -1291,9 +1292,21 @@ func prepareLintPackageTask(plans []lintInputPlan) (lintPackageTask, bool, int, 
 	}
 	sort.Strings(patterns)
 	patterns = slices.Compact(patterns)
+	moduleMode, err := automaticPackageModuleMode(
+		first.selection.Root,
+		packageAnalysisEnvironment(first.options.buildSelection.CGOEnabled),
+	)
+	if err != nil {
+		var pathError *os.PathError
+		if errors.As(err, &pathError) {
+			return lintPackageTask{}, false, ExitFilesystemError, err
+		}
+		return lintPackageTask{}, false, ExitSourceError, err
+	}
 	return lintPackageTask{
 		root: first.selection.Root,
 		patterns: patterns,
+		moduleMode: moduleMode,
 		options: first.options,
 	}, true, ExitSuccess, nil
 }
@@ -2273,12 +2286,13 @@ func runUncachedPackageAnalysis(
 	task lintPackageTask,
 	overlay map[string][]byte,
 ) (analysis.PackageResult, error) {
-	return analysis.RunPackages(
+	result, err := analysis.RunPackages(
 		ctx,
 		registry,
 		task.options.analysis,
 		packageLoadOptions(task, overlay),
 	)
+	return result, classifyPackageRunError(err)
 }
 
 func packageLoadOptions(
@@ -2291,7 +2305,7 @@ func packageLoadOptions(
 		Patterns: task.patterns,
 		Tests: true,
 		BuildTags: slices.Clone(selection.BuildTags),
-		ModuleMode: analysis.ModuleReadonly,
+		ModuleMode: task.moduleMode,
 		Env: packageAnalysisEnvironment(selection.CGOEnabled),
 		Overlay: overlay,
 		GOOS: selection.GOOS,

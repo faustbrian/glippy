@@ -312,9 +312,14 @@ is types or higher. Syntax-only files, directories, and recursive filesystem
 patterns MUST remain on deterministic file discovery and MUST NOT invoke
 `go/packages`. A typed invocation MUST resolve every input to one project root
 and configuration, convert each explicit file, directory, or terminal `...`
-pattern into one package query relative to that root, enable test variants, and
-use read-only module mode. Until per-path package configuration is designed,
-heterogeneous roots or configurations MUST fail before package loading.
+pattern into one package query relative to that root, and enable test variants.
+It MUST select vendor mode only when the effective module or workspace declares
+Go 1.14 or newer and has a readable `vendor/modules.txt` with a matching
+workspace marker; otherwise it MUST use read-only module mode. Complete vendor
+consistency MUST remain delegated to the active Go toolchain, and an inconsistent
+selected tree MUST fail as a source error without falling back to module
+resolution. Until per-path package configuration is designed, heterogeneous
+roots or configurations MUST fail before package loading.
 
 The typed CLI MUST classify any retained package-list, parse, type, or
 source-model problem as a source error while preserving valid partial file

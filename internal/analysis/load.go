@@ -84,6 +84,27 @@ type PackageLoadResult struct {
 	effectFacts *nativeEffectFacts
 }
 
+// PackageConfigurationError reports a Go module or workspace configuration
+// that prevents the standard package driver from constructing a graph.
+type PackageConfigurationError struct {
+	err error
+}
+
+func (e *PackageConfigurationError) Error() string {
+	return e.err.Error()
+}
+
+func (e *PackageConfigurationError) Unwrap() error {
+	return e.err
+}
+
+// IsPackageConfigurationError reports whether package loading failed because
+// the selected module or workspace inputs are inconsistent.
+func IsPackageConfigurationError(err error) bool {
+	var configurationError *PackageConfigurationError
+	return errors.As(err, &configurationError)
+}
+
 // PackageSourceSet is one immutable index of the exact bytes parsed by a
 // package load.
 type PackageSourceSet struct {
@@ -277,7 +298,12 @@ func LoadPackages(ctx context.Context, options PackageLoadOptions) (PackageLoadR
 		return PackageLoadResult{}, contextErr
 	}
 	if err != nil {
-		return PackageLoadResult{}, fmt.Errorf("load Go packages: %w", err)
+		loadErr := fmt.Errorf("load Go packages: %w", err)
+		if options.ModuleMode == ModuleVendor &&
+			strings.Contains(err.Error(), "inconsistent vendoring") {
+			return PackageLoadResult{}, &PackageConfigurationError{err: loadErr}
+		}
+		return PackageLoadResult{}, loadErr
 	}
 	if err := validatePackageGraphLimit(loaded, limits.maxPackages); err != nil {
 		return PackageLoadResult{}, err
