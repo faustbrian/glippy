@@ -293,14 +293,6 @@ func runRepository(
 	if err != nil {
 		return err
 	}
-	if preflight.ExitCode != 0 {
-		return fmt.Errorf(
-			"analysis preflight for %q exited with status %d",
-			repository.ID,
-			preflight.ExitCode,
-		)
-	}
-
 	result := repositoryResult{
 		SchemaVersion: ResultSchemaVersion,
 		RunID: options.RunID,
@@ -308,9 +300,35 @@ func runRepository(
 		StaticcheckVersion: manifest.StaticcheckVersion,
 		Tools: versions,
 		Profiles: make([]profileResult, 0, len(corpusProfiles)),
-		Comparators: make([]comparatorResult, 0, 3),
+		Comparators: []comparatorResult{preflight},
 	}
-	result.Comparators = append(result.Comparators, preflight)
+	if preflight.ExitCode != 0 {
+		for _, profile := range corpusProfiles {
+			profileResult, writeErr := writeIncompleteProfile(
+				repository,
+				repositoryOutput,
+				profile,
+				preflight.ExitCode,
+			)
+			if writeErr != nil {
+				return writeErr
+			}
+			result.Profiles = append(result.Profiles, profileResult)
+		}
+		for _, name := range []string{"go-vet", "staticcheck"} {
+			comparator, writeErr := writeSkippedComparator(
+				repositoryOutput,
+				name,
+				preflight.ExitCode,
+			)
+			if writeErr != nil {
+				return writeErr
+			}
+			result.Comparators = append(result.Comparators, comparator)
+		}
+		_, writeErr := writeJSON(filepath.Join(repositoryOutput, "result.json"), result)
+		return writeErr
+	}
 	for _, profile := range corpusProfiles {
 		profileResult, err := runProfile(
 			ctx,
@@ -343,6 +361,81 @@ func runRepository(
 		return err
 	}
 	return nil
+}
+
+func writeIncompleteProfile(
+	repository Repository,
+	repositoryOutput, profile string,
+	preflightExitCode int,
+) (profileResult, error) {
+	profileDirectory := filepath.Join(repositoryOutput, profile)
+	if err := os.MkdirAll(profileDirectory, 0o755); err != nil {
+		return profileResult{}, fmt.Errorf("create %s profile output: %w", profile, err)
+	}
+	reason := []byte(
+		fmt.Sprintf(
+			"not run because analysis preflight exited with status %d\n",
+			preflightExitCode,
+		),
+	)
+	diagnostics, err := writeArtifact(
+		filepath.Join(profileDirectory, "diagnostics.txt"),
+		reason,
+		false,
+	)
+	if err != nil {
+		return profileResult{}, err
+	}
+	statistics, err := writeArtifact(
+		filepath.Join(profileDirectory, "statistics.txt"),
+		reason,
+		false,
+	)
+	if err != nil {
+		return profileResult{}, err
+	}
+	findings, err := writeJSON(
+		filepath.Join(profileDirectory, "findings.json"),
+		findingInventory{
+			SchemaVersion: ResultSchemaVersion,
+			Repository: repository.ID,
+			Revision: repository.Revision,
+			Profile: profile,
+			Diagnostics: []finding{},
+		},
+	)
+	if err != nil {
+		return profileResult{}, err
+	}
+	return profileResult{
+		Profile: profile,
+		ExitCode: preflightExitCode,
+		Diagnostics: diagnostics,
+		Statistics: measurementArtifactResult{File: statistics.File},
+		Findings: findings,
+		DiagnosticCount: 0,
+		Complete: false,
+	}, nil
+}
+
+func writeSkippedComparator(
+	repositoryOutput, name string,
+	preflightExitCode int,
+) (comparatorResult, error) {
+	output, err := writeArtifact(
+		filepath.Join(repositoryOutput, name + ".txt"),
+		[]byte(
+			fmt.Sprintf(
+				"not run because analysis preflight exited with status %d\n",
+				preflightExitCode,
+			),
+		),
+		false,
+	)
+	if err != nil {
+		return comparatorResult{}, err
+	}
+	return comparatorResult{Name: name, ExitCode: preflightExitCode, Output: output}, nil
 }
 
 func prefetchRepositoryModules(

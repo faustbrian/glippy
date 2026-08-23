@@ -3,6 +3,7 @@ package corpus_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -566,17 +567,55 @@ func TestRunPreflightsTheOfflineWorkspaceBeforeGlippyProfiles(t *testing.T) {
 	}
 }
 
-func TestRunStopsBeforeProfilesWhenOfflinePreflightFails(t *testing.T) {
+func TestRunRecordsIncompleteEvidenceWhenOfflinePreflightFails(t *testing.T) {
 	t.Parallel()
 
 	manifest, options, executor, _ := newRunFixture(t)
 	executor.preflightExitCode = 1
-	err := corpus.Run(context.Background(), manifest, options)
-	if err == nil || !strings.Contains(err.Error(), "analysis preflight") {
-		t.Fatalf("Run() error = %v, want analysis preflight failure", err)
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatalf("Run() error = %v, want recorded incomplete evidence", err)
 	}
 	if len(executor.profiles) != 0 {
 		t.Fatalf("profiles ran after failed preflight: %v", executor.profiles)
+	}
+	if executor.vetRuns != 0 || executor.staticcheckRuns != 0 {
+		t.Fatalf(
+			"comparators ran after failed preflight: vet %d, staticcheck %d",
+			executor.vetRuns,
+			executor.staticcheckRuns,
+		)
+	}
+	manifestInput, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template, err := corpus.BuildAdjudicationTemplate(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+	)
+	if err != nil {
+		t.Fatalf("BuildAdjudicationTemplate() error = %v", err)
+	}
+	var adjudication struct {
+		Repositories []struct {
+			IncompleteProfiles []string `json:"incomplete_profiles"`
+			IncompleteComparators []string `json:"incomplete_comparators"`
+		} `json:"repositories"`
+	}
+	if err := json.Unmarshal(template, &adjudication); err != nil {
+		t.Fatal(err)
+	}
+	if len(adjudication.Repositories) != 1 ||
+		!slices.Equal(
+			adjudication.Repositories[0].IncompleteProfiles,
+			[]string{"default", "recommended"},
+		) ||
+		!slices.Equal(
+			adjudication.Repositories[0].IncompleteComparators,
+			[]string{"go-vet", "staticcheck"},
+		) {
+		t.Fatalf("incomplete adjudication = %+v", adjudication.Repositories)
 	}
 }
 
