@@ -654,6 +654,7 @@ func TestRunTypesSharesTypedPackageAndExactSource(t *testing.T) {
 		filepath.Join(root, "go.mod"),
 		"module example.com/project\n\ngo 1.26.0\n",
 	)
+	writeTypesFixture(t, filepath.Join(root, "package.go"), "package sample\n")
 	path := filepath.Join(root, "sample.go")
 	writeTypesFixture(
 		t,
@@ -676,6 +677,15 @@ func TestRunTypesSharesTypedPackageAndExactSource(t *testing.T) {
 		metadata: typesMetadata("typed-call", rules.NodeCallExpr),
 		run: func(ctx *rules.TypesContext, node ast.Node) ([]rules.Finding, error) {
 			call := node.(*ast.CallExpr)
+			packageSyntax := ctx.PackageSyntax()
+			if packageSyntax.Len() != 2 ||
+				packageSyntax.At(0) == nil ||
+				packageSyntax.At(1) == nil {
+				t.Fatalf("typed package syntax = %#v", packageSyntax)
+			}
+			if ctx.PackageSyntax() != packageSyntax {
+				t.Fatal("typed package syntax is not shared by the rule context")
+			}
 			if ctx.PackageID() != "example.com/project" ||
 				ctx.Package().Path() != "example.com/project" ||
 				ctx.Info().TypeOf(call) == nil ||

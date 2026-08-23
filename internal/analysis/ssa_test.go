@@ -80,6 +80,7 @@ type owner struct{}
 func (owner) method() {}
 `,
 	)
+	writeTypesFixture(t, filepath.Join(root, "package.go"), "package project\n")
 	loaded, err := analysis.LoadPackages(
 		context.Background(),
 		analysis.PackageLoadOptions{
@@ -99,6 +100,9 @@ func (owner) method() {}
 		return ssaRule{
 			metadata: ssaMetadata(id),
 			run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
+				if ctx.PackageSyntax().Len() != 2 {
+					t.Fatalf("SSA package syntax = %#v", ctx)
+				}
 				if ctx.File().Path() != path ||
 					ctx.PackageID() != "example.com/project" ||
 					ctx.Package().Path() != "example.com/project" ||

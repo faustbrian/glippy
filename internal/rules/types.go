@@ -249,12 +249,62 @@ func NewContext(file *source.File, options OptionSet) *Context {
 type TypesContext struct {
 	file *source.File
 	syntax *ast.File
+	packageSyntax *PackageSyntax
 	fileSet *token.FileSet
 	packageID string
 	package_ *types.Package
 	info *types.Info
 	illTyped bool
 	options OptionSet
+	memoLock sync.Mutex
+	memo map[string]any
+}
+
+// PackageSyntax is one immutable package-level syntax view shared by every
+// per-file and per-rule context in an analysis tier.
+type PackageSyntax struct {
+	files []*ast.File
+	memoLock sync.Mutex
+	memo map[string]any
+}
+
+// NewPackageSyntax snapshots one package's syntax slice while sharing the
+// immutable ASTs themselves.
+func NewPackageSyntax(files []*ast.File) *PackageSyntax {
+	return &PackageSyntax{files: slices.Clone(files)}
+}
+
+// Len returns the number of package syntax trees.
+func (s *PackageSyntax) Len() int {
+	if s == nil {
+		return 0
+	}
+	return len(s.files)
+}
+
+// At returns one immutable syntax tree by canonical package index.
+func (s *PackageSyntax) At(index int) *ast.File {
+	if s == nil || index < 0 || index >= len(s.files) {
+		return nil
+	}
+	return s.files[index]
+}
+
+func (s *PackageSyntax) memoized(key string, build func() any) any {
+	if s == nil || build == nil {
+		return nil
+	}
+	s.memoLock.Lock()
+	defer s.memoLock.Unlock()
+	if s.memo == nil {
+		s.memo = make(map[string]any)
+	}
+	if value, found := s.memo[key]; found {
+		return value
+	}
+	value := build()
+	s.memo[key] = value
+	return value
 }
 
 // PackageFile binds one package AST to its exact immutable physical source and
@@ -812,6 +862,15 @@ func (c *SSAContext) Info() *types.Info {
 	return c.typesContext.Info()
 }
 
+// PackageSyntax returns the package-loaded syntax trees indexed by Info.
+// Callers must treat the returned trees as immutable.
+func (c *SSAContext) PackageSyntax() *PackageSyntax {
+	if c == nil || c.typesContext == nil {
+		return nil
+	}
+	return c.typesContext.PackageSyntax()
+}
+
 // FileSet returns the shared read-only package position mapping.
 func (c *SSAContext) FileSet() *token.FileSet {
 	if c == nil || c.typesContext == nil {
@@ -1118,6 +1177,15 @@ func (c *ControlFlowContext) Info() *types.Info {
 	return c.typesContext.Info()
 }
 
+// PackageSyntax returns the package-loaded syntax trees indexed by Info.
+// Callers must treat the returned trees as immutable.
+func (c *ControlFlowContext) PackageSyntax() *PackageSyntax {
+	if c == nil || c.typesContext == nil {
+		return nil
+	}
+	return c.typesContext.PackageSyntax()
+}
+
 // Range maps a package AST node to its current physical source range.
 func (c *ControlFlowContext) Range(node ast.Node) (source.Range, error) {
 	if c == nil || c.typesContext == nil {
@@ -1184,10 +1252,12 @@ func NewTypesContext(
 	info *types.Info,
 	illTyped bool,
 	options OptionSet,
+	packageSyntax *PackageSyntax,
 ) *TypesContext {
 	return &TypesContext{
 		file: file,
 		syntax: syntax,
+		packageSyntax: packageSyntax,
 		fileSet: fileSet,
 		packageID: packageID,
 		package_: package_,
@@ -1195,6 +1265,32 @@ func NewTypesContext(
 		illTyped: illTyped,
 		options: options,
 	}
+}
+
+// PackageSyntax returns the package-loaded syntax trees indexed by Info.
+// Callers must treat the returned trees as immutable.
+func (c *TypesContext) PackageSyntax() *PackageSyntax {
+	if c == nil {
+		return nil
+	}
+	return c.packageSyntax
+}
+
+func (c *TypesContext) memoized(key string, build func() any) any {
+	if c == nil || build == nil {
+		return nil
+	}
+	c.memoLock.Lock()
+	defer c.memoLock.Unlock()
+	if c.memo == nil {
+		c.memo = make(map[string]any)
+	}
+	if value, found := c.memo[key]; found {
+		return value
+	}
+	value := build()
+	c.memo[key] = value
+	return value
 }
 
 // Syntax returns the package-loaded syntax tree whose nodes are indexed by

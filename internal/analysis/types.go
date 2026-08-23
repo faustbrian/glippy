@@ -91,11 +91,17 @@ func RunTypes(
 	if err != nil {
 		return nil, err
 	}
+	packageSyntax := make(map[string]*rules.PackageSyntax, len(packages_))
 	for _, work := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		pkg, file := work.package_, work.file
+		syntax := packageSyntax[pkg.ID]
+		if syntax == nil {
+			syntax = rules.NewPackageSyntax(pkg.Syntax)
+			packageSyntax[pkg.ID] = syntax
+		}
 		if !anyTypesRuleEligible(dispatch, file.source.Metadata().Generated, pkg.IllTyped) {
 			continue
 		}
@@ -137,6 +143,7 @@ func RunTypes(
 							pkg.TypesInfo,
 							pkg.IllTyped,
 							active.options,
+							syntax,
 						)
 						ruleContexts[active.metadata.ID] = ruleContext
 					}

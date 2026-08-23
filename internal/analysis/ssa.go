@@ -227,6 +227,7 @@ func runSSAProgramPackage(
 	functionMap := sourceSSAFunctions(program, ssaPackage, pkg)
 	statistics := statisticsFromContext(ctx)
 	diagnostics := make([]rules.Diagnostic, 0)
+	packageSyntax := rules.NewPackageSyntax(pkg.Syntax)
 	for _, work := range files {
 		file := work.file
 		if pkg.IllTyped ||
@@ -245,6 +246,7 @@ func runSSAProgramPackage(
 				pkg.TypesInfo,
 				pkg.IllTyped,
 				active.options,
+				packageSyntax,
 			)
 		}
 		runRule := func(

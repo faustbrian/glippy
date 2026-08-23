@@ -2192,8 +2192,11 @@ None.
 
 ### Known limitations
 
-- Architecture-sized int and uint maximum and minimum comparisons are excluded because source
-  selection may target an architecture different from the running Glippy binary.
+- Constants whose package syntax depends on architecture-sized int, uint, or uintptr values are
+  excluded because source selection may target an architecture different from the running Glippy
+  binary; constants without available defining syntax remain conservative.
+- Architecture-sensitive type provenance uses a fixed per-comparison work budget; comparisons whose
+  proof exceeds it are conservatively left unreported.
 - The rule reports only comparisons with a compile-time integer constant and does not infer ranges
   from preceding control flow.
 
@@ -5234,8 +5237,11 @@ None.
   nested function literals.
 - Paths that cross a pointer, slice, map, interface, or channel are excluded because mutation can
   reach shared state.
-- A mutation followed by any later use of the range value is not reported because it can be
-  intentional local computation, projection, or write-back.
+- A mutation followed by any later direct use of the range value, or by use of a local function that
+  captured it before the mutation, is not reported because it can be intentional local computation,
+  projection, or write-back.
+- Adversarial loops whose closure-state proof exceeds the fixed per-file work budget are
+  conservatively left unreported.
 
 ### Example: Mutate a slice element through its index
 
@@ -6058,7 +6064,8 @@ Buffered, compressed, archive, multipart, and encoded writers can report their f
 or emit required trailers only from Flush or Close. Discarding that result can report success while
 leaving output truncated or structurally incomplete. The rule targets exact standard-library
 finalizers whose documented contract writes pending data or required framing, including direct
-stable values returned by the streaming encoder constructors.
+stable values returned by the streaming encoder constructors. A text/tabwriter Writer backed by an
+exact bytes.Buffer cannot return a write error from Flush and is excluded.
 
 - Default severity: `warn`
 - Presets: `correctness`
@@ -6083,6 +6090,8 @@ None.
 
 - Only exact standard-library writer finalizers with an error result are covered; user-defined
   writers and unproven interface-dispatched finalizers remain outside the contract.
+- The in-memory exclusion requires a direct, stable text/tabwriter.NewWriter acquisition whose
+  output has exact *bytes.Buffer type; interface-typed and reassigned outputs remain conservative.
 - Streaming encoder coverage requires a direct constructor result or a direct identifier initialized
   by encoding/ascii85, encoding/base32, or encoding/base64 NewEncoder and not reassigned before
   Close.

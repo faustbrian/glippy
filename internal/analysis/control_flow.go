@@ -84,11 +84,17 @@ func RunControlFlow(
 	}
 
 	diagnostics := make([]rules.Diagnostic, 0)
+	packageSyntax := make(map[string]*rules.PackageSyntax, len(packages_))
 	for _, work := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		pkg, file := work.package_, work.file
+		syntax := packageSyntax[pkg.ID]
+		if syntax == nil {
+			syntax = rules.NewPackageSyntax(pkg.Syntax)
+			packageSyntax[pkg.ID] = syntax
+		}
 		eligible := eligibleControlFlowRules(
 			activeRules,
 			file.source.Metadata().Generated,
@@ -108,6 +114,7 @@ func RunControlFlow(
 				pkg.TypesInfo,
 				pkg.IllTyped,
 				active.options,
+				syntax,
 			)
 		}
 		for _, function := range functionBodies(file.syntax) {

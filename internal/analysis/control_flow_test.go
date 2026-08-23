@@ -60,6 +60,7 @@ func outer(value bool) {
 func target() {}
 `,
 	)
+	writeTypesFixture(t, filepath.Join(root, "package.go"), "package project\n")
 	loaded, err := analysis.LoadPackages(
 		context.Background(),
 		analysis.PackageLoadOptions{
@@ -78,6 +79,9 @@ func target() {}
 		return controlFlowRule{
 			metadata: controlFlowMetadata(id),
 			run: func(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+				if ctx.PackageSyntax().Len() != 2 {
+					t.Fatalf("control-flow package syntax = %#v", ctx)
+				}
 				if ctx.File().Path() != path ||
 					ctx.PackageID() != "example.com/project" ||
 					ctx.Package().Path() != "example.com/project" ||
