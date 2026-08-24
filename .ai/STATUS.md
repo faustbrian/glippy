@@ -2814,3 +2814,20 @@ error-only `overwritten-error` rule or default-enabling a new rule without a
 precision contract. The exact corpus must rerun on the latest candidate and
 the remaining repositories still require complete adjudication, so stable-v1
 progress remains 55% inside v0.6.
+
+The v0.6 restic adjudication for pinned run `32698988231`, Glippy revision
+`7840a0c`, and restic revision
+`a80be1478a4c537f8396e0db2b05120aa78f11e0` classifies all 12 recommended
+findings: 11 actionable unchecked scanner errors and one intentional final bare
+return after `testing.T.Fatalf`. Six test helpers can false-pass or hide the
+root scan failure, three subprocess stderr goroutines can stop draining their
+pipes, one release check reads `Scanner.Err` only inside the loop, and
+self-update checksum parsing hides a scan failure behind a generic missing-hash
+error. The testing return is covered by precision commit `972cfcf`. All four
+profiles completed across the backup, cgo, and CLI selection; the old run
+records one default, 12 recommended, 201 strict, and 240 pedantic findings. Go
+vet reports nothing. Staticcheck adds two explicit API migrations, eight style
+findings, and one unused field, none of which establishes a missing default
+Glippy rule from this run. The exact corpus must rerun on the latest candidate
+and the remaining repositories still require complete adjudication, so
+stable-v1 progress remains 55% inside v0.6.
