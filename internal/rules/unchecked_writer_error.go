@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"go/types"
 	"sort"
+	"strings"
 
 	"golang.org/x/tools/go/types/typeutil"
 )
@@ -55,7 +56,7 @@ func (uncheckedWriterErrorRule) Metadata() Metadata {
 	return Metadata{
 		ID: "unchecked-writer-error",
 		Summary: "detects discarded errors from buffered writer finalization",
-		Documentation: "Buffered, compressed, archive, multipart, and encoded writers can report their first failed output or emit required trailers only from Flush or Close. Discarding that result can report success while leaving output truncated or structurally incomplete. The rule targets exact standard-library finalizers whose documented contract writes pending data or required framing, including direct stable values returned by the streaming encoder constructors. Finalizers are excluded when a stable bufio or tabwriter chain terminates at an exact bytes.Buffer or strings.Builder sink; gzip additionally requires an unmodified default header.",
+		Documentation: "Buffered, compressed, archive, multipart, and encoded writers can report their first failed output or emit required trailers only from Flush or Close. Discarding that result can report success while leaving output truncated or structurally incomplete. The rule targets exact standard-library finalizers whose documented contract writes pending data or required framing, including direct stable values returned by the streaming encoder constructors. Finalizers are excluded when a stable bufio or tabwriter chain terminates at an exact bytes.Buffer or strings.Builder sink; gzip additionally requires an unmodified default header. A deferred archive/tar Close is also excluded when a later straight-line Close on the same stable writer passes its error to a consumer and no later writer use remains, because subsequent Close calls are no-ops. Exact test recovery guards that fail when an immediately following finalizer is the function body's terminal action and does not panic are treated as expected-panic assertions rather than successful error discards.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetCorrectness},
 		MinimumGoVersion: "1.25",
@@ -66,6 +67,9 @@ func (uncheckedWriterErrorRule) Metadata() Metadata {
 			"Only exact standard-library writer finalizers with an error result are covered; user-defined writers and unproven interface-dispatched finalizers remain outside the contract.",
 			"The in-memory exclusion follows stable local bufio, gzip, and tabwriter constructor or straight-line Reset/Init chains to exact bytes.Buffer and strings.Builder sinks; caller-owned, conditionally rebound, interface-typed, escaped, cyclic, and unproven chains remain conservative.",
 			"Gzip in-memory exclusions require the default Header to remain unmodified because invalid Name, Comment, or Extra values can fail independently of the sink.",
+			"Stable in-memory fmt consumers accept basic values and exact time.Time values; user-defined formatting callbacks remain conservative because they can capture and rebind the writer.",
+			"The redundant deferred archive/tar exclusion requires a writer declared directly in the same block, a later same-block Close whose error is passed to another call, no intervening return or branch, and no later or escaping receiver use.",
+			"Expected-panic suppression requires an immediately preceding unconditional recovery defer in a _test.go file whose exact recovered == nil branch calls a testing failure method and whose finalizer is the function body's terminal action; nested blocks, conditional guards, intervening statements, lookalike recovery, asynchronous calls, and non-test files remain diagnostics.",
 			"Streaming encoder coverage requires a direct constructor result or a direct identifier initialized by encoding/ascii85, encoding/base32, or encoding/base64 NewEncoder and not reassigned before Close.",
 			"encoding/csv.Writer.Flush returns no error; unchecked-csv-writer-error owns its separate Flush then Error observation protocol.",
 			"No fix is offered because correct propagation from a deferred, asynchronous, or ordinary call depends on the surrounding function contract.",
@@ -92,6 +96,12 @@ func (uncheckedWriterErrorRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Fi
 	if !matched {
 		return nil, nil
 	}
+	if expectedPanicWriterFinalizer(ctx, node, call) {
+		return nil, nil
+	}
+	if redundantDeferredTarFinalizer(ctx, node, call, spec) {
+		return nil, nil
+	}
 	if infallibleWriterFinalizer(ctx, node, call, spec) {
 		return nil, nil
 	}
@@ -110,6 +120,420 @@ func (uncheckedWriterErrorRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Fi
 			Help: "observe and propagate the finalization error before reporting success",
 		},
 	}, nil
+}
+
+func expectedPanicWriterFinalizer(
+	ctx *TypesContext,
+	discard ast.Node,
+	finalizer *ast.CallExpr,
+) bool {
+	if ctx == nil ||
+		ctx.File() == nil ||
+		ctx.Info() == nil ||
+		ctx.Syntax() == nil ||
+		finalizer == nil ||
+		!strings.HasSuffix(ctx.File().Path(), "_test.go") {
+		return false
+	}
+	switch discard.(type) {
+	case *ast.ExprStmt, *ast.AssignStmt:
+	default:
+		return false
+	}
+	value := ctx.memoized(
+		"unchecked-writer-error/expected-panic-finalizer-v1",
+		func() any {
+			return expectedPanicWriterFinalizers(ctx.Info(), ctx.Syntax())
+		},
+	)
+	expected, _ := value.(map[*ast.CallExpr]struct{})
+	_, matched := expected[finalizer]
+	return matched
+}
+
+func expectedPanicWriterFinalizers(info *types.Info, syntax *ast.File) map[*ast.CallExpr]struct{} {
+	result := make(map[*ast.CallExpr]struct{})
+	if info == nil || syntax == nil {
+		return result
+	}
+	parents := writerASTParents(syntax)
+	ast.Inspect(
+		syntax,
+		func(node ast.Node) bool {
+			block, _ := node.(*ast.BlockStmt)
+			if block == nil || !writerFunctionBody(parents, block) {
+				return true
+			}
+			for index, statement := range block.List {
+				deferred, _ := statement.(*ast.DeferStmt)
+				if deferred == nil ||
+					!expectedPanicRecoveryGuard(info, deferred) ||
+					index + 2 != len(block.List) {
+					continue
+				}
+				if call, discarded := discardedCall(block.List[index + 1]);
+					discarded {
+					result[call] = struct{}{}
+				}
+			}
+			return true
+		},
+	)
+	return result
+}
+
+func writerFunctionBody(parents map[ast.Node]ast.Node, block *ast.BlockStmt) bool {
+	if block == nil {
+		return false
+	}
+	switch owner := parents[block].(type) {
+	case *ast.FuncDecl:
+		return owner.Body == block
+	case *ast.FuncLit:
+		return owner.Body == block
+	default:
+		return false
+	}
+}
+
+func expectedPanicRecoveryGuard(info *types.Info, deferred *ast.DeferStmt) bool {
+	if info == nil || deferred == nil || deferred.Call == nil || len(deferred.Call.Args) != 0 {
+		return false
+	}
+	literal, _ := ast.Unparen(deferred.Call.Fun).(*ast.FuncLit)
+	if literal == nil || literal.Body == nil || len(literal.Body.List) != 1 {
+		return false
+	}
+	condition, _ := literal.Body.List[0].(*ast.IfStmt)
+	if condition == nil ||
+		condition.Else != nil ||
+		!directTestingFailure(info, condition.Body) {
+		return false
+	}
+	assignment, _ := condition.Init.(*ast.AssignStmt)
+	if assignment == nil || len(assignment.Lhs) != 1 || len(assignment.Rhs) != 1 {
+		return false
+	}
+	recovered := directObject(info, assignment.Lhs[0])
+	recoverCall, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
+	if recovered == nil || recoverCall == nil || len(recoverCall.Args) != 0 {
+		return false
+	}
+	recoverIdentifier, _ := ast.Unparen(recoverCall.Fun).(*ast.Ident)
+	recoverBuiltin, _ := info.ObjectOf(recoverIdentifier).(*types.Builtin)
+	if recoverBuiltin == nil || recoverBuiltin.Name() != "recover" {
+		return false
+	}
+	comparison, _ := ast.Unparen(condition.Cond).(*ast.BinaryExpr)
+	if comparison == nil || comparison.Op != token.EQL {
+		return false
+	}
+	return recoveredNilComparison(info, comparison.X, comparison.Y, recovered) ||
+		recoveredNilComparison(info, comparison.Y, comparison.X, recovered)
+}
+
+func recoveredNilComparison(
+	info *types.Info,
+	recoveredExpression ast.Expr,
+	nilExpression ast.Expr,
+	recovered types.Object,
+) bool {
+	if info == nil || recovered == nil || directObject(info, recoveredExpression) != recovered {
+		return false
+	}
+	nilIdentifier, _ := ast.Unparen(nilExpression).(*ast.Ident)
+	nilBuiltin, _ := info.ObjectOf(nilIdentifier).(*types.Nil)
+	return nilBuiltin != nil
+}
+
+func redundantDeferredTarFinalizer(
+	ctx *TypesContext,
+	discard ast.Node,
+	finalizer *ast.CallExpr,
+	spec writerFinalizerSpec,
+) bool {
+	if ctx == nil ||
+		ctx.Info() == nil ||
+		ctx.Syntax() == nil ||
+		finalizer == nil ||
+		spec.packagePath != "archive/tar" ||
+		spec.typeName != "Writer" ||
+		spec.methodName != "Close" {
+		return false
+	}
+	if _, deferred := discard.(*ast.DeferStmt); !deferred {
+		return false
+	}
+	value := ctx.memoized(
+		"unchecked-writer-error/redundant-deferred-tar-v1",
+		func() any {
+			return redundantDeferredTarFinalizers(ctx.Info(), ctx.Syntax())
+		},
+	)
+	redundant, _ := value.(map[*ast.CallExpr]struct{})
+	_, matched := redundant[finalizer]
+	return matched
+}
+
+func redundantDeferredTarFinalizers(info *types.Info, syntax *ast.File) map[*ast.CallExpr]struct{} {
+	result := make(map[*ast.CallExpr]struct{})
+	if info == nil || syntax == nil {
+		return result
+	}
+	parents := writerASTParents(syntax)
+	ast.Inspect(
+		syntax,
+		func(node ast.Node) bool {
+			block, _ := node.(*ast.BlockStmt)
+			if block == nil {
+				return true
+			}
+			unstable, lastUses := redundantTarBlockFacts(info, block, parents)
+			observed := redundantTarObservedCloses(info, block)
+			bypasses := make([]int, len(block.List) + 1)
+			for index, statement := range block.List {
+				bypasses[index + 1] = bypasses[index]
+				if writerStatementMayBypassFollowing(statement) {
+					bypasses[index + 1]++
+				}
+			}
+			for index, statement := range block.List {
+				deferred, _ := statement.(*ast.DeferStmt)
+				if deferred == nil || deferred.Call == nil {
+					continue
+				}
+				receiver, matched := exactTarWriterCloseReceiver(
+					info,
+					deferred.Call,
+				)
+				if !matched {
+					continue
+				}
+				if !writerDirectLocalBinding(info, block, parents, receiver) {
+					continue
+				}
+				if _, unsafe := unstable[receiver]; unsafe {
+					continue
+				}
+				candidates := observed[receiver]
+				candidate := sort.Search(
+					len(candidates),
+					func(candidate int) bool {
+						return candidates[candidate].statement > index
+					},
+				)
+				if candidate == len(candidates) {
+					continue
+				}
+				close := candidates[candidate]
+				if bypasses[close.statement] != bypasses[index + 1] ||
+					lastUses[receiver] >= close.call.End() {
+					continue
+				}
+				result[deferred.Call] = struct{}{}
+			}
+			return true
+		},
+	)
+	return result
+}
+
+func writerDirectLocalBinding(
+	info *types.Info,
+	block *ast.BlockStmt,
+	parents map[ast.Node]ast.Node,
+	receiver types.Object,
+) bool {
+	if info == nil || block == nil || receiver == nil {
+		return false
+	}
+	variable, local := receiver.(*types.Var)
+	if !local || variable.IsField() {
+		return false
+	}
+	for identifier, object := range info.Defs {
+		if object != receiver {
+			continue
+		}
+		for ancestor := parents[identifier]; ancestor != nil; ancestor = parents[ancestor] {
+			if owner, ok := ancestor.(*ast.BlockStmt); ok {
+				return owner == block
+			}
+		}
+		return false
+	}
+	return false
+}
+
+type observedTarWriterFinalizer struct {
+	statement int
+	call *ast.CallExpr
+}
+
+func redundantTarObservedCloses(
+	info *types.Info,
+	block *ast.BlockStmt,
+) map[types.Object][]observedTarWriterFinalizer {
+	result := make(map[types.Object][]observedTarWriterFinalizer)
+	if info == nil || block == nil {
+		return result
+	}
+	for index, statement := range block.List {
+		for _, observed := range observedTarWriterCloses(info, statement) {
+			receiver, matched := exactTarWriterCloseReceiver(info, observed)
+			if !matched {
+				continue
+			}
+			result[receiver] = append(
+				result[receiver],
+				observedTarWriterFinalizer{statement: index, call: observed},
+			)
+		}
+	}
+	return result
+}
+
+func redundantTarBlockFacts(
+	info *types.Info,
+	block *ast.BlockStmt,
+	parents map[ast.Node]ast.Node,
+) (map[types.Object]struct{}, map[types.Object]token.Pos) {
+	unstable := make(map[types.Object]struct{})
+	lastUses := make(map[types.Object]token.Pos)
+	if info == nil || block == nil {
+		return unstable, lastUses
+	}
+	ast.Inspect(
+		block,
+		func(node ast.Node) bool {
+			if node == nil {
+				return false
+			}
+			identifier, _ := node.(*ast.Ident)
+			if identifier == nil {
+				return true
+			}
+			object := directObject(info, identifier)
+			if object == nil {
+				return true
+			}
+			if identifier.Pos() > lastUses[object] {
+				lastUses[object] = identifier.Pos()
+			}
+			if info.Defs[identifier] == object {
+				return true
+			}
+			selector, _ := parents[identifier].(*ast.SelectorExpr)
+			call, _ := parents[selector].(*ast.CallExpr)
+			if selector == nil ||
+				selector.X != identifier ||
+				call == nil ||
+				ast.Unparen(call.Fun) != selector {
+				unstable[object] = struct{}{}
+				return true
+			}
+			for ancestor := ast.Node(identifier); ancestor != block; {
+				ancestor = parents[ancestor]
+				if ancestor == nil {
+					unstable[object] = struct{}{}
+					return true
+				}
+				if _, closure := ancestor.(*ast.FuncLit); closure {
+					unstable[object] = struct{}{}
+					return true
+				}
+			}
+			return true
+		},
+	)
+	return unstable, lastUses
+}
+
+func exactTarWriterCloseReceiver(info *types.Info, call *ast.CallExpr) (types.Object, bool) {
+	if info == nil || call == nil {
+		return nil, false
+	}
+	selector, _ := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if selector == nil {
+		return nil, false
+	}
+	selection := info.Selections[selector]
+	if selection == nil {
+		return nil, false
+	}
+	function, _ := selection.Obj().(*types.Func)
+	spec, matched := standardWriterFinalizer(function)
+	if !matched ||
+		spec.packagePath != "archive/tar" ||
+		spec.typeName != "Writer" ||
+		spec.methodName != "Close" {
+		return nil, false
+	}
+	receiver := writerFinalizerReceiver(info, call)
+	return receiver, receiver != nil
+}
+
+func observedTarWriterCloses(info *types.Info, statement ast.Stmt) []*ast.CallExpr {
+	if info == nil || statement == nil {
+		return nil
+	}
+	expression, _ := statement.(*ast.ExprStmt)
+	if expression == nil {
+		return nil
+	}
+	outer, _ := ast.Unparen(expression.X).(*ast.CallExpr)
+	if outer == nil {
+		return nil
+	}
+	observed := make([]*ast.CallExpr, 0)
+	for _, argument := range outer.Args {
+		ast.Inspect(
+			argument,
+			func(node ast.Node) bool {
+				if node == nil {
+					return false
+				}
+				if _, closure := node.(*ast.FuncLit); closure {
+					return false
+				}
+				call, _ := node.(*ast.CallExpr)
+				if call == nil {
+					return true
+				}
+				if _, matched := exactTarWriterCloseReceiver(info, call); matched {
+					observed = append(observed, call)
+				}
+				return true
+			},
+		)
+	}
+	return observed
+}
+
+func writerStatementMayBypassFollowing(statement ast.Stmt) bool {
+	if statement == nil {
+		return true
+	}
+	bypasses := false
+	ast.Inspect(
+		statement,
+		func(node ast.Node) bool {
+			if bypasses || node == nil {
+				return false
+			}
+			if _, closure := node.(*ast.FuncLit); closure {
+				return false
+			}
+			switch node.(type) {
+			case *ast.ReturnStmt, *ast.BranchStmt:
+				bypasses = true
+				return false
+			default:
+				return true
+			}
+		},
+	)
+	return bypasses
 }
 
 func infallibleWriterFinalizer(
@@ -2521,6 +2945,9 @@ func standardWriterOperation(info *types.Info, call *ast.CallExpr, argument int)
 func writerFormattingValueCannotCallBack(type_ types.Type) bool {
 	if type_ == nil {
 		return false
+	}
+	if namedReceiver(type_, "time", "Time") {
+		return true
 	}
 	if _, basic := types.Unalias(type_).Underlying().(*types.Basic); !basic {
 		return false

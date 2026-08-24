@@ -6073,7 +6073,11 @@ leaving output truncated or structurally incomplete. The rule targets exact stan
 finalizers whose documented contract writes pending data or required framing, including direct
 stable values returned by the streaming encoder constructors. Finalizers are excluded when a stable
 bufio or tabwriter chain terminates at an exact bytes.Buffer or strings.Builder sink; gzip
-additionally requires an unmodified default header.
+additionally requires an unmodified default header. A deferred archive/tar Close is also excluded
+when a later straight-line Close on the same stable writer passes its error to a consumer and no
+later writer use remains, because subsequent Close calls are no-ops. Exact test recovery guards that
+fail when an immediately following finalizer is the function body's terminal action and does not
+panic are treated as expected-panic assertions rather than successful error discards.
 
 - Default severity: `warn`
 - Presets: `correctness`
@@ -6103,6 +6107,15 @@ None.
   conditionally rebound, interface-typed, escaped, cyclic, and unproven chains remain conservative.
 - Gzip in-memory exclusions require the default Header to remain unmodified because invalid Name,
   Comment, or Extra values can fail independently of the sink.
+- Stable in-memory fmt consumers accept basic values and exact time.Time values; user-defined
+  formatting callbacks remain conservative because they can capture and rebind the writer.
+- The redundant deferred archive/tar exclusion requires a writer declared directly in the same
+  block, a later same-block Close whose error is passed to another call, no intervening return or
+  branch, and no later or escaping receiver use.
+- Expected-panic suppression requires an immediately preceding unconditional recovery defer in a
+  _test.go file whose exact recovered == nil branch calls a testing failure method and whose
+  finalizer is the function body's terminal action; nested blocks, conditional guards, intervening
+  statements, lookalike recovery, asynchronous calls, and non-test files remain diagnostics.
 - Streaming encoder coverage requires a direct constructor result or a direct identifier initialized
   by encoding/ascii85, encoding/base32, or encoding/base64 NewEncoder and not reassigned before
   Close.

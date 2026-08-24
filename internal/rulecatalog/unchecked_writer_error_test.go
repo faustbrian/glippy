@@ -348,6 +348,123 @@ func exactForms(gzipWriter *gzip.Writer, wrapped *gzipWrapper) {
 	}
 }
 
+func TestUncheckedWriterErrorExcludesRedundantDeferredTarClose(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"archive/tar"
+	"bytes"
+)
+
+func observe(error, ...string) {}
+
+var packageOutput bytes.Buffer
+var packageWriter = tar.NewWriter(&packageOutput)
+
+func replacePackageWriter() {
+	packageWriter = tar.NewWriter(&packageOutput)
+}
+
+func checkedBeforeUse() {
+	var output bytes.Buffer
+	writer := tar.NewWriter(&output)
+	defer writer.Close()
+	_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+	observe(writer.Close())
+	_ = output.Bytes()
+}
+
+func checkedAfterReportedWrite() {
+	var output bytes.Buffer
+	reportedWriter := tar.NewWriter(&output)
+	defer reportedWriter.Close()
+	if err := reportedWriter.WriteHeader(&tar.Header{Name: "entry"}); err != nil {
+		observe(err, "header")
+	}
+	observe(reportedWriter.Close(), "archive")
+	_ = output.Bytes()
+}
+
+func conditionalClose(shouldClose bool) {
+	var output bytes.Buffer
+	conditionalWriter := tar.NewWriter(&output)
+	defer conditionalWriter.Close()
+	_ = conditionalWriter.WriteHeader(&tar.Header{Name: "entry"})
+	if shouldClose {
+		observe(conditionalWriter.Close())
+	}
+}
+
+func earlyReturn(returnEarly bool) {
+	var output bytes.Buffer
+	earlyWriter := tar.NewWriter(&output)
+	defer earlyWriter.Close()
+	_ = earlyWriter.WriteHeader(&tar.Header{Name: "entry"})
+	if returnEarly {
+		return
+	}
+	observe(earlyWriter.Close())
+}
+
+func differentWriter() {
+	var firstOutput bytes.Buffer
+	first := tar.NewWriter(&firstOutput)
+	defer first.Close()
+	_ = first.WriteHeader(&tar.Header{Name: "entry"})
+
+	var secondOutput bytes.Buffer
+	second := tar.NewWriter(&secondOutput)
+	observe(second.Close())
+}
+
+func escapedReceiver() {
+	var output bytes.Buffer
+	escapedWriter := tar.NewWriter(&output)
+	defer escapedWriter.Close()
+	alias := escapedWriter
+	_ = alias
+	observe(escapedWriter.Close())
+}
+
+func usedAfterObservedClose() {
+	var output bytes.Buffer
+	laterUsedWriter := tar.NewWriter(&output)
+	defer laterUsedWriter.Close()
+	observe(laterUsedWriter.Close())
+	_ = laterUsedWriter.WriteHeader(&tar.Header{Name: "later"})
+}
+
+func mutablePackageReceiver() {
+	defer packageWriter.Close()
+	replacePackageWriter()
+	observe(packageWriter.Close())
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwriterredundantdefer\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", false)
+	assertUncheckedWriterDiagnostics(
+		t,
+		input,
+		result,
+		[]string{
+			"conditionalWriter.Close()",
+			"earlyWriter.Close()",
+			"first.Close()",
+			"escapedWriter.Close()",
+			"laterUsedWriter.Close()",
+			"packageWriter.Close()",
+		},
+	)
+}
+
 func TestUncheckedWriterErrorExcludesTabwriterFlushToBytesBuffer(t *testing.T) {
 	t.Parallel()
 
@@ -899,6 +1016,222 @@ func harmlessCallbackCapture(run func(func() bool)) {
 	writeFixture(t, filepath.Join(root, "sample.go"), input)
 	result := runUncheckedWriterError(t, root, "go1.26", false)
 	assertUncheckedWriterDiagnostics(t, input, result, nil)
+}
+
+func TestUncheckedWriterErrorPreservesTimeFormattingProvenance(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"text/tabwriter"
+	"time"
+)
+
+type rebindingFormatter struct {
+	writer *tabwriter.Writer
+	output io.Writer
+}
+
+func (value rebindingFormatter) Format(fmt.State, rune) {
+	value.writer.Init(value.output, 1, 8, 1, ' ', 0)
+}
+
+func standardTimeValue() {
+	var output bytes.Buffer
+	timeWriter := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	_, _ = fmt.Fprintf(timeWriter, "%s", time.Time{})
+	timeWriter.Flush()
+}
+
+func customFormatter(output io.Writer) {
+	var memory bytes.Buffer
+	customWriter := tabwriter.NewWriter(&memory, 1, 8, 1, ' ', 0)
+	_, _ = fmt.Fprintf(customWriter, "%v", rebindingFormatter{writer: customWriter, output: output})
+	customWriter.Flush()
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwritertimeformat\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", false)
+	assertUncheckedWriterDiagnostics(t, input, result, []string{"customWriter.Flush()"})
+}
+
+func TestUncheckedWriterErrorExcludesExpectedPanicFinalizers(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"bufio"
+	"bytes"
+	"errors"
+	"testing"
+)
+
+type failingSink struct{}
+
+func (failingSink) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
+
+func expectedPanic(t *testing.T) {
+	writer := bufio.NewWriter(bytes.NewBuffer(nil))
+	writer.Reset(nil)
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatal("Flush did not panic")
+		}
+	}()
+	writer.Flush()
+}
+
+func recoveredWithoutFailure(t *testing.T) {
+	uncheckedWriter := bufio.NewWriter(bytes.NewBuffer(nil))
+	uncheckedWriter.Reset(nil)
+	defer func() {
+		_ = recover()
+	}()
+	uncheckedWriter.Flush()
+}
+
+func conditionalExpectation(t *testing.T, expectPanic bool) {
+	conditionalWriter := bufio.NewWriter(bytes.NewBuffer(nil))
+	conditionalWriter.Reset(nil)
+	if expectPanic {
+		defer func() {
+			if recovered := recover(); recovered == nil {
+				t.Fatal("Flush did not panic")
+			}
+		}()
+	}
+	conditionalWriter.Flush()
+}
+
+func nonterminalExpectation(t *testing.T) {
+	nonterminalWriter := bufio.NewWriter(failingSink{})
+	_ = nonterminalWriter.WriteByte('x')
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+	nonterminalWriter.Flush()
+	panic("later operation")
+}
+
+func interveningDeferredPanic(t *testing.T) {
+	deferredWriter := bufio.NewWriter(failingSink{})
+	_ = deferredWriter.WriteByte('x')
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+	defer func() { panic("later deferred operation") }()
+	deferredWriter.Flush()
+}
+
+func nestedBlockExpectation(t *testing.T) {
+	nestedWriter := bufio.NewWriter(failingSink{})
+	_ = nestedWriter.WriteByte('x')
+	{
+		defer func() {
+			if recovered := recover(); recovered == nil {
+				t.Fatal("expected a panic")
+			}
+		}()
+		nestedWriter.Flush()
+	}
+	panic("later outer operation")
+}
+
+func lookalikeRecover(t *testing.T) {
+	lookalikeWriter := bufio.NewWriter(failingSink{})
+	_ = lookalikeWriter.WriteByte('x')
+	defer func() {
+		recover := func() any { return nil }
+		if recovered := recover(); recovered == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+	lookalikeWriter.Flush()
+}
+
+func asynchronousFinalizer(t *testing.T) {
+	asyncWriter := bufio.NewWriter(failingSink{})
+	_ = asyncWriter.WriteByte('x')
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+	go asyncWriter.Flush()
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwriterexpectedpanic\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample_test.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", true)
+	assertUncheckedWriterDiagnostics(
+		t,
+		input,
+		result,
+		[]string{
+			"uncheckedWriter.Flush()",
+			"conditionalWriter.Flush()",
+			"nonterminalWriter.Flush()",
+			"deferredWriter.Flush()",
+			"nestedWriter.Flush()",
+			"lookalikeWriter.Flush()",
+			"asyncWriter.Flush()",
+		},
+	)
+}
+
+func TestUncheckedWriterErrorExpectedPanicRequiresTestFile(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"bufio"
+	"bytes"
+	"testing"
+)
+
+func expectedPanicOutsideTest(t *testing.T) {
+	writer := bufio.NewWriter(bytes.NewBuffer(nil))
+	writer.Reset(nil)
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatal("Flush did not panic")
+		}
+	}()
+	writer.Flush()
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwriterexpectedpanicfile\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", true)
+	assertUncheckedWriterDiagnostics(t, input, result, []string{"writer.Flush()"})
 }
 
 func TestUncheckedWriterErrorRejectsWriterConsumerRebindingAndExposure(t *testing.T) {

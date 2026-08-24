@@ -2679,3 +2679,29 @@ records the deliberate preset difference. The superseded exact corpus run
 `32691406468` was canceled because its candidate could not satisfy the v0.6
 signal gate. The complete corpus must restart at the resulting pushed revision,
 so stable-v1 progress remains 55% inside v0.6.
+
+The v0.6 `nil-context` optional-helper precision batch responds to two
+recommended Grafana findings from pinned corpus run `32698988231`. Both calls
+deliberately pass nil to a private package-local method whose available source
+guards every context operation and uses nil to select an unlinked span. Exact
+candidate `0041f614bdf36219271e0efcaa3a49d23c3ca2ee` suppresses only a direct nil
+argument whose unexported current-package callee body proves that parameter
+optional. Exported and dependency calls, dynamic dispatch, variadics, method
+values and expressions, panic paths, assignments, and unguarded uses remain
+diagnostics. The complete corpus must rerun at that pushed revision or a later
+correction, so stable-v1 progress remains 55% inside v0.6.
+
+The v0.6 Moby writer-precision batch responds to seven default
+`unchecked-writer-error` false positives from the same pinned run. Four
+deferred tar finalizers are redundant after a later observed same-writer
+Close, two stable in-memory formatter chains accept exact `time.Time` values,
+and one finalizer is the terminal action of a source-proven expected-panic
+test. Bounded regressions retain diagnostics for conditional or bypassed
+closes, mutable package receivers, escaped and later-used writers, custom
+formatter callbacks, missing or conditional recovery guards, nonterminal
+finalizers, intervening defers, lookalike recover functions, asynchronous
+calls, nested-block guards, and non-test code. The remaining 14 Moby default
+findings are actionable under the recorded rule contracts. The exact external
+corpus must rerun at the resulting pushed revision, and Moby's recommended
+findings plus the remaining repositories still require complete adjudication,
+so stable-v1 progress remains 55% inside v0.6.
