@@ -2831,3 +2831,21 @@ findings, and one unused field, none of which establishes a missing default
 Glippy rule from this run. The exact corpus must rerun on the latest candidate
 and the remaining repositories still require complete adjudication, so
 stable-v1 progress remains 55% inside v0.6.
+
+The v0.6 Hugo adjudication for pinned run `32698988231`, Glippy revision
+`7840a0c`, and Hugo revision
+`76a5e1880ab46688155b02e99bab9be2a6134492` classifies all eight default and
+recommended findings. Five are actionable: two impossible nilness checks, two
+unchecked terminal scanner errors, and one overwritten parser error. Three
+default `unreachable-code` findings are final unlabeled breaks after Hugo's
+source-proven panicking `(*state).errorf` helper in its Go `text/template`
+fork. The rule now accepts only a final unlabeled break or continue immediately
+after a direct proven no-return helper call; labeled branches, compound
+terminal flow, retained work, and separate reachable breaks remain diagnostics.
+Accepted break shims are removed from owner reachability accounting. Go vet
+reports nothing. Staticcheck adds five intentional self-deprecation findings
+and a third independent ineffective-assignment example, now recorded in the
+missed-defect queue. All four profiles completed across 889 owned files and 384
+packages. The exact corpus must rerun on the latest candidate and the remaining
+repositories still require complete adjudication, so stable-v1 progress remains
+55% inside v0.6.

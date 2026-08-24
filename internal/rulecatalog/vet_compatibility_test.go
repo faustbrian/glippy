@@ -1452,13 +1452,13 @@ func retainedWork(t *testing.T, values []int) {
 	}
 }
 
-type fatalLookalike struct{}
+type localTerminator struct{}
 
-func (fatalLookalike) Fatal(string) { panic("terminal") }
+func (localTerminator) Fatal(string) { panic("terminal") }
 
-func lookalike(fatal fatalLookalike, values []int) {
+func sourceProven(terminator localTerminator, values []int) {
 	for range values {
-		fatal.Fatal("terminal")
+		terminator.Fatal("terminal")
 		break
 	}
 }
@@ -1481,11 +1481,111 @@ outer:
 		`println("still dead after select")`,
 		"continue",
 		`println("still dead")`,
-		"break",
 		"break outer",
 	}
 	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
 		t.Fatalf("unreachable-code loop-control shims = %#v", result)
+	}
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		if diagnostic.Range.Start < 0 ||
+			diagnostic.Range.End > len(input) ||
+			string(input[diagnostic.Range.Start:diagnostic.Range.End]) != want[index] {
+			t.Fatalf(
+				"unreachable-code diagnostic[%d] = %#v, want %q",
+				index,
+				diagnostic,
+				want[index],
+			)
+		}
+	}
+}
+
+func TestUnreachableCodeAcceptsProvenNoReturnLoopControlShims(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+func stop() { panic("terminal") }
+
+func direct(values []int) {
+	for _, value := range values {
+		if value == 0 {
+			stop()
+			continue
+		}
+		if value == 1 {
+			stop()
+			break
+		}
+	}
+}
+
+func exhaustiveSwitch(value int) {
+	switch value {
+	case 0:
+		stop()
+		break
+	default:
+		stop()
+		break
+	}
+	println("still dead after switch")
+}
+
+func reachableBreak(stopLoop bool) {
+	for {
+		if stopLoop {
+			break
+		}
+		stop()
+		break
+	}
+	println("reachable after real break")
+}
+
+func retainedWork(values []int) {
+	for range values {
+		stop()
+		continue
+		println("still dead")
+	}
+}
+
+func conditional(condition bool, values []int) {
+	for range values {
+		if condition {
+			stop()
+		} else {
+			stop()
+		}
+		break
+	}
+}
+
+func labeled(values []int) {
+outer:
+	for range values {
+		stop()
+		break outer
+	}
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"unreachable-code"})
+	if len(result.LoadDiagnostics) != 0 {
+		t.Fatalf(
+			"proven no-return loop-control shim failed to load: %#v",
+			result.LoadDiagnostics,
+		)
+	}
+	want := []string{
+		`println("still dead after switch")`,
+		"continue",
+		`println("still dead")`,
+		"break",
+		"break outer",
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
+		t.Fatalf("proven no-return loop-control shims = %#v", result)
 	}
 	for index, diagnostic := range result.Files[0].Diagnostics {
 		if diagnostic.Range.Start < 0 ||
