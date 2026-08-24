@@ -1,5 +1,8 @@
 # `nilness` Rule Admission, 2026-08-11
 
+> The return-state comparison boundary is refined by the
+> [v0.6 testing-assertion precision record](v0.6-nilness-testing-assertion-precision-2026-08-24.md).
+
 ## Authority And Existing-Tool Boundary
 
 The rule reports operations whose operand is proven nil, degenerate nil

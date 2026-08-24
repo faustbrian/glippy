@@ -3899,6 +3899,9 @@ None.
 - Functions marked with //go:cgo_unsafe_args are excluded because their runtime behavior is not
   represented faithfully in SSA.
 - Generated files and packages with type errors are excluded.
+- An impossible return-state comparison in a _test.go file is treated as an intentional contract
+  assertion when its only branch action is an exact testing failure-reporting method with
+  side-effect-free receiver and arguments.
 
 ### Example: Dereference in a nil branch
 

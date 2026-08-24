@@ -2,8 +2,10 @@ package rules
 
 import (
 	"fmt"
+	"go/ast"
 	"go/token"
 	"go/types"
+	"strings"
 
 	"github.com/faustbrian/glippy/internal/source"
 	goanalysis "golang.org/x/tools/go/analysis"
@@ -31,6 +33,7 @@ func (nilnessRule) Metadata() Metadata {
 			"Return relationships require explicit results with exact nil, definitely non-nil allocation forms, errors.New, or fmt.Errorf. Exact static same-arity delegation may reuse a selected local-source relationship through a bounded recursion-rejecting summary. Bare returns, dynamic or recursive results, &*x expressions, unknown error construction, aliases, and conflicting returns remain unknown.",
 			"Functions marked with //go:cgo_unsafe_args are excluded because their runtime behavior is not represented faithfully in SSA.",
 			"Generated files and packages with type errors are excluded.",
+			"An impossible return-state comparison in a _test.go file is treated as an intentional contract assertion when its only branch action is an exact testing failure-reporting method with side-effect-free receiver and arguments.",
 		},
 		Examples: []Example{
 			{
@@ -122,6 +125,7 @@ func appendReturnStateFindings(ctx *SSAContext, findings []Finding) ([]Finding, 
 	for _, finding := range findings {
 		deduplicated[nilnessFindingIdentity(finding)] = struct{}{}
 	}
+	testingAssertions := testingAssertionPositions(ctx)
 	for _, block := range ctx.Function().Blocks {
 		for _, instruction := range block.Instrs {
 			call, ok := instruction.(*ssa.Call)
@@ -180,6 +184,7 @@ func appendReturnStateFindings(ctx *SSAContext, findings []Finding) ([]Finding, 
 								condition.branch.Block(),
 								successors[index],
 								state,
+								testingAssertions,
 							)
 							if err != nil {
 								return nil, err
@@ -264,6 +269,7 @@ func addDominatedReturnStateFindings(
 	from *ssa.BasicBlock,
 	to *ssa.BasicBlock,
 	state NilState,
+	testingAssertions map[token.Pos]struct{},
 ) ([]Finding, error) {
 	if value == nil || value.Referrers() == nil || from == nil || to == nil {
 		return findings, nil
@@ -292,6 +298,13 @@ func addDominatedReturnStateFindings(
 		case *ssa.BinOp:
 			if (instruction.Op != token.EQL && instruction.Op != token.NEQ) ||
 				!comparisonWithNil(instruction, value) {
+				continue
+			}
+			if returnStateComparisonIsTestingAssertion(
+				testingAssertions,
+				instruction,
+				state,
+			) {
 				continue
 			}
 			range_, err := ctx.TokenRange(instruction.Pos())
@@ -325,6 +338,114 @@ func addDominatedReturnStateFindings(
 		findings = append(findings, finding)
 	}
 	return findings, nil
+}
+
+func testingAssertionPositions(ctx *SSAContext) map[token.Pos]struct{} {
+	positions := make(map[token.Pos]struct{})
+	if ctx == nil ||
+		ctx.File() == nil ||
+		ctx.Info() == nil ||
+		ctx.Syntax() == nil ||
+		!strings.HasSuffix(ctx.File().Path(), "_test.go") {
+		return positions
+	}
+	ast.Inspect(
+		ctx.Syntax(),
+		func(node ast.Node) bool {
+			statement, ok := node.(*ast.IfStmt)
+			if !ok {
+				return true
+			}
+			condition, _ := ast.Unparen(statement.Cond).(*ast.BinaryExpr)
+			if condition == nil ||
+				statement.Else != nil ||
+				!directTestingFailure(ctx.Info(), statement.Body) {
+				return true
+			}
+			positions[condition.OpPos] = struct{}{}
+			return true
+		},
+	)
+	return positions
+}
+
+func returnStateComparisonIsTestingAssertion(
+	positions map[token.Pos]struct{},
+	comparison *ssa.BinOp,
+	state NilState,
+) bool {
+	if comparison == nil ||
+		!(state == NilStateNil && comparison.Op == token.NEQ ||
+			state == NilStateNonNil && comparison.Op == token.EQL) {
+		return false
+	}
+	_, assertion := positions[comparison.Pos()]
+	return assertion
+}
+
+func directTestingFailure(info *types.Info, body *ast.BlockStmt) bool {
+	if info == nil || body == nil || len(body.List) != 1 {
+		return false
+	}
+	expression, _ := body.List[0].(*ast.ExprStmt)
+	if expression == nil {
+		return false
+	}
+	call, _ := ast.Unparen(expression.X).(*ast.CallExpr)
+	if call == nil {
+		return false
+	}
+	selector, _ := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if selector == nil {
+		return false
+	}
+	if !testingFailureOperandIsSideEffectFree(info, selector.X) {
+		return false
+	}
+	for _, argument := range call.Args {
+		if !testingFailureOperandIsSideEffectFree(info, argument) {
+			return false
+		}
+	}
+	selection := info.Selections[selector]
+	if selection == nil {
+		return false
+	}
+	method, _ := selection.Obj().(*types.Func)
+	if method == nil || method.Pkg() == nil || method.Pkg().Path() != "testing" {
+		return false
+	}
+	switch method.Name() {
+	case "Error", "Errorf", "Fail", "FailNow", "Fatal", "Fatalf":
+		return true
+	default:
+		return false
+	}
+}
+
+func testingFailureOperandIsSideEffectFree(info *types.Info, expression ast.Expr) bool {
+	if info == nil {
+		return false
+	}
+	switch expression := ast.Unparen(expression).(type) {
+	case *ast.Ident, *ast.BasicLit:
+		return true
+	case *ast.SelectorExpr:
+		selection := info.Selections[expression]
+		if selection == nil {
+			qualifier, _ := ast.Unparen(expression.X).(*ast.Ident)
+			if qualifier == nil {
+				return false
+			}
+			_, packageName := info.Uses[qualifier].(*types.PkgName)
+			return packageName
+		}
+		return selection.Kind() == types.FieldVal &&
+			!selection.Indirect() &&
+			testingFailureOperandIsSideEffectFree(info, expression.X)
+	default:
+		return false
+	}
 }
 
 func nilnessFindingIdentity(finding Finding) string {

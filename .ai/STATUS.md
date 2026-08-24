@@ -2646,3 +2646,22 @@ profile noise without hiding all test-file findings or matching assertion
 libraries. The exact external corpus must rerun at the resulting pushed
 revision, and the remaining repositories still require complete adjudication,
 so stable-v1 progress remains 55% inside v0.6.
+
+The v0.6 `nilness` testing-assertion precision batch responds to three
+adjudicated recommended findings in gRPC-Go from pinned corpus run
+`32686648982` at exact revision `c0af042`. Return-state inference correctly
+proved the compared results nil, but the augmented rule did not distinguish
+defective comparisons from direct type-resolved testing failure reports that
+assert a callee's nil/error contract. The rule now omits only an impossible
+true-edge comparison in a `_test.go` file whose no-else branch is exactly one
+`testing.Error`, `Errorf`, `Fail`, `FailNow`, `Fatal`, or `Fatalf` call with a
+side-effect-free receiver and arguments. Nil dereferences, ordinary or
+tautological comparisons, non-test files, branches with other work, lookalike
+methods, and calls with effectful evaluation remain eligible. Focused red
+regressions proved the original assertion noise, the effectful-evaluation
+over-suppression, the corpus-equivalent non-terminating reporting boundary, and
+pointer-indirect field evaluation; the focused regression and complete
+`TestNilness` suite pass afterward.
+Generated rule documentation is current. The exact external corpus must rerun
+at the resulting pushed revision, and remaining repositories still require
+complete adjudication, so stable-v1 progress remains 55% inside v0.6.

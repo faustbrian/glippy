@@ -368,6 +368,314 @@ func Lookup(found bool) (*helper.Value, error) { return helper.Lookup(found) }
 	}
 }
 
+func TestNilnessPreservesReturnStateAssertionsInTestFiles(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "testing"
+
+func TestLookup(t *testing.T) {
+	value, err := lookup(false)
+	if err == nil { t.Fatal("lookup succeeded") }
+	if value != nil { t.Errorf("value = %v, want nil", value) }
+	_ = *value
+
+	value, err = lookup(true)
+	if err != nil { t.Fatal(err) }
+	if value == nil { t.Fatalf("value = nil, want non-nil") }
+	if value != nil { println(value) }
+	if value == nil { panic("unreachable") }
+}
+
+type fakeT struct{}
+
+func (*fakeT) Fatalf(string, ...any) {}
+
+func verifyWithLookalike(t *fakeT) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { t.Fatalf("value = %v, want nil", value) }
+}
+
+func verifyWithFailNow(t *testing.T) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { t.FailNow() }
+}
+
+func verifyWithFail(t *testing.T) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { t.Fail() }
+}
+
+func verifyWithError(t *testing.T) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { t.Error("unexpected value") }
+}
+
+func verifyWithFatal(t *testing.T) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { t.Fatal("unexpected value") }
+}
+
+func currentT(t *testing.T) *testing.T { return t }
+
+func verifySideEffectingReceiver(t *testing.T) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { currentT(t).Fatal("unexpected value") }
+}
+
+func mutate() any { return nil }
+
+func verifySideEffectingArgument(t *testing.T) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { t.Fatalf("value = %v, mutation = %v", value, mutate()) }
+}
+
+func verifyReceivingArgument(t *testing.T, messages <-chan string) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { t.Fatal(<-messages) }
+}
+
+func verifyIndexingArgument(t *testing.T, messages []string) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { t.Fatal(messages[0]) }
+}
+
+func verifyDereferencingArgument(t *testing.T, message *string) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { t.Fatal(*message) }
+}
+
+type expectation struct{ message string }
+
+func verifyValueSelector(t *testing.T, want expectation) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { t.Error(want.message) }
+}
+
+func verifyIndirectSelector(t *testing.T, want *expectation) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { t.Error(want.message) }
+}
+
+func verifyExtraBranchWork(t *testing.T) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { println(value); t.Fatal("unexpected value") }
+}
+
+func verifyElseBranch(t *testing.T) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { t.Fatal("unexpected value") } else { println("expected") }
+}
+`
+	root, path := writeNilnessModuleFile(t, "sample_test.go", input)
+	productionPath := filepath.Join(root, "sample.go")
+	if err := os.WriteFile(
+		productionPath,
+		[]byte(
+			`package sample
+
+import (
+	"errors"
+	"testing"
+)
+
+type Value struct{}
+
+func lookup(found bool) (*Value, error) {
+	if !found { return nil, errors.New("missing") }
+	return &Value{}, nil
+}
+
+func verifyOutsideTest(t *testing.T) {
+	value, err := lookup(false)
+	if err == nil { return }
+	if value != nil { t.Fatalf("value = %v, want nil", value) }
+}
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	registry, err := rules.NewDefaultRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"nilness": rules.SeverityWarn},
+		},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}, Tests: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var testResult *analysis.Result
+	var productionResult *analysis.Result
+	for index := range result.Files {
+		switch result.Files[index].Path {
+		case path:
+			testResult = &result.Files[index]
+		case productionPath:
+			productionResult = &result.Files[index]
+		}
+	}
+	if testResult == nil || productionResult == nil {
+		t.Fatalf("test assertion files = %#v", result.Files)
+	}
+	file, found := result.Sources.Lookup(path)
+	if !found {
+		t.Fatal("test assertion source is missing")
+	}
+	got := make(map[int]string, len(testResult.Diagnostics))
+	for index, diagnostic := range testResult.Diagnostics {
+		text, valid := file.Slice(diagnostic.Range)
+		if !valid {
+			t.Fatalf("diagnostic %d range = %#v", index, diagnostic.Range)
+		}
+		if _, duplicate := got[diagnostic.Range.Start]; duplicate {
+			t.Fatalf("duplicate diagnostic start at %d", diagnostic.Range.Start)
+		}
+		got[diagnostic.Range.Start] = diagnostic.MessageKey + ":" + text
+	}
+	diagnosticOffset := func(functionName, statement, operator string) int {
+		t.Helper()
+		functionOffset := strings.Index(input, "func " + functionName + "(")
+		if functionOffset < 0 {
+			t.Fatalf("function %q is missing from test input", functionName)
+		}
+		statementOffset := strings.Index(input[functionOffset:], statement)
+		operatorOffset := strings.Index(statement, operator)
+		if statementOffset < 0 || operatorOffset < 0 {
+			t.Fatalf(
+				"statement %q or operator %q is missing from function %q",
+				statement,
+				operator,
+				functionName,
+			)
+		}
+		return functionOffset + statementOffset + operatorOffset
+	}
+	want := map[int]string{
+		diagnosticOffset("TestLookup", "_ = *value", "*"): "nilderef:*",
+		diagnosticOffset(
+			"TestLookup",
+			"if value != nil { println(value) }",
+			"!=",
+		): "cond:!=",
+		diagnosticOffset(
+			"TestLookup",
+			"if value == nil { panic(\"unreachable\") }",
+			"==",
+		): "cond:==",
+		diagnosticOffset(
+			"verifyWithLookalike",
+			"if value != nil { t.Fatalf(\"value = %v, want nil\", value) }",
+			"!=",
+		): "cond:!=",
+		diagnosticOffset(
+			"verifySideEffectingReceiver",
+			"if value != nil { currentT(t).Fatal(\"unexpected value\") }",
+			"!=",
+		): "cond:!=",
+		diagnosticOffset(
+			"verifySideEffectingArgument",
+			"if value != nil { t.Fatalf(\"value = %v, mutation = %v\", value, mutate()) }",
+			"!=",
+		): "cond:!=",
+		diagnosticOffset(
+			"verifyReceivingArgument",
+			"if value != nil { t.Fatal(<-messages) }",
+			"!=",
+		): "cond:!=",
+		diagnosticOffset(
+			"verifyIndexingArgument",
+			"if value != nil { t.Fatal(messages[0]) }",
+			"!=",
+		): "cond:!=",
+		diagnosticOffset(
+			"verifyDereferencingArgument",
+			"if value != nil { t.Fatal(*message) }",
+			"!=",
+		): "cond:!=",
+		diagnosticOffset(
+			"verifyIndirectSelector",
+			"if value != nil { t.Error(want.message) }",
+			"!=",
+		): "cond:!=",
+		diagnosticOffset(
+			"verifyExtraBranchWork",
+			"if value != nil { println(value); t.Fatal(\"unexpected value\") }",
+			"!=",
+		): "cond:!=",
+		diagnosticOffset(
+			"verifyElseBranch",
+			"if value != nil { t.Fatal(\"unexpected value\") } else { println(\"expected\") }",
+			"!=",
+		): "cond:!=",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("test assertion diagnostics = %#v, want %#v", got, want)
+	}
+	allowedAssertions := []int{
+		diagnosticOffset(
+			"TestLookup",
+			"if value != nil { t.Errorf(\"value = %v, want nil\", value) }",
+			"!=",
+		),
+		diagnosticOffset(
+			"TestLookup",
+			"if value == nil { t.Fatalf(\"value = nil, want non-nil\") }",
+			"==",
+		),
+		diagnosticOffset("verifyWithFailNow", "if value != nil { t.FailNow() }", "!="),
+		diagnosticOffset("verifyWithFail", "if value != nil { t.Fail() }", "!="),
+		diagnosticOffset(
+			"verifyWithError",
+			"if value != nil { t.Error(\"unexpected value\") }",
+			"!=",
+		),
+		diagnosticOffset(
+			"verifyWithFatal",
+			"if value != nil { t.Fatal(\"unexpected value\") }",
+			"!=",
+		),
+		diagnosticOffset(
+			"verifyValueSelector",
+			"if value != nil { t.Error(want.message) }",
+			"!=",
+		),
+	}
+	for _, offset := range allowedAssertions {
+		if diagnostic, found := got[offset]; found {
+			t.Fatalf("allowed testing assertion at %d reported %q", offset, diagnostic)
+		}
+	}
+	if len(productionResult.Diagnostics) != 1 ||
+		productionResult.Diagnostics[0].MessageKey != "cond" {
+		t.Fatalf("production testing assertion = %#v", productionResult.Diagnostics)
+	}
+}
+
 func TestNilnessDoesNotLoadReturnStatesAcrossModuleBoundaries(t *testing.T) {
 	t.Parallel()
 
@@ -711,6 +1019,11 @@ func benchmarkSSAExecution(
 
 func writeNilnessModule(t testing.TB, source string) (string, string) {
 	t.Helper()
+	return writeNilnessModuleFile(t, "sample.go", source)
+}
+
+func writeNilnessModuleFile(t testing.TB, filename string, source string) (string, string) {
+	t.Helper()
 	root := t.TempDir()
 	if err := os.WriteFile(
 		filepath.Join(root, "go.mod"),
@@ -720,7 +1033,7 @@ func writeNilnessModule(t testing.TB, source string) (string, string) {
 		err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(root, "sample.go")
+	path := filepath.Join(root, filename)
 	if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
 		t.Fatal(err)
 	}
