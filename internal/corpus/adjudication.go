@@ -1174,19 +1174,6 @@ func validateBoundProfile(
 			len(inventory.Diagnostics),
 		)
 	}
-	wantExitCode := 0
-	if profile.DiagnosticCount != 0 {
-		wantExitCode = 1
-	}
-	if profile.ExitCode != wantExitCode {
-		return false, fmt.Errorf(
-			"repository %q profile %q exit_code = %d, want %d",
-			repositoryID,
-			profile.Profile,
-			profile.ExitCode,
-			wantExitCode,
-		)
-	}
 	var diagnostics normalizedLintResult
 	decoder := json.NewDecoder(bytes.NewReader(input))
 	if err := decoder.Decode(&diagnostics); err != nil {
@@ -1210,6 +1197,14 @@ func validateBoundProfile(
 			repositoryID,
 		)
 	}
+	if diagnostics.Summary.PackageDiagnostics != len(diagnostics.PackageDiagnostics) ||
+		diagnostics.Summary.SourceProblems != len(diagnostics.SourceProblems) {
+		return false, fmt.Errorf(
+			"%s source-error summary mismatch for %q",
+			profile.Profile,
+			repositoryID,
+		)
+	}
 	normalizedFindings := slices.Clone(diagnostics.Diagnostics)
 	for index := range normalizedFindings {
 		normalizedFindings[index].Fingerprint = findingFingerprint(
@@ -1227,7 +1222,49 @@ func validateBoundProfile(
 			)
 		}
 	}
-	return true, nil
+	return validateBoundProfileOutcome(repositoryID, profile, diagnostics)
+}
+
+func validateBoundProfileOutcome(
+	repositoryID string,
+	profile profileResult,
+	diagnostics normalizedLintResult,
+) (bool, error) {
+	if diagnostics.Outcome.ExitCode != profile.ExitCode {
+		return false, fmt.Errorf(
+			"repository %q profile %q outcome exit_code = %d, want %d",
+			repositoryID,
+			profile.Profile,
+			diagnostics.Outcome.ExitCode,
+			profile.ExitCode,
+		)
+	}
+	hasSourceErrors := diagnostics.Summary.PackageDiagnostics != 0 ||
+		diagnostics.Summary.SourceProblems != 0
+	switch diagnostics.Outcome.Category {
+	case "success":
+		if profile.ExitCode == 0 && profile.DiagnosticCount == 0 && !hasSourceErrors {
+			return true, nil
+		}
+	case "findings":
+		if profile.ExitCode == 1 && profile.DiagnosticCount != 0 && !hasSourceErrors {
+			return true, nil
+		}
+	case "source_error":
+		if profile.ExitCode == 2 && hasSourceErrors {
+			return false, nil
+		}
+	}
+	return false, fmt.Errorf(
+		"repository %q profile %q has inconsistent outcome %q, exit_code %d, diagnostics %d, package diagnostics %d, and source problems %d",
+		repositoryID,
+		profile.Profile,
+		diagnostics.Outcome.Category,
+		profile.ExitCode,
+		profile.DiagnosticCount,
+		diagnostics.Summary.PackageDiagnostics,
+		diagnostics.Summary.SourceProblems,
+	)
 }
 
 func validateFindingAdjudications(profile profileAdjudication, findings []finding) (int, error) {

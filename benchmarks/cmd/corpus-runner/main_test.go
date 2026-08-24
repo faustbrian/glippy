@@ -454,6 +454,7 @@ func writeEmptyResultArtifacts(
 				profile != "default" ||
 				repository.ID != manifest.Repositories[0].ID
 			diagnostics := map[string]any{
+				"outcome": map[string]any{"category": "success", "exit_code": 0},
 				"summary": map[string]any{"diagnostics": 0, "complete": complete},
 				"diagnostics": []any{},
 			}

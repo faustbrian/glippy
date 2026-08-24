@@ -152,11 +152,19 @@ type findingRange struct {
 }
 
 type normalizedLintResult struct {
+	Outcome struct {
+		Category string `json:"category"`
+		ExitCode int `json:"exit_code"`
+	} `json:"outcome"`
 	Summary struct {
 		Diagnostics int `json:"diagnostics"`
+		PackageDiagnostics int `json:"package_diagnostics"`
+		SourceProblems int `json:"source_problems"`
 		Complete bool `json:"complete"`
 	} `json:"summary"`
 	Diagnostics []finding `json:"diagnostics"`
+	PackageDiagnostics []json.RawMessage `json:"package_diagnostics"`
+	SourceProblems []json.RawMessage `json:"source_problems"`
 }
 
 // Run validates and audits every selected pinned checkout without writing to it.

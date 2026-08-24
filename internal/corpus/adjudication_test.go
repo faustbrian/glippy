@@ -586,6 +586,154 @@ func TestAdjudicationTracksIncompleteProfilesAsUnresolvedEvidence(t *testing.T) 
 	}
 }
 
+func TestAdjudicationTracksCompleteSourceErrorsAsIncompleteEvidence(t *testing.T) {
+	t.Parallel()
+
+	manifestInput := []byte(singleRepositoryManifestJSON())
+	manifest, err := corpus.ParseManifest(manifestInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, options, _, _ := newRunFixture(t)
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	makeDefaultDiagnosticsCompleteSourceError(t, options.OutputRoot, "package_diagnostics")
+	template, err := corpus.BuildAdjudicationTemplate(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(
+		string(template),
+		`"incomplete_profiles": [
+        "default"
+      ]`,
+	) {
+		t.Fatalf("template does not record source-error default profile: %s", template)
+	}
+	if _, err := corpus.ValidateAdjudication(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		template,
+	);
+		err == nil ||
+			!strings.Contains(
+				err.Error(),
+				"require a crash or unsupported-construct gap",
+			) {
+		t.Fatalf(
+			"ValidateAdjudication() error = %v, want required incomplete-profile gap",
+			err,
+		)
+	}
+
+	var document map[string]any
+	if err := json.Unmarshal(template, &document); err != nil {
+		t.Fatal(err)
+	}
+	document["gaps"] = []any{
+		map[string]any{
+			"id": "alpha-default-source-error",
+			"repository": "alpha",
+			"source": "manual",
+			"kind": "unsupported-construct",
+			"summary": "default analysis retained unsupported source",
+			"evidence": "alpha/result.json default profile",
+			"disposition": "not-actionable",
+			"rule_id": "",
+			"reason": "the completed report does not prove complete rule coverage",
+		},
+	}
+	summary, err := corpus.ValidateAdjudication(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		marshalJSONValue(t, document),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Unresolved != 3 {
+		t.Fatalf("ValidateAdjudication() unresolved = %d, want 3", summary.Unresolved)
+	}
+}
+
+func TestAdjudicationTracksCompleteSourceModelProblemsAsIncompleteEvidence(t *testing.T) {
+	t.Parallel()
+
+	manifestInput := []byte(singleRepositoryManifestJSON())
+	manifest, err := corpus.ParseManifest(manifestInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, options, _, _ := newRunFixture(t)
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	makeDefaultDiagnosticsCompleteSourceError(t, options.OutputRoot, "source_problems")
+	template, err := corpus.BuildAdjudicationTemplate(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(
+		string(template),
+		`"incomplete_profiles": [
+        "default"
+      ]`,
+	) {
+		t.Fatalf("template does not record source-problem default profile: %s", template)
+	}
+	if _, err := corpus.ValidateAdjudication(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		template,
+	);
+		err == nil ||
+			!strings.Contains(
+				err.Error(),
+				"require a crash or unsupported-construct gap",
+			) {
+		t.Fatalf("ValidateAdjudication() error = %v, want required source-problem gap", err)
+	}
+
+	var document map[string]any
+	if err := json.Unmarshal(template, &document); err != nil {
+		t.Fatal(err)
+	}
+	document["gaps"] = []any{
+		map[string]any{
+			"id": "alpha-default-source-problem",
+			"repository": "alpha",
+			"source": "manual",
+			"kind": "unsupported-construct",
+			"summary": "default analysis retained a source-model problem",
+			"evidence": "alpha/result.json default profile",
+			"disposition": "not-actionable",
+			"rule_id": "",
+			"reason": "the completed report does not prove complete rule coverage",
+		},
+	}
+	if _, err := corpus.ValidateAdjudication(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		marshalJSONValue(t, document),
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAdjudicationTracksFailedComparatorsAsUnresolvedEvidence(t *testing.T) {
 	t.Parallel()
 
@@ -1139,6 +1287,51 @@ func makeDefaultDiagnosticsNonJSON(t *testing.T, root string) {
 	replaceFileText(t, resultPath, beforeDigest, afterDigest)
 	replaceFileText(t, resultPath, `"valid_json": true`, `"valid_json": false`)
 	replaceFileText(t, resultPath, `"complete": true`, `"complete": false`)
+}
+
+func makeDefaultDiagnosticsCompleteSourceError(t *testing.T, root, problemField string) {
+	t.Helper()
+	diagnosticsPath := filepath.Join(root, "alpha", "default", "diagnostics.json")
+	input, err := os.ReadFile(diagnosticsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var diagnostics map[string]any
+	if err := json.Unmarshal(input, &diagnostics); err != nil {
+		t.Fatal(err)
+	}
+	diagnostics["outcome"] = map[string]any{"category": "source_error", "exit_code": float64(2)}
+	summary := diagnostics["summary"].(map[string]any)
+	summary[problemField] = float64(1)
+	problem := map[string]any{"message": "typed analysis is unavailable for source"}
+	if problemField == "package_diagnostics" {
+		problem["kind"] = "unknown"
+		problem["package_id"] = "example.com/project/cgo"
+	} else {
+		problem["path"] = "/project/cgo.go"
+		problem["source_digest"] = strings.Repeat("a", 64)
+	}
+	diagnostics[problemField] = []any{problem}
+	beforeDigest := fileDigest(t, diagnosticsPath)
+	if err := os.WriteFile(diagnosticsPath, marshalJSONValue(t, diagnostics), 0o600);
+		err != nil {
+		t.Fatal(err)
+	}
+	afterDigest := fileDigest(t, diagnosticsPath)
+	resultPath := filepath.Join(root, "alpha", "result.json")
+	replaceFileText(t, resultPath, beforeDigest, afterDigest)
+	resultInput, err := os.ReadFile(resultPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(resultInput, &result); err != nil {
+		t.Fatal(err)
+	}
+	result["profiles"].([]any)[0].(map[string]any)["exit_code"] = float64(2)
+	if err := os.WriteFile(resultPath, marshalJSONValue(t, result), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func makeDefaultStatisticsNonJSON(t *testing.T, root string) {
