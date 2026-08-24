@@ -4716,7 +4716,7 @@ through the shared control-flow graph, consumes proven parameter and receiver cl
 reports only when every reaching state is closed.
 
 - Default severity: `warn`
-- Presets: `suspicious`
+- Presets: `nursery`
 - Minimum Go: `1.25`
 - Analysis tier: control flow
 - Node interests: none
@@ -4754,8 +4754,9 @@ None.
   outer receiver remain unknown.
 - Deferred close calls do not close the resource at registration time and therefore do not affect
   later statements in the same function.
-- The rule remains suspicious because a conventional Close method does not standardize every
-  concrete resource's post-close behavior.
+- The rule remains in nursery because a conventional Close method does not standardize every
+  concrete resource's post-close behavior, and intentional closed-state contract tests are
+  indistinguishable from defective uses without stronger semantic evidence.
 
 ### Example: Do not read a file after closing it
 

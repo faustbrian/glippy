@@ -101,7 +101,7 @@ Omitting `lint.profile`, `lint.preset`, and `lint.presets` MUST select the
 `http-response-body-not-closed`, `identical-branches`,
 `ignored-append-result`, `ineffective-value-receiver-assignment`,
 `nil-error-wrap`, `nilness`, `overwritten-error`,
-`resource-used-after-close`, `shadowed-error`, `subsumed-condition`,
+`shadowed-error`, `subsumed-condition`,
 `suspicious-range`, `suspicious-string-conversion`, `time-duration-unit`,
 `typed-nil-error-return`, `unchecked-rows-error`, and `unchecked-scanner-error`.
 

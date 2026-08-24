@@ -2633,3 +2633,16 @@ result remain unproven and outside the milestone. No v0.5 tag or release was
 created. The complete product goal remains active, and publication remains
 prohibited until the product is genuinely ready and the maintainer has reviewed
 it and explicitly authorizes publication.
+
+The v0.6 `resource-used-after-close` profile-calibration batch responds to five
+adjudicated recommended findings across containerd and gRPC-Go. All five are
+intentional closed-state contract tests and none is a true positive. The rule
+therefore moves from `suspicious` to `nursery` and leaves the curated
+`recommended` profile; an explicit nursery preset or exact rule override still
+runs the unchanged analyzer. A focused configuration-to-analysis regression
+proves that `default`, `recommended`, `strict`, and `pedantic` do not select the
+rule while nursery and explicit selection do. This removes the demonstrated
+profile noise without hiding all test-file findings or matching assertion
+libraries. The exact external corpus must rerun at the resulting pushed
+revision, and the remaining repositories still require complete adjudication,
+so stable-v1 progress remains 55% inside v0.6.

@@ -282,7 +282,7 @@ Unknown helper-managed transitions, indexed receivers, and intentional
 cross-function lock handoff remain conservative boundaries.
 
 The state-transition track now also admits `resource-used-after-close` as an
-opt-in suspicious rule. It follows locally acquired `Close() error` results,
+opt-in nursery rule. It follows locally acquired `Close() error` results,
 reports curated direct operations only when every reaching CFG state is proven
 closed, and consumes exact selected local-source module or configured close
 effects on parameters and direct receivers. Proven

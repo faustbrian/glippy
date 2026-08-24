@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/config"
 	"github.com/faustbrian/glippy/internal/contracts"
 	"github.com/faustbrian/glippy/internal/rulecatalog"
 	"github.com/faustbrian/glippy/internal/rules"
@@ -453,6 +454,87 @@ func stateful() {
 	}
 }
 
+func TestResourceUsedAfterCloseRequiresNurseryOrExplicitEnablement(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+type readCloser interface {
+	Close() error
+	Read([]byte) (int, error)
+}
+
+type contractReader struct { closed bool }
+
+func open() readCloser { return &contractReader{} }
+func (reader *contractReader) Close() error { reader.closed = true; return nil }
+func (reader *contractReader) Read([]byte) (int, error) {
+	if reader.closed { return 0, nil }
+	return 1, nil
+}
+
+func verifyClosedState() {
+	reader := open()
+	_ = reader.Close()
+	_, _ = reader.Read(nil)
+}
+`
+	tests := []struct {
+		name string
+		configuration string
+		wantDiagnostics int
+	}{
+		{name: "default", configuration: "version = 1\n"},
+		{
+			name: "recommended",
+			configuration: "version = 1\n[lint]\nprofile = \"recommended\"\n",
+		},
+		{name: "strict", configuration: "version = 1\n[lint]\nprofile = \"strict\"\n"},
+		{name: "pedantic", configuration: "version = 1\n[lint]\nprofile = \"pedantic\"\n"},
+		{
+			name: "nursery",
+			configuration: "version = 1\n[lint]\npresets = [\"nursery\"]\n" +
+				"[lint.rules]\nself-assignment = \"warn\"\n",
+			wantDiagnostics: 1,
+		},
+		{
+			name: "explicit",
+			configuration: "version = 1\n[lint]\npresets = []\n" +
+				"[lint.rules]\nresource-used-after-close = \"warn\"\n",
+			wantDiagnostics: 1,
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				result := runResourceUsedAfterClosePolicy(
+					t,
+					input,
+					test.configuration,
+				)
+				if len(result.Files) != 1 {
+					t.Fatalf(
+						"%s profile files = %d, want 1",
+						test.name,
+						len(result.Files),
+					)
+				}
+				if got := len(result.Files[0].Diagnostics);
+					got != test.wantDiagnostics {
+					t.Fatalf(
+						"%s profile diagnostics = %d, want %d",
+						test.name,
+						got,
+						test.wantDiagnostics,
+					)
+				}
+			},
+		)
+	}
+}
+
 func TestResourceUsedAfterCloseStopsTrackingAfterProjectTransfer(t *testing.T) {
 	t.Parallel()
 
@@ -507,7 +589,7 @@ func TestResourceUsedAfterCloseMetadataAndEligibility(t *testing.T) {
 	metadata, found := registry.Metadata("resource-used-after-close")
 	if !found ||
 		metadata.DefaultSeverity != rules.SeverityWarn ||
-		!reflect.DeepEqual(metadata.Presets, []rules.Preset{rules.PresetSuspicious}) ||
+		!reflect.DeepEqual(metadata.Presets, []rules.Preset{rules.PresetNursery}) ||
 		metadata.Requirement != rules.RequireControlFlow ||
 		!metadata.RequiresEffectFacts ||
 		len(metadata.NodeInterests) != 0 ||
@@ -660,6 +742,56 @@ func runResourceUsedAfterClose(
 			Patterns: []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
 			Contracts: contractSet,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func runResourceUsedAfterClosePolicy(
+	t testing.TB,
+	input string,
+	configuration string,
+) analysis.PackageResult {
+	t.Helper()
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/resourceusepolicy\n\ngo 1.25.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	configured, err := config.Parse(
+		filepath.Join(root, ".glippy.toml"),
+		[]byte(configuration),
+		config.ParseOptions{
+			KnownRules: registry.IDs(),
+			RuleOptions: registry.OptionSchemas(),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Profile: configured.Lint.Profile,
+			ProfileRules: configured.Lint.ProfileRules,
+			Presets: configured.Lint.Presets,
+			Overrides: configured.Lint.Rules,
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
 		},
 	)
 	if err != nil {

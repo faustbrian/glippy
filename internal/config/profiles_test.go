@@ -48,7 +48,6 @@ func TestParseResolvesCuratedLintProfiles(t *testing.T) {
 				"nil-error-wrap",
 				"nilness",
 				"overwritten-error",
-				"resource-used-after-close",
 				"shadowed-error",
 				"subsumed-condition",
 				"suspicious-range",

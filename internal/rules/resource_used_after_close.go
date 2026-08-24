@@ -99,7 +99,7 @@ func (resourceUsedAfterCloseRule) Metadata() Metadata {
 		Summary: "detects direct operations on definitely closed local resources",
 		Documentation: "Calling an operational method after a resource has definitely been closed usually returns a closed-handle error, loses work, or panics. The rule follows locally acquired Close() error values through the shared control-flow graph, consumes proven parameter and receiver close effects, and reports only when every reaching state is closed.",
 		DefaultSeverity: SeverityWarn,
-		Presets: []Preset{PresetSuspicious},
+		Presets: []Preset{PresetNursery},
 		MinimumGoVersion: "1.25",
 		Requirement: RequireControlFlow,
 		RequiresEffectFacts: true,
@@ -112,7 +112,7 @@ func (resourceUsedAfterCloseRule) Metadata() Metadata {
 			"A statically resolved helper parameter or direct method receiver with a proven close effect establishes closed state; every other helper use becomes unknown because ownership borrowing does not prove resource state preservation.",
 			"Receiver effects require a direct method selection; dynamic dispatch and promoted methods on an outer receiver remain unknown.",
 			"Deferred close calls do not close the resource at registration time and therefore do not affect later statements in the same function.",
-			"The rule remains suspicious because a conventional Close method does not standardize every concrete resource's post-close behavior.",
+			"The rule remains in nursery because a conventional Close method does not standardize every concrete resource's post-close behavior, and intentional closed-state contract tests are indistinguishable from defective uses without stronger semantic evidence.",
 		},
 		Examples: []Example{
 			{

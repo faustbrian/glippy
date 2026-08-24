@@ -1,5 +1,9 @@
 # `resource-used-after-close` Rule Admission, 2026-08-16
 
+> Superseded by the
+> [v0.6 profile calibration](v0.6-resource-used-after-close-profile-calibration-2026-08-24.md),
+> which moves the rule to `nursery` after public-corpus adjudication.
+
 ## Decision
 
 Admit `resource-used-after-close` to the opt-in `suspicious` preset at warning
