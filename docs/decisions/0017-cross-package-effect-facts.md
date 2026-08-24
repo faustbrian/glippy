@@ -131,6 +131,11 @@ mutation, nested cleanup, helper calls, additional statements, unavailable
 source, and dynamic method identity remain ordinary resource lifecycle
 boundaries.
 
+The 2026-08-24 testing-skip provenance refinement advances the active schema
+and cache component to `native-effects-v14`. Exact selected-module wrappers
+around standard-library testing skips or Ginkgo `Skip` retain that provenance
+across independent package loads. Name-only lookalikes remain returning.
+
 ## Alternatives
 
 - Load the complete dependency syntax closure with `packages.NeedDeps`:

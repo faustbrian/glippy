@@ -6369,8 +6369,11 @@ None.
 - An exact testing FailNow, Fatal, or Fatalf call may also be followed by a final zero-value
   variable declaration and a return of only those variables without being reported; empty or
   initialized declarations, retained work, lookalikes, and result-free functions remain diagnostics.
-- Source retained after a direct testing Skip, Skipf, or SkipNow call is treated as an intentional
-  disabled-test body and is not reported.
+- Source retained after an exact testing Skip, Skipf, or SkipNow call, an exact Ginkgo Skip call, or
+  a proven selected local-source skip wrapper is treated as an intentional disabled-test body and is
+  not reported.
+- A built-in panic with the constant message "unreachable" after a proven no-return call is treated
+  as an intentional sentinel and is not reported.
 - Removal remains suggestion-only because comments and intentionally retained examples require
   review.
 

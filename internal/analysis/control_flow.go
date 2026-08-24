@@ -123,6 +123,7 @@ func RunControlFlow(
 			}
 			graph := noReturns.graphFor(function.function, function.body, pkg.TypesInfo)
 			callMayReturn := noReturns.mayReturn(pkg.TypesInfo)
+			callIsTestingSkip := noReturns.isTestingSkipCall(pkg.TypesInfo)
 			shared := rules.NewControlFlowShared()
 			if err := ctx.Err(); err != nil {
 				return nil, err
@@ -135,6 +136,7 @@ func RunControlFlow(
 					graph,
 					effects,
 					callMayReturn,
+					callIsTestingSkip,
 					shared,
 				)
 				ruleStarted := beginStatisticsMeasurement(statistics)

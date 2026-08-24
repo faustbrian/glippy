@@ -15,7 +15,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const nativeEffectFactSchemaVersion = 13
+const nativeEffectFactSchemaVersion = 14
 
 type returnStateKey struct {
 	value int
@@ -31,6 +31,7 @@ type returnAliasKey struct {
 // stable identities survive independent package loads.
 type nativeEffectFacts struct {
 	noReturns map[string]struct{}
+	testingSkips map[string]struct{}
 	parameters map[string]map[int]rules.ParameterEffectSummary
 	receivers map[string]rules.ParameterEffectSummary
 	noOpCloses map[string]struct{}
@@ -45,6 +46,7 @@ type nativeEffectFacts struct {
 func newNativeEffectFacts() *nativeEffectFacts {
 	return &nativeEffectFacts{
 		noReturns: make(map[string]struct{}),
+		testingSkips: make(map[string]struct{}),
 		parameters: make(map[string]map[int]rules.ParameterEffectSummary),
 		receivers: make(map[string]rules.ParameterEffectSummary),
 		noOpCloses: make(map[string]struct{}),
@@ -64,6 +66,9 @@ func cloneNativeEffectFacts(facts *nativeEffectFacts) *nativeEffectFacts {
 	}
 	for identity := range facts.noReturns {
 		result.noReturns[identity] = struct{}{}
+	}
+	for identity := range facts.testingSkips {
+		result.testingSkips[identity] = struct{}{}
 	}
 	for identity, parameters := range facts.parameters {
 		cloned := make(map[int]rules.ParameterEffectSummary, len(parameters))
@@ -146,6 +151,14 @@ func (f *nativeEffectFacts) noReturn(function *types.Func) bool {
 		return false
 	}
 	_, found := f.noReturns[stableFunctionIdentity(function)]
+	return found
+}
+
+func (f *nativeEffectFacts) testingSkip(function *types.Func) bool {
+	if f == nil {
+		return false
+	}
+	_, found := f.testingSkips[stableFunctionIdentity(function)]
 	return found
 }
 
@@ -326,11 +339,28 @@ func (f *nativeEffectFacts) addNoReturns(analysis *noReturnAnalysis) {
 	if f == nil || analysis == nil {
 		return
 	}
+	testingSkips := make(map[string]bool)
 	for function, definition := range analysis.definitions {
+		identity := stableFunctionIdentity(function)
+		if identity == "" {
+			continue
+		}
 		if definition != nil && definition.noReturn {
-			if identity := stableFunctionIdentity(function); identity != "" {
-				f.noReturns[identity] = struct{}{}
-			}
+			f.noReturns[identity] = struct{}{}
+			analysis.buildTestingSkip(definition)
+		}
+		candidate := definition != nil && definition.noReturn && definition.testingSkip
+		if existing, found := testingSkips[identity]; found {
+			testingSkips[identity] = existing && candidate
+		} else {
+			testingSkips[identity] = candidate
+		}
+	}
+	for identity, testingSkip := range testingSkips {
+		if testingSkip {
+			f.testingSkips[identity] = struct{}{}
+		} else {
+			delete(f.testingSkips, identity)
 		}
 	}
 }
@@ -554,6 +584,18 @@ func (f *nativeEffectFacts) digest() cache.Digest {
 		binary.BigEndian.PutUint64(version[:], uint64(len(identity)))
 		_, _ = digest.Write(version[:])
 		_, _ = digest.Write([]byte(identity))
+	}
+	testingSkips := make([]string, 0)
+	if f != nil {
+		testingSkips = make([]string, 0, len(f.testingSkips))
+		for identity := range f.testingSkips {
+			testingSkips = append(testingSkips, identity)
+		}
+	}
+	sort.Strings(testingSkips)
+	for _, identity := range testingSkips {
+		_, _ = digest.Write([]byte{13})
+		writeEffectIdentity(digest, version[:], identity)
 	}
 	type parameterRecord struct {
 		identity string

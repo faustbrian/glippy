@@ -767,6 +767,73 @@ func TestPrintfArgumentsUsesDependencyWrapperFacts(t *testing.T) {
 	}
 }
 
+func TestUnreachableCodeUsesImportedTestingSkipWrapperFacts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/skipwrapper\n\ngo 1.25.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "wrapped", "wrapped.go"),
+		`package wrapped
+
+import "testing"
+
+func Skip(t *testing.T) {
+	t.Skip("disabled test")
+	panic("unreachable")
+}
+`,
+	)
+	input := `package app
+
+import (
+	"testing"
+
+	"example.com/skipwrapper/wrapped"
+)
+
+func skipped(t *testing.T) {
+	wrapped.Skip(t)
+	println("intentionally retained test body")
+}
+`
+	path := filepath.Join(root, "app", "app.go")
+	writeFixture(t, path, input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"unreachable-code": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"./app"},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 ||
+		result.Files[0].Path != path ||
+		len(result.Files[0].Diagnostics) != 0 {
+		t.Fatalf("imported testing skip wrapper result = %#v", result)
+	}
+}
+
 func TestRemainingVetCompatibilityPackReportsDefects(t *testing.T) {
 	t.Parallel()
 
@@ -938,6 +1005,90 @@ func skipped(t *testing.T) {
 	println("intentionally retained test body")
 }
 
+func skipInternalf(t *testing.T, format string, args ...any) {
+	t.Skipf(format, args...)
+}
+
+func skipWrapper(t *testing.T, format string, args ...any) {
+	skipInternalf(t, format, args...)
+	panic("unreachable")
+}
+
+func skippedThroughWrapper(t *testing.T) {
+	skipWrapper(t, "disabled test")
+	println("intentionally retained wrapped test body")
+}
+
+func fatalWrapper(t *testing.T) {
+	t.Fatal("terminal")
+}
+
+func stoppedByFatalWrapper(t *testing.T) {
+	fatalWrapper(t)
+	println("after fatal wrapper")
+}
+
+func fatalThenSkipWrapper(t *testing.T) {
+	t.Fatal("terminal")
+	t.Skip("unreachable skip")
+}
+
+func stoppedByFatalThenSkipWrapper(t *testing.T) {
+	fatalThenSkipWrapper(t)
+	println("after fatal-then-skip wrapper")
+}
+
+func stop() {
+	panic("stop")
+}
+
+func stoppedWithSentinel() {
+	stop()
+	panic("unreachable")
+}
+
+func returnedBeforeSentinel() {
+	return
+	panic("unreachable")
+}
+
+func panickedBeforeSentinel() {
+	panic("stop")
+	panic("unreachable")
+}
+
+const branchUnreachable = "unreachable"
+
+func mixedBranchBeforeSentinel(condition bool) {
+	if condition {
+		stop()
+	} else {
+		return
+	}
+	panic(branchUnreachable)
+}
+
+func allNoReturnBranchesBeforeSentinel(condition bool) {
+	if condition {
+		stop()
+	} else {
+		stop()
+	}
+	panic("unreachable")
+}
+
+const switchUnreachable = "unreachable"
+
+func mixedSwitchBeforeSentinel(value int) {
+	switch value {
+	case 0:
+		stop()
+	default:
+		return
+	}
+	panic(switchUnreachable)
+}
+
 func requiredPanic(t *testing.T, ready <-chan int) int {
 	select {
 	case value := <-ready:
@@ -958,6 +1109,13 @@ func requiredPanic(t *testing.T, ready <-chan int) int {
 		"var _ = sideEffect()",
 		`println("dead literal")`,
 		"return",
+		`println("after fatal wrapper")`,
+		`t.Skip("unreachable skip")`,
+		`println("after fatal-then-skip wrapper")`,
+		`panic("unreachable")`,
+		`panic("unreachable")`,
+		"panic(branchUnreachable)",
+		"panic(switchUnreachable)",
 	}
 	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
 		t.Fatalf("unreachable-code CFG result = %#v", result)

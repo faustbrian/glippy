@@ -651,6 +651,7 @@ type ControlFlowContext struct {
 	graph *cfg.CFG
 	effects EffectFacts
 	callMayReturn func(*ast.CallExpr) bool
+	callIsTestingSkip func(*ast.CallExpr) bool
 	shared *ControlFlowShared
 }
 
@@ -943,6 +944,7 @@ func NewControlFlowContext(
 	graph *cfg.CFG,
 	effects EffectFacts,
 	callMayReturn func(*ast.CallExpr) bool,
+	callIsTestingSkip func(*ast.CallExpr) bool,
 	shared *ControlFlowShared,
 ) *ControlFlowContext {
 	return &ControlFlowContext{
@@ -952,6 +954,7 @@ func NewControlFlowContext(
 		graph: graph,
 		effects: effects,
 		callMayReturn: callMayReturn,
+		callIsTestingSkip: callIsTestingSkip,
 		shared: shared,
 	}
 }
@@ -988,6 +991,16 @@ func (c *ControlFlowContext) CallMayReturn(call *ast.CallExpr) bool {
 		return true
 	}
 	return c.callMayReturn(call)
+}
+
+// CallIsTestingSkip reports whether a statically resolved no-return call is a
+// direct testing skip or a selected local-source wrapper whose terminal paths
+// are testing skips. Unknown and dynamic calls conservatively return false.
+func (c *ControlFlowContext) CallIsTestingSkip(call *ast.CallExpr) bool {
+	if c == nil || c.callIsTestingSkip == nil || call == nil {
+		return false
+	}
+	return c.callIsTestingSkip(call)
 }
 
 // ParameterEffect returns the conservative summary for one argument of a

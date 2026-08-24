@@ -3,6 +3,7 @@ package rules
 import (
 	"fmt"
 	"go/ast"
+	"go/constant"
 	"go/token"
 	"go/types"
 
@@ -42,7 +43,8 @@ func (unreachableCodeRule) Metadata() Metadata {
 			"Same-module imported no-return helpers are recognized; dynamic calls, recursion without a proven terminal path, and helpers outside selected modules remain conservatively returning.",
 			"A direct return or built-in panic required for a value-returning function to satisfy Go's syntactic termination check after a proven helper call is not reported.",
 			"An exact testing FailNow, Fatal, or Fatalf call may also be followed by a final zero-value variable declaration and a return of only those variables without being reported; empty or initialized declarations, retained work, lookalikes, and result-free functions remain diagnostics.",
-			"Source retained after a direct testing Skip, Skipf, or SkipNow call is treated as an intentional disabled-test body and is not reported.",
+			"Source retained after an exact testing Skip, Skipf, or SkipNow call, an exact Ginkgo Skip call, or a proven selected local-source skip wrapper is treated as an intentional disabled-test body and is not reported.",
+			"A built-in panic with the constant message \"unreachable\" after a proven no-return call is treated as an intentional sentinel and is not reported.",
 			"Removal remains suggestion-only because comments and intentionally retained examples require review.",
 		},
 		Examples: []Example{
@@ -98,6 +100,7 @@ type unreachableWalker struct {
 	breakTarget ast.Stmt
 	reachable bool
 	requiresReturn bool
+	sentinelAfterNoReturn bool
 	hasResults bool
 }
 
@@ -192,16 +195,21 @@ func (w *unreachableWalker) walk(statement ast.Stmt) {
 	if labeled, ok := statement.(*ast.LabeledStmt); ok && w.gotos[labeled.Label.Name] {
 		w.reachable = true
 		w.requiresReturn = false
+		w.sentinelAfterNoReturn = false
 	}
 	if !w.reachable {
 		if _, empty := statement.(*ast.EmptyStmt); !empty {
 			if !w.requiresReturn ||
 				!w.hasResults ||
 				!isSyntacticReturnTerminator(w.ctx.Info(), statement) {
-				w.unreachable = append(w.unreachable, statement)
+				if !w.sentinelAfterNoReturn ||
+					!isUnreachableSentinelPanic(w.ctx.Info(), statement) {
+					w.unreachable = append(w.unreachable, statement)
+				}
 			}
 			w.reachable = true
 			w.requiresReturn = false
+			w.sentinelAfterNoReturn = false
 		}
 	}
 	switch statement := statement.(type) {
@@ -212,37 +220,52 @@ func (w *unreachableWalker) walk(statement ast.Stmt) {
 		case token.BREAK, token.CONTINUE, token.FALLTHROUGH, token.GOTO:
 			w.reachable = false
 			w.requiresReturn = false
+			w.sentinelAfterNoReturn = false
 		}
 	case *ast.ExprStmt:
 		call, _ := statement.X.(*ast.CallExpr)
-		if call != nil && !w.ctx.CallMayReturn(call) && !isTestingSkip(w.ctx.Info(), call) {
+		if call != nil &&
+			!w.ctx.CallMayReturn(call) &&
+			!isTestingSkip(w.ctx.Info(), call) &&
+			!w.ctx.CallIsTestingSkip(call) {
 			w.reachable = false
 			w.requiresReturn = !isBuiltinPanic(w.ctx.Info(), call)
+			w.sentinelAfterNoReturn = w.requiresReturn
 		}
 	case *ast.ForStmt:
 		w.walk(statement.Body)
 		w.reachable = statement.Cond != nil || w.breaks[statement]
 		w.requiresReturn = false
+		w.sentinelAfterNoReturn = false
 	case *ast.IfStmt:
 		w.walk(statement.Body)
 		if statement.Else == nil {
 			w.reachable = true
 			w.requiresReturn = false
+			w.sentinelAfterNoReturn = false
 			return
 		}
 		thenReaches := w.reachable
 		thenRequiresReturn := w.requiresReturn
+		thenSentinelAfterNoReturn := w.sentinelAfterNoReturn
 		w.reachable = true
 		w.requiresReturn = false
+		w.sentinelAfterNoReturn = false
 		w.walk(statement.Else)
-		w.reachable = w.reachable || thenReaches
+		elseReaches := w.reachable
+		elseSentinelAfterNoReturn := w.sentinelAfterNoReturn
+		w.reachable = elseReaches || thenReaches
 		w.requiresReturn = !w.reachable && (w.requiresReturn || thenRequiresReturn)
+		w.sentinelAfterNoReturn = !w.reachable &&
+			thenSentinelAfterNoReturn &&
+			elseSentinelAfterNoReturn
 	case *ast.LabeledStmt:
 		w.walk(statement.Stmt)
 	case *ast.RangeStmt:
 		w.walk(statement.Body)
 		w.reachable = true
 		w.requiresReturn = false
+		w.sentinelAfterNoReturn = false
 	case *ast.SelectStmt:
 		w.walkClauses(statement.Body.List, false, statement)
 	case *ast.SwitchStmt:
@@ -252,6 +275,7 @@ func (w *unreachableWalker) walk(statement ast.Stmt) {
 	case *ast.ReturnStmt:
 		w.reachable = false
 		w.requiresReturn = false
+		w.sentinelAfterNoReturn = false
 	}
 }
 
@@ -273,6 +297,21 @@ func isSyntacticReturnTerminator(info *types.Info, statement ast.Stmt) bool {
 	}
 	call, _ := expression.X.(*ast.CallExpr)
 	return isBuiltinPanic(info, call)
+}
+
+func isUnreachableSentinelPanic(info *types.Info, statement ast.Stmt) bool {
+	expression, _ := statement.(*ast.ExprStmt)
+	if expression == nil {
+		return false
+	}
+	call, _ := expression.X.(*ast.CallExpr)
+	if !isBuiltinPanic(info, call) || len(call.Args) != 1 || info == nil {
+		return false
+	}
+	value := info.Types[call.Args[0]].Value
+	return value != nil &&
+		value.Kind() == constant.String &&
+		constant.StringVal(value) == "unreachable"
 }
 
 func isTestingSkip(info *types.Info, call *ast.CallExpr) bool {
@@ -301,6 +340,7 @@ func (w *unreachableWalker) walkList(statements []ast.Stmt) {
 		}
 		index += 2
 		w.requiresReturn = false
+		w.sentinelAfterNoReturn = false
 	}
 }
 
@@ -389,10 +429,12 @@ func (w *unreachableWalker) walkClauses(
 ) {
 	anyReaches := false
 	anyRequiresReturn := false
+	allSentinelAfterNoReturn := len(clauses) != 0
 	hasDefault := false
 	for _, clause := range clauses {
 		w.reachable = true
 		w.requiresReturn = false
+		w.sentinelAfterNoReturn = false
 		switch clause := clause.(type) {
 		case *ast.CaseClause:
 			hasDefault = hasDefault || clause.List == nil
@@ -403,7 +445,11 @@ func (w *unreachableWalker) walkClauses(
 		}
 		anyReaches = anyReaches || w.reachable
 		anyRequiresReturn = anyRequiresReturn || !w.reachable && w.requiresReturn
+		allSentinelAfterNoReturn = allSentinelAfterNoReturn &&
+			!w.reachable &&
+			w.sentinelAfterNoReturn
 	}
 	w.reachable = anyReaches || w.breaks[owner] || missingDefaultReturns && !hasDefault
 	w.requiresReturn = !w.reachable && anyRequiresReturn
+	w.sentinelAfterNoReturn = !w.reachable && allSentinelAfterNoReturn
 }

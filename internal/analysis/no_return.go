@@ -18,6 +18,9 @@ type noReturnDefinition struct {
 	graph *cfg.CFG
 	started bool
 	noReturn bool
+	testingSkipStarted bool
+	testingSkipBuilt bool
+	testingSkip bool
 }
 
 type noReturnAnalysis struct {
@@ -133,6 +136,9 @@ func isAuthoritativeNoReturn(function *types.Func) bool {
 	if function == nil || function.Pkg() == nil {
 		return false
 	}
+	if isAuthoritativeTestingSkip(function) {
+		return true
+	}
 	signature, _ := function.Type().(*types.Signature)
 	receiver := signature != nil && signature.Recv() != nil
 	switch function.Pkg().Path() {
@@ -159,6 +165,45 @@ func isAuthoritativeNoReturn(function *types.Func) bool {
 	return false
 }
 
+func isAuthoritativeTestingSkip(function *types.Func) bool {
+	if function == nil || function.Pkg() == nil {
+		return false
+	}
+	signature, _ := function.Type().(*types.Signature)
+	if signature == nil {
+		return false
+	}
+	switch function.Pkg().Path() {
+	case "testing":
+		if signature.Recv() == nil {
+			return false
+		}
+		switch function.Name() {
+		case "SkipNow", "Skip", "Skipf":
+			return true
+		}
+	case "github.com/onsi/ginkgo", "github.com/onsi/ginkgo/v2":
+		return signature.Recv() == nil && function.Name() == "Skip"
+	}
+	return false
+}
+
+func (a *noReturnAnalysis) testingSkip(function *types.Func) bool {
+	if isAuthoritativeTestingSkip(function) {
+		return true
+	}
+	if a.effects.testingSkip(function) {
+		return true
+	}
+	definition := a.definitions[function]
+	if definition == nil {
+		return false
+	}
+	a.build(definition)
+	a.buildTestingSkip(definition)
+	return definition.testingSkip
+}
+
 func (a *noReturnAnalysis) build(definition *noReturnDefinition) {
 	if definition == nil ||
 		definition.graph != nil ||
@@ -176,6 +221,49 @@ func (a *noReturnAnalysis) build(definition *noReturnDefinition) {
 	definition.noReturn = definition.graph.NoReturn()
 }
 
+func (a *noReturnAnalysis) buildTestingSkip(definition *noReturnDefinition) {
+	if definition == nil ||
+		definition.testingSkipBuilt ||
+		definition.testingSkipStarted ||
+		!definition.noReturn ||
+		a.ctx.Err() != nil ||
+		a.buildDepth >= maxNoReturnBuildDepth {
+		return
+	}
+	definition.testingSkipStarted = true
+	a.buildDepth++
+	defer func() {
+		a.buildDepth--
+		definition.testingSkipStarted = false
+		definition.testingSkipBuilt = true
+	}()
+	sawTestingSkip := false
+	for _, block := range definition.graph.Blocks {
+		if !block.Live || len(block.Succs) != 0 {
+			continue
+		}
+		call := terminalCall(block)
+		callee := typeutil.StaticCallee(definition.info, call)
+		if callee == nil || !a.testingSkip(callee) {
+			return
+		}
+		sawTestingSkip = true
+	}
+	definition.testingSkip = sawTestingSkip
+}
+
+func terminalCall(block *cfg.Block) *ast.CallExpr {
+	if block == nil || len(block.Nodes) == 0 {
+		return nil
+	}
+	expression, _ := block.Nodes[len(block.Nodes) - 1].(*ast.ExprStmt)
+	if expression == nil {
+		return nil
+	}
+	call, _ := expression.X.(*ast.CallExpr)
+	return call
+}
+
 func (a *noReturnAnalysis) mayReturn(info *types.Info) func(*ast.CallExpr) bool {
 	return func(call *ast.CallExpr) bool {
 		if isBuiltinPanicCall(info, call, a.panicObject) {
@@ -186,6 +274,16 @@ func (a *noReturnAnalysis) mayReturn(info *types.Info) func(*ast.CallExpr) bool 
 			return true
 		}
 		return !a.noReturn(callee)
+	}
+}
+
+func (a *noReturnAnalysis) isTestingSkipCall(info *types.Info) func(*ast.CallExpr) bool {
+	return func(call *ast.CallExpr) bool {
+		if call == nil {
+			return false
+		}
+		callee := typeutil.StaticCallee(info, call)
+		return callee != nil && a.testingSkip(callee)
 	}
 }
 

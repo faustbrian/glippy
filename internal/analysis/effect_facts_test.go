@@ -26,15 +26,89 @@ func TestNativeEffectFactsUseStableCrossLoadFunctionIdentity(t *testing.T) {
 	}
 }
 
+func TestNativeTestingSkipFactsUseStableCrossLoadFunctionIdentity(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestFunction("example.com/project/terminate", "Skip")
+	second := effectTestFunction("example.com/project/terminate", "Skip")
+	other := effectTestFunction("example.com/project/terminate", "Stop")
+	facts := newNativeEffectFacts()
+	facts.testingSkips[stableFunctionIdentity(first)] = struct{}{}
+	if !facts.testingSkip(second) {
+		t.Fatal("testing-skip effect fact did not survive an independent type identity")
+	}
+	if facts.testingSkip(other) {
+		t.Fatal("testing-skip effect fact matched another function")
+	}
+	if !cloneNativeEffectFacts(facts).testingSkip(second) {
+		t.Fatal("testing-skip effect fact did not survive cloning")
+	}
+}
+
+func TestTestingSkipFactsIntersectPackageVariants(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestFunction("example.com/project/terminate", "Skip")
+	second := effectTestFunction("example.com/project/terminate", "Skip")
+	analysis := &noReturnAnalysis{
+		definitions: map[*types.Func]*noReturnDefinition{
+			first: {noReturn: true, testingSkipBuilt: true, testingSkip: true},
+			second: {noReturn: true, testingSkipBuilt: true},
+		},
+	}
+	facts := newNativeEffectFacts()
+	facts.addNoReturns(analysis)
+	if facts.testingSkip(first) {
+		t.Fatal("testing-skip fact survived a disagreeing package variant")
+	}
+
+	analysis.definitions[second].testingSkip = true
+	facts = newNativeEffectFacts()
+	facts.addNoReturns(analysis)
+	if !facts.testingSkip(first) {
+		t.Fatal("testing-skip fact was lost across agreeing package variants")
+	}
+}
+
+func TestGinkgoSkipIsAnAuthoritativeTestingTermination(t *testing.T) {
+	t.Parallel()
+
+	for _, packagePath := range
+		[]string{"github.com/onsi/ginkgo", "github.com/onsi/ginkgo/v2"} {
+		skip := effectTestFunction(packagePath, "Skip")
+		if !isAuthoritativeNoReturn(skip) || !isAuthoritativeTestingSkip(skip) {
+			t.Fatalf(
+				"%s.Skip was not classified as an authoritative testing termination",
+				packagePath,
+			)
+		}
+		lookalike := effectTestFunction(packagePath, "Skipf")
+		if isAuthoritativeNoReturn(lookalike) || isAuthoritativeTestingSkip(lookalike) {
+			t.Fatalf(
+				"%s.Skipf was classified as an authoritative testing termination",
+				packagePath,
+			)
+		}
+	}
+	other := effectTestFunction("example.com/ginkgo", "Skip")
+	if isAuthoritativeNoReturn(other) || isAuthoritativeTestingSkip(other) {
+		t.Fatal("non-Ginkgo Skip was classified as an authoritative testing termination")
+	}
+}
+
 func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	t.Parallel()
 
 	first := newNativeEffectFacts()
 	first.noReturns["z"] = struct{}{}
 	first.noReturns["a"] = struct{}{}
+	first.testingSkips["z-skip"] = struct{}{}
+	first.testingSkips["a-skip"] = struct{}{}
 	second := newNativeEffectFacts()
 	second.noReturns["a"] = struct{}{}
 	second.noReturns["z"] = struct{}{}
+	second.testingSkips["a-skip"] = struct{}{}
+	second.testingSkips["z-skip"] = struct{}{}
 	first.parameters["function"] = map[int]rules.ParameterEffectSummary{
 		1: {
 			Known: true,
@@ -84,6 +158,11 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	}
 	if first.digest() == changed.digest() {
 		t.Fatal("effect fact digest ignored a summary change")
+	}
+	changed = cloneNativeEffectFacts(first)
+	delete(changed.testingSkips, "a-skip")
+	if first.digest() == changed.digest() {
+		t.Fatal("effect fact digest ignored a testing-skip change")
 	}
 	changed = cloneNativeEffectFacts(first)
 	changed.parameters["function"][1] = rules.ParameterEffectSummary{
