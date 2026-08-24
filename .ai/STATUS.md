@@ -2795,3 +2795,22 @@ therefore needs no precision correction or default-rule candidate from this
 run. The exact corpus must rerun on the latest candidate and the remaining
 repositories still require complete adjudication, so stable-v1 progress remains
 55% inside v0.6.
+
+The v0.6 sqlc adjudication for pinned run `32698988231`, Glippy revision
+`7840a0c`, and sqlc revision
+`99a7d7d0c7b913ded6a60a9d038ece99dcdf7892` classifies all three recommended
+findings as actionable `unchecked-scanner-error` defects and none as noisy. One
+command helper and two migration filters can return normally with partial input
+after an oversized or failed scan. Default remains clean; strict reports 392
+findings and pedantic 441. All profiles completed across the cgo,
+generated-source, generator, and database selection. Go vet reports nothing.
+Staticcheck reports migration, generated-code, simplification, style, dead-code,
+and one general ineffective-assignment finding. The latter computes a
+ClickHouse parameter name and fallback that the returned node never consumes.
+Together with the independent NATS `SA4006` occurrence, it establishes the
+first aggregate v0.6 missed-defect queue entry for a separately admitted
+SSA-backed ineffective-assignment rule. It does not justify broadening the
+error-only `overwritten-error` rule or default-enabling a new rule without a
+precision contract. The exact corpus must rerun on the latest candidate and
+the remaining repositories still require complete adjudication, so stable-v1
+progress remains 55% inside v0.6.
