@@ -2727,3 +2727,20 @@ complete unreachable-code regressions, affected package tests, vet, and the
 generated rule-document check pass. The exact corpus must rerun after this
 precision correction, and the remaining repositories still require complete
 adjudication, so stable-v1 progress remains 55% inside v0.6.
+
+The complete v0.6 Moby adjudication for pinned run `32698988231`, Glippy
+revision `7840a0c`, and Moby revision
+`b612274c5489b546ff8b4a4f93f25a0b8952713a` classifies all 31 default and
+recommended findings. Twenty-four are actionable: three context-cancellation
+leaks, eleven writer finalization errors, one unclosed HTTP response body, and
+nine unobserved scanner terminal errors. The scanner cases can accept partial
+data, hide the root scan error behind a generic failure or delayed timeout, or
+silently skip the assertion that made the scan necessary. The seven remaining
+findings are the writer false positives corrected in `ec579af`. Go vet reports
+nothing. Staticcheck's additional results are dominated by intentional
+OpenTelemetry context assignments, an explicitly suppressed test mock,
+error-string style, dead-code policy, and migration deprecations; none
+establishes a missing default Glippy rule. No further Moby-specific precision
+change is required. The exact corpus must rerun on the latest candidate and
+the remaining repositories still require complete adjudication, so stable-v1
+progress remains 55% inside v0.6.
