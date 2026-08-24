@@ -42,7 +42,7 @@ func (unreachableCodeRule) Metadata() Metadata {
 			"The control-flow walk reports the first unreachable statement in each contiguous lexical region.",
 			"Same-module imported no-return helpers are recognized; dynamic calls, recursion without a proven terminal path, and helpers outside selected modules remain conservatively returning.",
 			"A direct return or built-in panic required for a value-returning function to satisfy Go's syntactic termination check after a proven helper call is not reported.",
-			"An exact testing FailNow, Fatal, or Fatalf call may also be followed by a final zero-value variable declaration and a return of only those variables without being reported; empty or initialized declarations, retained work, lookalikes, and result-free functions remain diagnostics.",
+			"An exact testing FailNow, Fatal, or Fatalf call may also be followed by a final direct return, or in a value-returning function by one zero-value variable declaration and a return of only those variables, without being reported; empty or initialized declarations, retained work, and lookalikes remain diagnostics.",
 			"Source retained after an exact testing Skip, Skipf, or SkipNow call, an exact Ginkgo Skip call, or a proven selected local-source skip wrapper is treated as an intentional disabled-test body and is not reported.",
 			"A built-in panic with the constant message \"unreachable\" after a proven no-return call is treated as an intentional sentinel and is not reported.",
 			"Removal remains suggestion-only because comments and intentionally retained examples require review.",
@@ -333,15 +333,31 @@ func (w *unreachableWalker) walkList(statements []ast.Stmt) {
 		w.walk(statement)
 		if w.reachable ||
 			!w.requiresReturn ||
-			!w.hasResults ||
-			!isTestingTerminationStatement(w.ctx.Info(), statement) ||
-			!isZeroReturnShim(w.ctx.Info(), statements[index + 1:]) {
+			!isTestingTerminationStatement(w.ctx.Info(), statement) {
+			continue
+		}
+		remaining := statements[index + 1:]
+		if isDirectReturnShim(remaining) {
+			index++
+			w.requiresReturn = false
+			w.sentinelAfterNoReturn = false
+			continue
+		}
+		if !w.hasResults || !isZeroReturnShim(w.ctx.Info(), remaining) {
 			continue
 		}
 		index += 2
 		w.requiresReturn = false
 		w.sentinelAfterNoReturn = false
 	}
+}
+
+func isDirectReturnShim(statements []ast.Stmt) bool {
+	if len(statements) != 1 {
+		return false
+	}
+	return_, _ := statements[0].(*ast.ReturnStmt)
+	return return_ != nil && len(return_.Results) == 0
 }
 
 func isTestingTerminationStatement(info *types.Info, statement ast.Stmt) bool {

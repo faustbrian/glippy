@@ -2705,3 +2705,25 @@ findings are actionable under the recorded rule contracts. The exact external
 corpus must rerun at the resulting pushed revision, and Moby's recommended
 findings plus the remaining repositories still require complete adjudication,
 so stable-v1 progress remains 55% inside v0.6.
+
+The v0.6 NATS adjudication at pinned corpus run `32698988231`, Glippy revision
+`7840a0c`, and NATS revision
+`1787eee035cf0253c201fa0f05afad92b6f296dc` classifies all 21 default and
+recommended findings: 15 are actionable and six are intentional or noisy. The
+actionable set contains seven discarded writer finalization errors, one
+genuinely unreachable WAL-compaction assertion, and seven duplicated, stale,
+or tautological nilness conditions. Two default `unreachable-code` findings
+are final direct returns immediately after exact `testing.T.Fatalf` calls. The
+rule now accepts only a result-free direct return that is the sole remaining
+statement after exact `testing.FailNow`, `Fatal`, or `Fatalf`; retained work,
+nonfinal returns, lookalikes, and other no-return helpers still report. Existing
+value-returning syntactic-shim behavior remains unchanged. Four recommended
+nilness findings are deliberate callee-contract or loop-postcondition
+assertions and remain recorded evidence rather than receiving a broad test-file
+exception that would hide genuine NATS defects. Go vet reports nothing;
+Staticcheck separately reports one ineffective assignment, migration
+deprecations, and one always-true defensive no-return check. Focused and
+complete unreachable-code regressions, affected package tests, vet, and the
+generated rule-document check pass. The exact corpus must rerun after this
+precision correction, and the remaining repositories still require complete
+adjudication, so stable-v1 progress remains 55% inside v0.6.

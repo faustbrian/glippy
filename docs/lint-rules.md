@@ -6386,9 +6386,10 @@ None.
   terminal path, and helpers outside selected modules remain conservatively returning.
 - A direct return or built-in panic required for a value-returning function to satisfy Go's
   syntactic termination check after a proven helper call is not reported.
-- An exact testing FailNow, Fatal, or Fatalf call may also be followed by a final zero-value
-  variable declaration and a return of only those variables without being reported; empty or
-  initialized declarations, retained work, lookalikes, and result-free functions remain diagnostics.
+- An exact testing FailNow, Fatal, or Fatalf call may also be followed by a final direct return, or
+  in a value-returning function by one zero-value variable declaration and a return of only those
+  variables, without being reported; empty or initialized declarations, retained work, and
+  lookalikes remain diagnostics.
 - Source retained after an exact testing Skip, Skipf, or SkipNow call, an exact Ginkgo Skip call, or
   a proven selected local-source skip wrapper is treated as an intentional disabled-test body and is
   not reported.

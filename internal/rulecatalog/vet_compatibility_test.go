@@ -1182,7 +1182,6 @@ func requiredPanic(t *testing.T, ready <-chan int) int {
 		`println("between goto and label")`,
 		"var _ = sideEffect()",
 		`println("dead literal")`,
-		"return",
 		`println("after fatal wrapper")`,
 		`t.Skip("unreachable skip")`,
 		`println("after fatal-then-skip wrapper")`,
@@ -1318,6 +1317,55 @@ func emptyDeclaration(t *testing.T) (zero int) {
 	}
 	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
 		t.Fatalf("unreachable-code zero return shims = %#v", result)
+	}
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		if diagnostic.Range.Start < 0 ||
+			diagnostic.Range.End > len(input) ||
+			string(input[diagnostic.Range.Start:diagnostic.Range.End]) != want[index] {
+			t.Fatalf(
+				"unreachable-code diagnostic[%d] = %#v, want %q",
+				index,
+				diagnostic,
+				want[index],
+			)
+		}
+	}
+}
+
+func TestUnreachableCodeAcceptsTestingDirectReturnShims(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "testing"
+
+func direct(t *testing.T) {
+	t.Fatalf("terminal: %s", "now")
+	return
+}
+
+func retainedWork(t *testing.T) {
+	t.Fatal("terminal")
+	return
+	println("still dead")
+}
+
+type fatalLookalike struct{}
+
+func (fatalLookalike) Fatal(string) { panic("terminal") }
+
+func lookalike(fatal fatalLookalike) {
+	fatal.Fatal("terminal")
+	return
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"unreachable-code"})
+	if len(result.LoadDiagnostics) != 0 {
+		t.Fatalf("testing direct return shim failed to load: %#v", result.LoadDiagnostics)
+	}
+	want := []string{"return", `println("still dead")`, "return"}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
+		t.Fatalf("unreachable-code direct return shims = %#v", result)
 	}
 	for index, diagnostic := range result.Files[0].Diagnostics {
 		if diagnostic.Range.Start < 0 ||
