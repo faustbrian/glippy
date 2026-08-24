@@ -383,6 +383,137 @@ func TestNilContextCanIncludeTestFiles(t *testing.T) {
 	}
 }
 
+func TestNilContextAllowsSourceProvenOptionalPrivateParameters(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"context"
+
+	"example.com/nilcontextoptional/dep"
+)
+
+type optionalHolder struct{}
+
+type optionalContract interface {
+	optional(context.Context) context.Context
+}
+
+func (optionalHolder) optional(ctx context.Context) context.Context {
+	if ctx != nil {
+		_ = ctx.Err()
+	}
+	if ctx != nil {
+		_ = ctx.Done()
+	}
+	return ctx
+}
+
+func ExportedOptional(ctx context.Context) context.Context {
+	if ctx != nil {
+		_ = ctx.Err()
+	}
+	return ctx
+}
+
+func acceptsNil(ctx context.Context) {
+	if ctx == nil {
+		return
+	}
+	_ = ctx.Err()
+}
+
+func rejectsNil(ctx context.Context) {
+	if ctx == nil {
+		panic("nil context")
+	}
+}
+
+func rejectNil() { panic("nil context") }
+
+func rejectsNilIndirectly(ctx context.Context) {
+	if ctx == nil {
+		rejectNil()
+	}
+}
+
+func requiresContext(ctx context.Context) {
+	_ = ctx.Err()
+}
+
+func run() {
+	_ = (optionalHolder{}).optional(nil)
+	_ = ExportedOptional(nil)
+	acceptsNil(nil)
+	rejectsNil(nil)
+	rejectsNilIndirectly(nil)
+	requiresContext(nil)
+	var dynamic optionalContract = optionalHolder{}
+	_ = dynamic.optional(nil)
+	function := optionalHolder{}.optional
+	_ = function(nil)
+	_ = optionalHolder.optional(optionalHolder{}, nil)
+	dep.Accept(nil)
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/nilcontextoptional\n\ngo 1.25.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	writeFixture(
+		t,
+		filepath.Join(root, "dep", "dep.go"),
+		"package dep\n\nimport \"context\"\n\nfunc Accept(context.Context) {}\n",
+	)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"nil-context": rules.SeverityWarn},
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 8 {
+		t.Fatalf("nil-context optional result = %#v", result)
+	}
+	wantCalls := []string{
+		"ExportedOptional(nil)",
+		"rejectsNil(nil)",
+		"rejectsNilIndirectly(nil)",
+		"requiresContext(nil)",
+		"dynamic.optional(nil)",
+		"function(nil)",
+		"optionalHolder.optional(optionalHolder{}, nil)",
+		"dep.Accept(nil)",
+	}
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		wantStart := strings.Index(input, wantCalls[index]) +
+			strings.Index(wantCalls[index], "nil")
+		if diagnostic.RuleID != "nil-context" ||
+			diagnostic.Range.Start != wantStart ||
+			diagnostic.Range.End != wantStart + len("nil") {
+			t.Fatalf("nil-context optional diagnostic[%d] = %#v", index, diagnostic)
+		}
+	}
+}
+
 func TestExpandedStandardLibraryNativeRulesCoverSupportedCalls(t *testing.T) {
 	t.Parallel()
 

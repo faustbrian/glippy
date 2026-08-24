@@ -8,6 +8,8 @@ import (
 	"go/types"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/tools/go/types/typeutil"
 )
 
 type nilContextRule struct{}
@@ -57,6 +59,7 @@ func (nilContextRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"The initial rule reports the predeclared nil identifier passed directly to a context.Context parameter.",
 			"Nil contexts hidden behind interface values, variables, or helper returns require value-flow analysis and are not inferred.",
+			"A private package-local callee is excluded when its source proves that the selected parameter explicitly accepts nil without using it as a context.",
 			"Test files are excluded by default because invalid-input contract tests deliberately pass nil; include-tests enables them.",
 		},
 		Examples: []Example{
@@ -108,8 +111,10 @@ func (nilContextRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, err
 		if !isStandardContext(parameterType) {
 			continue
 		}
-		identifier, _ := ast.Unparen(argument).(*ast.Ident)
-		if identifier == nil || identifier.Name != "nil" {
+		if !predeclaredNil(ctx.Info(), argument) {
+			continue
+		}
+		if sourceProvesOptionalNilContext(ctx, call, parameterIndex) {
 			continue
 		}
 		range_, err := ctx.Range(argument)
@@ -127,6 +132,199 @@ func (nilContextRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, err
 		)
 	}
 	return findings, nil
+}
+
+type nilContextPath struct {
+	safe bool
+	fallthrough_ bool
+	explicit bool
+}
+
+func sourceProvesOptionalNilContext(
+	ctx *TypesContext,
+	call *ast.CallExpr,
+	parameterIndex int,
+) bool {
+	if ctx == nil || ctx.Info() == nil || ctx.PackageSyntax() == nil || parameterIndex < 0 {
+		return false
+	}
+	function := typeutil.StaticCallee(ctx.Info(), call)
+	if function == nil || function.Exported() || function.Pkg() != ctx.Package() {
+		return false
+	}
+	signature, _ := function.Type().(*types.Signature)
+	if signature == nil ||
+		signature.Params() == nil ||
+		parameterIndex >= signature.Params().Len() ||
+		(signature.Variadic() && parameterIndex == signature.Params().Len() - 1) {
+		return false
+	}
+	selector := directCallSelector(call.Fun)
+	if selection := ctx.Info().Selections[selector];
+		selection != nil && selection.Kind() == types.MethodExpr {
+		return false
+	}
+	declaration := functionDeclaration(ctx.Info(), ctx.PackageSyntax(), function)
+	if declaration == nil || declaration.Body == nil {
+		return false
+	}
+	result := nilContextStatements(
+		ctx.Info(),
+		declaration.Body.List,
+		signature.Params().At(parameterIndex),
+	)
+	return result.safe && result.explicit
+}
+
+func nilContextStatements(
+	info *types.Info,
+	statements []ast.Stmt,
+	parameter types.Object,
+) nilContextPath {
+	result := nilContextPath{safe: true, fallthrough_: true}
+	for _, statement := range statements {
+		if !result.fallthrough_ {
+			break
+		}
+		current := nilContextStatement(info, statement, parameter)
+		if !current.safe {
+			return nilContextPath{}
+		}
+		result.fallthrough_ = current.fallthrough_
+		result.explicit = result.explicit || current.explicit
+	}
+	return result
+}
+
+func nilContextStatement(
+	info *types.Info,
+	statement ast.Stmt,
+	parameter types.Object,
+) nilContextPath {
+	if statement == nil {
+		return nilContextPath{safe: true, fallthrough_: true}
+	}
+	switch current := statement.(type) {
+	case *ast.BlockStmt:
+		return nilContextStatements(info, current.List, parameter)
+	case *ast.EmptyStmt:
+		return nilContextPath{safe: true, fallthrough_: true}
+	case *ast.BranchStmt, *ast.LabeledStmt:
+		return nilContextPath{}
+	case *ast.ReturnStmt:
+		for _, result := range current.Results {
+			if !expressionUsesObject(info, result, parameter) {
+				continue
+			}
+			identifier, _ := ast.Unparen(result).(*ast.Ident)
+			if identifier == nil || info.ObjectOf(identifier) != parameter {
+				return nilContextPath{}
+			}
+		}
+		return nilContextPath{safe: true}
+	case *ast.IfStmt:
+		if current.Init != nil &&
+			(expressionUsesObject(info, current.Init, parameter) ||
+				containsBuiltinPanic(info, current.Init)) {
+			return nilContextPath{}
+		}
+		truth, known := nilContextCondition(info, current.Cond, parameter)
+		if known {
+			if current.Else != nil {
+				return nilContextPath{}
+			}
+			if !truth {
+				return nilContextPath{
+					safe: true,
+					fallthrough_: true,
+					explicit: true,
+				}
+			}
+			if len(current.Body.List) != 1 {
+				return nilContextPath{}
+			}
+			returned, _ := current.Body.List[0].(*ast.ReturnStmt)
+			if returned == nil {
+				return nilContextPath{}
+			}
+			result := nilContextStatement(info, returned, parameter)
+			result.explicit = result.safe
+			return result
+		}
+		if expressionUsesObject(info, current.Cond, parameter) ||
+			containsBuiltinPanic(info, current.Cond) {
+			return nilContextPath{}
+		}
+		body := nilContextStatement(info, current.Body, parameter)
+		otherwise := nilContextPath{safe: true, fallthrough_: true}
+		if current.Else != nil {
+			otherwise = nilContextStatement(info, current.Else, parameter)
+		}
+		if !body.safe || !otherwise.safe {
+			return nilContextPath{}
+		}
+		return nilContextPath{
+			safe: true,
+			fallthrough_: body.fallthrough_ || otherwise.fallthrough_,
+			explicit: body.explicit || otherwise.explicit,
+		}
+	default:
+		if expressionUsesObject(info, current, parameter) ||
+			containsBuiltinPanic(info, current) {
+			return nilContextPath{}
+		}
+		return nilContextPath{safe: true, fallthrough_: true}
+	}
+}
+
+func nilContextCondition(
+	info *types.Info,
+	expression ast.Expr,
+	parameter types.Object,
+) (bool, bool) {
+	binary, _ := ast.Unparen(expression).(*ast.BinaryExpr)
+	if binary == nil || (binary.Op != token.EQL && binary.Op != token.NEQ) {
+		return false, false
+	}
+	leftParameter := directObject(info, binary.X) == parameter
+	rightParameter := directObject(info, binary.Y) == parameter
+	leftNil := predeclaredNil(info, binary.X)
+	rightNil := predeclaredNil(info, binary.Y)
+	if !((leftParameter && rightNil) || (rightParameter && leftNil)) {
+		return false, false
+	}
+	return binary.Op == token.EQL, true
+}
+
+func predeclaredNil(info *types.Info, expression ast.Expr) bool {
+	identifier, _ := ast.Unparen(expression).(*ast.Ident)
+	return identifier != nil &&
+		identifier.Name == "nil" &&
+		info.ObjectOf(identifier) == types.Universe.Lookup("nil")
+}
+
+func containsBuiltinPanic(info *types.Info, node ast.Node) bool {
+	found := false
+	ast.Inspect(
+		node,
+		func(current ast.Node) bool {
+			if current == nil || found {
+				return false
+			}
+			call, _ := current.(*ast.CallExpr)
+			if call == nil {
+				return true
+			}
+			identifier, _ := ast.Unparen(call.Fun).(*ast.Ident)
+			builtin, _ := info.ObjectOf(identifier).(*types.Builtin)
+			if builtin != nil && builtin.Name() == "panic" {
+				found = true
+				return false
+			}
+			return true
+		},
+	)
+	return found
 }
 
 func isStandardContext(type_ types.Type) bool {

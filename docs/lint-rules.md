@@ -3685,6 +3685,8 @@ None.
   parameter.
 - Nil contexts hidden behind interface values, variables, or helper returns require value-flow
   analysis and are not inferred.
+- A private package-local callee is excluded when its source proves that the selected parameter
+  explicitly accepts nil without using it as a context.
 - Test files are excluded by default because invalid-input contract tests deliberately pass nil;
   include-tests enables them.
 
