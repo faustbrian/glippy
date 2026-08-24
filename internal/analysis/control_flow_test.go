@@ -827,6 +827,72 @@ func target() {}
 	}
 }
 
+func TestRunControlFlowTreatsNonCallNoReturnTerminalsAsNonTestingSkips(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/project\n\ngo 1.26.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "project.go"),
+		`package project
+
+func stop() { select {} }
+func inspect() { stop() }
+`,
+	)
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireControlFlow,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	observed := false
+	rule := controlFlowRule{
+		metadata: controlFlowMetadata("non-call-no-return-terminal"),
+		run: func(ctx *rules.ControlFlowContext) ([]rules.Finding, error) {
+			declaration, ok := ctx.Function().(*ast.FuncDecl)
+			if !ok || declaration.Name.Name != "inspect" {
+				return nil, nil
+			}
+			statement, _ := declaration.Body.List[0].(*ast.ExprStmt)
+			call, _ := statement.X.(*ast.CallExpr)
+			observed = true
+			if ctx.CallIsTestingSkip(call) {
+				t.Fatal(
+					"non-call no-return terminal was classified as a testing skip",
+				)
+			}
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunControlFlow(context.Background(), loaded, registry, selection);
+		err != nil {
+		t.Fatal(err)
+	}
+	if !observed {
+		t.Fatal("control-flow rule did not inspect the no-return call")
+	}
+}
+
 func TestRunControlFlowCancelsPackageNoReturnConstruction(t *testing.T) {
 	t.Parallel()
 

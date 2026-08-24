@@ -243,7 +243,7 @@ func (a *noReturnAnalysis) buildTestingSkip(definition *noReturnDefinition) {
 			continue
 		}
 		call := terminalCall(block)
-		callee := typeutil.StaticCallee(definition.info, call)
+		callee := staticCallee(definition.info, call)
 		if callee == nil || !a.testingSkip(callee) {
 			return
 		}
@@ -269,7 +269,7 @@ func (a *noReturnAnalysis) mayReturn(info *types.Info) func(*ast.CallExpr) bool 
 		if isBuiltinPanicCall(info, call, a.panicObject) {
 			return false
 		}
-		callee := typeutil.StaticCallee(info, call)
+		callee := staticCallee(info, call)
 		if callee == nil {
 			return true
 		}
@@ -279,12 +279,16 @@ func (a *noReturnAnalysis) mayReturn(info *types.Info) func(*ast.CallExpr) bool 
 
 func (a *noReturnAnalysis) isTestingSkipCall(info *types.Info) func(*ast.CallExpr) bool {
 	return func(call *ast.CallExpr) bool {
-		if call == nil {
-			return false
-		}
-		callee := typeutil.StaticCallee(info, call)
+		callee := staticCallee(info, call)
 		return callee != nil && a.testingSkip(callee)
 	}
+}
+
+func staticCallee(info *types.Info, call *ast.CallExpr) *types.Func {
+	if info == nil || info.Types == nil || info.Uses == nil || call == nil {
+		return nil
+	}
+	return typeutil.StaticCallee(info, call)
 }
 
 func isBuiltinPanicCall(info *types.Info, call *ast.CallExpr, panicObject types.Object) bool {
