@@ -89,6 +89,10 @@ decision and resource evidence are in
 
 - Glippy rule IDs, severities, preset membership, suppressions, baselines,
   generated-file policy, and source-version gates are product-owned contracts.
+- `standard-method-signature` remains an exact `stdmethods` adapter but is
+  pedantic rather than default correctness because a conventional method name
+  alone does not prove intent to implement the corresponding standard
+  interface.
 - `printf` uses the upstream default formatting-function set; Glippy does not
   expose `-printf.funcs`.
 - `unused-result` uses the upstream default function and string-method sets;

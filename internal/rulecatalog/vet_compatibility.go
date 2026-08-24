@@ -283,16 +283,16 @@ func standardMethodSignatureRule() (rules.Rule, error) {
 		rules.Metadata{
 			ID: "standard-method-signature",
 			Summary: "detects incorrect signatures for conventional standard methods",
-			Documentation: "A method named for a well-known standard interface can silently fail to implement that interface when its signature is slightly wrong. Dynamic interface checks then fail even though the method name communicates the opposite intent. Glippy adapts the standard Go stdmethods analyzer.",
+			Documentation: "A method intended to satisfy a well-known standard interface can silently fail dynamic interface checks when its signature is slightly wrong. Glippy adapts the standard Go stdmethods analyzer's name-based heuristic and exposes it through the pedantic profile because a conventional name alone does not prove that intent.",
 			DefaultSeverity: rules.SeverityWarn,
-			Presets: []rules.Preset{rules.PresetCorrectness},
+			Presets: []rules.Preset{rules.PresetPedantic},
 			MinimumGoVersion: "1.25",
 			Requirement: rules.RequireTypes,
 			NodeInterests: []rules.NodeKind{rules.NodeFile},
 			Categories: []rules.Category{rules.CategoryCorrectness},
 			KnownLimitations: []string{
 				"The rule covers the standard analyzer's fixed catalog of well-known interface method names and signatures.",
-				"Methods whose names are deliberately unrelated to the standard contract may require a narrow suppression.",
+				"A method name alone does not prove intent to implement the corresponding standard interface, so the rule remains pedantic and may require a narrow suppression for domain-specific methods.",
 			},
 			Examples: []rules.Example{
 				{

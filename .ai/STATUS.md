@@ -2665,3 +2665,17 @@ pointer-indirect field evaluation; the focused regression and complete
 Generated rule documentation is current. The exact external corpus must rerun
 at the resulting pushed revision, and remaining repositories still require
 complete adjudication, so stable-v1 progress remains 55% inside v0.6.
+
+The v0.6 `standard-method-signature` profile-calibration batch responds to 26
+unique default findings in the pinned Prometheus corpus. Every finding is the
+upstream `stdmethods` name-only heuristic applied to Prometheus's documented
+`Seek(int64) chunkenc.ValueType` iterator contract rather than an attempted
+`io.Seeker` implementation. The unchanged analyzer therefore moves from
+`correctness` to `pedantic`: `default`, `recommended`, and `strict` no longer
+select it, while `pedantic` and exact rule overrides retain its diagnostics.
+A configuration-to-analysis regression proves the profile boundary, the
+generated rule catalog is current, and the Go-vet compatibility documentation
+records the deliberate preset difference. The superseded exact corpus run
+`32691406468` was canceled because its candidate could not satisfy the v0.6
+signal gate. The complete corpus must restart at the resulting pushed revision,
+so stable-v1 progress remains 55% inside v0.6.

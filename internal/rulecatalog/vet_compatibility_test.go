@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/faustbrian/glippy/internal/analysis"
+	"github.com/faustbrian/glippy/internal/config"
 	"github.com/faustbrian/glippy/internal/rulecatalog"
 	"github.com/faustbrian/glippy/internal/rules"
 )
@@ -179,6 +180,71 @@ func failInTest(t *testing.T) {
 	)
 	if countPackageDiagnostics(result) != 0 {
 		t.Fatalf("valid vet compatibility result = %#v", result)
+	}
+}
+
+func TestStandardMethodSignatureRequiresPedanticOrExplicitEnablement(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+type ValueType uint8
+
+type Iterator interface {
+	Seek(int64) ValueType
+}
+
+type iterator struct{}
+
+func (iterator) Seek(int64) ValueType { return 0 }
+`
+	tests := []struct {
+		name string
+		configuration string
+		wantDiagnostics int
+	}{
+		{name: "default", configuration: "version = 1\n"},
+		{
+			name: "recommended",
+			configuration: "version = 1\n[lint]\nprofile = \"recommended\"\n",
+		},
+		{name: "strict", configuration: "version = 1\n[lint]\nprofile = \"strict\"\n"},
+		{
+			name: "pedantic",
+			configuration: "version = 1\n[lint]\nprofile = \"pedantic\"\n",
+			wantDiagnostics: 2,
+		},
+		{
+			name: "explicit",
+			configuration: "version = 1\n[lint]\npresets = []\n" +
+				"[lint.rules]\nstandard-method-signature = \"warn\"\n",
+			wantDiagnostics: 2,
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				result := runVetCompatibilityPolicy(t, input, test.configuration)
+				if len(result.Files) != 1 {
+					t.Fatalf(
+						"%s profile files = %d, want 1",
+						test.name,
+						len(result.Files),
+					)
+				}
+				if got := len(result.Files[0].Diagnostics);
+					got != test.wantDiagnostics {
+					t.Fatalf(
+						"%s profile diagnostics = %d, want %d",
+						test.name,
+						got,
+						test.wantDiagnostics,
+					)
+				}
+			},
+		)
 	}
 }
 
@@ -666,7 +732,6 @@ func TestInitialVetCompatibilityPackMetadata(t *testing.T) {
 		"invalid-struct-tag",
 		"invalid-unmarshal-target",
 		"printf-arguments",
-		"standard-method-signature",
 		"testing-goroutine-call",
 		"waitgroup-misuse",
 	}
@@ -695,6 +760,15 @@ func TestInitialVetCompatibilityPackMetadata(t *testing.T) {
 		) {
 			t.Fatalf("%s metadata = %#v", id, metadata)
 		}
+	}
+	standardMethod, found := registry.Metadata("standard-method-signature")
+	if !found ||
+		standardMethod.DefaultSeverity != rules.SeverityWarn ||
+		!reflect.DeepEqual(standardMethod.Presets, []rules.Preset{rules.PresetPedantic}) ||
+		standardMethod.MinimumGoVersion != "1.25" ||
+		standardMethod.Requirement != rules.RequireTypes ||
+		standardMethod.RunOnGenerated {
+		t.Fatalf("standard-method-signature metadata = %#v", standardMethod)
 	}
 	metadata, _ := registry.Metadata("printf-arguments")
 	if len(metadata.Fixes) != 1 ||
@@ -1610,6 +1684,56 @@ func runVetCompatibilityRules(t *testing.T, input string, ruleIDs []string) anal
 		analysis.RunOptions{
 			Presets: []rules.Preset{},
 			Overrides: overrides,
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func runVetCompatibilityPolicy(
+	t testing.TB,
+	input string,
+	configuration string,
+) analysis.PackageResult {
+	t.Helper()
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/vetpackpolicy\n\ngo 1.25.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	configured, err := config.Parse(
+		filepath.Join(root, ".glippy.toml"),
+		[]byte(configuration),
+		config.ParseOptions{
+			KnownRules: registry.IDs(),
+			RuleOptions: registry.OptionSchemas(),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Profile: configured.Lint.Profile,
+			ProfileRules: configured.Lint.ProfileRules,
+			Presets: configured.Lint.Presets,
+			Overrides: configured.Lint.Rules,
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{

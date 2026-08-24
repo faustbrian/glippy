@@ -1,6 +1,6 @@
 # `standard-method-signature` Rule Admission, 2026-08-14
 
-## Decision
+## Initial Decision
 
 Admit the Go `stdmethods` analyzer as warning-level `correctness`. A method
 named for a conventional standard interface but carrying the wrong signature
@@ -21,3 +21,10 @@ is offered because changing a method signature changes callers and method sets.
 A one-iteration package-load probe measured 177,530,333 ns on darwin/arm64.
 Non-mutating dogfood found no diagnostics across 178 Glippy files or 57 prompts
 files at `2c9842015ab62fd7790f0d99bf54855ffa7000f2`.
+
+## v0.6 Calibration
+
+The initial preset decision is superseded by the
+[v0.6 profile calibration](v0.6-standard-method-signature-profile-calibration-2026-08-24.md).
+The analyzer remains admitted and explicitly selectable, but broad pinned
+corpus evidence moves it from default correctness to pedantic.
