@@ -2779,3 +2779,19 @@ opt-in policy signals. OpenTelemetry-Go therefore needs no precision correction
 or default-rule candidate from this run. The exact corpus must rerun on the
 latest candidate and the remaining repositories still require complete
 adjudication, so stable-v1 progress remains 55% inside v0.6.
+
+The v0.6 etcd adjudication for pinned run `32698988231`, Glippy revision
+`7840a0c`, and etcd revision
+`c34dc7ee0048fd2bcc44d50beff002e5e8069b69` records zero default, zero
+recommended, 40 strict, and 41 pedantic findings. All profiles completed across
+the workspace and generated-source selection without a tool or source-state
+failure, so there are no default or recommended findings to classify. Go vet
+reports nothing. Staticcheck's sole `SA1019` finding is an explicitly suppressed
+deprecated protobuf import in the benchmark tool; it is accepted targeted
+migration debt rather than a missing default correctness rule. Strict reports
+34 discarded errors, three resource-lifetime findings, two excessive-nesting
+findings, and one loop defer; pedantic adds one redundant closure. etcd
+therefore needs no precision correction or default-rule candidate from this
+run. The exact corpus must rerun on the latest candidate and the remaining
+repositories still require complete adjudication, so stable-v1 progress remains
+55% inside v0.6.
