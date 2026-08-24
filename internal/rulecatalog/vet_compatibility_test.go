@@ -1381,6 +1381,126 @@ func lookalike(fatal fatalLookalike) {
 	}
 }
 
+func TestUnreachableCodeAcceptsTestingLoopControlShims(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import "testing"
+
+func direct(t *testing.T, values []int) {
+	for _, value := range values {
+		if value == 0 {
+			t.Fatalf("terminal: %d", value)
+			continue
+		}
+		if value == 1 {
+			t.Fatal("terminal")
+			break
+		}
+	}
+}
+
+func infiniteLoop(t *testing.T) {
+	for {
+		t.Fatal("terminal")
+		break
+	}
+	println("still dead after infinite loop")
+}
+
+func reachableBreak(t *testing.T, stop bool) {
+	for {
+		if stop {
+			break
+		}
+		t.Fatal("terminal")
+		break
+	}
+	println("reachable after real break")
+}
+
+func exhaustiveSwitch(t *testing.T, value int) {
+	switch value {
+	case 0:
+		t.Fatal("terminal")
+		break
+	default:
+		t.Fatal("terminal")
+		break
+	}
+	println("still dead after switch")
+}
+
+func exhaustiveSelect(t *testing.T, values <-chan int) {
+	select {
+	case <-values:
+		t.Fatal("terminal")
+		break
+	default:
+		t.Fatal("terminal")
+		break
+	}
+	println("still dead after select")
+}
+
+func retainedWork(t *testing.T, values []int) {
+	for range values {
+		t.Fatal("terminal")
+		continue
+		println("still dead")
+	}
+}
+
+type fatalLookalike struct{}
+
+func (fatalLookalike) Fatal(string) { panic("terminal") }
+
+func lookalike(fatal fatalLookalike, values []int) {
+	for range values {
+		fatal.Fatal("terminal")
+		break
+	}
+}
+
+func labeled(t *testing.T, values []int) {
+outer:
+	for range values {
+		t.Fatal("terminal")
+		break outer
+	}
+}
+`
+	result := runVetCompatibilityRules(t, input, []string{"unreachable-code"})
+	if len(result.LoadDiagnostics) != 0 {
+		t.Fatalf("testing loop-control shim failed to load: %#v", result.LoadDiagnostics)
+	}
+	want := []string{
+		`println("still dead after infinite loop")`,
+		`println("still dead after switch")`,
+		`println("still dead after select")`,
+		"continue",
+		`println("still dead")`,
+		"break",
+		"break outer",
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
+		t.Fatalf("unreachable-code loop-control shims = %#v", result)
+	}
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		if diagnostic.Range.Start < 0 ||
+			diagnostic.Range.End > len(input) ||
+			string(input[diagnostic.Range.Start:diagnostic.Range.End]) != want[index] {
+			t.Fatalf(
+				"unreachable-code diagnostic[%d] = %#v, want %q",
+				index,
+				diagnostic,
+				want[index],
+			)
+		}
+	}
+}
+
 func TestRemainingVetCompatibilityPackMetadata(t *testing.T) {
 	t.Parallel()
 

@@ -42,7 +42,7 @@ func (unreachableCodeRule) Metadata() Metadata {
 			"The control-flow walk reports the first unreachable statement in each contiguous lexical region.",
 			"Same-module imported no-return helpers are recognized; dynamic calls, recursion without a proven terminal path, and helpers outside selected modules remain conservatively returning.",
 			"A direct return or built-in panic required for a value-returning function to satisfy Go's syntactic termination check after a proven helper call is not reported.",
-			"An exact testing FailNow, Fatal, or Fatalf call may also be followed by a final direct return, or in a value-returning function by one zero-value variable declaration and a return of only those variables, without being reported; empty or initialized declarations, retained work, and lookalikes remain diagnostics.",
+			"An exact testing FailNow, Fatal, or Fatalf call may also be followed by a final bare return, an unlabeled break or continue, or in a value-returning function by one zero-value variable declaration and a return of only those variables, without being reported; labeled branches, empty or initialized declarations, retained work, and lookalikes remain diagnostics.",
 			"Source retained after an exact testing Skip, Skipf, or SkipNow call, an exact Ginkgo Skip call, or a proven selected local-source skip wrapper is treated as an intentional disabled-test body and is not reported.",
 			"A built-in panic with the constant message \"unreachable\" after a proven no-return call is treated as an intentional sentinel and is not reported.",
 			"Removal remains suggestion-only because comments and intentionally retained examples require review.",
@@ -94,7 +94,8 @@ func (unreachableCodeRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding, e
 type unreachableWalker struct {
 	ctx *ControlFlowContext
 	unreachable []ast.Stmt
-	breaks map[ast.Stmt]bool
+	breaks map[ast.Stmt]int
+	breakTargets map[*ast.BranchStmt]ast.Stmt
 	gotos map[string]bool
 	labels map[string]ast.Stmt
 	breakTarget ast.Stmt
@@ -108,7 +109,8 @@ func newUnreachableWalker(ctx *ControlFlowContext) *unreachableWalker {
 	return &unreachableWalker{
 		ctx: ctx,
 		unreachable: make([]ast.Stmt, 0),
-		breaks: make(map[ast.Stmt]bool),
+		breaks: make(map[ast.Stmt]int),
+		breakTargets: make(map[*ast.BranchStmt]ast.Stmt),
 		gotos: make(map[string]bool),
 		labels: make(map[string]ast.Stmt),
 		hasResults: functionHasResults(ctx.Function()),
@@ -176,7 +178,8 @@ func (w *unreachableWalker) discoverBranch(statement *ast.BranchStmt) {
 			target = w.labels[statement.Label.Name]
 		}
 		if target != nil {
-			w.breaks[target] = true
+			w.breaks[target]++
+			w.breakTargets[statement] = target
 		}
 	}
 }
@@ -234,7 +237,7 @@ func (w *unreachableWalker) walk(statement ast.Stmt) {
 		}
 	case *ast.ForStmt:
 		w.walk(statement.Body)
-		w.reachable = statement.Cond != nil || w.breaks[statement]
+		w.reachable = statement.Cond != nil || w.breaks[statement] != 0
 		w.requiresReturn = false
 		w.sentinelAfterNoReturn = false
 	case *ast.IfStmt:
@@ -337,7 +340,8 @@ func (w *unreachableWalker) walkList(statements []ast.Stmt) {
 			continue
 		}
 		remaining := statements[index + 1:]
-		if isDirectReturnShim(remaining) {
+		if isTestingTerminationShim(remaining) {
+			w.discardTestingTerminationBreak(remaining[0])
 			index++
 			w.requiresReturn = false
 			w.sentinelAfterNoReturn = false
@@ -352,12 +356,35 @@ func (w *unreachableWalker) walkList(statements []ast.Stmt) {
 	}
 }
 
-func isDirectReturnShim(statements []ast.Stmt) bool {
+func (w *unreachableWalker) discardTestingTerminationBreak(statement ast.Stmt) {
+	branch, _ := statement.(*ast.BranchStmt)
+	if branch == nil || branch.Tok != token.BREAK {
+		return
+	}
+	target := w.breakTargets[branch]
+	if target == nil {
+		return
+	}
+	if w.breaks[target] <= 1 {
+		delete(w.breaks, target)
+		return
+	}
+	w.breaks[target]--
+}
+
+func isTestingTerminationShim(statements []ast.Stmt) bool {
 	if len(statements) != 1 {
 		return false
 	}
-	return_, _ := statements[0].(*ast.ReturnStmt)
-	return return_ != nil && len(return_.Results) == 0
+	switch statement := statements[0].(type) {
+	case *ast.ReturnStmt:
+		return len(statement.Results) == 0
+	case *ast.BranchStmt:
+		return statement.Label == nil &&
+			(statement.Tok == token.BREAK || statement.Tok == token.CONTINUE)
+	default:
+		return false
+	}
 }
 
 func isTestingTerminationStatement(info *types.Info, statement ast.Stmt) bool {
@@ -465,7 +492,7 @@ func (w *unreachableWalker) walkClauses(
 			!w.reachable &&
 			w.sentinelAfterNoReturn
 	}
-	w.reachable = anyReaches || w.breaks[owner] || missingDefaultReturns && !hasDefault
+	w.reachable = anyReaches || w.breaks[owner] != 0 || missingDefaultReturns && !hasDefault
 	w.requiresReturn = !w.reachable && anyRequiresReturn
 	w.sentinelAfterNoReturn = !w.reachable && allSentinelAfterNoReturn
 }

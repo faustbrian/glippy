@@ -2744,3 +2744,23 @@ establishes a missing default Glippy rule. No further Moby-specific precision
 change is required. The exact corpus must rerun on the latest candidate and
 the remaining repositories still require complete adjudication, so stable-v1
 progress remains 55% inside v0.6.
+
+The v0.6 Caddy adjudication for pinned run `32698988231`, Glippy revision
+`7840a0c`, and Caddy revision
+`0cf03d32f7d99cf160d5375e8a40fbe3d910d515` classifies all six default and
+recommended findings. Three are actionable: one discarded gzip finalization
+error, one HTTP error path that does not close its response body, and one
+scanner error path hidden behind polling and timeout behavior. Three default
+`unreachable-code` findings are final unlabeled `break` or `continue` statements
+immediately after exact `testing.T.Fatalf` calls. The rule now accepts those
+loop-control shims only when they are the sole remaining statement; labeled or
+nonfinal branches, retained work, lookalikes, and other no-return calls still
+report. Owner-specific break counts remove only an accepted unreachable shim
+edge, retaining a separate reachable break while preserving downstream
+unreachability after infinite loops and exhaustive switch or select constructs.
+Focused and complete unreachable-code regressions, affected package tests, vet,
+and the generated rule-document check pass. Go vet reports nothing, while
+Staticcheck adds only migration deprecations and one dead-code policy finding.
+The exact corpus must rerun on the latest candidate and the remaining
+repositories still require complete adjudication, so stable-v1 progress remains
+55% inside v0.6.
