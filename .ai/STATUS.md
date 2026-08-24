@@ -2849,3 +2849,23 @@ missed-defect queue. All four profiles completed across 889 owned files and 384
 packages. The exact corpus must rerun on the latest candidate and the remaining
 repositories still require complete adjudication, so stable-v1 progress remains
 55% inside v0.6.
+
+The v0.6 containerd adjudication for pinned run `32698988231`, Glippy revision
+`7840a0c`, and containerd revision
+`6c12665e1c31e7728d0e0eb1224288bd9153114b` classifies all 11 default and
+recommended findings. Seven are actionable: three discarded stdout-backed tab
+writer flush errors, one discarded caller-backed tar finalization error, one
+tautological error condition, and two unobserved terminal scanner errors. Four
+are precision false positives: two tab writers flush only into containerd's
+in-memory progress buffer, one fuzz tar writer targets a local `bytes.Buffer`,
+and one Linux-selected nil return fact conflicts with the fallible Windows
+implementation used by the shared caller. The writer cases are queued for
+general bounded writer-chain proof, and the TLS case is queued for
+build-variant-aware return-state facts; project-specific exceptions are
+rejected. All four profiles completed across 1,044 owned files and 381 packages
+without a tool or source-state failure. Go vet reports nothing. Staticcheck
+adds migration and style policy, one intentionally suppressed context-key
+finding already covered by Glippy's opt-in rule, and one unused test helper;
+none establishes a missing default rule. The exact corpus must rerun on the
+latest candidate and the remaining repositories still require complete
+adjudication, so stable-v1 progress remains 55% inside v0.6.
