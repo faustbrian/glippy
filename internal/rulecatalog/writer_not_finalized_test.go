@@ -122,6 +122,11 @@ func missingWithoutErrorResult(output io.Writer) {
 	_ = writer.WriteHeader(&tar.Header{Name: "entry"})
 }
 
+func missingInlineSink() {
+	writer := tar.NewWriter(bytes.NewBuffer(nil))
+	_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+}
+
 func finalized(output io.Writer) error {
 	writer := gzip.NewWriter(output)
 	if _, err := writer.Write([]byte("payload")); err != nil {
@@ -261,6 +266,7 @@ func consume(io.Writer) {}
 		"writer := gzip.NewWriter(output)",
 		"writer := gzip.NewWriter(output)",
 		"writer := tar.NewWriter(output)",
+		"writer := tar.NewWriter(bytes.NewBuffer(nil))",
 	}
 	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(want) {
 		t.Fatalf("writer-not-finalized result = %#v", result)
@@ -281,6 +287,362 @@ func consume(io.Writer) {}
 			t.Fatalf("writer-not-finalized diagnostic[%d] = %#v", index, diagnostic)
 		}
 		searchFrom = start + len("writer")
+	}
+}
+
+func TestWriterNotFinalizedRecognizesPipeWriterAbortPaths(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"archive/tar"
+	"errors"
+	"fmt"
+	"io"
+
+	pkgerrors "github.com/pkg/errors"
+)
+
+func aborted() io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		if err := writer.WriteHeader(&tar.Header{Name: "entry"}); err != nil {
+			_ = output.CloseWithError(fmt.Errorf("write archive: %w", err))
+			return
+		}
+		if err := writer.Close(); err != nil {
+			_ = output.CloseWithError(fmt.Errorf("finalize archive: %w", err))
+			return
+		}
+		_ = output.Close()
+	}()
+	return reader
+}
+
+func nilAbort() io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		_ = output.CloseWithError(nil)
+	}()
+	return reader
+}
+
+func uncertainAbort(failure error) io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		_ = output.CloseWithError(failure)
+	}()
+	return reader
+}
+
+func constructedAbort() io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		_ = output.CloseWithError(errors.New("abort archive"))
+	}()
+	return reader
+}
+
+func pkgConstructedAbort() io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		_ = output.CloseWithError(pkgerrors.Errorf("abort archive"))
+	}()
+	return reader
+}
+
+func guardedAbort(failure error) io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		if failure != nil {
+			_ = output.CloseWithError(failure)
+			return
+		}
+		_ = writer.Close()
+	}()
+	return reader
+}
+
+func wrappedAbort(failure error) io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		if failure == io.EOF {
+			_ = output.CloseWithError(pkgerrors.Wrap(failure, "abort archive"))
+			return
+		}
+		_ = writer.Close()
+	}()
+	return reader
+}
+
+func uncertainWrappedAbort(failure error) io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		_ = output.CloseWithError(pkgerrors.Wrap(failure, "abort archive"))
+	}()
+	return reader
+}
+
+func reassignedWrappedAbort(failure error) io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		if failure != nil {
+			failure = nil
+			_ = output.CloseWithError(pkgerrors.Wrapf(failure, "abort archive"))
+			return
+		}
+		_ = writer.Close()
+	}()
+	return reader
+}
+
+func clearFailure(target *error) { *target = nil }
+
+func clearedAbort(failure error) io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		if failure != nil {
+			clearFailure(&failure)
+			_ = output.CloseWithError(failure)
+			return
+		}
+		_ = writer.Close()
+	}()
+	return reader
+}
+
+func preGuardAliasAbort(failure error) io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		alias := &failure
+		if failure != nil {
+			*alias = nil
+			_ = output.CloseWithError(failure)
+			return
+		}
+		_ = writer.Close()
+	}()
+	return reader
+}
+
+func preGuardClosureAbort(failure error) io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		clear := func() { failure = nil }
+		if failure != nil {
+			clear()
+			_ = output.CloseWithError(failure)
+			return
+		}
+		_ = writer.Close()
+	}()
+	return reader
+}
+
+func guardInitializerAliasAbort(failure error) io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		if alias := &failure; failure != nil {
+			*alias = nil
+			_ = output.CloseWithError(failure)
+			return
+		}
+		_ = writer.Close()
+	}()
+	return reader
+}
+
+func outerErrorAliasAbort(failure error) io.Reader {
+	reader, output := io.Pipe()
+	alias := &failure
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		if failure != nil {
+			*alias = nil
+			_ = output.CloseWithError(failure)
+			return
+		}
+		_ = writer.Close()
+	}()
+	return reader
+}
+
+func preConstructionAliasAbort() io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		alias := &output
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		_, replacement := io.Pipe()
+		*alias = replacement
+		_ = output.CloseWithError(errors.New("abort replacement"))
+	}()
+	return reader
+}
+
+func preConstructionClosureAbort() io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		rebind := func(replacement *io.PipeWriter) { output = replacement }
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		_, replacement := io.Pipe()
+		rebind(replacement)
+		_ = output.CloseWithError(errors.New("abort replacement"))
+	}()
+	return reader
+}
+
+func outerSinkAliasAbort() io.Reader {
+	reader, output := io.Pipe()
+	alias := &output
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		_, replacement := io.Pipe()
+		*alias = replacement
+		_ = output.CloseWithError(errors.New("abort replacement"))
+	}()
+	return reader
+}
+
+func replacementPipeAbort() io.Reader {
+	reader, output := io.Pipe()
+	go func() {
+		writer := tar.NewWriter(output)
+		_ = writer.WriteHeader(&tar.Header{Name: "entry"})
+		_, output = io.Pipe()
+		_ = output.CloseWithError(errors.New("abort replacement"))
+	}()
+	return reader
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/writerpipeabort\n\ngo 1.26.0\n\n" +
+			"require github.com/pkg/errors v0.0.0\n" +
+			"replace github.com/pkg/errors => ./pkgerrors\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "pkgerrors", "go.mod"),
+		"module github.com/pkg/errors\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "pkgerrors", "errors.go"),
+		`package errors
+
+import "fmt"
+
+func Errorf(format string, arguments ...any) error {
+	return fmt.Errorf(format, arguments...)
+}
+
+func Wrap(cause error, message string) error {
+	if cause == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", message, cause)
+}
+
+func Wrapf(cause error, format string, arguments ...any) error {
+	if cause == nil {
+		return nil
+	}
+	return fmt.Errorf(format+": %w", append(arguments, cause)...)
+}
+`,
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"writer-not-finalized": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.26",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFunctions := []string{
+		"nilAbort",
+		"uncertainAbort",
+		"uncertainWrappedAbort",
+		"reassignedWrappedAbort",
+		"clearedAbort",
+		"preGuardAliasAbort",
+		"preGuardClosureAbort",
+		"guardInitializerAliasAbort",
+		"outerErrorAliasAbort",
+		"preConstructionAliasAbort",
+		"preConstructionClosureAbort",
+		"outerSinkAliasAbort",
+		"replacementPipeAbort",
+	}
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != len(wantFunctions) {
+		t.Fatalf("pipe-writer abort result = %#v", result.Files)
+	}
+	for index, function := range wantFunctions {
+		functionStart := strings.Index(input, "func " + function + "(")
+		if functionStart < 0 {
+			t.Fatalf("missing function %q", function)
+		}
+		relative := strings.Index(input[functionStart:], "writer := tar.NewWriter(output)")
+		if relative < 0 {
+			t.Fatalf("missing writer acquisition in %q", function)
+		}
+		start := functionStart + relative
+		diagnostic := result.Files[0].Diagnostics[index]
+		if diagnostic.RuleID != "writer-not-finalized" ||
+			diagnostic.MessageKey != "writer-not-finalized" ||
+			diagnostic.Range.Start != start ||
+			diagnostic.Range.End != start + len("writer") ||
+			len(diagnostic.Fixes) != 0 {
+			t.Fatalf("pipe-writer abort diagnostic[%d] = %#v", index, diagnostic)
+		}
 	}
 }
 

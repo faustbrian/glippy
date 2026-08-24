@@ -133,6 +133,7 @@ func infallibleWriterFinalizer(
 	}
 	constructor, _ := ast.Unparen(receiverExpression).(*ast.CallExpr)
 	bindings := map[types.Object]*ast.CallExpr(nil)
+	helperSinks := map[*ast.CallExpr]ast.Expr(nil)
 	if constructor == nil {
 		if directObject(ctx.Info(), receiverExpression) == nil {
 			return false
@@ -140,11 +141,13 @@ func infallibleWriterFinalizer(
 		binding := stableWriterConstructor(ctx, finalizer)
 		constructor = binding.candidate
 		bindings = binding.candidates
+		helperSinks = binding.helperSinks
 	}
 	return infallibleWriterConstructor(
 		ctx.Info(),
 		constructor,
 		bindings,
+		helperSinks,
 		make(map[*ast.CallExpr]struct{}),
 	)
 }
@@ -260,6 +263,7 @@ func infallibleWriterConstructor(
 	info *types.Info,
 	constructor *ast.CallExpr,
 	bindings map[types.Object]*ast.CallExpr,
+	helperSinks map[*ast.CallExpr]ast.Expr,
 	visiting map[*ast.CallExpr]struct{},
 ) bool {
 	if info == nil || constructor == nil {
@@ -270,7 +274,7 @@ func infallibleWriterConstructor(
 	}
 	visiting[constructor] = struct{}{}
 	defer delete(visiting, constructor)
-	sink := writerSinkExpression(info, constructor)
+	sink := writerSinkExpressionWithHelpers(info, constructor, helperSinks)
 	if sink == nil {
 		return false
 	}
@@ -279,10 +283,11 @@ func infallibleWriterConstructor(
 	}
 	inline, _ := ast.Unparen(sink).(*ast.CallExpr)
 	if inline != nil {
-		return infallibleWriterConstructor(info, inline, bindings, visiting)
+		return infallibleWriterConstructor(info, inline, bindings, helperSinks, visiting)
 	}
 	nested := bindings[directObject(info, sink)]
-	return nested != nil && infallibleWriterConstructor(info, nested, bindings, visiting)
+	return nested != nil &&
+		infallibleWriterConstructor(info, nested, bindings, helperSinks, visiting)
 }
 
 func infallibleMemoryWriter(type_ types.Type) bool {
@@ -296,8 +301,19 @@ func trackedInfallibleWriterType(type_ types.Type) bool {
 }
 
 func writerSinkExpression(info *types.Info, call *ast.CallExpr) ast.Expr {
+	return writerSinkExpressionWithHelpers(info, call, nil)
+}
+
+func writerSinkExpressionWithHelpers(
+	info *types.Info,
+	call *ast.CallExpr,
+	helperSinks map[*ast.CallExpr]ast.Expr,
+) ast.Expr {
 	if info == nil || call == nil {
 		return nil
+	}
+	if sink := helperSinks[call]; sink != nil {
+		return sink
 	}
 	if index, matched := writerConstructorSinkIndex(typeutil.StaticCallee(info, call));
 		matched && index < len(call.Args) {
@@ -347,6 +363,7 @@ func writerConstructorSinkIndex(function *types.Func) (int, bool) {
 type stableWriterBinding struct {
 	candidate *ast.CallExpr
 	candidates map[types.Object]*ast.CallExpr
+	helperSinks map[*ast.CallExpr]ast.Expr
 	timing writerCallTiming
 }
 
@@ -382,6 +399,7 @@ type stableWriterState struct {
 	mutationClosures map[types.Object]map[*ast.CallExpr]struct{}
 	closureMutationParameters map[types.Object]map[int]struct{}
 	mutationSummaries writerMutationSummaries
+	helperSinks map[*ast.CallExpr]ast.Expr
 	callTiming map[*ast.CallExpr]writerCallTiming
 	straightLineRebinds map[*ast.CallExpr]struct{}
 	deferredEffects []deferredWriterEffect
@@ -390,6 +408,12 @@ type stableWriterState struct {
 type writerMutationSummaries struct {
 	functions map[*types.Func]map[int]struct{}
 	literals map[*ast.FuncLit]map[int]struct{}
+	returnedSinks map[*types.Func]writerReturnedSinkSummary
+}
+
+type writerReturnedSinkSummary struct {
+	parameter int
+	constructor bool
 }
 
 type writerMutationSummaryNode struct {
@@ -491,6 +515,7 @@ func stableWriterConstructorsInNode(
 		mutationClosures: make(map[types.Object]map[*ast.CallExpr]struct{}),
 		closureMutationParameters: make(map[types.Object]map[int]struct{}),
 		mutationSummaries: mutationSummaries,
+		helperSinks: make(map[*ast.CallExpr]ast.Expr),
 		callTiming: callTiming,
 		straightLineRebinds: straightLineWriterRebinds(syntax),
 	}
@@ -505,6 +530,9 @@ func stableWriterConstructorsInNode(
 					constructors[query.call] = stableWriterBinding{
 						candidate: candidate,
 						candidates: stableWriterCandidates(state),
+						helperSinks: cloneWriterHelperSinks(
+							state.helperSinks,
+						),
 						timing: state.callTiming[query.call],
 					}
 					if query.lateUntil.IsValid() {
@@ -616,6 +644,17 @@ func stableWriterCandidates(state stableWriterState) map[types.Object]*ast.CallE
 		if _, invalid := state.invalidated[candidate]; !invalid {
 			result[object] = candidate
 		}
+	}
+	return result
+}
+
+func cloneWriterHelperSinks(source map[*ast.CallExpr]ast.Expr) map[*ast.CallExpr]ast.Expr {
+	if len(source) == 0 {
+		return nil
+	}
+	result := make(map[*ast.CallExpr]ast.Expr, len(source))
+	for call, sink := range source {
+		result[call] = sink
 	}
 	return result
 }
@@ -992,7 +1031,12 @@ func (state *stableWriterState) observe(info *types.Info, node ast.Node) bool {
 				_, straightLine := state.straightLineRebinds[node]
 				_, invalid := state.invalidated[previous]
 				if previous != nil &&
-					writerSinkExpression(info, previous) != nil &&
+					writerSinkExpressionWithHelpers(
+						info,
+						previous,
+						state.helperSinks,
+					) !=
+						nil &&
 					straightLine &&
 					!invalid {
 					state.invalidateCandidate(previous, node.Pos())
@@ -1011,14 +1055,17 @@ func (state *stableWriterState) observe(info *types.Info, node ast.Node) bool {
 			state.invalidateCandidate(candidate, node.Pos())
 		}
 		for index, argument := range node.Args {
-			if standardWriterOperation(info, node, index) {
+			if standardWriterOperation(info, node, index) ||
+				state.writerArgumentCannotRebind(info, node, index) {
 				continue
 			}
 			if candidate := state.candidates[directObject(info, argument)];
 				candidate != nil {
 				state.invalidateCandidate(candidate, argument.Pos())
 			}
-			state.invalidateClosure(info, argument)
+			if !state.harmlessWriterClosureArgument(info, argument) {
+				state.invalidateClosure(info, argument)
+			}
 		}
 		return true
 	case *ast.SelectorExpr:
@@ -1128,6 +1175,7 @@ func (state *stableWriterState) observe(info *types.Info, node ast.Node) bool {
 		if update.candidate == nil {
 			delete(state.candidates, update.object)
 		} else {
+			state.recordReturnedWriterSink(info, update.candidate)
 			state.candidates[update.object] = update.candidate
 			state.registerCandidateDependencies(info, update.candidate)
 		}
@@ -1148,6 +1196,25 @@ func (state *stableWriterState) observe(info *types.Info, node ast.Node) bool {
 		}
 	}
 	return true
+}
+
+func (state *stableWriterState) recordReturnedWriterSink(
+	info *types.Info,
+	candidate *ast.CallExpr,
+) {
+	if state == nil || info == nil || candidate == nil {
+		return
+	}
+	summary, found := state.
+		mutationSummaries.
+		returnedSinks[typeutil.StaticCallee(info, candidate)]
+	if !found || !summary.constructor {
+		return
+	}
+	argument := summary.parameter + writerCallParameterOffset(info, candidate)
+	if argument >= 0 && argument < len(candidate.Args) {
+		state.helperSinks[candidate] = candidate.Args[argument]
+	}
 }
 
 func (state *stableWriterState) observeExecutedBlock(info *types.Info, body *ast.BlockStmt) {
@@ -1284,6 +1351,7 @@ func collectWriterMutationSummaries(
 	summaries := writerMutationSummaries{
 		functions: make(map[*types.Func]map[int]struct{}),
 		literals: make(map[*ast.FuncLit]map[int]struct{}),
+		returnedSinks: make(map[*types.Func]writerReturnedSinkSummary),
 	}
 	if info == nil || len(syntaxes) == 0 {
 		return summaries
@@ -1321,15 +1389,23 @@ func collectWriterMutationSummaries(
 				default:
 					return true
 				}
-				node.mutated = writerMutationParameters(info, node.type_, node.body)
-				if node.mutated == nil {
-					node.mutated = make(map[int]struct{})
-				}
 				node.reverse = make(map[int][]writerMutationTarget)
 				nodes = append(nodes, node)
 				return true
 			},
 		)
+	}
+	for _, node := range nodes {
+		node.mutated = writerMutationParameters(
+			info,
+			node.type_,
+			node.body,
+			functions,
+			literals,
+		)
+		if node.mutated == nil {
+			node.mutated = make(map[int]struct{})
+		}
 	}
 	for _, caller := range nodes {
 		aliases := newWriterParameterAliasResolver(info, caller.type_, caller.body)
@@ -1407,8 +1483,10 @@ func collectWriterMutationSummaries(
 		}
 	}
 	for _, node := range nodes {
-		if len(node.mutated) == 0 {
-			continue
+		if node.function != nil {
+			if summary, ok := straightLineReturnedWriterSink(info, node); ok {
+				summaries.returnedSinks[node.function] = summary
+			}
 		}
 		if node.function != nil {
 			summaries.functions[node.function] = node.mutated
@@ -1419,36 +1497,329 @@ func collectWriterMutationSummaries(
 	return summaries
 }
 
+func straightLineReturnedWriterSink(
+	info *types.Info,
+	node *writerMutationSummaryNode,
+) (writerReturnedSinkSummary, bool) {
+	if info == nil ||
+		node == nil ||
+		node.function == nil ||
+		node.type_ == nil ||
+		node.type_.Params == nil ||
+		node.body == nil ||
+		len(node.body.List) < 3 {
+		return writerReturnedSinkSummary{}, false
+	}
+	signature, _ := types.Unalias(node.function.Type()).(*types.Signature)
+	if signature == nil ||
+		signature.Results() == nil ||
+		signature.Results().Len() != 1 ||
+		!trackedInfallibleWriterType(signature.Results().At(0).Type()) {
+		return writerReturnedSinkSummary{}, false
+	}
+	returnStatement, _ := node.body.List[len(node.body.List) - 1].(*ast.ReturnStmt)
+	if returnStatement == nil || len(returnStatement.Results) != 1 {
+		return writerReturnedSinkSummary{}, false
+	}
+	returned := directObject(info, returnStatement.Results[0])
+	if returned == nil || packageScopeObject(returned) {
+		return writerReturnedSinkSummary{}, false
+	}
+	rebindStatement, _ := node.body.List[len(node.body.List) - 2].(*ast.ExprStmt)
+	if rebindStatement == nil {
+		return writerReturnedSinkSummary{}, false
+	}
+	rebind, _ := ast.Unparen(rebindStatement.X).(*ast.CallExpr)
+	if rebind == nil ||
+		directObject(info, writerRebindReceiverExpression(info, rebind)) != returned {
+		return writerReturnedSinkSummary{}, false
+	}
+	sink := writerSinkExpression(info, rebind)
+	sinkObject := directObject(info, sink)
+	if sinkObject == nil {
+		return writerReturnedSinkSummary{}, false
+	}
+	parameter := writerFunctionParameterIndex(info, node.type_, sinkObject)
+	if parameter < 0 ||
+		!writerObjectInitializedLocallyBefore(info, node.body, returned, rebind.Pos()) {
+		return writerReturnedSinkSummary{}, false
+	}
+	unsafe := false
+	ast.Inspect(
+		node.body,
+		func(current ast.Node) bool {
+			if unsafe || current == nil {
+				return !unsafe
+			}
+			switch statement := current.(type) {
+			case *ast.DeferStmt:
+				if expressionUsesObject(info, statement, returned) {
+					unsafe = true
+				}
+			case *ast.GoStmt:
+				if expressionUsesObject(info, statement, returned) {
+					unsafe = true
+				}
+			}
+			return !unsafe
+		},
+	)
+	if unsafe {
+		return writerReturnedSinkSummary{}, false
+	}
+	return writerReturnedSinkSummary{
+		parameter: parameter,
+		constructor: writerObjectInitializedByOwnedAcquisition(
+			info,
+			node.body,
+			returned,
+			rebind.Pos(),
+		),
+	}, true
+}
+
+func writerObjectInitializedByOwnedAcquisition(
+	info *types.Info,
+	body *ast.BlockStmt,
+	object types.Object,
+	boundary token.Pos,
+) bool {
+	if info == nil || body == nil || object == nil || !boundary.IsValid() {
+		return false
+	}
+	acquiredAt := -1
+	var acquisition ast.Expr
+	for statementIndex, statement := range body.List {
+		if statement.Pos() >= boundary {
+			break
+		}
+		assignment, _ := statement.(*ast.AssignStmt)
+		if assignment == nil || len(assignment.Rhs) != len(assignment.Lhs) {
+			continue
+		}
+		for index, target := range assignment.Lhs {
+			if directObject(info, target) != object ||
+				!writerOwnedAcquisition(info, assignment.Rhs[index]) {
+				continue
+			}
+			acquiredAt = statementIndex
+			acquisition = assignment.Rhs[index]
+			break
+		}
+	}
+	if acquiredAt < 0 ||
+		writerObjectExposedBetween(info, body, object, token.NoPos, acquisition.Pos()) {
+		return false
+	}
+	for _, statement := range body.List[acquiredAt + 1:] {
+		if statement.Pos() >= boundary {
+			break
+		}
+		if expressionUsesObject(info, statement, object) {
+			return false
+		}
+	}
+	return true
+}
+
+func writerOwnedAcquisition(info *types.Info, expression ast.Expr) bool {
+	if info == nil || expression == nil {
+		return false
+	}
+	if call, _ := ast.Unparen(expression).(*ast.CallExpr); call != nil {
+		_, tracked := writerConstructorSinkIndex(typeutil.StaticCallee(info, call))
+		return tracked
+	}
+	assertion, _ := ast.Unparen(expression).(*ast.TypeAssertExpr)
+	if assertion == nil {
+		return false
+	}
+	call, _ := ast.Unparen(assertion.X).(*ast.CallExpr)
+	if call == nil {
+		return false
+	}
+	function := typeutil.StaticCallee(info, call)
+	if function == nil ||
+		function.Pkg() == nil ||
+		function.Pkg().Path() != "sync" ||
+		function.Name() != "Get" ||
+		!trackedInfallibleWriterType(info.TypeOf(assertion)) {
+		return false
+	}
+	signature, _ := types.Unalias(function.Type()).(*types.Signature)
+	return signature != nil &&
+		signature.Recv() != nil &&
+		namedReceiver(signature.Recv().Type(), "sync", "Pool")
+}
+
+func writerFunctionParameterIndex(
+	info *types.Info,
+	function *ast.FuncType,
+	object types.Object,
+) int {
+	if info == nil || function == nil || function.Params == nil || object == nil {
+		return -1
+	}
+	index := 0
+	for _, field := range function.Params.List {
+		if len(field.Names) == 0 {
+			index++
+			continue
+		}
+		for _, name := range field.Names {
+			if info.ObjectOf(name) == object {
+				return index
+			}
+			index++
+		}
+	}
+	return -1
+}
+
+func writerObjectInitializedLocallyBefore(
+	info *types.Info,
+	body *ast.BlockStmt,
+	object types.Object,
+	boundary token.Pos,
+) bool {
+	if info == nil || body == nil || object == nil || !boundary.IsValid() {
+		return false
+	}
+	initialized := false
+	ast.Inspect(
+		body,
+		func(current ast.Node) bool {
+			if current == nil || current.Pos() >= boundary {
+				return false
+			}
+			switch current := current.(type) {
+			case *ast.AssignStmt:
+				for _, left := range current.Lhs {
+					if directObject(info, left) == object {
+						initialized = true
+					}
+				}
+			case *ast.ValueSpec:
+				for _, name := range current.Names {
+					if info.ObjectOf(name) == object {
+						initialized = true
+					}
+				}
+			}
+			return !initialized
+		},
+	)
+	return initialized
+}
+
 func writerMutationParameters(
 	info *types.Info,
 	function *ast.FuncType,
 	body *ast.BlockStmt,
+	functions map[*types.Func]*writerMutationSummaryNode,
+	literals map[*ast.FuncLit]*writerMutationSummaryNode,
 ) map[int]struct{} {
 	if info == nil || function == nil || function.Params == nil || body == nil {
 		return nil
 	}
 	parameterIndexes := newWriterParameterAliasResolver(info, function, body)
 	mutated := make(map[int]struct{})
+	localFunctions := writerLocalFunctionLiterals(info, body)
+	markExpression := func(expression ast.Node, position token.Pos) {
+		ast.Inspect(
+			expression,
+			func(current ast.Node) bool {
+				identifier, _ := current.(*ast.Ident)
+				if identifier == nil {
+					return current != nil
+				}
+				for parameter := range
+					parameterIndexes.parameters(
+						info.ObjectOf(identifier),
+						position,
+					) {
+					mutated[parameter] = struct{}{}
+				}
+				return true
+			},
+		)
+	}
+	markDirectExpression := func(expression ast.Expr, position token.Pos) {
+		for parameter := range
+			parameterIndexes.parameters(directObject(info, expression), position) {
+			mutated[parameter] = struct{}{}
+		}
+	}
 	ast.Inspect(
 		body,
 		func(current ast.Node) bool {
 			if current == nil {
 				return false
 			}
-			if _, nested := current.(*ast.FuncLit); nested {
+			if literal, nested := current.(*ast.FuncLit); nested {
+				markExpression(literal.Body, literal.Pos())
 				return false
 			}
-			call, _ := current.(*ast.CallExpr)
-			if call == nil {
-				return true
+			if call, _ := current.(*ast.CallExpr); call != nil {
+				receiver := writerRebindReceiverExpression(info, call)
+				for parameter := range
+					parameterIndexes.parameters(
+						directObject(info, receiver),
+						call.Pos(),
+					) {
+					mutated[parameter] = struct{}{}
+				}
+				callee := functions[typeutil.StaticCallee(info, call)]
+				if literal, _ := ast.Unparen(call.Fun).(*ast.FuncLit);
+					literal != nil {
+					callee = literals[literal]
+				} else if literal := localFunctions[directObject(info, call.Fun)];
+					literal != nil {
+					callee = literals[literal]
+				}
+				for index, argument := range call.Args {
+					if standardWriterOperation(info, call, index) ||
+						callee != nil ||
+						(receiver != nil &&
+							writerSinkExpression(info, call) ==
+								argument) {
+						continue
+					}
+					markExpression(argument, call.Pos())
+				}
 			}
-			receiver := writerRebindReceiverExpression(info, call)
-			for parameter := range
-				parameterIndexes.parameters(
-					directObject(info, receiver),
-					call.Pos(),
-				) {
-				mutated[parameter] = struct{}{}
+			if assertion, _ := current.(*ast.TypeAssertExpr); assertion != nil {
+				for parameter := range
+					parameterIndexes.parameters(
+						directObject(info, assertion.X),
+						assertion.Pos(),
+					) {
+					mutated[parameter] = struct{}{}
+				}
+			}
+			switch node := current.(type) {
+			case *ast.AssignStmt:
+				for index, value := range node.Rhs {
+					if len(node.Lhs) == len(node.Rhs) {
+						target := directObject(info, node.Lhs[index])
+						if target != nil && !packageScopeObject(target) {
+							continue
+						}
+					}
+					markDirectExpression(value, node.Pos())
+				}
+			case *ast.ReturnStmt:
+				for _, result := range node.Results {
+					markDirectExpression(result, node.Pos())
+				}
+			case *ast.SendStmt:
+				markDirectExpression(node.Value, node.Pos())
+			case *ast.CompositeLit:
+				markExpression(node, node.Pos())
+			case *ast.UnaryExpr:
+				if node.Op == token.AND {
+					markExpression(node.X, node.Pos())
+				}
 			}
 			return true
 		},
@@ -2021,12 +2392,12 @@ func (state *stableWriterState) registerCandidateDependenciesSeen(
 		return
 	}
 	seen[candidate] = struct{}{}
-	sink := writerSinkExpression(info, candidate)
+	sink := writerSinkExpressionWithHelpers(info, candidate, state.helperSinks)
 	if sink == nil {
 		return
 	}
 	if inline, _ := ast.Unparen(sink).(*ast.CallExpr); inline != nil {
-		if writerSinkExpression(info, inline) == nil {
+		if writerSinkExpressionWithHelpers(info, inline, state.helperSinks) == nil {
 			return
 		}
 		state.registerCandidateDependenciesSeen(info, inline, seen)
@@ -2112,6 +2483,21 @@ func standardWriterOperation(info *types.Info, call *ast.CallExpr, argument int)
 	if sink, matched := writerConstructorSinkIndex(function); matched && argument == sink {
 		return true
 	}
+	if argument == writerCallParameterOffset(info, call) {
+		switch function.Pkg().Path() {
+		case "html/template", "text/template":
+			if function.Name() == "Execute" || function.Name() == "ExecuteTemplate" {
+				return true
+			}
+		case "io":
+			if (function.Name() == "Copy" || function.Name() == "CopyBuffer") &&
+				len(call.Args) > argument + 1 {
+				return writerCopySourceCannotObserveDestination(
+					info.TypeOf(call.Args[argument + 1]),
+				)
+			}
+		}
+	}
 	if argument != 0 {
 		return false
 	}
@@ -2120,10 +2506,7 @@ func standardWriterOperation(info *types.Info, call *ast.CallExpr, argument int)
 		switch function.Name() {
 		case "Fprint", "Fprintf", "Fprintln":
 			for _, value := range call.Args[1:] {
-				if _, callbackFree := types.Unalias(
-					info.TypeOf(value),
-				).(*types.Basic);
-					!callbackFree {
+				if !writerFormattingValueCannotCallBack(info.TypeOf(value)) {
 					return false
 				}
 			}
@@ -2133,6 +2516,192 @@ func standardWriterOperation(info *types.Info, call *ast.CallExpr, argument int)
 		return function.Name() == "WriteString"
 	}
 	return false
+}
+
+func writerFormattingValueCannotCallBack(type_ types.Type) bool {
+	if type_ == nil {
+		return false
+	}
+	if _, basic := types.Unalias(type_).Underlying().(*types.Basic); !basic {
+		return false
+	}
+	return types.NewMethodSet(type_).Len() == 0
+}
+
+func writerCopySourceCannotObserveDestination(type_ types.Type) bool {
+	if type_ == nil {
+		return false
+	}
+	if _, dynamic := types.Unalias(type_).Underlying().(*types.Interface); dynamic {
+		return false
+	}
+	if types.NewMethodSet(type_).Lookup(nil, "WriteTo") == nil {
+		return true
+	}
+	return namedReceiver(type_, "bytes", "Buffer") ||
+		namedReceiver(type_, "bytes", "Reader") ||
+		namedReceiver(type_, "strings", "Reader")
+}
+
+func writerArgumentCannotRebind(info *types.Info, call *ast.CallExpr, argument int) bool {
+	if info == nil || call == nil || argument < 0 || argument >= len(call.Args) {
+		return false
+	}
+	signature, _ := types.Unalias(info.TypeOf(call.Fun)).(*types.Signature)
+	if signature == nil || signature.Params() == nil {
+		return false
+	}
+	parameter := argument - writerCallParameterOffset(info, call)
+	if parameter < 0 {
+		return false
+	}
+	parameterCount := signature.Params().Len()
+	if parameterCount == 0 {
+		return false
+	}
+	if parameter >= parameterCount {
+		if !signature.Variadic() {
+			return false
+		}
+		parameter = parameterCount - 1
+	}
+	parameterType := signature.Params().At(parameter).Type()
+	if signature.Variadic() && parameter == parameterCount - 1 {
+		slice, _ := types.Unalias(parameterType).(*types.Slice)
+		if slice != nil {
+			parameterType = slice.Elem()
+		}
+	}
+	return namedReceiver(parameterType, "io", "Writer")
+}
+
+func (state *stableWriterState) writerArgumentCannotRebind(
+	info *types.Info,
+	call *ast.CallExpr,
+	argument int,
+) bool {
+	if state == nil || !writerArgumentCannotRebind(info, call, argument) {
+		return false
+	}
+	callee := typeutil.StaticCallee(info, call)
+	if callee == nil {
+		return false
+	}
+	mutated, local := state.mutationSummaries.functions[callee]
+	if !local {
+		return false
+	}
+	parameter := argument - writerCallParameterOffset(info, call)
+	if parameter < 0 {
+		return false
+	}
+	_, rebinds := mutated[parameter]
+	return !rebinds
+}
+
+func (state *stableWriterState) harmlessWriterClosureArgument(
+	info *types.Info,
+	expression ast.Expr,
+) bool {
+	if state == nil || info == nil || expression == nil {
+		return false
+	}
+	literal, _ := ast.Unparen(expression).(*ast.FuncLit)
+	if literal == nil || literal.Body == nil {
+		return false
+	}
+	captured := state.closureCandidates(info, literal)
+	if len(captured) == 0 {
+		return true
+	}
+	for candidate := range state.closureMutationCandidates(info, literal) {
+		if _, relevant := captured[candidate]; relevant {
+			return false
+		}
+	}
+	parents := writerASTParents(literal.Body)
+	for object, candidate := range state.candidates {
+		if _, relevant := captured[candidate]; !relevant {
+			continue
+		}
+		harmless := true
+		ast.Inspect(
+			literal.Body,
+			func(node ast.Node) bool {
+				if !harmless || node == nil {
+					return harmless
+				}
+				identifier, _ := node.(*ast.Ident)
+				if identifier == nil || info.ObjectOf(identifier) != object {
+					return true
+				}
+				if !state.harmlessWriterClosureUse(info, identifier, parents) {
+					harmless = false
+				}
+				return harmless
+			},
+		)
+		if !harmless {
+			return false
+		}
+	}
+	return true
+}
+
+func writerASTParents(root ast.Node) map[ast.Node]ast.Node {
+	parents := make(map[ast.Node]ast.Node)
+	stack := make([]ast.Node, 0)
+	ast.Inspect(
+		root,
+		func(node ast.Node) bool {
+			if node == nil {
+				if len(stack) != 0 {
+					stack = stack[:len(stack) - 1]
+				}
+				return false
+			}
+			if len(stack) != 0 {
+				parents[node] = stack[len(stack) - 1]
+			}
+			stack = append(stack, node)
+			return true
+		},
+	)
+	return parents
+}
+
+func (state *stableWriterState) harmlessWriterClosureUse(
+	info *types.Info,
+	identifier *ast.Ident,
+	parents map[ast.Node]ast.Node,
+) bool {
+	if info == nil || identifier == nil {
+		return false
+	}
+	parent := parents[identifier]
+	if call, _ := parent.(*ast.CallExpr); call != nil {
+		for index, argument := range call.Args {
+			if argument == identifier {
+				return standardWriterOperation(info, call, index) ||
+					state.writerArgumentCannotRebind(info, call, index)
+			}
+		}
+		return false
+	}
+	selector, _ := parent.(*ast.SelectorExpr)
+	if selector == nil || selector.X != identifier {
+		return false
+	}
+	call, _ := parents[selector].(*ast.CallExpr)
+	if call == nil || ast.Unparen(call.Fun) != selector {
+		return false
+	}
+	selection := info.Selections[selector]
+	if selection == nil {
+		return false
+	}
+	function, _ := selection.Obj().(*types.Func)
+	return function != nil && !exactWriterRebind(function)
 }
 
 func writerRebindCandidate(

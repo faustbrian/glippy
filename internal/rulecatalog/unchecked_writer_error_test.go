@@ -785,6 +785,396 @@ func interfaceSink() {
 	)
 }
 
+func TestUncheckedWriterErrorExcludesStableInMemoryWriterChainsInTestVariants(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwritertestvariants\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), "package sample\n")
+	input := `package sample
+
+import (
+	"bufio"
+	"bytes"
+	"compress/gzip"
+	"strings"
+	"testing"
+	"text/tabwriter"
+)
+
+func TestStableInMemoryWriters(t *testing.T) {
+	var bytesOutput bytes.Buffer
+	buffered := bufio.NewWriter(&bytesOutput)
+	buffered.Flush()
+
+	compressedOutput := bytes.NewBuffer(nil)
+	compressed := gzip.NewWriter(compressedOutput)
+	compressed.Close()
+
+	var stringOutput strings.Builder
+	table := tabwriter.NewWriter(&stringOutput, 1, 8, 1, ' ', 0)
+	table.Flush()
+
+	inner := tabwriter.NewWriter(&bytesOutput, 1, 8, 1, ' ', 0)
+	outer := bufio.NewWriter(inner)
+	outer.Flush()
+}
+`
+	writeFixture(t, filepath.Join(root, "sample_test.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", true)
+	for _, file := range result.Files {
+		if len(file.Diagnostics) != 0 {
+			t.Fatalf("test-variant in-memory writer result = %#v", result.Files)
+		}
+	}
+}
+
+func TestUncheckedWriterErrorPreservesInMemoryProvenanceThroughWriterConsumers(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"bufio"
+	"bytes"
+	"compress/gzip"
+	"fmt"
+	"io"
+	"text/tabwriter"
+	"text/template"
+)
+
+type namedValue uint32
+
+func writeXML(output io.Writer) error {
+	_, err := output.Write([]byte("payload"))
+	return err
+}
+
+func localWriterInterfaceConsumer() {
+	var output bytes.Buffer
+	writer := bufio.NewWriter(&output)
+	_ = writeXML(writer)
+	writer.Flush()
+}
+
+func standardWriterInterfaceConsumers() {
+	var output bytes.Buffer
+	compressed := gzip.NewWriter(&output)
+	_, _ = io.Copy(compressed, bytes.NewBufferString("payload"))
+	compressed.Close()
+
+	buffered := bufio.NewWriter(&output)
+	_ = template.Must(template.New("value").Parse("value")).Execute(buffered, nil)
+	buffered.Flush()
+}
+
+func formattingCallbacksCannotRebindWriter() {
+	var output bytes.Buffer
+	writer := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	_, _ = fmt.Fprintf(writer, "%v", namedValue(1))
+	writer.Flush()
+}
+
+func harmlessCallbackCapture(run func(func() bool)) {
+	var output bytes.Buffer
+	writer := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	run(func() bool {
+		_, _ = fmt.Fprint(writer, "payload")
+		return true
+	})
+	writer.Flush()
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwriterconsumers\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", false)
+	assertUncheckedWriterDiagnostics(t, input, result, nil)
+}
+
+func TestUncheckedWriterErrorRejectsWriterConsumerRebindingAndExposure(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"bytes"
+	"io"
+	"text/tabwriter"
+
+	"example.com/writerconsumer"
+)
+
+type writerMutatingSource struct {
+	fallback io.Writer
+}
+
+func (writerMutatingSource) Read([]byte) (int, error) { return 0, io.EOF }
+
+func (source writerMutatingSource) WriteTo(destination io.Writer) (int64, error) {
+	destination.(*tabwriter.Writer).Init(source.fallback, 1, 8, 1, ' ', 0)
+	return 0, nil
+}
+
+type readerMutatingSource struct {
+	destination *tabwriter.Writer
+	fallback    io.Writer
+}
+
+func (source readerMutatingSource) Read([]byte) (int, error) {
+	source.destination.Init(source.fallback, 1, 8, 1, ' ', 0)
+	return 0, io.EOF
+}
+
+func rebind(output io.Writer, fallback io.Writer) {
+	output.(*tabwriter.Writer).Init(fallback, 1, 8, 1, ' ', 0)
+}
+
+var storedWriter io.Writer
+
+func storeWriter(output io.Writer) { storedWriter = output }
+
+func rebindStoredWriter(fallback io.Writer) {
+	storedWriter.(*tabwriter.Writer).Init(fallback, 1, 8, 1, ' ', 0)
+}
+
+func relayImported(output io.Writer, fallback io.Writer) {
+	writerconsumer.Rebind(output, fallback)
+}
+
+func relayDynamic(output io.Writer, consume func(io.Writer)) { consume(output) }
+
+func interfaceRebinding(fallback io.Writer) {
+	var output bytes.Buffer
+	writer := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	rebind(writer, fallback)
+	writer.Flush()
+}
+
+func callbackExposure(run func(func() *tabwriter.Writer), fallback io.Writer) {
+	var output bytes.Buffer
+	writer := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	run(func() *tabwriter.Writer { return writer })
+	writer.Flush()
+}
+
+func importedInterfaceRebinding(fallback io.Writer) {
+	var output bytes.Buffer
+	writer := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	writerconsumer.Rebind(writer, fallback)
+	writer.Flush()
+}
+
+func localInterfaceExposure(fallback io.Writer) {
+	var output bytes.Buffer
+	writer := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	storeWriter(writer)
+	rebindStoredWriter(fallback)
+	writer.Flush()
+}
+
+func importedWrapperRebinding(fallback io.Writer) {
+	var output bytes.Buffer
+	writer := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	relayImported(writer, fallback)
+	writer.Flush()
+}
+
+func dynamicWrapperRebinding(fallback io.Writer) {
+	var output bytes.Buffer
+	writer := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	relayDynamic(writer, func(output io.Writer) {
+		output.(*tabwriter.Writer).Init(fallback, 1, 8, 1, ' ', 0)
+	})
+	writer.Flush()
+}
+
+func copySourceRebinding(fallback io.Writer) {
+	var output bytes.Buffer
+	writer := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	_, _ = io.Copy(writer, writerMutatingSource{fallback: fallback})
+	writer.Flush()
+}
+
+func copyReaderRebinding(fallback io.Writer) {
+	var output bytes.Buffer
+	writer := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	_, _ = io.Copy(writer, readerMutatingSource{destination: writer, fallback: fallback})
+	writer.Flush()
+}
+
+func dynamicCopySource(source io.Reader) {
+	var output bytes.Buffer
+	writer := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	_, _ = io.Copy(writer, source)
+	writer.Flush()
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwriterconsumerescape\n\ngo 1.26.0\n\n" +
+			"require example.com/writerconsumer v0.0.0\n" +
+			"replace example.com/writerconsumer => ./writerconsumer\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "writerconsumer", "go.mod"),
+		"module example.com/writerconsumer\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "writerconsumer", "consumer.go"),
+		`package writerconsumer
+
+import (
+	"io"
+	"text/tabwriter"
+)
+
+func Rebind(output io.Writer, fallback io.Writer) {
+	output.(*tabwriter.Writer).Init(fallback, 1, 8, 1, ' ', 0)
+}
+`,
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", false)
+	assertUncheckedWriterDiagnostics(
+		t,
+		input,
+		result,
+		[]string{
+			"writer.Flush()",
+			"writer.Flush()",
+			"writer.Flush()",
+			"writer.Flush()",
+			"writer.Flush()",
+			"writer.Flush()",
+			"writer.Flush()",
+			"writer.Flush()",
+			"writer.Flush()",
+		},
+	)
+}
+
+func TestUncheckedWriterErrorTracksStraightLineReturnedWriterRebinding(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"bufio"
+	"bytes"
+	"io"
+	"sync"
+)
+
+type writerPool struct{}
+
+func (*writerPool) Get(output io.Writer) *bufio.Writer {
+	writer := bufio.NewWriter(io.Discard)
+	writer.Reset(output)
+	return writer
+}
+
+type syncWriterPool struct {
+	values sync.Pool
+}
+
+func (pool *syncWriterPool) Get(output io.Writer) *bufio.Writer {
+	writer := pool.values.Get().(*bufio.Writer)
+	writer.Reset(output)
+	return writer
+}
+
+func stable() {
+	var output bytes.Buffer
+	inner := bufio.NewWriter(&output)
+	outer := new(writerPool).Get(inner)
+	outer.Flush()
+	inner.Flush()
+
+	pooled := new(syncWriterPool).Get(&output)
+	pooled.Flush()
+}
+
+var sharedWriter = bufio.NewWriter(io.Discard)
+
+func exposed(output io.Writer) *bufio.Writer {
+	writer := sharedWriter
+	writer.Reset(output)
+	return writer
+}
+
+func exposedBeforeReset(output io.Writer) *bufio.Writer {
+	writer := bufio.NewWriter(io.Discard)
+	sharedWriter = writer
+	writer.Reset(output)
+	return writer
+}
+
+var writerSlot **bufio.Writer
+
+func exposedBeforeAcquisition(output io.Writer) *bufio.Writer {
+	var writer *bufio.Writer
+	writerSlot = &writer
+	writer = bufio.NewWriter(io.Discard)
+	writer.Reset(output)
+	return writer
+}
+
+func exposedUse() {
+	var memory bytes.Buffer
+	writer := exposed(&memory)
+	writer.Flush()
+
+	writer = exposedBeforeReset(&memory)
+	writer.Flush()
+
+	writer = exposedBeforeAcquisition(&memory)
+	writer.Flush()
+}
+
+func conditional(output io.Writer, useOutput bool) *bufio.Writer {
+	writer := bufio.NewWriter(io.Discard)
+	if useOutput {
+		writer.Reset(output)
+	}
+	return writer
+}
+
+func uncertain(output io.Writer, useOutput bool) {
+	var memory bytes.Buffer
+	writer := conditional(&memory, useOutput)
+	writer.Flush()
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwriterreturnedrebind\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", false)
+	assertUncheckedWriterDiagnostics(
+		t,
+		input,
+		result,
+		[]string{"writer.Flush()", "writer.Flush()", "writer.Flush()", "writer.Flush()"},
+	)
+}
+
 func TestUncheckedWriterErrorExcludesOnlyUnusedInMemoryTarFinalization(t *testing.T) {
 	t.Parallel()
 

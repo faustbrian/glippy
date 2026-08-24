@@ -6064,8 +6064,9 @@ Buffered, compressed, archive, multipart, and encoded writers can report their f
 or emit required trailers only from Flush or Close. Discarding that result can report success while
 leaving output truncated or structurally incomplete. The rule targets exact standard-library
 finalizers whose documented contract writes pending data or required framing, including direct
-stable values returned by the streaming encoder constructors. A text/tabwriter Writer backed by an
-exact bytes.Buffer cannot return a write error from Flush and is excluded.
+stable values returned by the streaming encoder constructors. Finalizers are excluded when a stable
+bufio or tabwriter chain terminates at an exact bytes.Buffer or strings.Builder sink; gzip
+additionally requires an unmodified default header.
 
 - Default severity: `warn`
 - Presets: `correctness`
@@ -6090,8 +6091,11 @@ None.
 
 - Only exact standard-library writer finalizers with an error result are covered; user-defined
   writers and unproven interface-dispatched finalizers remain outside the contract.
-- The in-memory exclusion requires a direct, stable text/tabwriter.NewWriter acquisition whose
-  output has exact *bytes.Buffer type; interface-typed and reassigned outputs remain conservative.
+- The in-memory exclusion follows stable local bufio, gzip, and tabwriter constructor or
+  straight-line Reset/Init chains to exact bytes.Buffer and strings.Builder sinks; caller-owned,
+  conditionally rebound, interface-typed, escaped, cyclic, and unproven chains remain conservative.
+- Gzip in-memory exclusions require the default Header to remain unmodified because invalid Name,
+  Comment, or Extra values can fail independently of the sink.
 - Streaming encoder coverage requires a direct constructor result or a direct identifier initialized
   by encoding/ascii85, encoding/base32, or encoding/base64 NewEncoder and not reassigned before
   Close.
@@ -6673,6 +6677,9 @@ None.
   remain conservative.
 - Aliases, fields, containers, closures, method values, asynchronous calls, and transfers stop
   analysis because exact ownership or execution order is unavailable.
+- A proven non-nil error passed to an exact io.PipeWriter.CloseWithError aborts the output path
+  without requiring writer finalization. Proof is limited to exact non-nil constructors or a direct
+  enclosing nil or io.EOF guard without intervening reassignment.
 - One constructor call must supply the declaration or assignment values; parallel multi-expression
   acquisitions remain outside the direct mapping contract.
 - No fix is offered because correct finalization and error joining depend on the surrounding return
