@@ -2764,3 +2764,18 @@ Staticcheck adds only migration deprecations and one dead-code policy finding.
 The exact corpus must rerun on the latest candidate and the remaining
 repositories still require complete adjudication, so stable-v1 progress remains
 55% inside v0.6.
+
+The v0.6 OpenTelemetry-Go adjudication for pinned run `32698988231`, Glippy
+revision `7840a0c`, and OpenTelemetry-Go revision
+`736a14fcdca28b8cf5237e6b9b166ec6ed832bf7` records zero default, zero
+recommended, one strict, and four pedantic findings. All profiles completed on
+the generated-code-bearing library without a tool or source-state failure, so
+there are no default or recommended findings to classify. Go vet reports
+nothing. Staticcheck's three `U1000` findings target deliberately unread
+function fields whose structural purpose is to make test wrapper types
+non-comparable; they do not establish a missing default Glippy rule. The strict
+`too-many-lines` finding and three pedantic `mixed-receiver-type` findings remain
+opt-in policy signals. OpenTelemetry-Go therefore needs no precision correction
+or default-rule candidate from this run. The exact corpus must rerun on the
+latest candidate and the remaining repositories still require complete
+adjudication, so stable-v1 progress remains 55% inside v0.6.
