@@ -86,6 +86,40 @@ func noReturnPath(writer *csv.Writer, fail bool) error {
 	return writer.Error()
 }
 
+const disabled = false
+
+func constantFalse(writer *csv.Writer) {
+	if false {
+		writer.Flush()
+	}
+}
+
+func namedConstantFalse(writer *csv.Writer) {
+	if disabled {
+		writer.Flush()
+	}
+}
+
+func constantTrueElse(writer *csv.Writer) {
+	if true {
+		return
+	} else {
+		writer.Flush()
+	}
+}
+
+func constantFalseLoop(writer *csv.Writer) {
+	for false {
+		writer.Flush()
+	}
+}
+
+func conditional(writer *csv.Writer, enabled bool) {
+	if enabled {
+		writer.Flush()
+	}
+}
+
 func transferred(writer *csv.Writer) {
 	writer.Flush()
 	consume(writer)
@@ -149,22 +183,61 @@ func consume(*csv.Writer) {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 6 {
+	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 7 {
 		t.Fatalf("unchecked-csv-writer-error result = %#v", result.Files)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	wantStarts := lifecycleDiagnosticStarts(
+		t,
+		input,
+		"writer.Flush()",
+		"unchecked",
+		"partial",
+		"blank",
+		"expression",
+		"reassigned",
+		"checkedBeforeOnly",
+		"conditional",
+	)
 	for _, diagnostic := range result.Files[0].Diagnostics {
 		if diagnostic.RuleID != "unchecked-csv-writer-error" ||
 			diagnostic.MessageKey != "csv-writer-error-not-checked" ||
 			string(content[diagnostic.Range.Start:diagnostic.Range.End]) !=
 				"writer.Flush()" ||
+			!wantStarts[diagnostic.Range.Start] ||
 			len(diagnostic.Fixes) != 0 {
 			t.Fatalf("unchecked CSV writer diagnostic = %#v", diagnostic)
 		}
+		delete(wantStarts, diagnostic.Range.Start)
 	}
+	if len(wantStarts) != 0 {
+		t.Fatalf("missing unchecked CSV writer diagnostics at %#v", wantStarts)
+	}
+}
+
+func lifecycleDiagnosticStarts(
+	t *testing.T,
+	input string,
+	operation string,
+	functions ...string,
+) map[int]bool {
+	t.Helper()
+	result := make(map[int]bool, len(functions))
+	for _, function := range functions {
+		functionStart := strings.Index(input, "func " + function + "(")
+		if functionStart < 0 {
+			t.Fatalf("missing fixture function %q", function)
+		}
+		operationStart := strings.Index(input[functionStart:], operation)
+		if operationStart < 0 {
+			t.Fatalf("missing %q in fixture function %q", operation, function)
+		}
+		result[functionStart + operationStart] = true
+	}
+	return result
 }
 
 func TestUncheckedCSVWriterErrorUsesExactTypeAcrossHelperPackages(t *testing.T) {

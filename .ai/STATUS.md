@@ -2869,3 +2869,24 @@ finding already covered by Glippy's opt-in rule, and one unused test helper;
 none establishes a missing default rule. The exact corpus must rerun on the
 latest candidate and the remaining repositories still require complete
 adjudication, so stable-v1 progress remains 55% inside v0.6.
+
+The v0.6 Grafana adjudication for pinned run `32698988231`, Glippy revision
+`7840a0c`, and Grafana revision
+`45a80328c0dd976720af0366efcad0787762b142` classifies all 42 default and
+recommended findings. Thirty-four are actionable: four HTTP response-body
+leaks, one identical branch, three nil-error wraps, nine nilness findings, one
+source-version incompatibility, 15 unchecked rows errors, and one unchecked
+scanner error. Eight are intentional or unreachable: two calls to a private
+nil-guarding context helper, five final returns after `testing.Fatal` or
+`Fatalf`, and one CSV flush inside a literal `if false` audit block. The
+general nil-context and no-return shim corrections already cover the first
+seven. A shared typed constant-reachability correction now excludes CSV, rows,
+and scanner lifecycle candidates inside constant-dead `if`, `else`, and
+classic `for` branches while retaining runtime-conditional findings. All 32
+distinct diagnostic source files match the pinned revision and the focused
+affected rule suite passes. Go vet reports the same source-version issue.
+Staticcheck adds broad migration, unused-code, and style policy plus a fourth
+general ineffective-assignment example and two exact-suffix-as-cutset misuse
+examples, both recorded in the missed-defect queue. The exact corpus must rerun
+on the latest candidate and the remaining repositories still require complete
+adjudication, so stable-v1 progress remains 55% inside v0.6.

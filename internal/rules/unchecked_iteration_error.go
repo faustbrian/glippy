@@ -34,11 +34,16 @@ func runUncheckedIterationError(
 	message string,
 	help string,
 ) ([]Finding, error) {
-	if ctx == nil || ctx.Graph() == nil || ctx.Info() == nil || ctx.Package() == nil {
+	if ctx == nil ||
+		ctx.Body() == nil ||
+		ctx.Graph() == nil ||
+		ctx.Info() == nil ||
+		ctx.Package() == nil {
 		return nil, fmt.Errorf("%s requires a complete control-flow context", ruleID)
 	}
 	findings := make([]Finding, 0)
-	for _, candidate := range iterationErrorCandidates(ctx.Graph(), ctx.Info(), spec) {
+	for _, candidate := range
+		iterationErrorCandidates(ctx.Body(), ctx.Graph(), ctx.Info(), spec) {
 		if !iterationErrorPathReturnsUnchecked(candidate, ctx.Info(), spec) {
 			continue
 		}
@@ -60,6 +65,7 @@ func runUncheckedIterationError(
 }
 
 func iterationErrorCandidates(
+	body *ast.BlockStmt,
 	graph *cfg.CFG,
 	info *types.Info,
 	spec iterationErrorSpec,
@@ -81,7 +87,10 @@ func iterationErrorCandidates(
 		call, _ := ast.Unparen(loop.Cond).(*ast.CallExpr)
 		receiver, matched := iterationMethodReceiver(info, call, spec, spec.iterationMethod)
 		done := doneBlocks[loop]
-		if !matched || done == nil || !done.Live {
+		if !matched ||
+			done == nil ||
+			!done.Live ||
+			nodeInsideConstantUnreachableBranch(body, info, call) {
 			continue
 		}
 		result = append(

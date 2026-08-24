@@ -75,6 +75,12 @@ func noReturnPath(scanner *bufio.Scanner, fail bool) error {
 	return scanner.Err()
 }
 
+func constantFalse(scanner *bufio.Scanner) {
+	if false {
+		for scanner.Scan() {}
+	}
+}
+
 type localScanner struct{}
 func (*localScanner) Scan() bool { return false }
 func (*localScanner) Err() error { return nil }
@@ -94,13 +100,28 @@ func unrelated(scanner *localScanner) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	wantStarts := lifecycleDiagnosticStarts(
+		t,
+		input,
+		"scanner.Scan()",
+		"unchecked",
+		"partial",
+		"ignored",
+		"expressionStatement",
+		"reassigned",
+	)
 	for _, diagnostic := range result.Files[0].Diagnostics {
 		if diagnostic.RuleID != "unchecked-scanner-error" ||
 			string(content[diagnostic.Range.Start:diagnostic.Range.End]) !=
 				"scanner.Scan()" ||
+			!wantStarts[diagnostic.Range.Start] ||
 			len(diagnostic.Fixes) != 0 {
 			t.Fatalf("unchecked scanner diagnostic = %#v", diagnostic)
 		}
+		delete(wantStarts, diagnostic.Range.Start)
+	}
+	if len(wantStarts) != 0 {
+		t.Fatalf("missing unchecked scanner diagnostics at %#v", wantStarts)
 	}
 }
 

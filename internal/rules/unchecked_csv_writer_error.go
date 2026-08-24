@@ -60,13 +60,13 @@ func (uncheckedCSVWriterErrorRule) Metadata() Metadata {
 }
 
 func (uncheckedCSVWriterErrorRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding, error) {
-	if ctx == nil || ctx.Graph() == nil || ctx.Info() == nil {
+	if ctx == nil || ctx.Body() == nil || ctx.Graph() == nil || ctx.Info() == nil {
 		return nil, fmt.Errorf(
 			"unchecked-csv-writer-error requires a complete control-flow context",
 		)
 	}
 	findings := make([]Finding, 0)
-	for _, candidate := range csvWriterFlushCandidates(ctx.Graph(), ctx.Info()) {
+	for _, candidate := range csvWriterFlushCandidates(ctx.Body(), ctx.Graph(), ctx.Info()) {
 		if !obligationReachesOpenReturn(
 			candidate.start,
 			func(node ast.Node) obligationEffect {
@@ -92,7 +92,11 @@ func (uncheckedCSVWriterErrorRule) RunControlFlow(ctx *ControlFlowContext) ([]Fi
 	return findings, nil
 }
 
-func csvWriterFlushCandidates(graph *cfg.CFG, info *types.Info) []csvWriterFlushCandidate {
+func csvWriterFlushCandidates(
+	body *ast.BlockStmt,
+	graph *cfg.CFG,
+	info *types.Info,
+) []csvWriterFlushCandidate {
 	result := make([]csvWriterFlushCandidate, 0)
 	for _, block := range graph.Blocks {
 		if block == nil || !block.Live {
@@ -111,6 +115,9 @@ func csvWriterFlushCandidates(graph *cfg.CFG, info *types.Info) []csvWriterFlush
 				uncheckedCSVWriterErrorSpec.iterationMethod,
 			)
 			if !matched {
+				continue
+			}
+			if nodeInsideConstantUnreachableBranch(body, info, call) {
 				continue
 			}
 			result = append(

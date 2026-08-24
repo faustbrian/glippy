@@ -62,6 +62,14 @@ func checkedCondition(rows *sql.Rows) error {
 	return nil
 }
 
+const disabled = false
+
+func constantFalse(rows *sql.Rows) {
+	if disabled {
+		for rows.Next() {}
+	}
+}
+
 type localRows struct{}
 func (*localRows) Next() bool { return false }
 func (*localRows) Err() error { return nil }
@@ -123,13 +131,28 @@ func handle(error) {}
 	if err != nil {
 		t.Fatal(err)
 	}
+	wantStarts := lifecycleDiagnosticStarts(
+		t,
+		input,
+		"rows.Next()",
+		"unchecked",
+		"partial",
+		"ignored",
+		"reassigned",
+		"expressionStatement",
+	)
 	for _, diagnostic := range result.Files[0].Diagnostics {
 		if diagnostic.RuleID != "unchecked-rows-error" ||
 			string(content[diagnostic.Range.Start:diagnostic.Range.End]) !=
 				"rows.Next()" ||
+			!wantStarts[diagnostic.Range.Start] ||
 			len(diagnostic.Fixes) != 0 {
 			t.Fatalf("unchecked rows diagnostic = %#v", diagnostic)
 		}
+		delete(wantStarts, diagnostic.Range.Start)
+	}
+	if len(wantStarts) != 0 {
+		t.Fatalf("missing unchecked rows diagnostics at %#v", wantStarts)
 	}
 }
 
