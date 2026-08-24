@@ -502,7 +502,8 @@ func TestRunAllowsOnlyWorkspaceSumUpdateDuringOfflinePreflight(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(checkout, "go.work.sum")); !os.IsNotExist(err) {
 		t.Fatalf("source checkout go.work.sum changed: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(checkout, "preflight-mutation.txt")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(checkout, "preflight-mutation.txt"));
+		!os.IsNotExist(err) {
 		t.Fatalf("source checkout preflight-mutation.txt changed: %v", err)
 	}
 	if len(executor.profiles) != 4 {
@@ -530,7 +531,10 @@ func TestRunRejectsModuleGraphChangesOutsideWorkspaceSum(t *testing.T) {
 		t.Fatalf("Run() error = %v, want snapshot delta rejection", err)
 	}
 	if executor.moduleGraphSourceWriteError != nil {
-		t.Fatalf("create task-owned snapshot mutation: %v", executor.moduleGraphSourceWriteError)
+		t.Fatalf(
+			"create task-owned snapshot mutation: %v",
+			executor.moduleGraphSourceWriteError,
+		)
 	}
 	if _, err := os.Stat(filepath.Join(checkout, "mutation.txt")); !os.IsNotExist(err) {
 		t.Fatalf("source checkout mutation.txt changed: %v", err)
@@ -1276,7 +1280,7 @@ func (e *corpusExecutor) Run(
 		if e.updateWorkspaceSumDuringPreflight {
 			workspaceSum, err := os.OpenFile(
 				filepath.Join(command.Dir, "go.work.sum"),
-				os.O_APPEND|os.O_WRONLY,
+				os.O_APPEND | os.O_WRONLY,
 				0,
 			)
 			if err == nil {

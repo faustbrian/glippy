@@ -257,21 +257,13 @@ func runRepository(
 	}
 	workspaceSumMutable, err := permitWorkspaceSumUpdate(executionCheckout)
 	if err != nil {
-		return fmt.Errorf(
-			"prepare workspace sum for %q: %w",
-			repository.ID,
-			err,
-		)
+		return fmt.Errorf("prepare workspace sum for %q: %w", repository.ID, err)
 	}
 	if err := prefetchRepositoryModules(ctx, options, repository, executionCheckout);
 		err != nil {
 		return err
 	}
-	if err := validateModuleGraphSnapshot(
-		checkout,
-		executionCheckout,
-		workspaceSumMutable,
-	);
+	if err := validateModuleGraphSnapshot(checkout, executionCheckout, workspaceSumMutable);
 		err != nil {
 		return fmt.Errorf(
 			"module graph changed checkout snapshot outside go.work.sum for %q: %w",
@@ -327,11 +319,7 @@ func runRepository(
 		analysisPreflightCommand(repository),
 	)
 	var preflightSnapshotErr error
-	if err := validateModuleGraphSnapshot(
-		checkout,
-		executionCheckout,
-		workspaceSumMutable,
-	);
+	if err := validateModuleGraphSnapshot(checkout, executionCheckout, workspaceSumMutable);
 		err != nil {
 		preflightSnapshotErr = fmt.Errorf(
 			"offline preflight changed checkout snapshot outside go.work.sum for %q: %w",
@@ -347,11 +335,7 @@ func runRepository(
 			err,
 		)
 	}
-	if err := errors.Join(
-		preflightErr,
-		preflightSnapshotErr,
-		preflightLockErr,
-	); err != nil {
+	if err := errors.Join(preflightErr, preflightSnapshotErr, preflightLockErr); err != nil {
 		return err
 	}
 	result := repositoryResult{
@@ -1811,7 +1795,7 @@ func permitWorkspaceSumUpdate(root string) (bool, error) {
 	case os.IsNotExist(err):
 		workspaceSum, createErr := os.OpenFile(
 			sumPath,
-			os.O_CREATE|os.O_EXCL|os.O_WRONLY,
+			os.O_CREATE | os.O_EXCL | os.O_WRONLY,
 			0o600,
 		)
 		if createErr != nil {
@@ -1892,7 +1876,10 @@ func validateModuleGraphSnapshot(source, snapshot string, allowWorkspaceSum bool
 	return nil
 }
 
-func checkoutSnapshotInventory(root string, skipWorkspaceSum bool) (map[string]checkoutSnapshotEntry, error) {
+func checkoutSnapshotInventory(
+	root string,
+	skipWorkspaceSum bool,
+) (map[string]checkoutSnapshotEntry, error) {
 	entries := make(map[string]checkoutSnapshotEntry)
 	err := filepath.WalkDir(
 		root,
