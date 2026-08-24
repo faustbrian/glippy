@@ -2952,3 +2952,15 @@ terminals conservatively and its regression, affected analysis suite, vet, and
 independent review passed. The retained run remains incomplete crash evidence;
 Kubernetes must rerun in isolated CI on the latest candidate. Stable-v1
 progress remains 55% inside v0.6.
+
+The completed canonical adjudication for run `32698988231` now binds all 17
+repository results and classifies all 259 default and recommended profile
+entries: default contains 39 true positives, 33 false positives, and one
+duplicate-vet finding; recommended contains 145 true positives, 40 false
+positives, and one duplicate-vet finding. No finding remains unclassified. The
+generated aggregate report validates ten gaps and produces two evidence-backed
+rule-queue entries: `ineffective-assignment` across four repositories and
+`exact-suffix-as-cutset` from Grafana. Canonical validation remains incomplete
+with 12 unresolved profile or comparator units belonging to CockroachDB,
+Go-Ethereum, go-sqlite3, Kubernetes, and Moby. The latest exact corpus rerun is
+still required, so stable-v1 progress remains 55% inside v0.6.
