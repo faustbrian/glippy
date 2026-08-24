@@ -2895,3 +2895,60 @@ general ineffective-assignment example and two exact-suffix-as-cutset misuse
 examples, both recorded in the missed-defect queue. The exact corpus must rerun
 on the latest candidate and the remaining repositories still require complete
 adjudication, so stable-v1 progress remains 55% inside v0.6.
+
+The v0.6 gRPC-Go adjudication for pinned run `32698988231`, Glippy revision
+`7840a0c`, and gRPC-Go revision
+`4793ad0474669eafbd5346c8a3d098fdfa542498` classifies all 17 default and
+recommended findings. Fourteen are actionable: seven stale or redundant
+nilness conditions, two mutations of range-value copies, and five discarded
+buffer flush errors. Three final returns after `testing.T.Fatalf` are covered
+by the general testing no-return correction in `972cfcf`. All referenced source
+digests match the retained snapshot. Go vet is clean. Staticcheck adds broad
+deprecation and style output plus three harmless final increments after their
+last use; this does not establish a strong new default-rule candidate. The
+exact corpus must rerun on the latest candidate, so stable-v1 progress remains
+55% inside v0.6.
+
+The v0.6 Prometheus adjudication for the same run and Glippy revision, at
+Prometheus revision `d15adb9ad7e5d9fbde3a9a8f30200593a5a14d86`, classifies all
+ten default and recommended findings. Six are actionable: an impossible
+`uint32` comparison, a shadowed named error, one unchecked scanner error, and
+three discarded writer finalization errors. Two deliberate nil-slice panics and
+two final returns after `testing.T.Fatalf` are intentional or covered by the
+testing no-return correction. All referenced source digests match. Go vet's 26
+name-only `Seek` findings are the standard-method false-positive family already
+moved to pedantic. Staticcheck adds intentional, generated, suppressed,
+migration, style, and performance findings but no new default-rule candidate.
+The exact corpus must rerun on the latest candidate, so stable-v1 progress
+remains 55% inside v0.6.
+
+The v0.6 Terraform adjudication for the same run and Glippy revision, at
+Terraform revision `883c7221ee2e0bc2fad6912fd4b3cc4b53a598a7`, classifies all 25
+default and recommended findings. Twenty-four are actionable: nine nilness
+conditions, eleven unchecked scanner errors, three discarded output
+finalization errors, and one cleanup deferred before acquisition success. One
+final return after `testing.T.FailNow` is covered by the general testing
+no-return correction. All referenced source digests match. Go vet and
+Staticcheck are clean. The exact corpus must rerun on the latest candidate, so
+stable-v1 progress remains 55% inside v0.6.
+
+Go-Ethereum revision `02b73d4ea7181464175e0a6cbecc0a3a2655a562` and go-sqlite3
+revision `58c8e145308ceded07d1df2ac1b65999499e7055` select Go 1.24 and Go 1.21,
+respectively. Glippy's accepted source range is Go 1.25 through Go 1.26, so all
+four profiles correctly returned source-error exit 2 with zero diagnostics and
+`complete: false`. These are explicit unsupported-source corpus boundaries,
+not clean runs; directive shims are rejected.
+
+CockroachDB revision `8812064a015d2faf99d3fc7e15880f94042954b0` failed analysis
+preflight because `pkg/internal/team/TEAMS.yaml`, required by `go:embed`, is a
+generated file absent from the clean checkout. No Glippy profile or comparator
+produced adjudicatable findings. This remains an explicit unsupported build
+prerequisite unless a digest-bound derivative-source contract is adopted.
+
+Kubernetes revision `e81f39c0e03ce8ed8e2660c9147b391edd9e262b` exposed a
+genuine panic in every profile when testing-skip inference passed a nil terminal
+call to `typeutil.StaticCallee`. Commit `7a7f720` now treats non-call no-return
+terminals conservatively and its regression, affected analysis suite, vet, and
+independent review passed. The retained run remains incomplete crash evidence;
+Kubernetes must rerun in isolated CI on the latest candidate. Stable-v1
+progress remains 55% inside v0.6.
