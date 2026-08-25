@@ -361,10 +361,7 @@ func TestWriterBorrowFactsIntersectPackageVariants(t *testing.T) {
 	first := effectTestFunction("example.com/project/output", "Display")
 	second := effectTestFunction("example.com/project/output", "Display")
 	analysis := &writerBorrowAnalysis{
-		ordered: []*writerBorrowDefinition{
-			{function: first},
-			{function: second},
-		},
+		ordered: []*writerBorrowDefinition{{function: first}, {function: second}},
 		borrows: map[*types.Func]map[int]bool{first: {0: true}},
 	}
 	facts := newNativeEffectFacts()
