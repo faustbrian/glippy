@@ -9,9 +9,11 @@
 - v0.6 real-world rule validation: complete at analyzed revision `ee2ea4f`;
   exact corpus run `32723865179`, attempt 2, passed all 20 jobs and classified
   all 386 default and recommended entries
-- v0.8 typed peak RSS gate: isolated-CI aggregate process-tree measurement is
-  active; 2 GiB is disproved, 3 GiB is provisional, and an exact green campaign
-  remains required
+- v0.8 native release budgets: exact workflow `32814696805` passed all four
+  supported macOS/Linux amd64/arm64 jobs and cross-runner byte-for-byte archive
+  reproducibility; stable ceilings are 250 ms editor latency, 120 s formatter
+  latency, 2 GiB aggregate formatter RSS, 240 s typed latency, and 3 GiB
+  aggregate typed RSS for the pinned workloads
 - v0.5 typed retained-memory attribution: complete
 - v0.5 exact printf fact isolation and 2 GiB reference-host gate: complete
 - v0.5 bounded incremental workspace-result reuse: complete
@@ -47,9 +49,9 @@
   exact-revision CI `32547111862`
 - v0.5 independent review: complete for the bounded engineering milestone;
   the final source-only review reported no findings
-- v0.5 native macOS/Linux amd64/arm64 release budgets: prior per-process run
-  passed at `724d8a2`; v0.8 aggregate measurement now runs only in isolated CI
-  and has not yet established the replacement typed ceiling
+- v0.5 native macOS/Linux amd64/arm64 release budgets: the prior per-process
+  result at `724d8a2` is superseded by the v0.8 aggregate four-runner evidence
+  above
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13

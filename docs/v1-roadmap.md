@@ -46,8 +46,9 @@ not become a package marketplace or plugin system.
 
 Status: active. The corpus harness now binds exact formatter and transactional
 safe-fix preview evidence from immutable snapshots. Plain CI documentation and
-the bounded prerelease-upgrade rehearsal are complete. Exact-revision corpus,
-source-fidelity, fixer, resource-budget, and variant gates remain open.
+the bounded prerelease-upgrade rehearsal are complete. Native macOS/Linux
+resource budgets and cross-runner archive reproducibility are proven. The
+exact-revision corpus, source-fidelity, fixer, and variant gates remain open.
 
 - Repeat the complete corpus at exact revisions and classify every formatter
   divergence and diagnostic.
