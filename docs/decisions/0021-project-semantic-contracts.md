@@ -112,6 +112,12 @@ representation to version 16 and `native-effects-v16`. Project contracts
 cannot declare these facts; they are inferred only through exact selected
 source and authoritative standard-library in-memory writer roots.
 
+Exact source-proven synchronous `io.Writer` borrow facts advance the active
+representation to version 17 and `native-effects-v17`. Project contracts
+cannot declare these facts. The analyzer accepts only direct non-retaining
+writer operations or delegation to another source-proven borrower and
+intersects package variants before publishing the fact.
+
 Contract files are data only. They do not execute code, provide replacement Go
 types, load runtime plugins, or grant write authority. Syntax-only lint does
 not load type state because contracts are configured. External contracts use

@@ -65,7 +65,7 @@ func (uncheckedWriterErrorRule) Metadata() Metadata {
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"Only exact standard-library writer finalizers with an error result are covered; user-defined writers and unproven interface-dispatched finalizers remain outside the contract.",
-			"The in-memory exclusion follows stable local bufio, gzip, and tabwriter constructor or straight-line Reset/Init chains to exact bytes.Buffer and strings.Builder sinks or selected-module concrete writers whose exact Write error result is proven nil; caller-owned, conditionally rebound, interface-typed, escaped, cyclic, package-variant-disagreeing, and unproven chains remain conservative.",
+			"The in-memory exclusion follows stable local bufio, gzip, and tabwriter constructor or straight-line Reset/Init chains to exact bytes.Buffer and strings.Builder sinks or selected-module concrete writers whose exact Write error result is proven nil. Source-proven synchronous io.Writer borrowers may preserve that chain across selected-package calls; caller-owned, conditionally rebound, retained, returned, asynchronously used, interface-typed, cyclic, package-variant-disagreeing, and unproven chains remain conservative.",
 			"Gzip in-memory exclusions require the default Header to remain unmodified because invalid Name, Comment, or Extra values can fail independently of the sink.",
 			"Stable in-memory fmt consumers accept basic values and exact time.Time and io/fs.FileMode values; user-defined formatting callbacks remain conservative because they can capture and rebind the writer.",
 			"The redundant deferred archive/tar exclusion requires a writer declared directly in the same block, a later same-block Close whose error is passed to another call, no intervening return or branch, and no later or escaping receiver use.",
@@ -593,7 +593,7 @@ func infallibleWriterFinalizer(
 		if directObject(ctx.Info(), receiverExpression) == nil {
 			return false
 		}
-		binding := stableWriterConstructor(typesContext, finalizer)
+		binding := stableWriterConstructorWithBorrow(ctx, finalizer)
 		constructor = binding.candidate
 		bindings = binding.candidates
 		helperSinks = binding.helperSinks
@@ -895,6 +895,7 @@ type stableWriterState struct {
 	helperSinks map[*ast.CallExpr]ast.Expr
 	callTiming map[*ast.CallExpr]writerCallTiming
 	straightLineRebinds map[*ast.CallExpr]struct{}
+	writerBorrow func(*ast.CallExpr, int) bool
 	deferredEffects []deferredWriterEffect
 }
 
@@ -938,6 +939,34 @@ func stableWriterConstructor(ctx *TypesContext, finalizer *ast.CallExpr) stableW
 					ctx.PackageSyntax(),
 					ctx.Syntax(),
 				),
+				nil,
+			)
+		},
+	)
+	constructors, _ := value.(map[*ast.CallExpr]stableWriterBinding)
+	return constructors[finalizer]
+}
+
+func stableWriterConstructorWithBorrow(
+	ctx *ControlFlowContext,
+	finalizer *ast.CallExpr,
+) stableWriterBinding {
+	if ctx == nil || ctx.typesContext == nil || finalizer == nil {
+		return stableWriterBinding{}
+	}
+	typesContext := ctx.typesContext
+	value := typesContext.memoized(
+		"unchecked-writer-error/infallible-writer-stability-v3",
+		func() any {
+			return stableWriterConstructors(
+				typesContext.Info(),
+				typesContext.Syntax(),
+				packageWriterMutationSummaries(
+					typesContext.Info(),
+					typesContext.PackageSyntax(),
+					typesContext.Syntax(),
+				),
+				ctx.WriterBorrow,
 			)
 		},
 	)
@@ -949,8 +978,14 @@ func stableWriterConstructors(
 	info *types.Info,
 	syntax *ast.File,
 	mutationSummaries writerMutationSummaries,
+	writerBorrow func(*ast.CallExpr, int) bool,
 ) map[*ast.CallExpr]stableWriterBinding {
-	constructors := stableWriterConstructorsInNode(info, syntax, mutationSummaries)
+	constructors := stableWriterConstructorsInNode(
+		info,
+		syntax,
+		mutationSummaries,
+		writerBorrow,
+	)
 	if info == nil || syntax == nil {
 		return constructors
 	}
@@ -966,6 +1001,7 @@ func stableWriterConstructors(
 					info,
 					literal.Body,
 					mutationSummaries,
+					writerBorrow,
 				) {
 				constructors[call] = candidate
 			}
@@ -979,6 +1015,7 @@ func stableWriterConstructorsInNode(
 	info *types.Info,
 	syntax ast.Node,
 	mutationSummaries writerMutationSummaries,
+	writerBorrow func(*ast.CallExpr, int) bool,
 ) map[*ast.CallExpr]stableWriterBinding {
 	constructors := make(map[*ast.CallExpr]stableWriterBinding)
 	if info == nil || syntax == nil {
@@ -1011,6 +1048,7 @@ func stableWriterConstructorsInNode(
 		helperSinks: make(map[*ast.CallExpr]ast.Expr),
 		callTiming: callTiming,
 		straightLineRebinds: straightLineWriterRebinds(syntax),
+		writerBorrow: writerBorrow,
 	}
 	lateConstructors := make(map[*ast.CallExpr]*ast.CallExpr)
 	nextQuery := 0
@@ -1515,7 +1553,11 @@ func (state *stableWriterState) observe(info *types.Info, node ast.Node) bool {
 		state.invalidateClosure(info, node.Value)
 		return true
 	case *ast.CallExpr:
-		if state.callTiming[node] == writerCallDeferred {
+		timing := state.callTiming[node]
+		if timing != writerCallImmediate {
+			state.invalidateNonImmediateWriterBorrows(info, node)
+		}
+		if timing == writerCallDeferred {
 			return false
 		}
 		if receiver := writerRebindReceiverExpression(info, node); receiver != nil {
@@ -3050,10 +3092,7 @@ func writerArgumentCannotRebind(info *types.Info, call *ast.CallExpr, argument i
 	if signature == nil || signature.Params() == nil {
 		return false
 	}
-	parameter := argument - writerCallParameterOffset(info, call)
-	if parameter < 0 {
-		return false
-	}
+	parameter := argument
 	parameterCount := signature.Params().Len()
 	if parameterCount == 0 {
 		return false
@@ -3087,15 +3126,17 @@ func (state *stableWriterState) writerArgumentCannotRebind(
 		return false
 	}
 	mutated, local := state.mutationSummaries.functions[callee]
-	if !local {
-		return false
+	if local {
+		parameter := argument - writerCallParameterOffset(info, call)
+		if parameter < 0 {
+			return false
+		}
+		_, rebinds := mutated[parameter]
+		if !rebinds {
+			return true
+		}
 	}
-	parameter := argument - writerCallParameterOffset(info, call)
-	if parameter < 0 {
-		return false
-	}
-	_, rebinds := mutated[parameter]
-	return !rebinds
+	return state.writerBorrow != nil && state.writerBorrow(call, argument)
 }
 
 func (state *stableWriterState) harmlessWriterClosureArgument(
@@ -3145,6 +3186,23 @@ func (state *stableWriterState) harmlessWriterClosureArgument(
 		}
 	}
 	return true
+}
+
+func (state *stableWriterState) invalidateNonImmediateWriterBorrows(
+	info *types.Info,
+	call *ast.CallExpr,
+) {
+	if state == nil || info == nil || call == nil {
+		return
+	}
+	for index, argument := range call.Args {
+		if !state.writerArgumentCannotRebind(info, call, index) {
+			continue
+		}
+		if candidate := state.candidates[directObject(info, argument)]; candidate != nil {
+			state.invalidateCandidate(candidate, argument.Pos())
+		}
+	}
 }
 
 func writerASTParents(root ast.Node) map[ast.Node]ast.Node {

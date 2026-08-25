@@ -966,6 +966,7 @@ func TestUncheckedWriterErrorUsesCrossPackageInfallibleWriteFacts(t *testing.T) 
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"strings"
 )
@@ -986,6 +987,73 @@ func (writer *MemoryWriter) Write(value []byte) (int, error) {
 func (writer *MemoryWriter) Flush() error {
 	_, err := writer.output.Write(writer.buffer.Bytes())
 	return err
+}
+
+type NamedMemoryWriter struct {
+	buffer bytes.Buffer
+}
+
+func NewNamedMemoryWriter() *NamedMemoryWriter { return &NamedMemoryWriter{} }
+
+func (writer *NamedMemoryWriter) Write(value []byte) (n int, err error) {
+	return writer.buffer.Write(value)
+}
+
+func Display(output io.Writer) {
+	_, _ = output.Write([]byte("payload"))
+}
+
+func Print(output io.Writer) {
+	_, _ = fmt.Fprint(output, "payload")
+}
+
+func WriteString(output io.Writer) {
+	_, _ = io.WriteString(output, "payload")
+}
+
+func Delegate(output io.Writer) {
+	Display(output)
+}
+
+type DisplayHelper struct{}
+
+func (DisplayHelper) Display(output io.Writer) {
+	_, _ = output.Write([]byte("payload"))
+}
+
+func Deferred(output io.Writer) {
+	defer output.Write([]byte("payload"))
+}
+
+func Async(output io.Writer) {
+	go output.Write([]byte("payload"))
+}
+
+func Return(output io.Writer) io.Writer {
+	return output
+}
+
+func Alias(output io.Writer) {
+	alias := output
+	_, _ = alias.Write([]byte("payload"))
+}
+
+func Closure(output io.Writer) {
+	func() { _, _ = output.Write([]byte("payload")) }()
+}
+
+func Assert(output io.Writer) {
+	_, _ = output.(io.StringWriter)
+}
+
+func Recursive(output io.Writer) {
+	Recursive(output)
+}
+
+var retained io.Writer
+
+func Retain(output io.Writer) {
+	retained = output
 }
 
 type StringWriter struct {
@@ -1023,8 +1091,59 @@ import (
 func writeTables(output io.Writer) {
 	memoryTable := tabwriter.NewWriter(sink.NewMemoryWriter(output), 1, 8, 1, ' ', 0)
 	memoryTable.Flush()
+	namedSink := sink.NewNamedMemoryWriter()
+	for range 2 {
+		namedMemoryTable := tabwriter.NewWriter(namedSink, 1, 8, 1, ' ', 0)
+		sink.Display(namedMemoryTable)
+		namedMemoryTable.Flush()
+	}
+	printTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	sink.Print(printTable)
+	printTable.Flush()
+	stringWriteTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	sink.WriteString(stringWriteTable)
+	stringWriteTable.Flush()
+	delegatedTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	sink.Delegate(delegatedTable)
+	delegatedTable.Flush()
+	methodTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	sink.DisplayHelper{}.Display(methodTable)
+	methodTable.Flush()
+	methodExpressionTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	sink.DisplayHelper.Display(sink.DisplayHelper{}, methodExpressionTable)
+	methodExpressionTable.Flush()
+	deferredCallTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	defer sink.Display(deferredCallTable)
+	deferredCallTable.Flush()
+	asyncCallTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	go sink.Display(asyncCallTable)
+	asyncCallTable.Flush()
 	stringTable := tabwriter.NewWriter(sink.NewStringWriter(), 1, 8, 1, ' ', 0)
 	stringTable.Flush()
+	retainedTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	sink.Retain(retainedTable)
+	retainedTable.Flush()
+	deferredTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	sink.Deferred(deferredTable)
+	deferredTable.Flush()
+	asyncTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	sink.Async(asyncTable)
+	asyncTable.Flush()
+	returnedTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	sink.Return(returnedTable)
+	returnedTable.Flush()
+	aliasedTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	sink.Alias(aliasedTable)
+	aliasedTable.Flush()
+	closureTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	sink.Closure(closureTable)
+	closureTable.Flush()
+	assertedTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	sink.Assert(assertedTable)
+	assertedTable.Flush()
+	recursiveTable := tabwriter.NewWriter(sink.NewNamedMemoryWriter(), 1, 8, 1, ' ', 0)
+	sink.Recursive(recursiveTable)
+	recursiveTable.Flush()
 
 	fallibleTable := tabwriter.NewWriter(sink.NewFallibleWriter(output), 1, 8, 1, ' ', 0)
 	fallibleTable.Flush()
@@ -1047,7 +1166,20 @@ func writeTables(output io.Writer) {
 		t,
 		input,
 		analysis.PackageResult{Files: []analysis.Result{{Diagnostics: diagnostics}}},
-		[]string{"fallibleTable.Flush()", "dynamicTable.Flush()"},
+		[]string{
+			"deferredCallTable.Flush()",
+			"asyncCallTable.Flush()",
+			"retainedTable.Flush()",
+			"deferredTable.Flush()",
+			"asyncTable.Flush()",
+			"returnedTable.Flush()",
+			"aliasedTable.Flush()",
+			"closureTable.Flush()",
+			"assertedTable.Flush()",
+			"recursiveTable.Flush()",
+			"fallibleTable.Flush()",
+			"dynamicTable.Flush()",
+		},
 	)
 }
 

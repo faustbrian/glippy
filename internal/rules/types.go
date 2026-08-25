@@ -733,6 +733,7 @@ func (s ParameterEffectSummary) GuaranteesAny(accepted ParameterEffectKind) bool
 type EffectFacts interface {
 	ParameterEffect(*types.Func, int) ParameterEffectSummary
 	ReceiverEffect(*types.Func) ParameterEffectSummary
+	WriterBorrow(*types.Func, int) bool
 	NoOpClose(*types.Func) bool
 	ReturnState(*types.Func, int, int) ReturnStateSummary
 	ResultState(*types.Func, int) NilState
@@ -1041,6 +1042,26 @@ func (c *ControlFlowContext) ParameterEffect(
 		return ParameterEffectSummary{}
 	}
 	return c.effects.ParameterEffect(callee, parameter)
+}
+
+// WriterBorrow reports whether one statically resolved call parameter is
+// proven to borrow an io.Writer synchronously without retaining, returning,
+// reinitializing, or otherwise exposing it.
+func (c *ControlFlowContext) WriterBorrow(call *ast.CallExpr, argument int) bool {
+	if c == nil ||
+		c.typesContext == nil ||
+		c.effects == nil ||
+		call == nil ||
+		argument < 0 ||
+		argument >= len(call.Args) {
+		return false
+	}
+	callee := typeutil.StaticCallee(c.typesContext.info, call)
+	if callee == nil {
+		return false
+	}
+	parameter, valid := StaticCallParameter(c.typesContext.info, call, callee, argument)
+	return valid && c.effects.WriterBorrow(callee, parameter)
 }
 
 // ReceiverEffect returns the conservative summary for the receiver of one

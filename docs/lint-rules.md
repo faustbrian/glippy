@@ -6221,9 +6221,10 @@ None.
   writers and unproven interface-dispatched finalizers remain outside the contract.
 - The in-memory exclusion follows stable local bufio, gzip, and tabwriter constructor or
   straight-line Reset/Init chains to exact bytes.Buffer and strings.Builder sinks or selected-module
-  concrete writers whose exact Write error result is proven nil; caller-owned, conditionally
-  rebound, interface-typed, escaped, cyclic, package-variant-disagreeing, and unproven chains remain
-  conservative.
+  concrete writers whose exact Write error result is proven nil. Source-proven synchronous io.Writer
+  borrowers may preserve that chain across selected-package calls; caller-owned, conditionally
+  rebound, retained, returned, asynchronously used, interface-typed, cyclic,
+  package-variant-disagreeing, and unproven chains remain conservative.
 - Gzip in-memory exclusions require the default Header to remain unmodified because invalid Name,
   Comment, or Extra values can fail independently of the sink.
 - Stable in-memory fmt consumers accept basic values and exact time.Time and io/fs.FileMode values;

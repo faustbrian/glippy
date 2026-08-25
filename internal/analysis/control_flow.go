@@ -69,6 +69,12 @@ func RunControlFlow(
 			return nil, err
 		}
 		effects.addParameterEffects(parameterEffects)
+		writerBorrows := newWriterBorrowAnalysis(ctx, packages_, effects)
+		writerBorrows.buildAll()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		effects.addWriterBorrows(writerBorrows)
 		managedResults := newManagedResultAnalysis(ctx, packages_, effects, noReturns)
 		managedResults.buildAll()
 		if err := ctx.Err(); err != nil {

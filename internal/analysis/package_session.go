@@ -2043,6 +2043,12 @@ func rebuildPackageSessionEffectFacts(
 		return nil, err
 	}
 	facts.addParameterEffects(parameterEffects)
+	writerBorrows := newWriterBorrowAnalysis(ctx, selected, facts)
+	writerBorrows.buildAll()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	facts.addWriterBorrows(writerBorrows)
 	managedResults := newManagedResultAnalysis(ctx, selected, facts, noReturns)
 	managedResults.buildAll()
 	if err := ctx.Err(); err != nil {

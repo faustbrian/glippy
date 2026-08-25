@@ -489,6 +489,70 @@ func TestPackageSessionFallsBackWhenIncrementalImportLoadFails(t *testing.T) {
 	}
 }
 
+func TestRebuildPackageSessionEffectFactsIncludesWriterBorrows(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writePackageSessionFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/sample\n\ngo 1.26.0\n",
+	)
+	if err := os.MkdirAll(filepath.Join(root, "sink"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writePackageSessionFixture(
+		t,
+		filepath.Join(root, "sink", "sink.go"),
+		"package sink\n\nimport \"io\"\n\n" +
+			"func Display(output io.Writer) { _, _ = output.Write(nil) }\n",
+	)
+	writePackageSessionFixture(
+		t,
+		filepath.Join(root, "sample.go"),
+		"package sample\n\nimport (\n\t\"bytes\"\n\t\"example.com/sample/sink\"\n)\n\n" +
+			"func Display() { sink.Display(bytes.NewBuffer(nil)) }\n",
+	)
+	options := PackageLoadOptions{
+		Dir: root,
+		Patterns: []string{"."},
+		Requirement: rules.RequireControlFlow,
+		LoadDependencySyntax: true,
+		ModuleMode: ModuleReadonly,
+	}
+	loaded, err := LoadPackages(context.Background(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph, err := reachablePackageGraph(loaded.Packages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	freshByID := make(map[string]*packages.Package, len(graph))
+	var display *types.Func
+	for _, pkg := range graph {
+		freshByID[pkg.ID] = pkg
+		if pkg.PkgPath == "example.com/sample/sink" && pkg.Types != nil {
+			display, _ = pkg.Types.Scope().Lookup("Display").(*types.Func)
+		}
+	}
+	if display == nil {
+		t.Fatal("loaded graph omitted sink.Display")
+	}
+	facts, err := rebuildPackageSessionEffectFacts(
+		context.Background(),
+		options,
+		loaded.Packages,
+		freshByID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !facts.WriterBorrow(display, 0) {
+		t.Fatal("incremental effect rebuild omitted sink.Display writer borrow")
+	}
+}
+
 func TestPackageSessionEscapesExactImportLoadPatterns(t *testing.T) {
 	t.Parallel()
 

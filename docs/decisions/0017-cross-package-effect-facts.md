@@ -149,6 +149,17 @@ delegation rooted in the standard-library `bytes.Buffer` and `strings.Builder`
 contracts. Package variants must agree; interface dispatch, mutable or missing
 source, recursion, and fallible delegates remain unknown.
 
+The v0.8 exact-corpus correction advances the active schema and cache component
+to `native-effects-v17`. Exact selected-module functions may export a
+synchronous `io.Writer` borrow only when source proves the parameter is used
+through `Write`, the non-retaining `fmt.Fprint` family, `io.WriteString`, or
+another already-proven borrower. Returns, storage, closures, goroutines,
+defers, type assertions, aliases, unknown calls, and package-variant
+disagreement reject the fact. This lets buffered-writer analysis preserve an
+infallible sink across a proven display helper without treating arbitrary
+writer consumers as safe. Consumers accept the fact only for immediate calls;
+deferred and asynchronous call sites remain conservative.
+
 ## Alternatives
 
 - Load the complete dependency syntax closure with `packages.NeedDeps`:

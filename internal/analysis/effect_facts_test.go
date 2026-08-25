@@ -218,6 +218,8 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 		Kinds: rules.ParameterEffectClose,
 		GuaranteedKinds: rules.ParameterEffectClose,
 	}
+	first.writerBorrows["writer"] = map[int]struct{}{1: {}, 0: {}}
+	second.writerBorrows["writer"] = map[int]struct{}{0: {}, 1: {}}
 	first.noOpCloses["no-op-close"] = struct{}{}
 	second.noOpCloses["no-op-close"] = struct{}{}
 	first.results["function"] = map[int]rules.NilState{
@@ -262,6 +264,11 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	delete(changed.receivers, "method")
 	if first.digest() == changed.digest() {
 		t.Fatal("effect fact digest ignored a receiver effect change")
+	}
+	changed = cloneNativeEffectFacts(first)
+	delete(changed.writerBorrows["writer"], 1)
+	if first.digest() == changed.digest() {
+		t.Fatal("effect fact digest ignored a writer-borrow change")
 	}
 	changed = cloneNativeEffectFacts(first)
 	delete(changed.noOpCloses, "no-op-close")
@@ -330,6 +337,47 @@ func TestNativeParameterEffectsUseStableCrossLoadFunctionIdentity(t *testing.T) 
 	}
 	if summary := facts.ParameterEffect(second, 1); summary.Known {
 		t.Fatalf("parameter effect matched another parameter: %#v", summary)
+	}
+}
+
+func TestNativeWriterBorrowsUseStableCrossLoadFunctionIdentity(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestFunction("example.com/project/output", "Display")
+	second := effectTestFunction("example.com/project/output", "Display")
+	facts := newNativeEffectFacts()
+	facts.writerBorrows[stableFunctionIdentity(first)] = map[int]struct{}{0: {}}
+	if !facts.WriterBorrow(second, 0) {
+		t.Fatal("writer borrow did not survive an independent type identity")
+	}
+	if facts.WriterBorrow(second, 1) {
+		t.Fatal("writer borrow matched another parameter")
+	}
+}
+
+func TestWriterBorrowFactsIntersectPackageVariants(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestFunction("example.com/project/output", "Display")
+	second := effectTestFunction("example.com/project/output", "Display")
+	analysis := &writerBorrowAnalysis{
+		ordered: []*writerBorrowDefinition{
+			{function: first},
+			{function: second},
+		},
+		borrows: map[*types.Func]map[int]bool{first: {0: true}},
+	}
+	facts := newNativeEffectFacts()
+	facts.addWriterBorrows(analysis)
+	if facts.WriterBorrow(first, 0) {
+		t.Fatal("writer borrow survived a disagreeing package variant")
+	}
+
+	analysis.borrows[second] = map[int]bool{0: true}
+	facts = newNativeEffectFacts()
+	facts.addWriterBorrows(analysis)
+	if !facts.WriterBorrow(second, 0) {
+		t.Fatal("writer borrow was lost across agreeing package variants")
 	}
 }
 

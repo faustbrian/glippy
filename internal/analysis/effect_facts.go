@@ -15,7 +15,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const nativeEffectFactSchemaVersion = 16
+const nativeEffectFactSchemaVersion = 17
 
 type returnStateKey struct {
 	value int
@@ -35,6 +35,7 @@ type nativeEffectFacts struct {
 	testingFailures map[string]struct{}
 	parameters map[string]map[int]rules.ParameterEffectSummary
 	receivers map[string]rules.ParameterEffectSummary
+	writerBorrows map[string]map[int]struct{}
 	noOpCloses map[string]struct{}
 	returns map[string]map[returnStateKey]rules.ReturnStateSummary
 	results map[string]map[int]rules.NilState
@@ -51,6 +52,7 @@ func newNativeEffectFacts() *nativeEffectFacts {
 		testingFailures: make(map[string]struct{}),
 		parameters: make(map[string]map[int]rules.ParameterEffectSummary),
 		receivers: make(map[string]rules.ParameterEffectSummary),
+		writerBorrows: make(map[string]map[int]struct{}),
 		noOpCloses: make(map[string]struct{}),
 		returns: make(map[string]map[returnStateKey]rules.ReturnStateSummary),
 		results: make(map[string]map[int]rules.NilState),
@@ -84,6 +86,13 @@ func cloneNativeEffectFacts(facts *nativeEffectFacts) *nativeEffectFacts {
 	}
 	for identity, summary := range facts.receivers {
 		result.receivers[identity] = summary
+	}
+	for identity, parameters := range facts.writerBorrows {
+		cloned := make(map[int]struct{}, len(parameters))
+		for index := range parameters {
+			cloned[index] = struct{}{}
+		}
+		result.writerBorrows[identity] = cloned
 	}
 	for identity := range facts.noOpCloses {
 		result.noOpCloses[identity] = struct{}{}
@@ -244,6 +253,15 @@ func (f *nativeEffectFacts) ReceiverEffect(function *types.Func) rules.Parameter
 		return rules.ParameterEffectSummary{}
 	}
 	return f.receivers[stableFunctionIdentity(function)]
+}
+
+// WriterBorrow implements rules.EffectFacts across independent package loads.
+func (f *nativeEffectFacts) WriterBorrow(function *types.Func, index int) bool {
+	if f == nil || function == nil || index < 0 {
+		return false
+	}
+	_, found := f.writerBorrows[stableFunctionIdentity(function)][index]
+	return found
 }
 
 // NoOpClose implements rules.EffectFacts across independent package loads.
@@ -535,6 +553,55 @@ func (f *nativeEffectFacts) addParameterEffects(analysis *parameterEffectAnalysi
 	}
 }
 
+func (f *nativeEffectFacts) addWriterBorrows(analysis *writerBorrowAnalysis) {
+	if f == nil || analysis == nil {
+		return
+	}
+	aggregated := make(map[string]map[int]struct{})
+	seen := make(map[string]struct{})
+	for _, definition := range analysis.ordered {
+		if definition == nil || definition.function == nil {
+			continue
+		}
+		identity := stableFunctionIdentity(definition.function)
+		if identity == "" {
+			continue
+		}
+		candidate := make(map[int]struct{})
+		for index, borrows := range analysis.borrows[definition.function] {
+			if borrows {
+				candidate[index] = struct{}{}
+			}
+		}
+		if _, found := seen[identity]; !found {
+			seen[identity] = struct{}{}
+			aggregated[identity] = candidate
+			continue
+		}
+		for index := range aggregated[identity] {
+			if _, found := candidate[index]; !found {
+				delete(aggregated[identity], index)
+			}
+		}
+	}
+	for identity, parameters := range aggregated {
+		if existing, found := f.writerBorrows[identity]; found {
+			for index := range existing {
+				if _, agreed := parameters[index]; !agreed {
+					delete(existing, index)
+				}
+			}
+			if len(existing) == 0 {
+				delete(f.writerBorrows, identity)
+			}
+			continue
+		}
+		if len(parameters) != 0 {
+			f.writerBorrows[identity] = parameters
+		}
+	}
+}
+
 func (f *nativeEffectFacts) addReturnStates(analysis *returnStateAnalysis) {
 	if f == nil || analysis == nil {
 		return
@@ -736,6 +803,37 @@ func (f *nativeEffectFacts) digest() cache.Digest {
 		}
 		_, _ = digest.Write([]byte{byte(parameter.summary.Kinds)})
 		_, _ = digest.Write([]byte{byte(parameter.summary.GuaranteedKinds)})
+	}
+	type writerBorrowRecord struct {
+		identity string
+		index int
+	}
+	writerBorrows := make([]writerBorrowRecord, 0)
+	if f != nil {
+		for identity, parameters := range f.writerBorrows {
+			for index := range parameters {
+				writerBorrows = append(
+					writerBorrows,
+					writerBorrowRecord{identity: identity, index: index},
+				)
+			}
+		}
+	}
+	sort.Slice(
+		writerBorrows,
+		func(first, second int) bool {
+			if writerBorrows[first].identity != writerBorrows[second].identity {
+				return writerBorrows[first].identity <
+					writerBorrows[second].identity
+			}
+			return writerBorrows[first].index < writerBorrows[second].index
+		},
+	)
+	for _, borrow := range writerBorrows {
+		_, _ = digest.Write([]byte{17})
+		writeEffectIdentity(digest, version[:], borrow.identity)
+		binary.BigEndian.PutUint64(version[:], uint64(borrow.index))
+		_, _ = digest.Write(version[:])
 	}
 	type receiverRecord struct {
 		identity string
@@ -1102,6 +1200,12 @@ func loadNativeEffectFacts(
 			return nil, err
 		}
 		facts.addParameterEffects(parameterEffects)
+		writerBorrows := newWriterBorrowAnalysis(ctx, layers[index], facts)
+		writerBorrows.buildAll()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		facts.addWriterBorrows(writerBorrows)
 		managedResults := newManagedResultAnalysis(ctx, layers[index], facts, analysis)
 		managedResults.buildAll()
 		if err := ctx.Err(); err != nil {
