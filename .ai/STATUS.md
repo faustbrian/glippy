@@ -9,8 +9,9 @@
 - v0.6 real-world rule validation: complete at analyzed revision `ee2ea4f`;
   exact corpus run `32723865179`, attempt 2, passed all 20 jobs and classified
   all 386 default and recommended entries
-- v0.5 typed peak RSS gate: aggregate process-tree behavior unproven; runtime
-  probes excluded until a non-disruptive evidence policy exists
+- v0.8 typed peak RSS gate: isolated-CI aggregate process-tree measurement is
+  active; 2 GiB is disproved, 3 GiB is provisional, and an exact green campaign
+  remains required
 - v0.5 typed retained-memory attribution: complete
 - v0.5 exact printf fact isolation and 2 GiB reference-host gate: complete
 - v0.5 bounded incremental workspace-result reuse: complete
@@ -47,8 +48,8 @@
 - v0.5 independent review: complete for the bounded engineering milestone;
   the final source-only review reported no findings
 - v0.5 native macOS/Linux amd64/arm64 release budgets: prior per-process run
-  passed at `724d8a2`; aggregate process-tree runtime evidence is unproven and
-  excluded from automatic execution
+  passed at `724d8a2`; v0.8 aggregate measurement now runs only in isolated CI
+  and has not yet established the replacement typed ceiling
 - Phase 0 completed: 2026-08-09
 - Phase 1 completed: 2026-08-11
 - Phase 2 completed: 2026-08-13
@@ -3091,3 +3092,18 @@ successfully. This proves the concrete retained fixtures, not arbitrary future
 configuration or cache compatibility. The v0.9 freeze must repeat the matrix
 against its final tagless candidate. Stable-v1 progress remains 75% while the
 exact corpus and resource gates are open.
+
+Native aggregate process-tree campaign `32804781727` rejects the provisional
+2 GiB typed ceiling at Glippy revision `385d981`: Linux amd64 reached
+2,238,414,848 bytes, Linux arm64 reached 2,197,422,080 bytes, and Darwin amd64
+reached 2,255,237,120 bytes. All editor and formatter samples stayed within
+their existing budgets. The release workflow now provisionally uses a 3 GiB
+typed ceiling, leaving 42.8% headroom over the largest first observation.
+Darwin arm64 produced candidate diagnostic fingerprint `77f989f5...baba7`,
+which remains unaccepted until the exact release-workload output is
+adjudicated. The separately pinned SQLC corpus provides supporting rule-level
+comparison but cannot replace that evidence because it uses a different source
+revision. The release workflow now retains the exact normalized Darwin arm64
+diagnostic output instead of exposing only its digest. A complete
+exact-candidate four-runner rerun is still required, so the resource gate
+remains open and stable-v1 progress remains 75%.

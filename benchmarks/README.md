@@ -647,3 +647,12 @@ This validates the stable 105-second typed latency ceiling. The recorded typed
 RSS values are historical per-process maxima and do not validate an aggregate
 2-GiB release ceiling. Aggregate RSS remains unproven until a non-disruptive
 evidence policy exists.
+
+The v0.8 campaign now samples the complete concurrent process tree in isolated
+CI. Its first four-runner run disproved the provisional 2 GiB typed ceiling with
+2,197,422,080-2,255,237,120-byte observations on three native runners. The
+replacement release-workflow ceiling is provisionally 3 GiB, leaving 42.8%
+headroom over the largest first observation. It remains provisional until the
+complete exact-candidate campaign passes every runner. The calibration and
+diagnostic-fingerprint boundary are recorded in
+[`../docs/research/v0.8-aggregate-budget-calibration-2026-08-25.md`](../docs/research/v0.8-aggregate-budget-calibration-2026-08-25.md).
