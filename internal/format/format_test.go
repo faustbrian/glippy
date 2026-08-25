@@ -1134,6 +1134,92 @@ func TestFormatPreservesNolintLineOwnershipWhenLayoutWouldBreak(t *testing.T) {
 	}
 }
 
+func TestFormatPreservesDeclarationDocumentationBeforeTrailingNolint(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(
+		"package comments\n// errUnavailable documents the declaration.\nvar errUnavailable = errors.New(\"unavailable\") //nolint:unused\n",
+	)
+	file, err := source.Load("declaration_nolint.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := glippyformat.File(
+		file,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\n// errUnavailable documents the declaration.\nvar errUnavailable = errors.New(\"unavailable\") //nolint:unused\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+
+	fragment, err := source.LoadFragment(
+		"declaration_nolint.go",
+		source.FragmentDeclaration,
+		input[len("package comments\n"):],
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = glippyformat.Fragment(
+		fragment,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = "// errUnavailable documents the declaration.\nvar errUnavailable = errors.New(\"unavailable\") //nolint:unused\n"
+	if string(got) != want {
+		t.Fatalf("Fragment() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatPreservesGroupedValueSpecLineBeforeTrailingNolint(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(
+		"package comments\nvar (\n\tdevNumber = uint64(stat.Rdev) //nolint:nolintlint,unconvert // the type is 32bit on mips.\n\tmajor = unix.Major(devNumber)\n)\n",
+	)
+	file, err := source.Load("grouped_nolint.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := glippyformat.File(
+		file,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nvar (\n\tdevNumber = uint64(stat.Rdev) //nolint:nolintlint,unconvert // the type is 32bit on mips.\n\tmajor = unix.Major(devNumber)\n)\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+
+	fragment, err := source.LoadFragment(
+		"grouped_nolint.go",
+		source.FragmentDeclaration,
+		input[len("package comments\n"):],
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = glippyformat.Fragment(
+		fragment,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = "var (\n\tdevNumber = uint64(stat.Rdev) //nolint:nolintlint,unconvert // the type is 32bit on mips.\n\tmajor = unix.Major(devNumber)\n)\n"
+	if string(got) != want {
+		t.Fatalf("Fragment() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatPreservesNolintOwnershipAcrossBreakableBoundaries(t *testing.T) {
 	t.Parallel()
 

@@ -262,12 +262,6 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		if len(leading) > 0 {
-			lowered = l.arena.Concat(
-				l.boundaryCommentsDocument(leading, declarationStart),
-				lowered,
-			)
-		}
 		limit := len(l.physical)
 		if index + 1 < len(file.Decls) {
 			var found bool
@@ -286,6 +280,12 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 		if hasNolintComment(trailing) {
 			lowered = l.arena.Verbatim(
 				string(l.physical[declarationStart:declarationEnd]),
+			)
+		}
+		if len(leading) > 0 {
+			lowered = l.arena.Concat(
+				l.boundaryCommentsDocument(leading, declarationStart),
+				lowered,
 			)
 		}
 		lowered = l.withTrailingComments(lowered, trailing)
@@ -321,12 +321,6 @@ func (l *lowerer) fragmentDeclarations(declarations []ast.Decl) (doc.ID, error) 
 		if err != nil {
 			return doc.ID{}, err
 		}
-		if len(leading) > 0 {
-			lowered = l.arena.Concat(
-				l.boundaryCommentsDocument(leading, declarationStart),
-				lowered,
-			)
-		}
 		limit := len(l.physical)
 		if index + 1 < len(declarations) {
 			limit, found = l.source.PhysicalOffset(declarations[index + 1].Pos())
@@ -346,6 +340,12 @@ func (l *lowerer) fragmentDeclarations(declarations []ast.Decl) (doc.ID, error) 
 		if hasNolintComment(trailing) {
 			lowered = l.arena.Verbatim(
 				string(l.physical[declarationStart:declarationEnd]),
+			)
+		}
+		if len(leading) > 0 {
+			lowered = l.arena.Concat(
+				l.boundaryCommentsDocument(leading, declarationStart),
+				lowered,
 			)
 		}
 		lowered = l.withTrailingComments(lowered, trailing)
@@ -721,7 +721,11 @@ func (l *lowerer) generalDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 		if err != nil {
 			return doc.ID{}, err
 		}
-		lowered = l.withTrailingComments(lowered, l.trailingComments(specEnd, limit))
+		trailing := l.trailingComments(specEnd, limit)
+		if hasNolintComment(trailing) {
+			lowered = l.arena.Verbatim(string(l.physical[specStart:specEnd]))
+		}
+		lowered = l.withTrailingComments(lowered, trailing)
 		if len(leading) > 0 {
 			lowered = l.arena.Concat(
 				l.boundaryCommentsDocument(leading, specStart),
