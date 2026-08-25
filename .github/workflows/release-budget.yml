@@ -2,12 +2,19 @@ name: Release budget evidence
 
 on:
   workflow_dispatch:
+    inputs:
+      diagnostic_comparison_revision:
+        description: Historical Glippy revision for an exact typed-output diff
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   formatter-budget:
+    if: inputs.diagnostic_comparison_revision == ''
     name: ${{ matrix.goos }}-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
@@ -172,6 +179,145 @@ jobs:
             ${{ runner.temp }}/release-budget-${{ matrix.goos }}-${{ matrix.goarch }}.log
             ${{ runner.temp }}/release-budget-${{ matrix.goos }}-${{ matrix.goarch }}-typed-output.txt
             ${{ runner.temp }}/glippy-release
+          if-no-files-found: error
+          retention-days: 14
+
+  diagnostic-comparison:
+    if: inputs.diagnostic_comparison_revision != ''
+    name: Exact Darwin arm64 diagnostic comparison
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out current Glippy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          path: glippy
+      - name: Check out historical Glippy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: faustbrian/glippy
+          ref: ${{ inputs.diagnostic_comparison_revision }}
+          persist-credentials: false
+          path: historical-glippy
+      - name: Check out immutable typed corpus
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: sqlc-dev/sqlc
+          ref: 8a7cddfbb9088666eb981645285d7699e71dcb54
+          persist-credentials: false
+          path: typed-corpus
+      - name: Install the recorded Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: 1.26.5
+          cache: false
+      - name: Retain exact normalized diagnostic delta
+        shell: bash
+        env:
+          CURRENT_ROOT: ${{ github.workspace }}/glippy
+          GOTOOLCHAIN: local
+          HISTORICAL_ROOT: ${{ github.workspace }}/historical-glippy
+          HISTORICAL_REVISION: ${{ inputs.diagnostic_comparison_revision }}
+          TYPED_ROOT: ${{ github.workspace }}/typed-corpus
+        run: |
+          set -euo pipefail
+          task_root=$(mktemp -d "$RUNNER_TEMP/glippy-diagnostic-comparison.XXXXXX")
+          cleanup() {
+            trap - EXIT HUP INT TERM
+            if [ -d "$task_root/modcache" ] &&
+              ! GOMODCACHE="$task_root/modcache" go clean -modcache >/dev/null 2>&1; then
+              chmod -R u+w "$task_root/modcache"
+            fi
+            find "$task_root" -mindepth 1 -delete
+            rmdir "$task_root"
+          }
+          trap cleanup EXIT HUP INT TERM
+
+          case "$HISTORICAL_REVISION" in
+            *[!0-9a-f]*)
+              printf '%s\n' 'historical revision must be lowercase hexadecimal' >&2
+              exit 1
+              ;;
+          esac
+          test "${#HISTORICAL_REVISION}" -eq 40
+          test "$(git -C "$CURRENT_ROOT" rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C "$HISTORICAL_ROOT" rev-parse HEAD)" = "$HISTORICAL_REVISION"
+          test "$(git -C "$TYPED_ROOT" rev-parse HEAD)" = \
+            8a7cddfbb9088666eb981645285d7699e71dcb54
+          export GOCACHE="$task_root/gocache"
+          export GOMODCACHE="$task_root/modcache"
+          export GOENV=off
+          env -u GOWORK GOFLAGS=-mod=readonly go -C "$CURRENT_ROOT" mod download
+          env -u GOWORK GOFLAGS=-mod=readonly go -C "$HISTORICAL_ROOT" mod download
+          env -u GOWORK GOFLAGS=-mod=readonly go -C "$TYPED_ROOT" mod download
+          env -u GOWORK go -C "$CURRENT_ROOT" build \
+            -o "$task_root/current-glippy" ./cmd/glippy
+          env -u GOWORK go -C "$HISTORICAL_ROOT" build \
+            -o "$task_root/historical-glippy" ./cmd/glippy
+
+          capture() {
+            label=$1
+            binary=$2
+            raw="$task_root/$label-raw"
+            stderr="$task_root/$label-stderr"
+            output="$RUNNER_TEMP/release-budget-$label-typed-output.txt"
+            set +e
+            env -u GOWORK GLIPPY_CACHE_DIR="$task_root/$label-glippy-cache" \
+              "$binary" lint -Wsuspicious "$TYPED_ROOT/..." \
+              >"$raw" 2>"$stderr"
+            status=$?
+            set -e
+            if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
+              sed -n '1,20p' "$stderr" >&2
+              exit "$status"
+            fi
+            awk -v root="$TYPED_ROOT" '
+              {
+                remaining = $0
+                normalized = ""
+                while ((offset = index(remaining, root)) != 0) {
+                  normalized = normalized substr(remaining, 1, offset - 1) "<TYPED_ROOT>"
+                  remaining = substr(remaining, offset + length(root))
+                }
+                print normalized remaining
+              }
+            ' "$raw" >"$output"
+          }
+
+          capture historical "$task_root/historical-glippy"
+          capture current "$task_root/current-glippy"
+          set +e
+          diff -u \
+            "$RUNNER_TEMP/release-budget-historical-typed-output.txt" \
+            "$RUNNER_TEMP/release-budget-current-typed-output.txt" \
+            >"$RUNNER_TEMP/release-budget-typed-output.diff"
+          diff_status=$?
+          set -e
+          if [ "$diff_status" -ne 0 ] && [ "$diff_status" -ne 1 ]; then
+            exit "$diff_status"
+          fi
+          {
+            printf 'current_revision=%s\n' "$GITHUB_SHA"
+            printf 'historical_revision=%s\n' "$HISTORICAL_REVISION"
+            printf 'typed_revision=%s\n' \
+              8a7cddfbb9088666eb981645285d7699e71dcb54
+            go version
+          } >"$RUNNER_TEMP/release-budget-diagnostic-comparison-metadata.txt"
+          shasum -a 256 \
+            "$RUNNER_TEMP/release-budget-historical-typed-output.txt" \
+            "$RUNNER_TEMP/release-budget-current-typed-output.txt" \
+            "$RUNNER_TEMP/release-budget-typed-output.diff" \
+            "$RUNNER_TEMP/release-budget-diagnostic-comparison-metadata.txt"
+      - name: Upload exact diagnostic comparison
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: release-budget-diagnostic-comparison
+          path: |
+            ${{ runner.temp }}/release-budget-historical-typed-output.txt
+            ${{ runner.temp }}/release-budget-current-typed-output.txt
+            ${{ runner.temp }}/release-budget-typed-output.diff
+            ${{ runner.temp }}/release-budget-diagnostic-comparison-metadata.txt
           if-no-files-found: error
           retention-days: 14
 

@@ -581,15 +581,19 @@ assertion. Its existence is not evidence that the four jobs passed; the
 recorded run URL, job conclusions, runner image versions, and raw artifacts
 remain required before the provisional limits become stable release budgets.
 
-The v0.5 workflow also checks out `sqlc-dev/sqlc` at
+The release workflow also checks out `sqlc-dev/sqlc` at
 `8a7cddfbb9088666eb981645285d7699e71dcb54` and runs the default correctness
-policy plus `-Wsuspicious` within a 105-second and 2-GiB ceiling on every
+policy plus `-Wsuspicious` within a 105-second and 3-GiB ceiling on every
 native runner. Darwin arm64 additionally binds normalized diagnostic SHA-256
-`13f9c3dd006a105196c13f766a1c849a882754b3083979e9386c78cc2fdb53d2` for the
-118-rule catalog at revision `835a296`. The current 119-rule candidate must
-reprove that fingerprint. The other native targets intentionally retain their
-raw result because build-selected findings may differ. The digest update and
-historical arm64 rehearsal are recorded in
+`13f9c3dd006a105196c13f766a1c849a882754b3083979e9386c78cc2fdb53d2` until a
+replacement is exact-diff adjudicated. Supplying the optional
+`diagnostic_comparison_revision` dispatch input skips resource measurement and
+retains normalized historical and current Darwin arm64 typed outputs plus their
+unified diff. The other native targets retain their budget summaries; their
+build-selected diagnostics may differ. The current aggregate-budget calibration
+is recorded in
+[`../docs/research/v0.8-aggregate-budget-calibration-2026-08-25.md`](../docs/research/v0.8-aggregate-budget-calibration-2026-08-25.md).
+The historical arm64 rehearsal is recorded in
 [`../docs/research/v0.5-current-revision-arm64-budget-evidence-2026-08-21.md`](../docs/research/v0.5-current-revision-arm64-budget-evidence-2026-08-21.md).
 The failed calibration run and the complete exact-candidate native rerun are
 recorded in

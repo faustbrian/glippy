@@ -3130,3 +3130,20 @@ uncommented label spacing churn; the gap rule is now limited to comment-bearing
 boundaries, and nested and implicit-empty canonical-spacing regressions pass.
 Aggregate SQLC corpus proof still requires an exact pushed rerun, so v0.8
 remains active at 75%.
+
+Native campaign `32807509298` retained the Darwin arm64 typed
+fingerprint at exact Glippy revision `4a80b27`: 351 findings comprise 343
+`discarded-error`, five `resource-not-closed`, and three
+`unchecked-scanner-error` diagnostics. The previously accepted workload had
+the same counts plus one `nil-error-wrap` and one `unchecked-writer-error`; the
+two removals match the documented impossible-branch and infallible-writer
+precision changes, but counts cannot exclude offsetting diagnostic-identity
+drift. The historical fingerprint remains enforced. The workflow now accepts
+an optional historical Glippy revision and retains both exact normalized typed
+outputs plus their unified diff before a replacement can be accepted.
+Linux amd64 and arm64 passed the provisional 3 GiB campaign. Darwin amd64
+recorded one 90.950-second formatter sample against the unchanged 90-second
+ceiling, while the prior exact campaign ranged from 35.390 to 70.130 seconds;
+one marginal observation does not justify widening the budget. A fresh
+four-runner campaign at the final correction must still pass completely, so
+v0.8 remains active at 75%.
