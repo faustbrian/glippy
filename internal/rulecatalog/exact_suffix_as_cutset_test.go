@@ -51,8 +51,8 @@ func trim(value, suffix string) string {
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"."},
+			Dir: root,
+			Patterns: []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)
@@ -73,7 +73,7 @@ func trim(value, suffix string) string {
 	if diagnostic.RuleID != "exact-suffix-as-cutset" ||
 		diagnostic.Severity != rules.SeverityWarn ||
 		diagnostic.Range.Start != start ||
-		diagnostic.Range.End != start+len("TrimRight") ||
+		diagnostic.Range.End != start + len("TrimRight") ||
 		diagnostic.MessageKey != "exact-suffix-as-cutset" ||
 		len(diagnostic.Fixes) != 1 ||
 		diagnostic.Fixes[0].Name != "use-trim-suffix" ||
@@ -119,7 +119,7 @@ func normalize(col *column, text, timestamp bool) {
 		start := searchFrom + relative + len("strings.")
 		if diagnostic.RuleID != "exact-suffix-as-cutset" ||
 			diagnostic.Range.Start != start ||
-			diagnostic.Range.End != start+len("TrimRight") {
+			diagnostic.Range.End != start + len("TrimRight") {
 			t.Fatalf("Grafana-shape diagnostic[%d] = %#v", index, diagnostic)
 		}
 		searchFrom = start + len("TrimRight")
@@ -215,8 +215,12 @@ func indirect(value, suffix string) string {
 		if wantStarts[index] < len("text.") ||
 			diagnostic.RuleID != "exact-suffix-as-cutset" ||
 			diagnostic.Range.Start != wantStarts[index] ||
-			diagnostic.Range.End != wantStarts[index]+len("TrimRight") {
-			t.Fatalf("exact-suffix-as-cutset boundary diagnostic[%d] = %#v", index, diagnostic)
+			diagnostic.Range.End != wantStarts[index] + len("TrimRight") {
+			t.Fatalf(
+				"exact-suffix-as-cutset boundary diagnostic[%d] = %#v",
+				index,
+				diagnostic,
+			)
 		}
 	}
 }
@@ -262,13 +266,13 @@ func TestExactSuffixAsCutsetUnsafeFixIsFormattedAndIdempotent(t *testing.T) {
 	}
 	selection := fixengine.Selection{
 		Diagnostic: result.Files[0].Diagnostics[0],
-		FixName:    "use-trim-suffix",
+		FixName: "use-trim-suffix",
 	}
 	applied, err := fixengine.Coordinate(
 		file,
 		[]fixengine.Selection{selection},
 		fixengine.Options{
-			Format:      glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 10_000},
+			Format: glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 10_000},
 			AllowUnsafe: true,
 		},
 	)
@@ -289,7 +293,11 @@ func trim(value, suffix string) string {
 	if string(applied.Bytes) != want ||
 		len(applied.Applied) != 1 ||
 		len(applied.Rejected) != 0 {
-		t.Fatalf("exact-suffix-as-cutset applied fix = %#v, bytes = %q", applied, applied.Bytes)
+		t.Fatalf(
+			"exact-suffix-as-cutset applied fix = %#v, bytes = %q",
+			applied,
+			applied.Bytes,
+		)
 	}
 	second := runExactSuffixAsCutset(t, string(applied.Bytes))
 	if len(second.Files) != 1 || len(second.Files[0].Diagnostics) != 0 {
@@ -317,9 +325,9 @@ func TestExactSuffixAsCutsetMetadataAndGoVersion(t *testing.T) {
 			metadata.Fixes,
 			[]rules.FixMetadata{
 				{
-					Name:        "use-trim-suffix",
+					Name: "use-trim-suffix",
 					Description: "replace strings.TrimRight with strings.TrimSuffix",
-					Safety:      rules.FixUnsafe,
+					Safety: rules.FixUnsafe,
 				},
 			},
 		) {
@@ -401,8 +409,8 @@ func invalid(value, suffix string) string {
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"./..."},
+			Dir: root,
+			Patterns: []string{"./..."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)
@@ -455,8 +463,8 @@ func runExactSuffixAsCutset(t *testing.T, input string) analysis.PackageResult {
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"."},
+			Dir: root,
+			Patterns: []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)

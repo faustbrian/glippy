@@ -18,14 +18,14 @@ func NewIneffectiveAssignmentRule() Rule {
 
 func (ineffectiveAssignmentRule) Metadata() Metadata {
 	return Metadata{
-		ID:               "ineffective-assignment",
-		Summary:          "detects assigned values that are never read",
-		Documentation:    "An assigned value that is never read can indicate a forgotten consumer, a stale computation, or an ineffective state update. The rule preserves right-hand-side effects, follows SSA values through branch joins, and reports only direct identifier destinations whose assigned value has no observable use.",
-		DefaultSeverity:  SeverityWarn,
-		Presets:          []Preset{PresetNursery},
+		ID: "ineffective-assignment",
+		Summary: "detects assigned values that are never read",
+		Documentation: "An assigned value that is never read can indicate a forgotten consumer, a stale computation, or an ineffective state update. The rule preserves right-hand-side effects, follows SSA values through branch joins, and reports only direct identifier destinations whose assigned value has no observable use.",
+		DefaultSeverity: SeverityWarn,
+		Presets: []Preset{PresetNursery},
 		MinimumGoVersion: "1.25",
-		Requirement:      RequireSSA,
-		Categories:       []Category{CategoryCorrectness, CategorySuspicious},
+		Requirement: RequireSSA,
+		Categories: []Category{CategoryCorrectness, CategorySuspicious},
 		KnownLimitations: []string{
 			"Only assignments to direct identifiers are considered; fields, indexes, dereferences, range variables, standalone var declarations, and incoming parameter values are excluded.",
 			"Constant SSA values are excluded because the compiler and SSA builder can merge them independently of the source assignment.",
@@ -34,9 +34,9 @@ func (ineffectiveAssignmentRule) Metadata() Metadata {
 		},
 		Examples: []Example{
 			{
-				Title:     "Consume the value produced by an assignment",
+				Title: "Consume the value produced by an assignment",
 				Incorrect: "name := input\nuse(name)\nname = normalize(input)\nreturn input",
-				Correct:   "name := input\nuse(name)\nname = normalize(input)\nreturn name",
+				Correct: "name := input\nuse(name)\nname = normalize(input)\nreturn name",
 			},
 		},
 	}
@@ -119,8 +119,9 @@ func ineffectiveAssignmentFindings(
 		if value == nil {
 			continue
 		}
-		if _, constant := value.(*ssa.Const); constant ||
-			overwrittenErrorValueUsed(value, explicitUses, switchUses, nil) {
+		if _, constant := value.(*ssa.Const);
+			constant ||
+				overwrittenErrorValueUsed(value, explicitUses, switchUses, nil) {
 			continue
 		}
 		finding, err := ineffectiveAssignmentFinding(ctx, identifier)
@@ -209,8 +210,9 @@ func ineffectiveUnreadValue(
 	switchUses map[ssa.Value]struct{},
 ) ssa.Value {
 	for _, value := range values {
-		if _, constant := value.(*ssa.Const); constant ||
-			overwrittenErrorValueUsed(value, explicitUses, switchUses, nil) {
+		if _, constant := value.(*ssa.Const);
+			constant ||
+				overwrittenErrorValueUsed(value, explicitUses, switchUses, nil) {
 			continue
 		}
 		return value
@@ -225,8 +227,8 @@ func ineffectiveAssignmentFinding(ctx *SSAContext, identifier *ast.Ident) (Findi
 	}
 	return Finding{
 		MessageKey: "ineffective-assignment",
-		Message:    fmt.Sprintf("this value of %s is never used", identifier.Name),
-		Range:      range_,
-		Help:       "use the assigned value or remove the ineffective destination while preserving right-hand-side effects",
+		Message: fmt.Sprintf("this value of %s is never used", identifier.Name),
+		Range: range_,
+		Help: "use the assigned value or remove the ineffective destination while preserving right-hand-side effects",
 	}, nil
 }

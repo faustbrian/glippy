@@ -61,8 +61,8 @@ func incremented() {
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"."},
+			Dir: root,
+			Patterns: []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)
@@ -87,7 +87,7 @@ func incremented() {
 		if diagnostic.RuleID != "ineffective-assignment" ||
 			diagnostic.Severity != rules.SeverityWarn ||
 			diagnostic.Range.Start != start ||
-			diagnostic.Range.End != start+len(identifier) ||
+			diagnostic.Range.End != start + len(identifier) ||
 			diagnostic.MessageKey != "ineffective-assignment" ||
 			len(diagnostic.Fixes) != 0 {
 			t.Fatalf("ineffective-assignment diagnostic[%d] = %#v", index, diagnostic)
@@ -118,7 +118,7 @@ func compound() {
 	if start < 0 ||
 		diagnostic.RuleID != "ineffective-assignment" ||
 		diagnostic.Range.Start != start ||
-		diagnostic.Range.End != start+len("count") {
+		diagnostic.Range.End != start + len("count") {
 		t.Fatalf("compound ineffective-assignment diagnostic = %#v", diagnostic)
 	}
 }
@@ -193,7 +193,7 @@ func tupleAssignment() {
 	if start < 0 ||
 		diagnostic.RuleID != "ineffective-assignment" ||
 		diagnostic.Range.Start != start ||
-		diagnostic.Range.End != start+len("value") {
+		diagnostic.Range.End != start + len("value") {
 		t.Fatalf("ineffective-assignment tuple diagnostic = %#v", diagnostic)
 	}
 }
@@ -256,20 +256,21 @@ func overwritten() {
 			Presets: []rules.Preset{},
 			Overrides: map[string]rules.Severity{
 				"ineffective-assignment": rules.SeverityWarn,
-				"overwritten-error":      rules.SeverityWarn,
+				"overwritten-error": rules.SeverityWarn,
 			},
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"."},
+			Dir: root,
+			Patterns: []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 1 || len(result.Files[0].Diagnostics) != 1 ||
+	if len(result.Files) != 1 ||
+		len(result.Files[0].Diagnostics) != 1 ||
 		result.Files[0].Diagnostics[0].RuleID != "overwritten-error" {
 		t.Fatalf("overwritten-error interaction result = %#v", result)
 	}
@@ -337,20 +338,18 @@ func run() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	overrides := map[string]rules.Severity{
-		"ineffective-assignment": rules.SeverityError,
-	}
+	overrides := map[string]rules.Severity{"ineffective-assignment": rules.SeverityError}
 	result, err := analysis.RunPackages(
 		context.Background(),
 		registry,
 		analysis.RunOptions{
-			Presets:         []rules.Preset{},
-			Overrides:       overrides,
+			Presets: []rules.Preset{},
+			Overrides: overrides,
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"./..."},
+			Dir: root,
+			Patterns: []string{"./..."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)
@@ -379,8 +378,8 @@ func run() {
 	}
 	selection, err := registry.ResolveOptions(
 		rules.ResolveOptions{
-			Presets:         []rules.Preset{},
-			Overrides:       overrides,
+			Presets: []rules.Preset{},
+			Overrides: overrides,
 			SourceGoVersion: "go1.24",
 		},
 	)
@@ -416,8 +415,8 @@ func runIneffectiveAssignment(t *testing.T, input string) analysis.PackageResult
 			SourceGoVersion: "go1.25",
 		},
 		analysis.PackageLoadOptions{
-			Dir:        root,
-			Patterns:   []string{"."},
+			Dir: root,
+			Patterns: []string{"."},
 			ModuleMode: analysis.ModuleReadonly,
 		},
 	)

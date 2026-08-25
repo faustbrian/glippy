@@ -221,7 +221,8 @@ func TestUnitcheckerFactAnalyzerRunnerTranslatesFileQueryForGoVet(t *testing.T) 
 		goBinary,
 		[]byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$GLIPPY_TEST_ARGUMENTS\"\n"),
 		0o700,
-	); err != nil {
+	);
+		err != nil {
 		t.Fatal(err)
 	}
 	runner, err := NewUnitcheckerFactAnalyzerRunner(

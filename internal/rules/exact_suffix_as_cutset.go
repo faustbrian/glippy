@@ -20,20 +20,20 @@ func NewExactSuffixAsCutsetRule() Rule {
 
 func (exactSuffixAsCutsetRule) Metadata() Metadata {
 	return Metadata{
-		ID:               "exact-suffix-as-cutset",
-		Summary:          "detects exact suffixes passed to strings.TrimRight as cutsets",
-		Documentation:    "Strings.TrimRight treats its second argument as an unordered set of characters, not an exact suffix. When the same value and suffix are first checked with strings.HasSuffix, TrimRight can remove additional trailing characters beyond the recognized suffix; TrimSuffix expresses the proven intent exactly.",
-		DefaultSeverity:  SeverityWarn,
-		Presets:          []Preset{PresetNursery},
+		ID: "exact-suffix-as-cutset",
+		Summary: "detects exact suffixes passed to strings.TrimRight as cutsets",
+		Documentation: "Strings.TrimRight treats its second argument as an unordered set of characters, not an exact suffix. When the same value and suffix are first checked with strings.HasSuffix, TrimRight can remove additional trailing characters beyond the recognized suffix; TrimSuffix expresses the proven intent exactly.",
+		DefaultSeverity: SeverityWarn,
+		Presets: []Preset{PresetNursery},
 		MinimumGoVersion: "1.25",
-		Requirement:      RequireTypes,
-		NodeInterests:    []NodeKind{NodeIfStmt},
-		Categories:       []Category{CategoryCorrectness, CategorySuspicious},
+		Requirement: RequireTypes,
+		NodeInterests: []NodeKind{NodeIfStmt},
+		Categories: []Category{CategoryCorrectness, CategorySuspicious},
 		Fixes: []FixMetadata{
 			{
-				Name:        useTrimSuffixFix,
+				Name: useTrimSuffixFix,
 				Description: "replace strings.TrimRight with strings.TrimSuffix",
-				Safety:      FixUnsafe,
+				Safety: FixUnsafe,
 			},
 		},
 		KnownLimitations: []string{
@@ -44,18 +44,15 @@ func (exactSuffixAsCutsetRule) Metadata() Metadata {
 		},
 		Examples: []Example{
 			{
-				Title:     "Remove the exact suffix that was recognized",
+				Title: "Remove the exact suffix that was recognized",
 				Incorrect: "if strings.HasSuffix(value, suffix) {\n\tvalue = strings.TrimRight(value, suffix)\n}",
-				Correct:   "if strings.HasSuffix(value, suffix) {\n\tvalue = strings.TrimSuffix(value, suffix)\n}",
+				Correct: "if strings.HasSuffix(value, suffix) {\n\tvalue = strings.TrimSuffix(value, suffix)\n}",
 			},
 		},
 	}
 }
 
-func (exactSuffixAsCutsetRule) RunTypes(
-	ctx *TypesContext,
-	node ast.Node,
-) ([]Finding, error) {
+func (exactSuffixAsCutsetRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
 	statement, ok := node.(*ast.IfStmt)
 	if !ok || ctx == nil || ctx.Info() == nil {
 		return nil, fmt.Errorf(
@@ -88,14 +85,14 @@ func (exactSuffixAsCutsetRule) RunTypes(
 	return []Finding{
 		{
 			MessageKey: "exact-suffix-as-cutset",
-			Message:    "strings.TrimRight treats the recognized suffix as a character cutset",
-			Range:      range_,
-			Help:       "use strings.TrimSuffix to remove only the suffix proven by HasSuffix",
+			Message: "strings.TrimRight treats the recognized suffix as a character cutset",
+			Range: range_,
+			Help: "use strings.TrimSuffix to remove only the suffix proven by HasSuffix",
 			Fixes: []Fix{
 				{
-					Name:   useTrimSuffixFix,
+					Name: useTrimSuffixFix,
 					Safety: FixUnsafe,
-					Edits:  []Edit{{Range: range_, NewText: "TrimSuffix"}},
+					Edits: []Edit{{Range: range_, NewText: "TrimSuffix"}},
 				},
 			},
 		},
