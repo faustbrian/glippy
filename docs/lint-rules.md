@@ -6188,20 +6188,21 @@ or emit required trailers only from Flush or Close. Discarding that result can r
 leaving output truncated or structurally incomplete. The rule targets exact standard-library
 finalizers whose documented contract writes pending data or required framing, including direct
 stable values returned by the streaming encoder constructors. Finalizers are excluded when a stable
-bufio or tabwriter chain terminates at an exact bytes.Buffer or strings.Builder sink; gzip
-additionally requires an unmodified default header. A deferred archive/tar Close is also excluded
-when a later straight-line Close on the same stable writer passes its error to a consumer and no
-later writer use remains, because subsequent Close calls are no-ops. Exact test recovery guards that
-fail when an immediately following finalizer is the function body's terminal action and does not
-panic are treated as expected-panic assertions rather than successful error discards.
+bufio or tabwriter chain terminates at an exact bytes.Buffer, strings.Builder, or selected-module
+writer whose exact Write error result is proven nil; gzip additionally requires an unmodified
+default header. A deferred archive/tar Close is also excluded when a later straight-line Close on
+the same stable writer passes its error to a consumer and no later writer use remains, because
+subsequent Close calls are no-ops. Exact test recovery guards that fail when an immediately
+following finalizer is the function body's terminal action and does not panic are treated as
+expected-panic assertions rather than successful error discards.
 
 - Default severity: `warn`
 - Presets: `correctness`
 - Minimum Go: `1.25`
-- Analysis tier: types
-- Node interests: `expr-stmt`, `assign-stmt`, `go-stmt`, `defer-stmt`
+- Analysis tier: control flow
+- Node interests: none
 - Dependency syntax: not required
-- Effect facts: not required
+- Effect facts: required
 - Generated files: excluded
 - Type-error packages: excluded
 - Categories: `correctness`, `safety`
@@ -6219,8 +6220,10 @@ None.
 - Only exact standard-library writer finalizers with an error result are covered; user-defined
   writers and unproven interface-dispatched finalizers remain outside the contract.
 - The in-memory exclusion follows stable local bufio, gzip, and tabwriter constructor or
-  straight-line Reset/Init chains to exact bytes.Buffer and strings.Builder sinks; caller-owned,
-  conditionally rebound, interface-typed, escaped, cyclic, and unproven chains remain conservative.
+  straight-line Reset/Init chains to exact bytes.Buffer and strings.Builder sinks or selected-module
+  concrete writers whose exact Write error result is proven nil; caller-owned, conditionally
+  rebound, interface-typed, escaped, cyclic, package-variant-disagreeing, and unproven chains remain
+  conservative.
 - Gzip in-memory exclusions require the default Header to remain unmodified because invalid Name,
   Comment, or Extra values can fail independently of the sink.
 - Stable in-memory fmt consumers accept basic values and exact time.Time values; user-defined

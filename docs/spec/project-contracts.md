@@ -200,7 +200,7 @@ retain the ordinary deterministic target-union behavior. Fix modes retain the
 existing target-matrix prohibition.
 
 Contract changes MUST invalidate affected persistent native results. The
-`native-effects-v15` component binds no-return, testing-skip, testing-failure,
+`native-effects-v16` component binds no-return, testing-skip, testing-failure,
 parameter, receiver, returned-state, unconditional result-state, must-use,
 blocking, and alias facts through stable
 package-qualified function identities, including the distinction between
@@ -229,6 +229,13 @@ The version-15 component additionally binds selected local-source
 testing-failure wrappers whose every terminal path reaches an exact
 `testing.FailNow`, `Fatal`, or `Fatalf` call. Mixed panic, exit, skip, dynamic,
 or unresolved terminal paths remain unclassified.
+
+The version-16 component additionally binds selected local-source exact
+`Write([]byte) (int, error)` methods whose error result is nil on every normal
+return through bounded static delegation rooted in `bytes.Buffer.Write` or
+`strings.Builder.Write`. Package variants must agree. Interface dispatch,
+recursive or unavailable definitions, and fallible or unknown delegates remain
+unclassified.
 
 A source-derived no-op Close fact MUST identify an exact selected-module
 `Close() error` method whose complete body consists of one return statement for

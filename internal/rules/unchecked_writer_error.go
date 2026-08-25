@@ -56,16 +56,16 @@ func (uncheckedWriterErrorRule) Metadata() Metadata {
 	return Metadata{
 		ID: "unchecked-writer-error",
 		Summary: "detects discarded errors from buffered writer finalization",
-		Documentation: "Buffered, compressed, archive, multipart, and encoded writers can report their first failed output or emit required trailers only from Flush or Close. Discarding that result can report success while leaving output truncated or structurally incomplete. The rule targets exact standard-library finalizers whose documented contract writes pending data or required framing, including direct stable values returned by the streaming encoder constructors. Finalizers are excluded when a stable bufio or tabwriter chain terminates at an exact bytes.Buffer or strings.Builder sink; gzip additionally requires an unmodified default header. A deferred archive/tar Close is also excluded when a later straight-line Close on the same stable writer passes its error to a consumer and no later writer use remains, because subsequent Close calls are no-ops. Exact test recovery guards that fail when an immediately following finalizer is the function body's terminal action and does not panic are treated as expected-panic assertions rather than successful error discards.",
+		Documentation: "Buffered, compressed, archive, multipart, and encoded writers can report their first failed output or emit required trailers only from Flush or Close. Discarding that result can report success while leaving output truncated or structurally incomplete. The rule targets exact standard-library finalizers whose documented contract writes pending data or required framing, including direct stable values returned by the streaming encoder constructors. Finalizers are excluded when a stable bufio or tabwriter chain terminates at an exact bytes.Buffer, strings.Builder, or selected-module writer whose exact Write error result is proven nil; gzip additionally requires an unmodified default header. A deferred archive/tar Close is also excluded when a later straight-line Close on the same stable writer passes its error to a consumer and no later writer use remains, because subsequent Close calls are no-ops. Exact test recovery guards that fail when an immediately following finalizer is the function body's terminal action and does not panic are treated as expected-panic assertions rather than successful error discards.",
 		DefaultSeverity: SeverityWarn,
 		Presets: []Preset{PresetCorrectness},
 		MinimumGoVersion: "1.25",
-		Requirement: RequireTypes,
-		NodeInterests: []NodeKind{NodeExprStmt, NodeAssignStmt, NodeGoStmt, NodeDeferStmt},
+		Requirement: RequireControlFlow,
+		RequiresEffectFacts: true,
 		Categories: []Category{CategoryCorrectness, CategorySafety},
 		KnownLimitations: []string{
 			"Only exact standard-library writer finalizers with an error result are covered; user-defined writers and unproven interface-dispatched finalizers remain outside the contract.",
-			"The in-memory exclusion follows stable local bufio, gzip, and tabwriter constructor or straight-line Reset/Init chains to exact bytes.Buffer and strings.Builder sinks; caller-owned, conditionally rebound, interface-typed, escaped, cyclic, and unproven chains remain conservative.",
+			"The in-memory exclusion follows stable local bufio, gzip, and tabwriter constructor or straight-line Reset/Init chains to exact bytes.Buffer and strings.Builder sinks or selected-module concrete writers whose exact Write error result is proven nil; caller-owned, conditionally rebound, interface-typed, escaped, cyclic, package-variant-disagreeing, and unproven chains remain conservative.",
 			"Gzip in-memory exclusions require the default Header to remain unmodified because invalid Name, Comment, or Extra values can fail independently of the sink.",
 			"Stable in-memory fmt consumers accept basic values and exact time.Time values; user-defined formatting callbacks remain conservative because they can capture and rebind the writer.",
 			"The redundant deferred archive/tar exclusion requires a writer declared directly in the same block, a later same-block Close whose error is passed to another call, no intervening return or branch, and no later or escaping receiver use.",
@@ -84,28 +84,54 @@ func (uncheckedWriterErrorRule) Metadata() Metadata {
 	}
 }
 
-func (uncheckedWriterErrorRule) RunTypes(ctx *TypesContext, node ast.Node) ([]Finding, error) {
-	if ctx == nil || ctx.Info() == nil {
+func (uncheckedWriterErrorRule) RunControlFlow(ctx *ControlFlowContext) ([]Finding, error) {
+	if ctx == nil || ctx.typesContext == nil || ctx.Info() == nil || ctx.Body() == nil {
 		return nil, fmt.Errorf("unchecked-writer-error requires complete type information")
 	}
+	findings := make([]Finding, 0)
+	var runErr error
+	ast.Inspect(
+		ctx.Body(),
+		func(node ast.Node) bool {
+			if node == nil || runErr != nil {
+				return false
+			}
+			if literal, nested := node.(*ast.FuncLit);
+				nested && literal.Body != ctx.Body() {
+				return false
+			}
+			switch node.(type) {
+			case *ast.ExprStmt, *ast.AssignStmt, *ast.GoStmt, *ast.DeferStmt:
+				var current []Finding
+				current, runErr = runUncheckedWriterError(ctx, node)
+				findings = append(findings, current...)
+			}
+			return true
+		},
+	)
+	return findings, runErr
+}
+
+func runUncheckedWriterError(ctx *ControlFlowContext, node ast.Node) ([]Finding, error) {
+	typesContext := ctx.typesContext
 	call, discarded := discardedCall(node)
 	if !discarded {
 		return nil, nil
 	}
-	spec, matched := writerFinalizer(ctx, call)
+	spec, matched := writerFinalizer(typesContext, call)
 	if !matched {
 		return nil, nil
 	}
-	if expectedPanicWriterFinalizer(ctx, node, call) {
+	if expectedPanicWriterFinalizer(typesContext, node, call) {
 		return nil, nil
 	}
-	if redundantDeferredTarFinalizer(ctx, node, call, spec) {
+	if redundantDeferredTarFinalizer(typesContext, node, call, spec) {
 		return nil, nil
 	}
 	if infallibleWriterFinalizer(ctx, node, call, spec) {
 		return nil, nil
 	}
-	range_, err := ctx.Range(call)
+	range_, err := typesContext.Range(call)
 	if err != nil {
 		return nil, err
 	}
@@ -537,15 +563,20 @@ func writerStatementMayBypassFollowing(statement ast.Stmt) bool {
 }
 
 func infallibleWriterFinalizer(
-	ctx *TypesContext,
+	ctx *ControlFlowContext,
 	discard ast.Node,
 	finalizer *ast.CallExpr,
 	spec writerFinalizerSpec,
 ) bool {
-	if ctx == nil || ctx.Info() == nil || ctx.Syntax() == nil || finalizer == nil {
+	if ctx == nil ||
+		ctx.typesContext == nil ||
+		ctx.Info() == nil ||
+		ctx.typesContext.Syntax() == nil ||
+		finalizer == nil {
 		return false
 	}
-	if emptyInMemoryTarFinalizer(ctx, discard, finalizer, spec) {
+	typesContext := ctx.typesContext
+	if emptyInMemoryTarFinalizer(typesContext, discard, finalizer, spec) {
 		return true
 	}
 	if !infallibleSinkFinalizer(spec) {
@@ -562,13 +593,14 @@ func infallibleWriterFinalizer(
 		if directObject(ctx.Info(), receiverExpression) == nil {
 			return false
 		}
-		binding := stableWriterConstructor(ctx, finalizer)
+		binding := stableWriterConstructor(typesContext, finalizer)
 		constructor = binding.candidate
 		bindings = binding.candidates
 		helperSinks = binding.helperSinks
 	}
 	return infallibleWriterConstructor(
 		ctx.Info(),
+		ctx,
 		constructor,
 		bindings,
 		helperSinks,
@@ -685,6 +717,7 @@ func infallibleSinkFinalizer(spec writerFinalizerSpec) bool {
 
 func infallibleWriterConstructor(
 	info *types.Info,
+	ctx *ControlFlowContext,
 	constructor *ast.CallExpr,
 	bindings map[types.Object]*ast.CallExpr,
 	helperSinks map[*ast.CallExpr]ast.Expr,
@@ -705,13 +738,49 @@ func infallibleWriterConstructor(
 	if infallibleMemoryWriter(info.TypeOf(sink)) {
 		return true
 	}
+	if infallibleWriteMethod(ctx, info.TypeOf(sink)) {
+		return true
+	}
 	inline, _ := ast.Unparen(sink).(*ast.CallExpr)
 	if inline != nil {
-		return infallibleWriterConstructor(info, inline, bindings, helperSinks, visiting)
+		return infallibleWriterConstructor(
+			info,
+			ctx,
+			inline,
+			bindings,
+			helperSinks,
+			visiting,
+		)
 	}
 	nested := bindings[directObject(info, sink)]
 	return nested != nil &&
-		infallibleWriterConstructor(info, nested, bindings, helperSinks, visiting)
+		infallibleWriterConstructor(info, ctx, nested, bindings, helperSinks, visiting)
+}
+
+func infallibleWriteMethod(ctx *ControlFlowContext, type_ types.Type) bool {
+	if ctx == nil || type_ == nil {
+		return false
+	}
+	object, _, _ := types.LookupFieldOrMethod(type_, true, ctx.Package(), "Write")
+	method, _ := object.(*types.Func)
+	if method == nil {
+		return false
+	}
+	signature, _ := types.Unalias(method.Type()).(*types.Signature)
+	if signature == nil ||
+		signature.Params() == nil ||
+		signature.Params().Len() != 1 ||
+		signature.Results() == nil ||
+		signature.Results().Len() != 2 ||
+		!types.Identical(
+			signature.Params().At(0).Type(),
+			types.NewSlice(types.Typ[types.Byte]),
+		) ||
+		!types.Identical(signature.Results().At(0).Type(), types.Typ[types.Int]) ||
+		!isBuiltinErrorType(signature.Results().At(1).Type()) {
+		return false
+	}
+	return ctx.ResultStateFor(method, 1) == NilStateNil
 }
 
 func infallibleMemoryWriter(type_ types.Type) bool {

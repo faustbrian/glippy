@@ -107,6 +107,11 @@ representation to version 15 and `native-effects-v15`. Project contracts
 cannot declare testing-failure provenance; every terminal path must resolve to
 an exact standard-library testing failure method.
 
+Exact source-proven infallible `Write` result facts later advance the active
+representation to version 16 and `native-effects-v16`. Project contracts
+cannot declare these facts; they are inferred only through exact selected
+source and authoritative standard-library in-memory writer roots.
+
 Contract files are data only. They do not execute code, provide replacement Go
 types, load runtime plugins, or grant write authority. Syntax-only lint does
 not load type state because contracts are configured. External contracts use

@@ -142,6 +142,13 @@ wrappers retain testing-failure provenance only when every terminal path ends
 in `testing.FailNow`, `Fatal`, or `Fatalf`; mixed terminal behavior and
 name-only lookalikes remain ordinary no-return calls.
 
+The 2026-08-25 infallible-writer refinement advances the active schema and
+cache component to `native-effects-v16`. Exact selected-module `Write` methods
+may export an unconditionally nil error-result fact through bounded static
+delegation rooted in the standard-library `bytes.Buffer` and `strings.Builder`
+contracts. Package variants must agree; interface dispatch, mutable or missing
+source, recursion, and fallible delegates remain unknown.
+
 ## Alternatives
 
 - Load the complete dependency syntax closure with `packages.NeedDeps`:

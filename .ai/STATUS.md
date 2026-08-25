@@ -3013,3 +3013,14 @@ deterministic. This targets the 17 classified Kubernetes default false
 positives without suppressing the 17 actionable post-mortem and cleanup
 findings. Stable-v1 progress remains 65% until the complete v0.7 precision and
 interaction gate passes.
+
+The next v0.7 precision batch moves `unchecked-writer-error` to the shared CFG
+tier and consumes versioned effect facts. An exact selected-module
+`Write([]byte) (int, error)` method is treated as infallible only when every
+normal return proves its error nil through bounded static delegation rooted in
+`bytes.Buffer.Write` or `strings.Builder.Write`; fallible, interface-dispatched,
+recursive, unavailable, and package-variant-disagreeing implementations remain
+diagnostics. The native effect schema and cache component advance to version 16.
+This targets the two containerd progress-writer false positives without hiding
+the separately fallible progress flushes. Stable-v1 progress remains 65% until
+the remaining tar-writer and interaction gates pass.

@@ -15,7 +15,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const nativeEffectFactSchemaVersion = 15
+const nativeEffectFactSchemaVersion = 16
 
 type returnStateKey struct {
 	value int
@@ -145,10 +145,59 @@ func (f *nativeEffectFacts) ReturnState(
 
 // ResultState implements rules.EffectFacts across independent package loads.
 func (f *nativeEffectFacts) ResultState(function *types.Func, result int) rules.NilState {
-	if f == nil || function == nil || result < 0 {
+	if function == nil || result < 0 {
+		return rules.NilStateUnknown
+	}
+	if state := authoritativeResultState(function, result); state != rules.NilStateUnknown {
+		return state
+	}
+	if f == nil {
 		return rules.NilStateUnknown
 	}
 	return f.results[stableFunctionIdentity(function)][result]
+}
+
+func authoritativeResultState(function *types.Func, result int) rules.NilState {
+	if function == nil || function.Pkg() == nil || function.Name() != "Write" || result != 1 {
+		return rules.NilStateUnknown
+	}
+	signature, _ := types.Unalias(function.Type()).(*types.Signature)
+	if signature == nil ||
+		signature.Recv() == nil ||
+		signature.Params() == nil ||
+		signature.Params().Len() != 1 ||
+		signature.Results() == nil ||
+		signature.Results().Len() != 2 ||
+		!types.Identical(
+			signature.Params().At(0).Type(),
+			types.NewSlice(types.Typ[types.Byte]),
+		) ||
+		!types.Identical(signature.Results().At(0).Type(), types.Typ[types.Int]) ||
+		!types.Identical(
+			signature.Results().At(1).Type(),
+			types.Universe.Lookup("error").Type(),
+		) {
+		return rules.NilStateUnknown
+	}
+	receiver := types.Unalias(signature.Recv().Type())
+	if pointer, ok := receiver.(*types.Pointer); ok {
+		receiver = types.Unalias(pointer.Elem())
+	}
+	named, _ := receiver.(*types.Named)
+	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil {
+		return rules.NilStateUnknown
+	}
+	switch named.Obj().Pkg().Path() {
+	case "bytes":
+		if named.Obj().Name() == "Buffer" {
+			return rules.NilStateNil
+		}
+	case "strings":
+		if named.Obj().Name() == "Builder" {
+			return rules.NilStateNil
+		}
+	}
+	return rules.NilStateUnknown
 }
 
 func (f *nativeEffectFacts) noReturn(function *types.Func) bool {

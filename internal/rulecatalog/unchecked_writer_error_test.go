@@ -950,6 +950,107 @@ func TestStableInMemoryWriters(t *testing.T) {
 	}
 }
 
+func TestUncheckedWriterErrorUsesCrossPackageInfallibleWriteFacts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwriterfacts\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "sink", "sink.go"),
+		`package sink
+
+import (
+	"bytes"
+	"io"
+	"strings"
+)
+
+type MemoryWriter struct {
+	buffer bytes.Buffer
+	output io.Writer
+}
+
+func NewMemoryWriter(output io.Writer) *MemoryWriter {
+	return &MemoryWriter{output: output}
+}
+
+func (writer *MemoryWriter) Write(value []byte) (int, error) {
+	return writer.buffer.Write(value)
+}
+
+func (writer *MemoryWriter) Flush() error {
+	_, err := writer.output.Write(writer.buffer.Bytes())
+	return err
+}
+
+type StringWriter struct {
+	builder strings.Builder
+}
+
+func NewStringWriter() *StringWriter { return &StringWriter{} }
+
+func (writer *StringWriter) Write(value []byte) (int, error) {
+	return writer.builder.Write(value)
+}
+
+type FallibleWriter struct {
+	output io.Writer
+}
+
+func NewFallibleWriter(output io.Writer) *FallibleWriter {
+	return &FallibleWriter{output: output}
+}
+
+func (writer *FallibleWriter) Write(value []byte) (int, error) {
+	return writer.output.Write(value)
+}
+`,
+	)
+	input := `package sample
+
+import (
+	"io"
+	"text/tabwriter"
+
+	"example.com/uncheckedwriterfacts/sink"
+)
+
+func writeTables(output io.Writer) {
+	memoryTable := tabwriter.NewWriter(sink.NewMemoryWriter(output), 1, 8, 1, ' ', 0)
+	memoryTable.Flush()
+	stringTable := tabwriter.NewWriter(sink.NewStringWriter(), 1, 8, 1, ' ', 0)
+	stringTable.Flush()
+
+	fallibleTable := tabwriter.NewWriter(sink.NewFallibleWriter(output), 1, 8, 1, ' ', 0)
+	fallibleTable.Flush()
+
+	var dynamic io.Writer = sink.NewMemoryWriter(output)
+	dynamicTable := tabwriter.NewWriter(dynamic, 1, 8, 1, ' ', 0)
+	dynamicTable.Flush()
+}
+`
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", false)
+	var diagnostics []rules.Diagnostic
+	for _, file := range result.Files {
+		if filepath.Base(file.Path) == "sample.go" {
+			diagnostics = file.Diagnostics
+			break
+		}
+	}
+	assertUncheckedWriterDiagnostics(
+		t,
+		input,
+		analysis.PackageResult{Files: []analysis.Result{{Diagnostics: diagnostics}}},
+		[]string{"fallibleTable.Flush()", "dynamicTable.Flush()"},
+	)
+}
+
 func TestUncheckedWriterErrorPreservesInMemoryProvenanceThroughWriterConsumers(t *testing.T) {
 	t.Parallel()
 
@@ -2771,16 +2872,9 @@ func TestFlush(t *testing.T) {
 		metadata.DefaultSeverity != rules.SeverityWarn ||
 		!reflect.DeepEqual(metadata.Presets, []rules.Preset{rules.PresetCorrectness}) ||
 		metadata.MinimumGoVersion != "1.25" ||
-		metadata.Requirement != rules.RequireTypes ||
-		!reflect.DeepEqual(
-			metadata.NodeInterests,
-			[]rules.NodeKind{
-				rules.NodeExprStmt,
-				rules.NodeAssignStmt,
-				rules.NodeGoStmt,
-				rules.NodeDeferStmt,
-			},
-		) ||
+		metadata.Requirement != rules.RequireControlFlow ||
+		len(metadata.NodeInterests) != 0 ||
+		!metadata.RequiresEffectFacts ||
 		metadata.RunOnGenerated ||
 		metadata.RunDespiteTypeErrors ||
 		len(metadata.Fixes) != 0 ||

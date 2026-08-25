@@ -27,8 +27,10 @@ them or seek upstream adoption.
 
 Status: active. Both v0.6 comparator-backed rule candidates are implemented.
 The first corpus-noise correction propagates exact testing-failure wrapper
-provenance and targets 17 classified Kubernetes return-shim false positives;
-the remaining in-memory writer and interaction work is still open.
+provenance and targets 17 classified Kubernetes return-shim false positives.
+Source-proven nil `Write` results now cross selected-module boundaries and
+target the two containerd progress-writer false positives; the remaining tar
+writer and interaction work is still open.
 
 - Improve bounded interprocedural alias, interface, recursion, and ownership
   reasoning.

@@ -1129,6 +1129,15 @@ func (c *ControlFlowContext) ResultState(call *ast.CallExpr, result int) NilStat
 	return c.effects.ResultState(callee, result)
 }
 
+// ResultStateFor returns the proven unconditional nilness of one result from
+// an exact statically selected function or method.
+func (c *ControlFlowContext) ResultStateFor(function *types.Func, result int) NilState {
+	if c == nil || c.effects == nil || function == nil || result < 0 {
+		return NilStateUnknown
+	}
+	return c.effects.ResultState(function, result)
+}
+
 func (c *ControlFlowContext) staticCallee(call *ast.CallExpr) *types.Func {
 	if c == nil || c.typesContext == nil || c.effects == nil || call == nil {
 		return nil
