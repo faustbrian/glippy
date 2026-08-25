@@ -109,6 +109,25 @@ type Directive struct {
 	Raw string
 }
 
+// ErrDirectiveSourceAnchorChanged identifies a formatter validation failure
+// caused by moving one or more directive comments across physical source
+// anchors.
+var ErrDirectiveSourceAnchorChanged = errors.New("directive source anchor changed")
+
+// DirectiveAnchorError identifies the original directives whose physical
+// source anchors changed.
+type DirectiveAnchorError struct {
+	Changed []Directive
+}
+
+func (e *DirectiveAnchorError) Error() string {
+	return ErrDirectiveSourceAnchorChanged.Error()
+}
+
+func (e *DirectiveAnchorError) Unwrap() error {
+	return ErrDirectiveSourceAnchorChanged
+}
+
 type directiveLineAnchor struct {
 	Before uint8
 	After uint8
@@ -513,8 +532,9 @@ func ValidateEquivalent(before, after *File) error {
 	if err != nil {
 		return err
 	}
-	if !slices.Equal(beforeAnchors, afterAnchors) {
-		return errors.New("directive source anchor changed")
+	if err := validateDirectiveAnchors(before.directives, beforeAnchors, afterAnchors);
+		err != nil {
+		return err
 	}
 	beforeSyntax, err := syntaxFingerprint(before.syntax)
 	if err != nil {
@@ -528,6 +548,26 @@ func ValidateEquivalent(before, after *File) error {
 		return errors.New("normalized syntax tree changed")
 	}
 	return nil
+}
+
+func validateDirectiveAnchors(
+	directives []Directive,
+	before []directiveLineAnchor,
+	after []directiveLineAnchor,
+) error {
+	if len(before) != len(after) || len(before) != len(directives) {
+		return ErrDirectiveSourceAnchorChanged
+	}
+	changed := make([]Directive, 0)
+	for index := range before {
+		if before[index] != after[index] {
+			changed = append(changed, directives[index])
+		}
+	}
+	if len(changed) == 0 {
+		return nil
+	}
+	return &DirectiveAnchorError{Changed: changed}
 }
 
 func directiveLineAnchors(
@@ -581,9 +621,12 @@ func directiveLineAnchors(
 		if directive.Kind == DirectiveExternalSuppression {
 			lineStart := bytes.LastIndexByte(physical[:directive.Range.Start], '\n') + 1
 			var fingerprint strings.Builder
-			for _, item := range tokens {
+			first := index
+			for first > 0 && tokens[first - 1].Range.Start >= lineStart {
+				first--
+			}
+			for _, item := range tokens[first:index] {
 				if item.Kind == token.COMMENT ||
-					item.Range.Start < lineStart ||
 					item.Range.End > directive.Range.Start {
 					continue
 				}

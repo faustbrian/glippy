@@ -598,8 +598,9 @@ func ValidateFragmentEquivalent(before, after *Fragment) error {
 	if err != nil {
 		return err
 	}
-	if !slices.Equal(beforeAnchors, afterAnchors) {
-		return errors.New("directive source anchor changed")
+	if err := validateDirectiveAnchors(before.directives, beforeAnchors, afterAnchors);
+		err != nil {
+		return err
 	}
 	beforeSyntax, err := fragmentSyntaxFingerprint(before.kind, before.syntax)
 	if err != nil {

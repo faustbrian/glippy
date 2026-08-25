@@ -1025,8 +1025,23 @@ func TestEquivalenceRejectsNolintPhysicalLineOwnershipChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := source.ValidateEquivalent(before, after); err == nil {
+	err = source.ValidateEquivalent(before, after)
+	if err == nil {
 		t.Fatal("ValidateEquivalent() must reject changed nolint physical-line ownership")
+	}
+	if !errors.Is(err, source.ErrDirectiveSourceAnchorChanged) {
+		t.Fatalf("ValidateEquivalent() error = %v, want directive-anchor sentinel", err)
+	}
+	var anchorErr *source.DirectiveAnchorError
+	if !errors.As(err, &anchorErr) {
+		t.Fatalf("ValidateEquivalent() error = %T, want *DirectiveAnchorError", err)
+	}
+	if len(anchorErr.Changed) != 1 ||
+		anchorErr.Changed[0].Kind != source.DirectiveExternalSuppression {
+		t.Fatalf(
+			"DirectiveAnchorError.Changed = %#v, want changed external suppression",
+			anchorErr.Changed,
+		)
 	}
 }
 

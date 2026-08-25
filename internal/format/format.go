@@ -45,21 +45,11 @@ func File(file *source.File, options Options) ([]byte, error) {
 	if options.Width <= 0 || options.TabWidth <= 0 || options.FitBudget <= 0 {
 		return nil, errors.New("width, tab width, and fit budget must be positive")
 	}
-	result, err := render(file, options)
+	result, formattedFile, err := renderValidatedFile(file, options)
 	if err != nil {
 		return nil, err
 	}
-	formattedFile, err := source.Load(file.Path(), result)
-	if err != nil {
-		return nil, fmt.Errorf("formatted output failed validation: %w", err)
-	}
-	if err := source.ValidateEquivalent(file, formattedFile); err != nil {
-		return nil, fmt.Errorf("formatted output failed equivalence: %w", err)
-	}
-	if err := suppressions.ValidateStable(file, formattedFile); err != nil {
-		return nil, fmt.Errorf("formatted output failed suppression validation: %w", err)
-	}
-	again, err := render(formattedFile, options)
+	again, _, err := renderValidatedFile(formattedFile, options)
 	if err != nil {
 		return nil, fmt.Errorf("repeat formatting failed: %w", err)
 	}
@@ -67,6 +57,138 @@ func File(file *source.File, options Options) ([]byte, error) {
 		return nil, errors.New("formatted output is not byte-idempotent")
 	}
 	return result, nil
+}
+
+func renderValidatedFile(file *source.File, options Options) ([]byte, *source.File, error) {
+	result, err := render(file, options)
+	if err != nil {
+		return nil, nil, err
+	}
+	formattedFile, err := source.Load(file.Path(), result)
+	if err != nil {
+		return nil, nil, fmt.Errorf("formatted output failed validation: %w", err)
+	}
+	equivalenceErr := source.ValidateEquivalent(file, formattedFile)
+	if equivalenceErr != nil {
+		preserved, ok := externalDirectiveDeclarationStarts(file, equivalenceErr)
+		if !ok {
+			return nil, nil, fmt.Errorf(
+				"formatted output failed equivalence: %w",
+				equivalenceErr,
+			)
+		}
+		result, err = renderWithPreservedDeclarations(file, options, preserved)
+		if err != nil {
+			return nil, nil, err
+		}
+		formattedFile, err = source.Load(file.Path(), result)
+		if err != nil {
+			return nil, nil, fmt.Errorf("formatted output failed validation: %w", err)
+		}
+		if err := source.ValidateEquivalent(file, formattedFile); err != nil {
+			return nil, nil, fmt.Errorf("formatted output failed equivalence: %w", err)
+		}
+	}
+	if err := suppressions.ValidateStable(file, formattedFile); err != nil {
+		return nil, nil, fmt.Errorf(
+			"formatted output failed suppression validation: %w",
+			err,
+		)
+	}
+	return result, formattedFile, nil
+}
+
+func externalDirectiveDeclarationStarts(
+	file *source.File,
+	equivalenceErr error,
+) (map[int]struct{}, bool) {
+	changed, ok := changedExternalDirectives(equivalenceErr)
+	if !ok {
+		return nil, false
+	}
+	var preserved map[int]struct{}
+	allMatched := false
+	if err := file.ReadSyntax(
+		func(syntax *ast.File) error {
+			preserved, allMatched = declarationStartsForDirectives(
+				syntax.Decls,
+				file.PhysicalOffset,
+				file.Bytes(),
+				changed,
+			)
+			return nil
+		},
+	);
+		err != nil {
+		return nil, false
+	}
+	return preserved, allMatched && len(preserved) > 0
+}
+
+func changedExternalDirectives(equivalenceErr error) ([]source.Directive, bool) {
+	var anchorErr *source.DirectiveAnchorError
+	if !errors.As(equivalenceErr, &anchorErr) || len(anchorErr.Changed) == 0 {
+		return nil, false
+	}
+	for _, directive := range anchorErr.Changed {
+		if directive.Kind != source.DirectiveExternalSuppression {
+			return nil, false
+		}
+	}
+	return anchorErr.Changed, true
+}
+
+func declarationStartsForDirectives(
+	declarations []ast.Decl,
+	physicalOffset func(token.Pos) (int, bool),
+	physical []byte,
+	directives []source.Directive,
+) (map[int]struct{}, bool) {
+	type declarationRange struct {
+		start int
+		end int
+	}
+	ranges := make([]declarationRange, 0, len(declarations))
+	for _, declaration := range declarations {
+		start, startFound := physicalOffset(declaration.Pos())
+		end, endFound := physicalOffset(declaration.End())
+		if !startFound || !endFound {
+			return nil, false
+		}
+		ranges = append(ranges, declarationRange{start: start, end: end})
+	}
+	preserved := make(map[int]struct{}, len(directives))
+	declarationIndex := 0
+	for _, directive := range directives {
+		for declarationIndex + 1 < len(ranges) &&
+			directive.Range.Start >= ranges[declarationIndex + 1].start {
+			declarationIndex++
+		}
+		if len(ranges) == 0 || directive.Range.Start < ranges[declarationIndex].start {
+			return nil, false
+		}
+		declaration := ranges[declarationIndex]
+		limit := len(physical)
+		if declarationIndex + 1 < len(ranges) {
+			limit = ranges[declarationIndex + 1].start
+		}
+		inside := directive.Range.End <= declaration.end
+		trailing := directive.Range.Start >= declaration.end &&
+			directive.Range.End <= limit &&
+			samePhysicalLineBytes(physical, declaration.end, directive.Range.Start)
+		if !inside && !trailing {
+			return nil, false
+		}
+		preserved[declaration.start] = struct{}{}
+	}
+	return preserved, true
+}
+
+func samePhysicalLineBytes(physical []byte, start, end int) bool {
+	return start >= 0 &&
+		end >= start &&
+		end <= len(physical) &&
+		!bytes.ContainsRune(physical[start:end], '\n')
 }
 
 // Fragment formats one valid source fragment at its explicitly selected AST
@@ -78,21 +200,11 @@ func Fragment(fragment *source.Fragment, options Options) ([]byte, error) {
 	if options.Width <= 0 || options.TabWidth <= 0 || options.FitBudget <= 0 {
 		return nil, errors.New("width, tab width, and fit budget must be positive")
 	}
-	result, err := renderFragment(fragment, options)
+	result, formattedFragment, err := renderValidatedFragment(fragment, options)
 	if err != nil {
 		return nil, err
 	}
-	formattedFragment, err := source.LoadFragment(fragment.Path(), fragment.Kind(), result)
-	if err != nil {
-		return nil, fmt.Errorf("formatted fragment failed validation: %w", err)
-	}
-	if err := source.ValidateFragmentEquivalent(fragment, formattedFragment); err != nil {
-		return nil, fmt.Errorf("formatted fragment failed equivalence: %w", err)
-	}
-	if err := suppressions.ValidateStable(fragment, formattedFragment); err != nil {
-		return nil, fmt.Errorf("formatted fragment failed suppression validation: %w", err)
-	}
-	again, err := renderFragment(formattedFragment, options)
+	again, _, err := renderValidatedFragment(formattedFragment, options)
 	if err != nil {
 		return nil, fmt.Errorf("repeat fragment formatting failed: %w", err)
 	}
@@ -102,9 +214,107 @@ func Fragment(fragment *source.Fragment, options Options) ([]byte, error) {
 	return result, nil
 }
 
+func renderValidatedFragment(
+	fragment *source.Fragment,
+	options Options,
+) ([]byte, *source.Fragment, error) {
+	result, err := renderFragment(fragment, options)
+	if err != nil {
+		return nil, nil, err
+	}
+	formattedFragment, err := source.LoadFragment(fragment.Path(), fragment.Kind(), result)
+	if err != nil {
+		return nil, nil, fmt.Errorf("formatted fragment failed validation: %w", err)
+	}
+	equivalenceErr := source.ValidateFragmentEquivalent(fragment, formattedFragment)
+	if equivalenceErr != nil {
+		preserved, ok := externalDirectiveFragmentDeclarationStarts(
+			fragment,
+			equivalenceErr,
+		)
+		if !ok {
+			return nil, nil, fmt.Errorf(
+				"formatted fragment failed equivalence: %w",
+				equivalenceErr,
+			)
+		}
+		result, err = renderFragmentWithPreservedDeclarations(fragment, options, preserved)
+		if err != nil {
+			return nil, nil, err
+		}
+		formattedFragment, err = source.LoadFragment(
+			fragment.Path(),
+			fragment.Kind(),
+			result,
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("formatted fragment failed validation: %w", err)
+		}
+		if err := source.ValidateFragmentEquivalent(fragment, formattedFragment);
+			err != nil {
+			return nil, nil, fmt.Errorf(
+				"formatted fragment failed equivalence: %w",
+				err,
+			)
+		}
+	}
+	if err := suppressions.ValidateStable(fragment, formattedFragment); err != nil {
+		return nil, nil, fmt.Errorf(
+			"formatted fragment failed suppression validation: %w",
+			err,
+		)
+	}
+	return result, formattedFragment, nil
+}
+
+func externalDirectiveFragmentDeclarationStarts(
+	fragment *source.Fragment,
+	equivalenceErr error,
+) (map[int]struct{}, bool) {
+	if fragment.Kind() != source.FragmentDeclaration {
+		return nil, false
+	}
+	changed, ok := changedExternalDirectives(equivalenceErr)
+	if !ok {
+		return nil, false
+	}
+	var preserved map[int]struct{}
+	allMatched := false
+	if err := fragment.ReadSyntax(
+		func(syntax source.FragmentSyntax) error {
+			preserved, allMatched = declarationStartsForDirectives(
+				syntax.Declarations,
+				fragment.PhysicalOffset,
+				fragment.Bytes(),
+				changed,
+			)
+			return nil
+		},
+	);
+		err != nil {
+		return nil, false
+	}
+	return preserved, allMatched && len(preserved) > 0
+}
+
 func render(file *source.File, options Options) ([]byte, error) {
 	tokens := file.Tokens()
 	return renderFileWithCapacity(file, options, tokens, arenaCapacity(len(tokens)))
+}
+
+func renderWithPreservedDeclarations(
+	file *source.File,
+	options Options,
+	preserved map[int]struct{},
+) ([]byte, error) {
+	tokens := file.Tokens()
+	return renderFileWithPreservedDeclarations(
+		file,
+		options,
+		tokens,
+		arenaCapacity(len(tokens)),
+		preserved,
+	)
 }
 
 func renderFileWithCapacity(
@@ -113,8 +323,18 @@ func renderFileWithCapacity(
 	tokens []source.Token,
 	capacity int,
 ) ([]byte, error) {
+	return renderFileWithPreservedDeclarations(file, options, tokens, capacity, nil)
+}
+
+func renderFileWithPreservedDeclarations(
+	file *source.File,
+	options Options,
+	tokens []source.Token,
+	capacity int,
+	preserved map[int]struct{},
+) ([]byte, error) {
 	arena := doc.NewArenaWithCapacity(capacity)
-	lower := newLowerer(arena, file, tokens)
+	lower := newLowererWithPreservedDeclarations(arena, file, tokens, preserved)
 	var document doc.ID
 	if err := file.ReadSyntax(
 		func(syntax *ast.File) error {
@@ -145,10 +365,18 @@ func renderFileWithCapacity(
 }
 
 func renderFragment(fragment *source.Fragment, options Options) ([]byte, error) {
+	return renderFragmentWithPreservedDeclarations(fragment, options, nil)
+}
+
+func renderFragmentWithPreservedDeclarations(
+	fragment *source.Fragment,
+	options Options,
+	preserved map[int]struct{},
+) ([]byte, error) {
 	tokens := fragment.Tokens()
 	capacity := arenaCapacity(len(tokens))
 	arena := doc.NewArenaWithCapacity(capacity)
-	lower := newLowerer(arena, fragment, tokens)
+	lower := newLowererWithPreservedDeclarations(arena, fragment, tokens, preserved)
 	var document doc.ID
 	if err := fragment.ReadSyntax(
 		func(syntax source.FragmentSyntax) error {
@@ -191,6 +419,7 @@ type lowerer struct {
 	comments []source.Comment
 	commentByStart map[int]int
 	emittedComment []bool
+	preservedDeclarations map[int]struct{}
 }
 
 func arenaCapacity(tokenCount int) int {
@@ -201,6 +430,15 @@ func arenaCapacity(tokenCount int) int {
 }
 
 func newLowerer(arena *doc.Arena, file sourceUnit, tokens []source.Token) lowerer {
+	return newLowererWithPreservedDeclarations(arena, file, tokens, nil)
+}
+
+func newLowererWithPreservedDeclarations(
+	arena *doc.Arena,
+	file sourceUnit,
+	tokens []source.Token,
+	preserved map[int]struct{},
+) lowerer {
 	comments := file.Comments()
 	commentByStart := make(map[int]int, len(comments))
 	for index, comment := range comments {
@@ -214,6 +452,7 @@ func newLowerer(arena *doc.Arena, file sourceUnit, tokens []source.Token) lowere
 		comments: comments,
 		commentByStart: commentByStart,
 		emittedComment: make([]bool, len(comments)),
+		preservedDeclarations: preserved,
 	}
 }
 
@@ -252,6 +491,7 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 			l.trailingComments(boundary, firstDeclaration),
 		),
 	)
+	previousDeclarationBreaks := 2
 	for index, declaration := range file.Decls {
 		declarationStart, found := l.source.PhysicalOffset(declaration.Pos())
 		if !found {
@@ -276,12 +516,13 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 		if !found {
 			return doc.ID{}, errors.New("declaration has no physical end offset")
 		}
-		trailing := l.trailingComments(declarationEnd, limit)
-		if hasNolintComment(trailing) {
+		_, preserve := l.preservedDeclarations[declarationStart]
+		if preserve {
 			lowered = l.arena.Verbatim(
 				string(l.physical[declarationStart:declarationEnd]),
 			)
 		}
+		trailing := l.trailingComments(declarationEnd, limit)
 		if len(leading) > 0 {
 			lowered = l.arena.Concat(
 				l.boundaryCommentsDocument(leading, declarationStart),
@@ -289,7 +530,12 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 			)
 		}
 		lowered = l.withTrailingComments(lowered, trailing)
-		parts = append(parts, l.arena.HardLine(), l.arena.HardLine(), lowered)
+		parts = append(parts, l.arena.HardLine())
+		if previousDeclarationBreaks == 2 {
+			parts = append(parts, l.arena.HardLine())
+		}
+		parts = append(parts, lowered)
+		previousDeclarationBreaks = l.declarationBreaksAfter(preserve, trailing, limit)
 		boundary = declarationEnd
 	}
 	if suffix := l.commentsBetween(boundary, len(l.physical)); len(suffix) > 0 {
@@ -309,6 +555,7 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 func (l *lowerer) fragmentDeclarations(declarations []ast.Decl) (doc.ID, error) {
 	parts := make([]doc.ID, 0, len(declarations) * 3)
 	boundary := 0
+	previousDeclarationBreaks := 2
 	for index, declaration := range declarations {
 		declarationStart, found := l.source.PhysicalOffset(declaration.Pos())
 		if !found {
@@ -336,12 +583,13 @@ func (l *lowerer) fragmentDeclarations(declarations []ast.Decl) (doc.ID, error) 
 				"fragment declaration has no physical end offset",
 			)
 		}
-		trailing := l.trailingComments(declarationEnd, limit)
-		if hasNolintComment(trailing) {
+		_, preserve := l.preservedDeclarations[declarationStart]
+		if preserve {
 			lowered = l.arena.Verbatim(
 				string(l.physical[declarationStart:declarationEnd]),
 			)
 		}
+		trailing := l.trailingComments(declarationEnd, limit)
 		if len(leading) > 0 {
 			lowered = l.arena.Concat(
 				l.boundaryCommentsDocument(leading, declarationStart),
@@ -350,9 +598,13 @@ func (l *lowerer) fragmentDeclarations(declarations []ast.Decl) (doc.ID, error) 
 		}
 		lowered = l.withTrailingComments(lowered, trailing)
 		if index > 0 {
-			parts = append(parts, l.arena.HardLine(), l.arena.HardLine())
+			parts = append(parts, l.arena.HardLine())
+			if previousDeclarationBreaks == 2 {
+				parts = append(parts, l.arena.HardLine())
+			}
 		}
 		parts = append(parts, lowered)
+		previousDeclarationBreaks = l.declarationBreaksAfter(preserve, trailing, limit)
 		boundary = declarationEnd
 	}
 	if suffix := l.commentsBetween(boundary, len(l.physical)); len(suffix) > 0 {
@@ -365,6 +617,37 @@ func (l *lowerer) fragmentDeclarations(declarations []ast.Decl) (doc.ID, error) 
 		return doc.ID{}, err
 	}
 	return l.arena.Concat(parts...), nil
+}
+
+func (l *lowerer) declarationBreaksAfter(preserve bool, trailing []source.Comment, limit int) int {
+	if !preserve || !hasNolintComment(trailing) {
+		return 2
+	}
+	directiveEnd := trailing[len(trailing) - 1].Range.End
+	for _, comment := range trailing {
+		if isNolintComment(comment.Raw) {
+			directiveEnd = comment.Range.End
+		}
+	}
+	anchorLimit := limit
+	first := sort.Search(
+		len(l.tokens),
+		func(index int) bool {
+			return l.tokens[index].Range.Start >= directiveEnd
+		},
+	)
+	for _, item := range l.tokens[first:] {
+		if item.Range.Start == item.Range.End {
+			continue
+		}
+		anchorLimit = min(item.Range.Start, limit)
+		break
+	}
+	breaks := bytes.Count(l.physical[directiveEnd:anchorLimit], []byte{'\n'})
+	if breaks < 1 {
+		return 1
+	}
+	return min(breaks, 2)
 }
 
 func (l *lowerer) fragmentStatements(statements []ast.Stmt) (doc.ID, error) {
@@ -722,9 +1005,6 @@ func (l *lowerer) generalDeclaration(declaration *ast.GenDecl) (doc.ID, error) {
 			return doc.ID{}, err
 		}
 		trailing := l.trailingComments(specEnd, limit)
-		if hasNolintComment(trailing) {
-			lowered = l.arena.Verbatim(string(l.physical[specStart:specEnd]))
-		}
 		lowered = l.withTrailingComments(lowered, trailing)
 		if len(leading) > 0 {
 			lowered = l.arena.Concat(

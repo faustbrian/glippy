@@ -1236,6 +1236,17 @@ func TestFormatPreservesNolintOwnershipAcrossBreakableBoundaries(t *testing.T) {
 		"call argument": "package comments\n\nfunc run() {\n\tcall(\n\t\tfirst,\n\t\tlongConversion(sequence), //nolint:gosec\n\t\tlast,\n\t)\n}\n",
 		"composite element blank line": "package comments\n\nfunc run() {\n\t_ = Config{\n\t\tUnsafe: true, //nolint:gosec\n\n\t}\n}\n",
 		"composite opening": "package comments\n\nfunc run() {\n\tvalue := Config{ //nolint:gosec\n\t\tField: true,\n\t}\n\t_ = value\n}\n",
+		"call composite opening": "package comments\n\nfunc run() {\n\thttp.SetCookie(w, &http.Cookie{ //nolint:gosec // Secure follows the request transport.\n\t\tName: \"sort\",\n\t})\n}\n",
+		"compressed block call composite opening": "package comments\n\nfunc run(){outer(  firstArg,&Config{Unsafe:true, //nolint:gosec\n},thirdArg)}\n",
+		"binary assignment enclosing suppressed call": "package comments\n\nfunc run() {\n\tresult := extremelyLongPrefixExpressionThatExceedsConfiguredFormattingWidth + outer(firstArg, &Config{Unsafe: true, //nolint:gosec\n\t}, thirdArg)\n\t_ = result\n}\n",
+		"binary return enclosing suppressed call": "package comments\n\nfunc run() int {\n\treturn extremelyLongPrefixExpressionThatExceedsConfiguredFormattingWidth + outer(firstArg, &Config{Unsafe: true, //nolint:gosec\n\t}, thirdArg)\n}\n",
+		"label enclosing suppressed call": "package comments\n\nfunc run() {\n\ttarget: outer(firstArg, &Config{Unsafe: true, //nolint:gosec\n\t}, thirdArg)\n\tgoto target\n}\n",
+		"struct field blank line": "package comments\n\ntype Account struct {\n\tPassword string `json:\"password\"` //nolint:gosec // The value is already hashed.\n\n\tpassword []byte\n}\n",
+		"struct field followed by documentation": "package comments\n\ntype Config struct {\n\tSecret string `json:\"secret\"` //nolint:gosec // The value is public configuration.\n\t// MaxAge controls expiry.\n\tMaxAge int\n}\n",
+		"struct field followed by standalone comment": "package comments\n\ntype Config struct {\n\tSecret string `json:\"secret\"` //nolint:gosec // The value is public configuration.\n\t// The next field starts a separate section.\n\n\tMaxAge int\n}\n",
+		"inline aggregate field": "package comments\n\ntype Account struct { Password string //nolint:gosec\n}\n",
+		"generic type prefix before inline aggregate field": "package comments\n\ntype Account[\n\tFirst any,\n\tSecond any,\n\tThird any,\n\tFourth any,\n\tFifth any,\n\tSixth any,\n] struct { Password string //nolint:gosec\n}\n",
+		"grouped type declaration": "package comments\n\ntype ( Account struct { Password string //nolint:gosec\n} ; Alias = Account )\n",
 		"function opening": "package comments\n\nfunc longFunction(firstArgument string, secondArgument string, thirdArgument string) int { //nolint:unused\n\treturn 0\n}\n",
 		"function literal opening": "package comments\n\nfunc run() {\n\thandler := func(firstArgument string, secondArgument string, thirdArgument string) int { //nolint:unused\n\t\treturn 0\n\t}\n\t_ = handler\n}\n",
 	}
@@ -1268,6 +1279,222 @@ func TestFormatPreservesNolintOwnershipAcrossBreakableBoundaries(t *testing.T) {
 				}
 			},
 		)
+	}
+}
+
+func TestFormatDirectiveFallbackPreservesOnlyAffectedDeclarations(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(
+		"package comments\nfunc guarded(){target: outer(firstArg, &Config{Unsafe: true, //nolint:gosec\n}, thirdArg)\ngoto target}\nfunc ordinary(){value:=call(first,second)}\n",
+	)
+	file, err := source.Load("selective_nolint.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := glippyformat.File(
+		file,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nfunc guarded(){target: outer(firstArg, &Config{Unsafe: true, //nolint:gosec\n}, thirdArg)\ngoto target}\n\nfunc ordinary() {\n\tvalue := call(first, second)\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant declaration-scoped fallback:\n%s", got, want)
+	}
+}
+
+func TestFormatDirectiveFallbackOwnsTrailingTopLevelNolint(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(
+		"package comments\nvar   errUnavailable=errors.New(\"unavailable\") //nolint:unused\nfunc ordinary(){value:=call(first,second)}\n",
+	)
+	file, err := source.Load("trailing_nolint.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := glippyformat.File(
+		file,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nvar   errUnavailable=errors.New(\"unavailable\") //nolint:unused\nfunc ordinary() {\n\tvalue := call(first, second)\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant trailing directive owner preserved:\n%s", got, want)
+	}
+}
+
+func TestFormatDirectiveFallbackPreservesTrailingNolintBlankAnchor(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(
+		"package comments\nfunc guarded(){target: outer(firstArg, &Config{Unsafe: true, //nolint:gosec\n}, thirdArg)\ngoto target} //nolint:unused\n\nfunc ordinary(){value:=call(first,second)}\n",
+	)
+	file, err := source.Load("trailing_blank_nolint.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := glippyformat.File(
+		file,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nfunc guarded(){target: outer(firstArg, &Config{Unsafe: true, //nolint:gosec\n}, thirdArg)\ngoto target} //nolint:unused\n\nfunc ordinary() {\n\tvalue := call(first, second)\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant trailing blank anchor preserved:\n%s", got, want)
+	}
+}
+
+func TestFormatDirectiveFallbackPreservesTrailingNolintBeforeDocumentation(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(
+		"package comments\nfunc guarded(){target: outer(firstArg, &Config{Unsafe: true, //nolint:gosec\n}, thirdArg)\ngoto target} //nolint:unused\n// ordinary documents the declaration.\nfunc ordinary(){value:=call(first,second)}\n",
+	)
+	file, err := source.Load("trailing_documentation_nolint.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := glippyformat.File(
+		file,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nfunc guarded(){target: outer(firstArg, &Config{Unsafe: true, //nolint:gosec\n}, thirdArg)\ngoto target} //nolint:unused\n// ordinary documents the declaration.\nfunc ordinary() {\n\tvalue := call(first, second)\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant documented boundary anchor preserved:\n%s", got, want)
+	}
+}
+
+func TestFormatDoesNotPreserveDeclarationWhenNolintAnchorIsStable(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(
+		"package comments\nfunc run(){\nvalue:=call() //nolint:staticcheck\nother:=1\n}\n",
+	)
+	file, err := source.Load("stable_nolint.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := glippyformat.File(
+		file,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package comments\n\nfunc run() {\n\tvalue:=call() //nolint:staticcheck\n\tother := 1\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant ordinary canonical formatting:\n%s", got, want)
+	}
+}
+
+func TestFormatCanonicalizesStableTopLevelNolintDeclarations(t *testing.T) {
+	t.Parallel()
+
+	options := glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000}
+	tests := []struct {
+		name string
+		input string
+		want string
+	}{
+		{
+			name: "complete file",
+			input: "package comments\nvar   value=1 //nolint:unused\n",
+			want: "package comments\n\nvar value = 1 //nolint:unused\n",
+		},
+		{
+			name: "declaration fragment",
+			input: "var   value=1 //nolint:unused\n",
+			want: "var value = 1 //nolint:unused\n",
+		},
+		{
+			name: "grouped declaration spec",
+			input: "var (\n\tvalue=1 //nolint:unused\n)\n",
+			want: "var (\n\tvalue = 1 //nolint:unused\n)\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				if test.name == "complete file" {
+					file, err := source.Load(
+						"stable_top_level.go",
+						[]byte(test.input),
+					)
+					if err != nil {
+						t.Fatal(err)
+					}
+					got, err := glippyformat.File(file, options)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if string(got) != test.want {
+						t.Fatalf(
+							"File() =\n%s\nwant canonical declaration:\n%s",
+							got,
+							test.want,
+						)
+					}
+					return
+				}
+				fragment, err := source.LoadFragment(
+					"stable_top_level.go",
+					source.FragmentDeclaration,
+					[]byte(test.input),
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := glippyformat.Fragment(fragment, options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(got) != test.want {
+					t.Fatalf(
+						"Fragment() =\n%s\nwant canonical declaration:\n%s",
+						got,
+						test.want,
+					)
+				}
+			},
+		)
+	}
+}
+
+func TestFormatDeclarationFragmentUsesNolintFallback(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(
+		"type ( Account struct { Password string //nolint:gosec\n} ; Alias = Account )\n",
+	)
+	fragment, err := source.LoadFragment(
+		"declaration_nolint.go",
+		source.FragmentDeclaration,
+		input,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := glippyformat.Fragment(
+		fragment,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("Fragment() =\n%s\nwant declaration-scoped fallback:\n%s", got, input)
 	}
 }
 
