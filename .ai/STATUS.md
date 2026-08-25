@@ -3107,3 +3107,26 @@ revision. The release workflow now retains the exact normalized Darwin arm64
 diagnostic output instead of exposing only its digest. A complete
 exact-candidate four-runner rerun is still required, so the resource gate
 remains open and stable-v1 progress remains 75%.
+
+SQLC-only corpus run `32807031805` at Glippy revision `1a3acab` preserves the
+v0.6 lint signal: default is clean and recommended contains the same three
+actionable scanner diagnostics. Its formatter audit exposed one source-fidelity
+gap, `comment 3 has no proven output owner`, in SQLC
+`internal/sql/ast/type_name.go`. The `addMods:` label lowerer did not claim the
+line comment between its colon and nested `if` statement. A focused regression
+reproduced that exact failure before the shared label-gap fix and passes after
+it. Review found the same ownership gap for comments after a label whose nested
+statement is the parser's implicit empty statement; a second focused regression
+failed before that extension and now passes. The complete formatter package and
+an exact-checkout sequential per-file scan also pass without an internal
+formatter error. Independent review found that same-line label suppression
+directives were moved and rejected by source-equivalence validation; nested and
+implicit-empty focused cases now retain those directives as label line suffixes
+and pass. Re-review found mixed suffix/body and trailing implicit directive gaps
+were collapsed; the label body now preserves those physical blank boundaries,
+and all three focused cases pass. The adjacent suffix-only nested and
+implicit-empty blank-gap cases now pass as well. A compatibility review caught
+uncommented label spacing churn; the gap rule is now limited to comment-bearing
+boundaries, and nested and implicit-empty canonical-spacing regressions pass.
+Aggregate SQLC corpus proof still requires an exact pushed rerun, so v0.8
+remains active at 75%.

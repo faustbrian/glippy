@@ -2621,17 +2621,68 @@ func (l *lowerer) rangeAssignment(statement *ast.RangeStmt) (doc.ID, int, int, e
 }
 
 func (l *lowerer) labeledStatement(statement *ast.LabeledStmt) (doc.ID, error) {
+	colon, colonFound := l.source.PhysicalOffset(statement.Colon)
+	statementStart, statementStartFound := l.source.PhysicalOffset(statement.Stmt.Pos())
+	if !colonFound || !statementStartFound {
+		return doc.ID{}, errors.New("labeled statement has no physical boundary")
+	}
+	label := l.arena.Text(statement.Label.Name + ":")
+	trailing := l.trailingComments(colon + 1, statementStart)
+	label = l.withTrailingComments(label, trailing)
+	commentBoundary := colon + 1
+	if len(trailing) > 0 {
+		commentBoundary = trailing[len(trailing) - 1].Range.End
+	}
 	if empty, ok := statement.Stmt.(*ast.EmptyStmt); ok && empty.Implicit {
-		return l.arena.Text(statement.Label.Name + ":"), nil
+		comments := l.commentsBetween(colon + 1, statementStart)
+		if len(comments) == 0 {
+			if len(trailing) == 0 {
+				return label, nil
+			}
+			blankBeforeClosing, err := l.hasBlankPhysicalGap(
+				commentBoundary,
+				statementStart,
+			)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			if !blankBeforeClosing {
+				return label, nil
+			}
+			return l.arena.Concat(label, l.arena.Indent(l.arena.HardLine())), nil
+		}
+		body := l.arena.Concat(
+			l.commentGap(commentBoundary, comments[0].Range.Start),
+			l.boundaryCommentsBody(comments),
+		)
+		blankBeforeClosing, err := l.hasBlankPhysicalGap(
+			comments[len(comments) - 1].Range.End,
+			statementStart,
+		)
+		if err != nil {
+			return doc.ID{}, err
+		}
+		if blankBeforeClosing {
+			body = l.arena.Concat(body, l.arena.HardLine())
+		}
+		return l.arena.Concat(label, l.arena.Indent(body)), nil
 	}
 	labeled, err := l.statement(statement.Stmt)
 	if err != nil {
 		return doc.ID{}, err
 	}
-	return l.arena.Concat(
-		l.arena.Text(statement.Label.Name + ":"),
-		l.arena.Indent(l.arena.Concat(l.arena.HardLine(), labeled)),
-	), nil
+	separator := l.arena.HardLine()
+	if len(trailing) > 0 {
+		separator = l.commentGap(commentBoundary, statementStart)
+	}
+	if comments := l.commentsBetween(colon + 1, statementStart); len(comments) > 0 {
+		separator = l.commentGap(commentBoundary, comments[0].Range.Start)
+		labeled = l.arena.Concat(
+			l.boundaryCommentsDocument(comments, statementStart),
+			labeled,
+		)
+	}
+	return l.arena.Concat(label, l.arena.Indent(l.arena.Concat(separator, labeled))), nil
 }
 
 func (l *lowerer) switchStatement(statement *ast.SwitchStmt) (doc.ID, error) {

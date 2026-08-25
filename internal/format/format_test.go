@@ -1620,6 +1620,207 @@ func TestFormatPreservesExplicitAndImplicitEmptyStatements(t *testing.T) {
 	}
 }
 
+func TestFormatPreservesCommentBetweenLabelAndStatement(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(
+		"package labels\nfunc run(){goto target;target:\n// explain target\nwork()}\n",
+	)
+	file, err := source.Load("label_comment.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := glippyformat.File(
+		file,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package labels\n\nfunc run() {\n\tgoto target\ntarget:\n\t// explain target\n\twork()\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant preserved label comment:\n%s", got, want)
+	}
+}
+
+func TestFormatPreservesCommentAfterClosingLabel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		input string
+		want string
+	}{
+		{
+			name: "following line",
+			input: "package labels\nfunc run(){goto done;done:\n// explain closing label\n}\n",
+			want: "package labels\n\nfunc run() {\n\tgoto done\ndone:\n\t// explain closing label\n}\n",
+		},
+		{
+			name: "trailing label",
+			input: "package labels\nfunc run(){goto done;done: // explain closing label\n}\n",
+			want: "package labels\n\nfunc run() {\n\tgoto done\ndone: // explain closing label\n}\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				file, err := source.Load(
+					"closing_label_comment.go",
+					[]byte(test.input),
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := glippyformat.File(
+					file,
+					glippyformat.Options{
+						Width: 100,
+						TabWidth: 8,
+						FitBudget: 1_000,
+					},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(got) != test.want {
+					t.Fatalf(
+						"File() =\n%s\nwant preserved closing label comment:\n%s",
+						got,
+						test.want,
+					)
+				}
+			},
+		)
+	}
+}
+
+func TestFormatPreservesLabelDirectiveLineOwnership(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		input string
+		want string
+	}{
+		{
+			name: "nested statement",
+			input: "package labels\nfunc run(){\ngoto target\ntarget: //nolint:staticcheck\nwork()}\n",
+			want: "package labels\n\nfunc run() {\n\tgoto target\ntarget: //nolint:staticcheck\n\twork()\n}\n",
+		},
+		{
+			name: "implicit empty statement",
+			input: "package labels\nfunc run(){\ngoto done\ndone: //nolint:staticcheck\n}\n",
+			want: "package labels\n\nfunc run() {\n\tgoto done\ndone: //nolint:staticcheck\n}\n",
+		},
+		{
+			name: "nested statement after mixed comment gap",
+			input: "package labels\nfunc run(){\ngoto target\ntarget: // keep suffix\n\n//glippy:ignore example because gap matters\nwork()}\n",
+			want: "package labels\n\nfunc run() {\n\tgoto target\ntarget: // keep suffix\n\n\t//glippy:ignore example because gap matters\n\twork()\n}\n",
+		},
+		{
+			name: "implicit empty statement after mixed comment gap",
+			input: "package labels\nfunc run(){\ngoto done\ndone: // keep suffix\n\n//glippy:ignore example because gap matters\n}\n",
+			want: "package labels\n\nfunc run() {\n\tgoto done\ndone: // keep suffix\n\n\t//glippy:ignore example because gap matters\n}\n",
+		},
+		{
+			name: "implicit empty statement preserves trailing directive gap",
+			input: "package labels\nfunc run(){\ngoto done\ndone:\n//glippy:ignore example because gap matters\n\n}\n",
+			want: "package labels\n\nfunc run() {\n\tgoto done\ndone:\n\t//glippy:ignore example because gap matters\n\n}\n",
+		},
+		{
+			name: "nested statement preserves suffix-only trailing gap",
+			input: "package labels\nfunc run(){\ngoto target\ntarget: //nolint:staticcheck\n\nwork()}\n",
+			want: "package labels\n\nfunc run() {\n\tgoto target\ntarget: //nolint:staticcheck\n\n\twork()\n}\n",
+		},
+		{
+			name: "implicit empty statement preserves suffix-only trailing gap",
+			input: "package labels\nfunc run(){\ngoto done\ndone: //nolint:staticcheck\n\n}\n",
+			want: "package labels\n\nfunc run() {\n\tgoto done\ndone: //nolint:staticcheck\n\n}\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				file, err := source.Load("label_directive.go", []byte(test.input))
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := glippyformat.File(
+					file,
+					glippyformat.Options{
+						Width: 100,
+						TabWidth: 8,
+						FitBudget: 1_000,
+					},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(got) != test.want {
+					t.Fatalf(
+						"File() =\n%s\nwant preserved label directive ownership:\n%s",
+						got,
+						test.want,
+					)
+				}
+			},
+		)
+	}
+}
+
+func TestFormatKeepsCanonicalSpacingForUncommentedLabels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		input string
+		want string
+	}{
+		{
+			name: "nested statement",
+			input: "package labels\nfunc run(){goto target;target:\n\nwork()}\n",
+			want: "package labels\n\nfunc run() {\n\tgoto target\ntarget:\n\twork()\n}\n",
+		},
+		{
+			name: "implicit empty statement",
+			input: "package labels\nfunc run(){goto done;done:\n\n}\n",
+			want: "package labels\n\nfunc run() {\n\tgoto done\ndone:\n}\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				file, err := source.Load("uncommented_label.go", []byte(test.input))
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := glippyformat.File(
+					file,
+					glippyformat.Options{
+						Width: 100,
+						TabWidth: 8,
+						FitBudget: 1_000,
+					},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(got) != test.want {
+					t.Fatalf(
+						"File() =\n%s\nwant canonical uncommented label spacing:\n%s",
+						got,
+						test.want,
+					)
+				}
+			},
+		)
+	}
+}
+
 func TestFormatDoesNotMistakeNestedSemicolonsForClassicForClause(t *testing.T) {
 	t.Parallel()
 
