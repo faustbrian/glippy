@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "rule_id": "duplicate-condition",
+      "path": "source.go",
+      "message_key": "duplicate-condition",
+      "source_fingerprint": "998b2ac7433d846eec49f253672f6c1aade504f4a17f3ab486f5ede507a59595",
+      "count": 1
+    }
+  ]
+}

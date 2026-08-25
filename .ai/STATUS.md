@@ -3081,3 +3081,13 @@ post-preflight snapshot inventory binds content, symlink identity, and modes,
 including `go.work.sum`, before and after preview. No external repository is
 modified. Exact public-corpus fix evidence requires a run at the resulting
 pushed revision.
+
+The bounded v0.8 prerelease-upgrade rehearsal now passes at clean revision
+`3b4524e6cf1d169ba6a9e0e907d363f9eaada942`. The current binary accepts the
+exact schema-v1 `.gox.toml` retained from Gox v0.1.0 and consumes the
+schema-v1 Glippy configuration and baseline generated from first-identity
+revision `b386ddcd57f7a01841b0c3c77acef8bde2b3550e`; both combined checks exit
+successfully. This proves the concrete retained fixtures, not arbitrary future
+configuration or cache compatibility. The v0.9 freeze must repeat the matrix
+against its final tagless candidate. Stable-v1 progress remains 75% while the
+exact corpus and resource gates are open.

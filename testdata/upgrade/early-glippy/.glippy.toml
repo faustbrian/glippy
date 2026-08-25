@@ -1,0 +1,12 @@
+version = 1
+
+[format]
+line-width = 100
+tab-width = 8
+
+[lint]
+presets = ["correctness"]
+
+[lint.baseline]
+path = ".glippy-baseline.json"
+report-stale = true
