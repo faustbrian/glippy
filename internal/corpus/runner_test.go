@@ -1034,6 +1034,157 @@ func TestRunPrefetchesEveryWorkspaceModuleBeforeOfflineAnalysis(t *testing.T) {
 	}
 }
 
+func TestRunRetriesTransientModulePrefetchFailures(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, _ := newRunFixture(t)
+	executor.moduleDownloadResults = []corpus.CommandResult{
+		{
+			Stderr: []byte(
+				"go: example.com/module@v1.0.0: read \"https://proxy.golang.org/example.com/module/@v/v1.0.0.zip\": stream error: stream ID 3; INTERNAL_ERROR; received from peer\n",
+			),
+			ExitCode: 1,
+		},
+		{
+			Stderr: []byte(
+				"go: example.com/module@v1.0.0: reading https://sum.golang.org/tile/8/0/x228/170: stream error: stream ID 307; INTERNAL_ERROR; received from peer\n",
+			),
+			ExitCode: 1,
+		},
+		{},
+	}
+
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	if len(executor.moduleDownloads) != 3 {
+		t.Fatalf("module download attempts = %d, want 3", len(executor.moduleDownloads))
+	}
+}
+
+func TestRunBoundsTransientModulePrefetchRetries(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, _ := newRunFixture(t)
+	executor.moduleDownloadResults = []corpus.CommandResult{
+		{
+			Stderr: []byte(
+				"Get https://proxy.golang.org/example.com/one: stream error: stream ID 1; INTERNAL_ERROR; received from peer\n",
+			),
+			ExitCode: 1,
+		},
+		{
+			Stderr: []byte(
+				"Get https://proxy.golang.org/example.com/two: stream error: stream ID 3; INTERNAL_ERROR; received from peer\n",
+			),
+			ExitCode: 1,
+		},
+		{
+			Stderr: []byte(
+				"Get https://proxy.golang.org/example.com/three: stream error: stream ID 5; INTERNAL_ERROR; received from peer\n",
+			),
+			ExitCode: 1,
+		},
+	}
+
+	err := corpus.Run(context.Background(), manifest, options)
+	if err == nil || !strings.Contains(err.Error(), "example.com/three") {
+		t.Fatalf("Run() error = %v, want final transient failure", err)
+	}
+	if len(executor.moduleDownloads) != 3 {
+		t.Fatalf("module download attempts = %d, want 3", len(executor.moduleDownloads))
+	}
+}
+
+func TestRunDoesNotRetryPermanentModulePrefetchFailures(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, _ := newRunFixture(t)
+	executor.moduleDownloadResults = []corpus.CommandResult{
+		{
+			Stderr: []byte(
+				"example.com/missing@v1.0.0: reading https://proxy.golang.org/example.com/missing/@v/v1.0.0.mod: 404 Not Found\n",
+			),
+			ExitCode: 1,
+		},
+	}
+
+	err := corpus.Run(context.Background(), manifest, options)
+	if err == nil || !strings.Contains(err.Error(), "404 Not Found") {
+		t.Fatalf("Run() error = %v, want permanent module failure", err)
+	}
+	if len(executor.moduleDownloads) != 1 {
+		t.Fatalf("module download attempts = %d, want 1", len(executor.moduleDownloads))
+	}
+}
+
+func TestRunDoesNotRetryPermanentModulePathsThatResembleTransportErrors(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, _ := newRunFixture(t)
+	executor.moduleDownloadResults = []corpus.CommandResult{
+		{
+			Stderr: []byte(
+				"go: example.com/http/2/internal_error@v1.0.0: reading https://proxy.golang.org/example.com/http/2/internal_error/@v/v1.0.0.mod: 404 Not Found\n",
+			),
+			ExitCode: 1,
+		},
+	}
+
+	err := corpus.Run(context.Background(), manifest, options)
+	if err == nil || !strings.Contains(err.Error(), "404 Not Found") {
+		t.Fatalf("Run() error = %v, want permanent module failure", err)
+	}
+	if len(executor.moduleDownloads) != 1 {
+		t.Fatalf("module download attempts = %d, want 1", len(executor.moduleDownloads))
+	}
+}
+
+func TestRunDoesNotRetryDirectSourceModuleFailures(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, _ := newRunFixture(t)
+	executor.moduleDownloadResults = []corpus.CommandResult{
+		{
+			Stderr: []byte(
+				"example.com/module@v1.0.0: git ls-remote https://github.com/example/module: HTTP/2 INTERNAL_ERROR\n",
+			),
+			ExitCode: 1,
+		},
+	}
+
+	err := corpus.Run(context.Background(), manifest, options)
+	if err == nil || !strings.Contains(err.Error(), "git ls-remote") {
+		t.Fatalf("Run() error = %v, want direct-source module failure", err)
+	}
+	if len(executor.moduleDownloads) != 1 {
+		t.Fatalf("module download attempts = %d, want 1", len(executor.moduleDownloads))
+	}
+}
+
+func TestRunDoesNotRetryMixedModulePrefetchFailures(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, _ := newRunFixture(t)
+	executor.moduleDownloadResults = []corpus.CommandResult{
+		{
+			Stderr: []byte(
+				"Get https://proxy.golang.org/example.com/module: stream error: stream ID 7; INTERNAL_ERROR; received from peer\n" +
+					"example.com/missing@v1.0.0: 404 Not Found\n",
+			),
+			ExitCode: 1,
+		},
+	}
+
+	err := corpus.Run(context.Background(), manifest, options)
+	if err == nil || !strings.Contains(err.Error(), "404 Not Found") {
+		t.Fatalf("Run() error = %v, want mixed module failure", err)
+	}
+	if len(executor.moduleDownloads) != 1 {
+		t.Fatalf("module download attempts = %d, want 1", len(executor.moduleDownloads))
+	}
+}
+
 func TestRunRejectsWorkspaceModulesOutsideTheReadOnlySnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -1333,6 +1484,7 @@ type corpusExecutor struct {
 	commands []corpus.Command
 	moduleResolutions []corpus.Command
 	moduleDownloads []corpus.Command
+	moduleDownloadResults []corpus.CommandResult
 	probeReadOnly bool
 	snapshotWriteError error
 	materializeWorkspaceSum bool
@@ -1436,6 +1588,10 @@ func (e *corpusExecutor) Run(
 		len(command.Args) > 2 &&
 		slices.Equal(command.Args[:2], []string{"mod", "download"}):
 		e.moduleDownloads = append(e.moduleDownloads, command)
+		resultIndex := len(e.moduleDownloads) - 1
+		if resultIndex < len(e.moduleDownloadResults) {
+			return e.moduleDownloadResults[resultIndex], nil
+		}
 		return corpus.CommandResult{}, nil
 	case command.Path == "/tools/glippy" && len(command.Args) > 5 && command.Args[0] == "lint":
 		if slices.Contains(command.Args, "--fix") &&

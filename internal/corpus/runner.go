@@ -27,11 +27,15 @@ const (
 	maximumCommandOutput = 256 << 20
 	maximumModuleDownloadArguments = 128
 	maximumModuleDownloadArgumentBytes = 32 << 10
+	maximumModulePrefetchAttempts = 3
 )
 
 var (
 	corpusProfiles = []string{"default", "recommended", "strict", "pedantic"}
 	staticcheckOutputVersionPattern = regexp.MustCompile(`\((v?[0-9]+\.[0-9]+\.[0-9]+)\)`)
+	transientModulePrefetchFailurePattern = regexp.MustCompile(
+		`(?i)https://(?:proxy\.golang\.org|sum\.golang\.org)/\S+: stream error: stream ID [0-9]+; INTERNAL_ERROR; received from peer$`,
+	)
 	runIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 )
 
@@ -844,8 +848,9 @@ func prefetchRepositoryModules(
 		map[string]string{"GOFLAGS": "", "GOWORK": "off"},
 	)
 	for _, arguments := range moduleDownloadBatches(downloads) {
-		result, err := options.Executor.Run(
+		result, err := runModulePrefetch(
 			ctx,
+			options.Executor,
 			Command{
 				Path: "go",
 				Args: append([]string{"mod", "download"}, arguments...),
@@ -866,6 +871,39 @@ func prefetchRepositoryModules(
 		}
 	}
 	return nil
+}
+
+func runModulePrefetch(
+	ctx context.Context,
+	executor Executor,
+	command Command,
+) (CommandResult, error) {
+	var result CommandResult
+	for attempt := 0; attempt < maximumModulePrefetchAttempts; attempt++ {
+		var err error
+		result, err = executor.Run(ctx, command)
+		if err != nil ||
+			result.ExitCode == 0 ||
+			!isTransientModulePrefetchFailure(result.Stderr) {
+			return result, err
+		}
+	}
+	return result, nil
+}
+
+func isTransientModulePrefetchFailure(stderr []byte) bool {
+	found := false
+	for _, line := range bytes.Split(stderr, []byte{'\n'}) {
+		message := strings.TrimSpace(string(line))
+		if message == "" {
+			continue
+		}
+		if !transientModulePrefetchFailurePattern.MatchString(message) {
+			return false
+		}
+		found = true
+	}
+	return found
 }
 
 type listedModule struct {
