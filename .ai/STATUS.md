@@ -2990,3 +2990,15 @@ unclassified. This closes v0.6 and advances stable-v1 roadmap progress to 65%
 with v0.7 active. Aggregate allocated-byte measurements are recorded, while
 stable cross-platform peak-RSS budgets remain a v0.8 requirement. No public
 corpus repository was modified, and no tag or release was created.
+
+v0.7 has consumed both rule candidates from the completed v0.6 comparator
+queue. `ineffective-assignment` is now an SSA-backed nursery rule covering
+unread ordinary, compound, tuple, receive, and increment results without a
+guessed fix; exact `overwritten-error` diagnostics supersede it at the same
+range. `exact-suffix-as-cutset` is now a types-backed nursery rule that requires
+a direct `strings.HasSuffix` guard with identical value and suffix identity
+before reporting `strings.TrimRight`, and its exact `TrimSuffix` replacement is
+classified unsafe because it intentionally corrects observable trimming
+behavior. Both remain outside curated profiles pending the v0.8 corpus
+rerun. Stable-v1 progress remains 65% inside the broader v0.7 semantic-depth,
+precision, credible-fix, and interaction gate.

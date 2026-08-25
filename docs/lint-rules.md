@@ -37,6 +37,7 @@ not stable release promises.
 - [empty-branch](#empty-branch)
 - [errors-as-target](#errors-as-target)
 - [errors-is-arguments](#errors-is-arguments)
+- [exact-suffix-as-cutset](#exact-suffix-as-cutset)
 - [excessive-nesting](#excessive-nesting)
 - [exec-pipe-run](#exec-pipe-run)
 - [exported-api-documentation](#exported-api-documentation)
@@ -1556,6 +1557,62 @@ errors.Is(io.EOF, err)
 
 ```go
 errors.Is(err, io.EOF)
+```
+
+## exact-suffix-as-cutset
+
+detects exact suffixes passed to strings.TrimRight as cutsets
+
+Strings.TrimRight treats its second argument as an unordered set of characters, not an exact suffix.
+When the same value and suffix are first checked with strings.HasSuffix, TrimRight can remove
+additional trailing characters beyond the recognized suffix; TrimSuffix expresses the proven intent
+exactly.
+
+- Default severity: `warn`
+- Presets: `nursery`
+- Minimum Go: `1.25`
+- Analysis tier: types
+- Node interests: `if-stmt`
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+- `use-trim-suffix` (`unsafe`): replace strings.TrimRight with strings.TrimSuffix
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only a direct strings.HasSuffix condition followed immediately by a matching TrimRight call as the
+  sole assignment right-hand side, return result, or expression statement is considered.
+- Value and suffix identity is limited to the same typed identifier or selector, or equal
+  compile-time string constants.
+- Equivalent guards expressed through helpers, boolean combinations, early returns, or broader
+  control-flow dominance are excluded.
+- Generated files and packages with type errors are excluded.
+
+### Example: Remove the exact suffix that was recognized
+
+**Incorrect**
+
+```go
+if strings.HasSuffix(value, suffix) {
+	value = strings.TrimRight(value, suffix)
+}
+```
+
+**Correct**
+
+```go
+if strings.HasSuffix(value, suffix) {
+	value = strings.TrimSuffix(value, suffix)
+}
 ```
 
 ## excessive-nesting

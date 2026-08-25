@@ -319,6 +319,17 @@ nonzero and dynamic counts, function values, and local lookalikes remain
 excluded. No fix guesses whether the caller intended one, some, or all
 replacements.
 
+The same track now also admits `exact-suffix-as-cutset` as an opt-in nursery
+rule from the v0.6 comparator queue. A direct `strings.HasSuffix` guard proves
+exact suffix intent before a matching first-body `strings.TrimRight` call used
+as the sole assignment right-hand side, return result, or expression statement.
+The rule offers an explicit unsafe fix that replaces only the function
+identifier with `TrimSuffix`; the rewrite intentionally corrects observable
+trimming behavior and therefore cannot run under ordinary safe `--fix`.
+Earlier expression evaluation, different values, suffixes, helpers, combined
+conditions, and broader dominance remain conservative until corpus evidence
+justifies expansion.
+
 The regexp correctness track now admits `invalid-regexp` and
 `zero-regexp-match-limit`. Exact constant patterns are checked with the
 appropriate Perl or POSIX parser under a 64 KiB work bound, while exact FindAll

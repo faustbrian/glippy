@@ -44,6 +44,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewDiscardedErrorRule(),
 		rules.NewEmptyBranchRule(),
 		rules.NewExecPipeRunRule(),
+		rules.NewExactSuffixAsCutsetRule(),
 		rules.NewExportedAPIDocumentationRule(),
 		rules.NewFailedTypeAssertionValueRule(),
 		rules.NewFinalizerCapturesObjectRule(),
