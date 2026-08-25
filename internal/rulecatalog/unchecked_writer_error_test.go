@@ -1166,6 +1166,67 @@ func customFormatter(output io.Writer) {
 	assertUncheckedWriterDiagnostics(t, input, result, []string{"customWriter.Flush()"})
 }
 
+func TestUncheckedWriterErrorMatchesPinnedMobyPrecisionShapes(t *testing.T) {
+	t.Parallel()
+
+	input := `package sample
+
+import (
+	"archive/tar"
+	"bufio"
+	"bytes"
+	"fmt"
+	"os"
+	"text/tabwriter"
+	"time"
+)
+
+func observe(error) {}
+
+func redundantTarClose() {
+	buffer := new(bytes.Buffer)
+	writer := tar.NewWriter(buffer)
+	defer writer.Close()
+	payload := []byte("payload")
+	if err := writer.WriteHeader(&tar.Header{Name: "entry", Size: int64(len(payload))}); err != nil {
+		panic(err)
+	}
+	if _, err := writer.Write(payload); err != nil {
+		panic(err)
+	}
+	observe(writer.Close())
+	_ = buffer.Bytes()
+}
+
+func directoryString() string {
+	buffer := bytes.NewBuffer(nil)
+	table := tabwriter.NewWriter(buffer, 1, 8, 1, '\t', 0)
+	buffer.WriteString("\n")
+	buffered := bufio.NewWriter(table)
+	_, _ = fmt.Fprintf(
+		buffered,
+		"%s\t%s\t%dB\t%s\n",
+		"entry",
+		os.FileMode(0o600),
+		int64(1),
+		time.Time{},
+	)
+	buffered.Flush()
+	table.Flush()
+	return buffer.String()
+}
+`
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwritermoby\n\ngo 1.26.0\n",
+	)
+	writeFixture(t, filepath.Join(root, "sample_test.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", true)
+	assertUncheckedWriterDiagnostics(t, input, result, nil)
+}
+
 func TestUncheckedWriterErrorExcludesExpectedPanicFinalizers(t *testing.T) {
 	t.Parallel()
 

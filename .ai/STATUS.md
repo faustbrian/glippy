@@ -3035,3 +3035,12 @@ use the ordinary narrow suppression contract to hide such a finding. This
 removes the unsound proposal to suppress deferred in-memory tar closes, which
 can still fail on incomplete entry state. Stable-v1 progress remains 65% until
 the v0.7 interaction gate passes.
+
+The three carried-forward Moby writer fingerprints are now characterized from
+their pinned source shapes. The redundant deferred tar source shape is already
+excluded; the two identical directory-formatting shapes reproduced because exact
+`io/fs.FileMode` values were treated as arbitrary formatting callbacks. Stable
+in-memory fmt provenance now accepts that authoritative scalar standard-library
+type alongside basic values and `time.Time`, while user-defined method sets
+remain conservative. The exact Moby corpus still reruns in v0.8. Stable-v1
+progress remains 65% until the v0.7 interaction gate passes.

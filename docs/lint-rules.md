@@ -6226,8 +6226,9 @@ None.
   conservative.
 - Gzip in-memory exclusions require the default Header to remain unmodified because invalid Name,
   Comment, or Extra values can fail independently of the sink.
-- Stable in-memory fmt consumers accept basic values and exact time.Time values; user-defined
-  formatting callbacks remain conservative because they can capture and rebind the writer.
+- Stable in-memory fmt consumers accept basic values and exact time.Time and io/fs.FileMode values;
+  user-defined formatting callbacks remain conservative because they can capture and rebind the
+  writer.
 - The redundant deferred archive/tar exclusion requires a writer declared directly in the same
   block, a later same-block Close whose error is passed to another call, no intervening return or
   branch, and no later or escaping receiver use.

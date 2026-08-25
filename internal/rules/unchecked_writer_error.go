@@ -67,7 +67,7 @@ func (uncheckedWriterErrorRule) Metadata() Metadata {
 			"Only exact standard-library writer finalizers with an error result are covered; user-defined writers and unproven interface-dispatched finalizers remain outside the contract.",
 			"The in-memory exclusion follows stable local bufio, gzip, and tabwriter constructor or straight-line Reset/Init chains to exact bytes.Buffer and strings.Builder sinks or selected-module concrete writers whose exact Write error result is proven nil; caller-owned, conditionally rebound, interface-typed, escaped, cyclic, package-variant-disagreeing, and unproven chains remain conservative.",
 			"Gzip in-memory exclusions require the default Header to remain unmodified because invalid Name, Comment, or Extra values can fail independently of the sink.",
-			"Stable in-memory fmt consumers accept basic values and exact time.Time values; user-defined formatting callbacks remain conservative because they can capture and rebind the writer.",
+			"Stable in-memory fmt consumers accept basic values and exact time.Time and io/fs.FileMode values; user-defined formatting callbacks remain conservative because they can capture and rebind the writer.",
 			"The redundant deferred archive/tar exclusion requires a writer declared directly in the same block, a later same-block Close whose error is passed to another call, no intervening return or branch, and no later or escaping receiver use.",
 			"Expected-panic suppression requires an immediately preceding unconditional recovery defer in a _test.go file whose exact recovered == nil branch calls a testing failure method and whose finalizer is the function body's terminal action; nested blocks, conditional guards, intervening statements, lookalike recovery, asynchronous calls, and non-test files remain diagnostics.",
 			"Streaming encoder coverage requires a direct constructor result or a direct identifier initialized by encoding/ascii85, encoding/base32, or encoding/base64 NewEncoder and not reassigned before Close.",
@@ -3016,6 +3016,9 @@ func writerFormattingValueCannotCallBack(type_ types.Type) bool {
 		return false
 	}
 	if namedReceiver(type_, "time", "Time") {
+		return true
+	}
+	if namedReceiver(type_, "io/fs", "FileMode") {
 		return true
 	}
 	if _, basic := types.Unalias(type_).Underlying().(*types.Basic); !basic {
