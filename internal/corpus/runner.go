@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	ResultSchemaVersion = 2
+	ResultSchemaVersion = 3
 	corpusCommandMemoryLimit = "4GiB"
 	maximumCommandOutput = 256 << 20
 	maximumModuleDownloadArguments = 128
@@ -76,6 +76,7 @@ type repositoryResult struct {
 	StaticcheckVersion string `json:"staticcheck_version"`
 	Tools toolVersions `json:"tools"`
 	Format formatResult `json:"format"`
+	FixPreview fixPreviewResult `json:"fix_preview"`
 	Profiles []profileResult `json:"profiles"`
 	Comparators []comparatorResult `json:"comparators"`
 }
@@ -85,6 +86,12 @@ type formatResult struct {
 	Report artifactResult `json:"report"`
 	FileCount int `json:"file_count"`
 	DifferenceCount int `json:"difference_count"`
+	Complete bool `json:"complete"`
+}
+
+type fixPreviewResult struct {
+	ExitCode int `json:"exit_code"`
+	Output artifactResult `json:"output"`
 	Complete bool `json:"complete"`
 }
 
@@ -340,6 +347,15 @@ func runRepository(
 	if err != nil {
 		return err
 	}
+	fixPreviewEnvironment, err := repositoryEnvironmentForScope(
+		options,
+		repository,
+		executionCheckout,
+		filepath.Join("repositories", repository.ID, "fix-preview"),
+	)
+	if err != nil {
+		return err
+	}
 	formatConfigurationPath := filepath.Join(configurationRoot, "format.toml")
 	if err := os.WriteFile(formatConfigurationPath, []byte("version = 1\n"), 0o600);
 		err != nil {
@@ -405,6 +421,11 @@ func runRepository(
 		Comparators: []comparatorResult{preflight},
 	}
 	if preflight.ExitCode != 0 {
+		fixPreview, writeErr := writeSkippedFixPreview(repositoryOutput, preflight.ExitCode)
+		if writeErr != nil {
+			return writeErr
+		}
+		result.FixPreview = fixPreview
 		for _, profile := range corpusProfiles {
 			profileResult, writeErr := writeIncompleteProfile(
 				repository,
@@ -428,8 +449,44 @@ func runRepository(
 			}
 			result.Comparators = append(result.Comparators, comparator)
 		}
-		_, writeErr := writeJSON(filepath.Join(repositoryOutput, "result.json"), result)
+		_, writeErr = writeJSON(filepath.Join(repositoryOutput, "result.json"), result)
 		return writeErr
+	}
+	fixPreviewBaseline, err := checkoutSnapshotInventory(executionCheckout, false)
+	if err != nil {
+		return fmt.Errorf("capture pre-preview snapshot for %q: %w", repository.ID, err)
+	}
+	fixPreviewConfigurationPath := filepath.Join(configurationRoot, "fix-preview.toml")
+	if err := os.WriteFile(
+		fixPreviewConfigurationPath,
+		[]byte(
+			"version = 1\n\n[lint]\nprofile = \"recommended\"\n\n" +
+				"[cache]\nenabled = false\n",
+		),
+		0o600,
+	);
+		err != nil {
+		return fmt.Errorf("write safe-fix preview configuration: %w", err)
+	}
+	fixPreview, err := runSafeFixPreview(
+		ctx,
+		options,
+		repository,
+		executionCheckout,
+		repositoryOutput,
+		fixPreviewConfigurationPath,
+		fixPreviewEnvironment,
+	)
+	if err != nil {
+		return fmt.Errorf("run safe-fix preview for %q: %w", repository.ID, err)
+	}
+	result.FixPreview = fixPreview
+	if err := validateExactCheckoutSnapshot(executionCheckout, fixPreviewBaseline); err != nil {
+		return fmt.Errorf(
+			"safe-fix preview changed checkout snapshot for %q: %w",
+			repository.ID,
+			err,
+		)
 	}
 	for _, profile := range corpusProfiles {
 		profileResult, err := runProfile(
@@ -463,6 +520,79 @@ func runRepository(
 		return err
 	}
 	return nil
+}
+
+func runSafeFixPreview(
+	ctx context.Context,
+	options RunOptions,
+	repository Repository,
+	checkout, repositoryOutput, configurationPath string,
+	environment []string,
+) (fixPreviewResult, error) {
+	arguments := []string{"lint", "--fix", "--diff", "--config", configurationPath}
+	arguments = append(arguments, repository.Patterns...)
+	execution, err := options.Executor.Run(
+		ctx,
+		Command{Path: options.GlippyPath, Args: arguments, Dir: checkout, Env: environment},
+	)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return fixPreviewResult{}, ctxErr
+	}
+	if err != nil {
+		artifact, writeErr := writeArtifact(
+			filepath.Join(repositoryOutput, "fix-preview.txt"),
+			normalizeText(
+				[]byte(fmt.Sprintf("safe-fix preview execution failed: %v\n", err)),
+				newArtifactNormalizer(checkout, options),
+			),
+			false,
+		)
+		if writeErr != nil {
+			return fixPreviewResult{}, writeErr
+		}
+		return fixPreviewResult{ExitCode: -1, Output: artifact}, nil
+	}
+	output := slices.Clone(execution.Stdout)
+	if len(execution.Stderr) != 0 {
+		if len(output) != 0 && output[len(output) - 1] != '\n' {
+			output = append(output, '\n')
+		}
+		output = append(output, execution.Stderr...)
+	}
+	artifact, err := writeArtifact(
+		filepath.Join(repositoryOutput, "fix-preview.txt"),
+		normalizeText(output, newArtifactNormalizer(checkout, options)),
+		false,
+	)
+	if err != nil {
+		return fixPreviewResult{}, err
+	}
+	return fixPreviewResult{
+		ExitCode: execution.ExitCode,
+		Output: artifact,
+		Complete: (execution.ExitCode == 0 || execution.ExitCode == 1) &&
+			len(execution.Stderr) == 0,
+	}, nil
+}
+
+func writeSkippedFixPreview(
+	repositoryOutput string,
+	preflightExitCode int,
+) (fixPreviewResult, error) {
+	output, err := writeArtifact(
+		filepath.Join(repositoryOutput, "fix-preview.txt"),
+		[]byte(
+			fmt.Sprintf(
+				"not run because analysis preflight exited with status %d\n",
+				preflightExitCode,
+			),
+		),
+		false,
+	)
+	if err != nil {
+		return fixPreviewResult{}, err
+	}
+	return fixPreviewResult{ExitCode: preflightExitCode, Output: output}, nil
 }
 
 func runFormatterAudit(
@@ -1962,6 +2092,9 @@ type checkoutSnapshotEntry struct {
 	kind string
 	digest string
 	link string
+	mode os.FileMode
+	size int64
+	modifiedUnixNano int64
 }
 
 func validateModuleGraphSnapshot(source, snapshot string, allowWorkspaceSum bool) error {
@@ -1986,7 +2119,9 @@ func validateModuleGraphSnapshot(source, snapshot string, allowWorkspaceSum bool
 	for _, path := range paths {
 		sourceEntry, sourceFound := sourceEntries[path]
 		snapshotEntry, snapshotFound := snapshotEntries[path]
-		if !sourceFound || !snapshotFound || sourceEntry != snapshotEntry {
+		if !sourceFound ||
+			!snapshotFound ||
+			!sameCheckoutSnapshotContent(sourceEntry, snapshotEntry) {
 			return fmt.Errorf("unexpected change at %q", path)
 		}
 	}
@@ -2007,6 +2142,35 @@ func validateModuleGraphSnapshot(source, snapshot string, allowWorkspaceSum bool
 		}
 		if snapshotErr == nil && !snapshotInfo.Mode().IsRegular() {
 			return fmt.Errorf("workspace sum is not a regular file")
+		}
+	}
+	return nil
+}
+
+func sameCheckoutSnapshotContent(left, right checkoutSnapshotEntry) bool {
+	return left.kind == right.kind && left.digest == right.digest && left.link == right.link
+}
+
+func validateExactCheckoutSnapshot(root string, want map[string]checkoutSnapshotEntry) error {
+	got, err := checkoutSnapshotInventory(root, false)
+	if err != nil {
+		return fmt.Errorf("inventory exact snapshot: %w", err)
+	}
+	paths := make([]string, 0, len(want) + len(got))
+	for path := range want {
+		paths = append(paths, path)
+	}
+	for path := range got {
+		if _, found := want[path]; !found {
+			paths = append(paths, path)
+		}
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		wantEntry, wantFound := want[path]
+		gotEntry, gotFound := got[path]
+		if !wantFound || !gotFound || wantEntry != gotEntry {
+			return fmt.Errorf("unexpected exact change at %q", path)
 		}
 	}
 	return nil
@@ -2041,7 +2205,11 @@ func checkoutSnapshotInventory(
 			if err != nil {
 				return err
 			}
-			fingerprint := checkoutSnapshotEntry{}
+			fingerprint := checkoutSnapshotEntry{
+				mode: info.Mode(),
+				size: info.Size(),
+				modifiedUnixNano: info.ModTime().UnixNano(),
+			}
 			switch {
 			case entry.IsDir():
 				fingerprint.kind = "directory"

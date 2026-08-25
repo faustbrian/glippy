@@ -33,11 +33,25 @@ writing either the snapshot or the external checkout. Invalid machine output or
 an incomplete formatter result is release-blocking evidence and must receive a
 formatter-sourced crash or unsupported-construct gap in adjudication.
 
+After a successful package preflight, the runner executes
+`glippy lint --fix --diff` with the canonical recommended profile. That profile
+includes the default correctness set and the curated low-noise suspicious set.
+The preview uses the real transactional fix coordinator, reparsing, formatter
+normalization, and post-fix analysis while the source snapshot remains
+read-only. Its exact normalized output and exit code are bound into the
+repository result. Exit 0
+or 1 with no tool error is complete evidence; conflicts, source failures,
+bounded-output failures, or other tool failures are release-blocking incomplete
+fixer evidence. Exit -1 means the preview process produced no exit code.
+Cancellation still aborts the run. Neither the snapshot nor the external
+checkout is replaced.
+
 Each repository result contains:
 
 - normalized Glippy diagnostic and measured statistics JSON per profile;
 - a sorted finding inventory per profile;
 - a normalized formatter report with selected-file and difference counts;
+- an exact normalized safe-fix preview artifact;
 - normalized `go vet` and Staticcheck output; and
 - one result document binding the repository, revision, tool versions, exit
   codes, completeness state, shared source/workflow run identity, and
@@ -122,9 +136,10 @@ Staticcheck version strings. The manual workflow derives that ID from the
 Glippy source revision and GitHub workflow run.
 
 Record demonstrated omissions in the ordered `gaps` list. A gap names its
-repository and evidence, identifies `manual`, `vet`, or `staticcheck` as the
-source, and classifies the issue as a crash, missed defect, or unsupported
-construct. Its disposition is `backlog`, `nursery`, or `not-actionable`.
+repository and evidence, identifies `fixer`, `formatter`, `manual`, `vet`, or
+`staticcheck` as the source, and classifies the issue as a crash, missed defect,
+or unsupported construct. Its disposition is `backlog`, `nursery`, or
+`not-actionable`.
 Backlog and nursery gaps require a proposed rule ID; not-actionable gaps must
 not name one.
 
@@ -141,6 +156,13 @@ requires a crash or unsupported-construct gap and contributes to the unresolved
 count. Formatter gaps use `formatter` as their source; analysis omissions use
 the existing `manual`, `vet`, or `staticcheck` sources.
 
+`incomplete_fix_preview` records a safe-fix preview that could not complete the
+transactional validation path. It requires a crash or unsupported-construct
+gap whose source is `fixer` and contributes to the unresolved count. A complete
+preview may still exit 1 because validated changes or rejected findings would
+remain; the artifact preserves the exact reviewable output without applying
+it.
+
 Validate the completed review against the exact manifest, revisions, result
 schema, Staticcheck version, artifact digests, and finding fingerprints:
 
@@ -152,10 +174,10 @@ go run ./benchmarks/cmd/corpus-runner \
 ```
 
 The adjudication is complete for release evidence only when the validator
-reports zero unresolved default or recommended findings, profiles, and
-comparators. It exits nonzero while unresolved evidence remains. This command
-reads artifacts only; it does not rerun repositories or modify their
-checkouts.
+reports zero unresolved default or recommended findings, profiles, comparators,
+formatter audits, and safe-fix previews. It exits nonzero while unresolved
+evidence remains. This command reads artifacts only; it does not rerun
+repositories or modify their checkouts.
 
 Generate the canonical aggregate after any adjudication edit:
 
@@ -167,13 +189,13 @@ go run ./benchmarks/cmd/corpus-runner \
 ```
 
 The report revalidates the adjudication and exact result set. It records
-classification counts, gap counts, aggregate formatter completeness and
-difference totals, deterministic per-profile totals, every per-repository
-statistics digest, and one evidence-backed queue entry for each backlog or
-nursery rule candidate. Multiple gaps for one rule must use one consistent
-disposition. The duration and allocation fields come from Glippy's process-local
-statistics. `allocated_bytes` is allocation volume, not peak RSS or aggregate
-process-tree memory; those budgets require isolated CI evidence.
+classification counts, gap counts, aggregate formatter and safe-fix preview
+completeness, formatter difference totals, deterministic per-profile totals,
+every per-repository statistics digest, and one evidence-backed queue entry for
+each backlog or nursery rule candidate. Multiple gaps for one rule must use one
+consistent disposition. The duration and allocation fields come from Glippy's
+process-local statistics. `allocated_bytes` is allocation volume, not peak RSS
+or aggregate process-tree memory; those budgets require isolated CI evidence.
 An incomplete profile whose statistics output is not JSON remains in the
 report with its bound artifact digest and `measured: false`; its crash or
 unsupported gap is not discarded merely because cost data is unavailable.

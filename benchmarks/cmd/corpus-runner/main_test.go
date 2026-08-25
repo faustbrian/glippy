@@ -587,6 +587,7 @@ func writeEmptyResultArtifacts(
 				"staticcheck": "staticcheck 2026.1.1 (0.8.1)",
 			},
 			"format": writeEmptyFormatArtifact(t, repositoryRoot),
+			"fix_preview": writeEmptyFixPreviewArtifact(t, repositoryRoot),
 			"profiles": resultProfiles,
 			"comparators": comparators,
 		}
@@ -598,6 +599,24 @@ func writeEmptyResultArtifacts(
 			err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func writeEmptyFixPreviewArtifact(t *testing.T, repositoryRoot string) map[string]any {
+	t.Helper()
+	input := []byte{}
+	if err := os.WriteFile(filepath.Join(repositoryRoot, "fix-preview.txt"), input, 0o600);
+		err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(input)
+	return map[string]any{
+		"exit_code": 0,
+		"output": map[string]any{
+			"file": "fix-preview.txt",
+			"sha256": hex.EncodeToString(digest[:]),
+		},
+		"complete": true,
 	}
 }
 

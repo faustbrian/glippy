@@ -125,6 +125,10 @@ func TestBuildAdjudicationReportAggregatesClassificationsMeasurementsAndRuleQueu
 			Files int `json:"files"`
 			Differences int `json:"differences"`
 		} `json:"formatter"`
+		FixPreview struct {
+			Repositories int `json:"repositories"`
+			CompleteRepositories int `json:"complete_repositories"`
+		} `json:"fix_preview"`
 		Classifications []struct {
 			Profile string `json:"profile"`
 			Classification string `json:"classification"`
@@ -160,7 +164,7 @@ func TestBuildAdjudicationReportAggregatesClassificationsMeasurementsAndRuleQueu
 	if err := json.Unmarshal(report, &document); err != nil {
 		t.Fatal(err)
 	}
-	if document.SchemaVersion != 2 ||
+	if document.SchemaVersion != 3 ||
 		document.Summary.Repositories != 1 ||
 		document.Summary.Findings != 2 ||
 		document.Summary.Gaps != 1 ||
@@ -172,6 +176,9 @@ func TestBuildAdjudicationReportAggregatesClassificationsMeasurementsAndRuleQueu
 		document.Formatter.Files != 1 ||
 		document.Formatter.Differences != 1 {
 		t.Fatalf("formatter summary = %#v", document.Formatter)
+	}
+	if document.FixPreview.Repositories != 1 || document.FixPreview.CompleteRepositories != 1 {
+		t.Fatalf("safe-fix preview summary = %#v", document.FixPreview)
 	}
 	wantClassifications := []struct {
 		profile string
@@ -701,6 +708,80 @@ func TestAdjudicationTracksIncompleteFormatterAsUnresolvedEvidence(t *testing.T)
 	}
 }
 
+func TestAdjudicationTracksIncompleteSafeFixPreviewAsUnresolvedEvidence(t *testing.T) {
+	t.Parallel()
+
+	manifestInput := []byte(singleRepositoryManifestJSON())
+	manifest, err := corpus.ParseManifest(manifestInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, options, executor, _ := newRunFixture(t)
+	executor.fixPreviewOutput = []byte("fix preview conflict\n")
+	executor.fixPreviewExitCode = 6
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	template, err := corpus.BuildAdjudicationTemplate(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(template), `"incomplete_fix_preview": true`) {
+		t.Fatalf("template does not record incomplete safe-fix preview: %s", template)
+	}
+	if _, err := corpus.ValidateAdjudication(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		template,
+	);
+		err == nil || !strings.Contains(err.Error(), "fixer-sourced") {
+		t.Fatalf("ValidateAdjudication() error = %v, want required fixer gap", err)
+	}
+
+	var document map[string]any
+	if err := json.Unmarshal(template, &document); err != nil {
+		t.Fatal(err)
+	}
+	for _, profile := range
+		document["repositories"].([]any)[0].(map[string]any)["profiles"].([]any) {
+		for _, finding := range profile.(map[string]any)["findings"].([]any) {
+			entry := finding.(map[string]any)
+			entry["classification"] = "true-positive"
+			entry["reason"] = "confirmed defect"
+		}
+	}
+	document["gaps"] = []any{
+		map[string]any{
+			"id": "alpha-fix-preview-conflict",
+			"repository": "alpha",
+			"source": "fixer",
+			"kind": "crash",
+			"summary": "safe-fix preview did not complete",
+			"evidence": "alpha/fix-preview.txt",
+			"disposition": "not-actionable",
+			"rule_id": "",
+			"reason": "requires a successful isolated rerun",
+		},
+	}
+	summary, err := corpus.ValidateAdjudication(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		marshalJSONValue(t, document),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Unresolved != 1 {
+		t.Fatalf("unresolved = %d, want 1", summary.Unresolved)
+	}
+}
+
 func TestAdjudicationTracksCompleteSourceErrorsAsIncompleteEvidence(t *testing.T) {
 	t.Parallel()
 
@@ -1030,13 +1111,13 @@ func TestValidateAdjudicationRejectsIncompleteOrNonCanonicalEvidence(t *testing.
 	}{
 		{
 			name: "duplicate field",
-			old: `"schema_version": 3,`,
-			new: `"schema_version": 3, "schema_version": 3,`,
+			old: `"schema_version": 4,`,
+			new: `"schema_version": 4, "schema_version": 4,`,
 			want: "duplicate field",
 		},
 		{
 			name: "case-folded field",
-			old: `"schema_version": 3,`,
+			old: `"schema_version": 4,`,
 			new: `"SCHEMA_VERSION": 1,`,
 			want: "unknown field",
 		},
@@ -1128,13 +1209,51 @@ func TestBuildAdjudicationTemplateRejectsUnboundResultArtifacts(t *testing.T) {
 			want string
 		}{
 			{
+				name: "safe fix preview digest mismatch",
+				mutate: func(t *testing.T, root string) {
+					if err := os.WriteFile(
+						filepath.Join(root, "alpha", "fix-preview.txt"),
+						[]byte("tampered\n"),
+						0o600,
+					);
+						err != nil {
+						t.Fatal(err)
+					}
+				},
+				want: "safe-fix preview digest mismatch",
+			},
+			{
+				name: "safe fix preview outcome mismatch",
+				mutate: func(t *testing.T, root string) {
+					resultPath := filepath.Join(root, "alpha", "result.json")
+					input, err := os.ReadFile(resultPath)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var result map[string]any
+					if err := json.Unmarshal(input, &result); err != nil {
+						t.Fatal(err)
+					}
+					result["fix_preview"].(map[string]any)["exit_code"] = 6
+					if err := os.WriteFile(
+						resultPath,
+						marshalJSONValue(t, result),
+						0o600,
+					);
+						err != nil {
+						t.Fatal(err)
+					}
+				},
+				want: "complete safe-fix preview outcome",
+			},
+			{
 				name: "result schema",
 				mutate: func(t *testing.T, root string) {
 					replaceFileText(
 						t,
 						filepath.Join(root, "alpha", "result.json"),
-						`"schema_version": 2`,
 						`"schema_version": 3`,
+						`"schema_version": 4`,
 					)
 				},
 				want: "result schema_version",
@@ -1145,8 +1264,8 @@ func TestBuildAdjudicationTemplateRejectsUnboundResultArtifacts(t *testing.T) {
 					replaceFileText(
 						t,
 						filepath.Join(root, "alpha", "result.json"),
-						`"schema_version": 2,`,
-						`"schema_version": 2, "schema_version": 2,`,
+						`"schema_version": 3,`,
+						`"schema_version": 3, "schema_version": 3,`,
 					)
 				},
 				want: "duplicate field",
@@ -1157,8 +1276,8 @@ func TestBuildAdjudicationTemplateRejectsUnboundResultArtifacts(t *testing.T) {
 					replaceFileText(
 						t,
 						filepath.Join(root, "alpha", "result.json"),
-						`"schema_version": 2,`,
-						`"SCHEMA_VERSION": 2,`,
+						`"schema_version": 3,`,
+						`"SCHEMA_VERSION": 3,`,
 					)
 				},
 				want: "unknown field",
@@ -1204,8 +1323,8 @@ func TestBuildAdjudicationTemplateRejectsUnboundResultArtifacts(t *testing.T) {
 					replaceFileText(
 						t,
 						findingsPath,
-						`"schema_version": 2`,
 						`"schema_version": 3`,
+						`"schema_version": 4`,
 					)
 					after, err := os.ReadFile(findingsPath)
 					if err != nil {
@@ -1227,8 +1346,8 @@ func TestBuildAdjudicationTemplateRejectsUnboundResultArtifacts(t *testing.T) {
 					mutateFindingArtifact(
 						t,
 						root,
-						`"schema_version": 2,`,
-						`"schema_version": 2, "schema_version": 2,`,
+						`"schema_version": 3,`,
+						`"schema_version": 3, "schema_version": 3,`,
 					)
 				},
 				want: "duplicate field",
@@ -1239,8 +1358,8 @@ func TestBuildAdjudicationTemplateRejectsUnboundResultArtifacts(t *testing.T) {
 					mutateFindingArtifact(
 						t,
 						root,
-						`"schema_version": 2,`,
-						`"SCHEMA_VERSION": 2,`,
+						`"schema_version": 3,`,
+						`"SCHEMA_VERSION": 3,`,
 					)
 				},
 				want: "unknown field",
@@ -1667,7 +1786,7 @@ func adjudicationJSON(
 	}
 	return fmt.Sprintf(
 		`{
-  "schema_version": 3,
+  "schema_version": 4,
   "manifest_sha256": %q,
   "run": {
     "id": "source-aaaaaaaa-run-1",
@@ -1681,6 +1800,7 @@ func adjudicationJSON(
       "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "result_sha256": %q,
       "incomplete_format": false,
+      "incomplete_fix_preview": false,
       "incomplete_profiles": [],
       "incomplete_comparators": [],
       "measurements": [

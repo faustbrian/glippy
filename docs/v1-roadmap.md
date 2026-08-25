@@ -44,6 +44,10 @@ not become a package marketplace or plugin system.
 
 ## v0.8: Large-Repository Hardening
 
+Status: active. The corpus harness now binds exact formatter and transactional
+safe-fix preview evidence from immutable snapshots; exact-revision corpus,
+resource-budget, variant, upgrade, and documentation gates remain open.
+
 - Repeat the complete corpus at exact revisions and classify every formatter
   divergence and diagnostic.
 - Prove formatter idempotency and source fidelity on the corpus.

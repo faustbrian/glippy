@@ -17,7 +17,7 @@ import (
 	"strings"
 )
 
-const AdjudicationSchemaVersion = 3
+const AdjudicationSchemaVersion = 4
 
 var (
 	adjudicationProfiles = []string{"default", "recommended"}
@@ -51,6 +51,7 @@ type repositoryAdjudication struct {
 	Revision string `json:"revision"`
 	ResultSHA256 string `json:"result_sha256"`
 	IncompleteFormat bool `json:"incomplete_format"`
+	IncompleteFixPreview bool `json:"incomplete_fix_preview"`
 	IncompleteProfiles []string `json:"incomplete_profiles"`
 	IncompleteComparators []string `json:"incomplete_comparators"`
 	Measurements []measurementBinding `json:"measurements"`
@@ -124,6 +125,7 @@ var (
 			"revision": jsonString,
 			"result_sha256": jsonString,
 			"incomplete_format": jsonBool,
+			"incomplete_fix_preview": jsonBool,
 			"incomplete_profiles": {Element: jsonString},
 			"incomplete_comparators": {Element: jsonString},
 			"measurements": {
@@ -209,6 +211,13 @@ var (
 			"complete": jsonBool,
 		},
 	}
+	fixPreviewResultShape = &jsonShape{
+		Fields: map[string]*jsonShape{
+			"exit_code": jsonNumber,
+			"output": artifactResultShape,
+			"complete": jsonBool,
+		},
+	}
 	formatterReportShape = &jsonShape{
 		Fields: map[string]*jsonShape{
 			"schema_version": jsonNumber,
@@ -268,6 +277,7 @@ var (
 			"staticcheck_version": jsonString,
 			"tools": toolVersionsShape,
 			"format": formatResultShape,
+			"fix_preview": fixPreviewResultShape,
 			"profiles": {Element: profileResultShape},
 			"comparators": {Element: comparatorResultShape},
 		},
@@ -349,6 +359,12 @@ func ValidateAdjudication(
 				repository.ID,
 			)
 		}
+		if repository.IncompleteFixPreview != state.IncompleteFixPreview {
+			return AdjudicationSummary{}, fmt.Errorf(
+				"repository %q incomplete safe-fix preview state does not match result",
+				repository.ID,
+			)
+		}
 		if state.Identity != document.Run {
 			return AdjudicationSummary{}, fmt.Errorf(
 				"repository %q corpus run identity does not match adjudication",
@@ -412,6 +428,9 @@ func ValidateAdjudication(
 		if repository.IncompleteFormat {
 			summary.Unresolved++
 		}
+		if repository.IncompleteFixPreview {
+			summary.Unresolved++
+		}
 	}
 	return summary, nil
 }
@@ -463,6 +482,7 @@ func BuildAdjudicationTemplate(
 			Revision: repository.Revision,
 			ResultSHA256: resultSHA256,
 			IncompleteFormat: state.IncompleteFormat,
+			IncompleteFixPreview: state.IncompleteFixPreview,
 			IncompleteProfiles: []string{},
 			IncompleteComparators: state.IncompleteComparators,
 			Measurements: make([]measurementBinding, 0, len(corpusProfiles)),
@@ -685,6 +705,13 @@ func (d adjudicationDocument) validate(manifest Manifest, manifestInput []byte) 
 				repository.ID,
 			)
 		}
+		if repository.IncompleteFixPreview &&
+			!hasIncompleteGap(d.Gaps, repository.ID, "fixer") {
+			return fmt.Errorf(
+				"repository %q incomplete safe-fix preview evidence requires a fixer-sourced crash or unsupported-construct gap",
+				repository.ID,
+			)
+		}
 		if (len(repository.IncompleteProfiles) != 0 ||
 			len(repository.IncompleteComparators) != 0) &&
 			!hasIncompleteAnalysisGap(d.Gaps, repository.ID) {
@@ -714,6 +741,7 @@ func hasIncompleteAnalysisGap(gaps []corpusGap, repository string) bool {
 		func(gap corpusGap) bool {
 			return gap.Repository == repository &&
 				gap.Source != "formatter" &&
+				gap.Source != "fixer" &&
 				(gap.Kind == "crash" || gap.Kind == "unsupported-construct")
 		},
 	)
@@ -777,7 +805,7 @@ func validateCorpusGaps(gaps []corpusGap, repositories map[string]struct{}) erro
 			)
 		}
 		if !slices.Contains(
-			[]string{"formatter", "manual", "staticcheck", "vet"},
+			[]string{"fixer", "formatter", "manual", "staticcheck", "vet"},
 			gap.Source,
 		) {
 			return fmt.Errorf("gap %q has invalid source %q", gap.ID, gap.Source)
@@ -834,6 +862,7 @@ func validateCorpusGaps(gaps []corpusGap, repositories map[string]struct{}) erro
 
 type boundResultState struct {
 	IncompleteFormat bool
+	IncompleteFixPreview bool
 	IncompleteComparators []string
 	Identity evidenceIdentity
 }
@@ -904,6 +933,10 @@ func inspectBoundResult(
 	if err := validateBoundFormat(repositoryRoot, repository.ID, result.Format); err != nil {
 		return boundResultState{}, err
 	}
+	if err := validateBoundFixPreview(repositoryRoot, repository.ID, result.FixPreview);
+		err != nil {
+		return boundResultState{}, err
+	}
 	incomplete, err := validateBoundComparators(
 		repositoryRoot,
 		repository.ID,
@@ -915,6 +948,7 @@ func inspectBoundResult(
 	}
 	return boundResultState{
 		IncompleteFormat: !result.Format.Complete,
+		IncompleteFixPreview: !result.FixPreview.Complete,
 		IncompleteComparators: incomplete,
 		Identity: evidenceIdentity{
 			ID: result.RunID,
@@ -923,6 +957,33 @@ func inspectBoundResult(
 			Staticcheck: result.Tools.Staticcheck,
 		},
 	}, nil
+}
+
+func validateBoundFixPreview(repositoryRoot, repositoryID string, result fixPreviewResult) error {
+	if result.ExitCode < -1 ||
+		result.Output.File != "fix-preview.txt" ||
+		result.Output.ValidJSON ||
+		!digestPattern.MatchString(result.Output.SHA256) {
+		return fmt.Errorf(
+			"result for %q has invalid safe-fix preview artifact",
+			repositoryID,
+		)
+	}
+	input, err := readRegularFile(filepath.Join(repositoryRoot, result.Output.File))
+	if err != nil {
+		return fmt.Errorf("read safe-fix preview for %q: %w", repositoryID, err)
+	}
+	digest := sha256.Sum256(input)
+	if hex.EncodeToString(digest[:]) != result.Output.SHA256 {
+		return fmt.Errorf("safe-fix preview digest mismatch for %q", repositoryID)
+	}
+	if result.Complete && result.ExitCode != 0 && result.ExitCode != 1 {
+		return fmt.Errorf(
+			"result for %q has inconsistent complete safe-fix preview outcome",
+			repositoryID,
+		)
+	}
+	return nil
 }
 
 func validateBoundFormat(repositoryRoot, repositoryID string, result formatResult) error {

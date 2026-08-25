@@ -88,12 +88,14 @@ func TestRunAuditsProfilesAndComparatorsWithoutMutatingCheckout(t *testing.T) {
 		t.Fatalf("profile execution order = %v, want %v", executor.profiles, wantProfiles)
 	}
 	if executor.formatRuns != 1 ||
+		executor.fixPreviewRuns != 1 ||
 		executor.vetRuns != 1 ||
 		executor.staticcheckRuns != 1 ||
 		executor.statusRuns != 2 {
 		t.Fatalf(
-			"audit/comparator/status runs = format %d, vet %d, staticcheck %d, status %d",
+			"audit/comparator/status runs = format %d, fix preview %d, vet %d, staticcheck %d, status %d",
 			executor.formatRuns,
+			executor.fixPreviewRuns,
 			executor.vetRuns,
 			executor.staticcheckRuns,
 			executor.statusRuns,
@@ -105,6 +107,20 @@ func TestRunAuditsProfilesAndComparatorsWithoutMutatingCheckout(t *testing.T) {
 			"formatter configuration path = %q, want task-owned path",
 			executor.formatConfig,
 		)
+	}
+	if executor.fixPreviewConfig == "" ||
+		strings.HasPrefix(
+			executor.fixPreviewConfig,
+			checkout + string(filepath.Separator),
+		) {
+		t.Fatalf(
+			"fix preview configuration path = %q, want task-owned path",
+			executor.fixPreviewConfig,
+		)
+	}
+	if !strings.Contains(string(executor.fixPreviewConfiguration), `profile = "recommended"`) ||
+		!strings.Contains(string(executor.fixPreviewConfiguration), "enabled = false") {
+		t.Fatalf("fix preview configuration = %q", executor.fixPreviewConfiguration)
 	}
 	if !slices.ContainsFunc(
 		executor.commands,
@@ -137,6 +153,7 @@ func TestRunAuditsProfilesAndComparatorsWithoutMutatingCheckout(t *testing.T) {
 	if strings.Contains(string(result), checkout) ||
 		!strings.Contains(string(result), `"run_id": "source-aaaaaaaa-run-1"`) ||
 		!strings.Contains(string(result), `"staticcheck_version": "v0.8.1"`) ||
+		!strings.Contains(string(result), `"fix_preview": {`) ||
 		!strings.Contains(string(result), `"difference_count": 1`) ||
 		!strings.Contains(string(result), `"complete": true`) ||
 		!strings.Contains(string(result), `"exit_code": 1`) {
@@ -149,6 +166,156 @@ func TestRunAuditsProfilesAndComparatorsWithoutMutatingCheckout(t *testing.T) {
 	if strings.Contains(string(formatReport), checkout) ||
 		!strings.Contains(string(formatReport), `"path": "sample.go"`) {
 		t.Fatalf("normalized format report = %s", formatReport)
+	}
+	fixPreview, err := os.ReadFile(filepath.Join(outputRoot, "alpha", "fix-preview.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(fixPreview), checkout) ||
+		!strings.Contains(string(fixPreview), "--- <ROOT>/sample.go.orig") ||
+		!strings.Contains(string(fixPreview), "+++ <ROOT>/sample.go") {
+		t.Fatalf("normalized fix preview = %s", fixPreview)
+	}
+}
+
+func TestRunRecordsFailedSafeFixPreviewAsIncompleteEvidence(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, _ := newRunFixture(t)
+	executor.fixPreviewOutput = []byte("fix preview conflict\n")
+	executor.fixPreviewExitCode = 6
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	result, err := os.ReadFile(filepath.Join(options.OutputRoot, "alpha", "result.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(result), `"fix_preview": {`) ||
+		!strings.Contains(string(result), `"file": "fix-preview.txt"`) ||
+		!strings.Contains(string(result), `"exit_code": 6`) ||
+		!strings.Contains(string(result), `"complete": false`) {
+		t.Fatalf("result artifact = %s", result)
+	}
+}
+
+func TestRunRejectsSafeFixPreviewSnapshotMutation(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, checkout := newRunFixture(t)
+	executor.createFixPreviewSourceFile = true
+	err := corpus.Run(context.Background(), manifest, options)
+	if err == nil ||
+		!strings.Contains(err.Error(), "safe-fix preview changed checkout snapshot") {
+		t.Fatalf("Run() error = %v, want safe-fix preview snapshot rejection", err)
+	}
+	if executor.fixPreviewSourceWriteError != nil {
+		t.Fatalf(
+			"create task-owned fix preview mutation: %v",
+			executor.fixPreviewSourceWriteError,
+		)
+	}
+	if _, err := os.Stat(filepath.Join(checkout, "fix-preview-mutation.txt"));
+		!os.IsNotExist(err) {
+		t.Fatalf("source checkout mutation changed: %v", err)
+	}
+}
+
+func TestRunRejectsSafeFixPreviewWorkspaceSumOrModeMutation(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range
+		[]struct {
+			name string
+			workspaceSum bool
+			mode bool
+		}{{name: "workspace sum", workspaceSum: true}, {name: "mode", mode: true}} {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				manifest, options, executor, checkout := newRunFixture(t)
+				if test.workspaceSum {
+					for path, input := range
+						map[string]string{
+							filepath.Join(
+								checkout,
+								"go.work",
+							): "go 1.26\n\nuse .\n",
+							filepath.Join(
+								checkout,
+								"go.work.sum",
+							): "before\n",
+						} {
+						if err := os.WriteFile(path, []byte(input), 0o600);
+							err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				executor.mutateFixPreviewWorkspaceSum = test.workspaceSum
+				executor.mutateFixPreviewMode = test.mode
+				err := corpus.Run(context.Background(), manifest, options)
+				if err == nil ||
+					!strings.Contains(
+						err.Error(),
+						"safe-fix preview changed checkout snapshot",
+					) {
+					t.Fatalf(
+						"Run() error = %v, want exact snapshot rejection",
+						err,
+					)
+				}
+				if executor.fixPreviewMutationError != nil {
+					t.Fatalf(
+						"mutate task-owned fix preview snapshot: %v",
+						executor.fixPreviewMutationError,
+					)
+				}
+			},
+		)
+	}
+}
+
+func TestRunBindsSafeFixPreviewExecutorFailureAsIncompleteEvidence(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, _ := newRunFixture(t)
+	executor.fixPreviewError = errors.New("command output exceeds bounded allowance")
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	result, err := os.ReadFile(filepath.Join(options.OutputRoot, "alpha", "result.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(result), `"exit_code": -1`) ||
+		!strings.Contains(string(result), `"complete": false`) {
+		t.Fatalf("result artifact = %s", result)
+	}
+	preview, err := os.ReadFile(filepath.Join(options.OutputRoot, "alpha", "fix-preview.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(preview), "safe-fix preview execution failed") ||
+		!strings.Contains(string(preview), "bounded allowance") {
+		t.Fatalf("fix preview artifact = %q", preview)
+	}
+}
+
+func TestRunKeepsSafeFixPreviewCancellationAtRunLevel(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, _ := newRunFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	executor.cancelFixPreview = cancel
+	err := corpus.Run(ctx, manifest, options)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run() error = %v, want cancellation", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(options.OutputRoot, "alpha", "result.json"));
+		!os.IsNotExist(statErr) {
+		t.Fatalf("canceled preview result artifact exists: %v", statErr)
 	}
 }
 
@@ -654,6 +821,7 @@ func TestRunPreflightsTheOfflineWorkspaceBeforeGlippyProfiles(t *testing.T) {
 		case command.Path == "/tools/glippy" &&
 			len(command.Args) > 0 &&
 			command.Args[0] == "lint" &&
+			!slices.Contains(command.Args, "--fix") &&
 			profileIndex == -1:
 			profileIndex = index
 			profile = command
@@ -1143,6 +1311,18 @@ type corpusExecutor struct {
 	formatConfig string
 	formatOutput []byte
 	formatExitCode int
+	fixPreviewRuns int
+	fixPreviewConfig string
+	fixPreviewConfiguration []byte
+	fixPreviewOutput []byte
+	fixPreviewExitCode int
+	createFixPreviewSourceFile bool
+	fixPreviewSourceWriteError error
+	mutateFixPreviewWorkspaceSum bool
+	mutateFixPreviewMode bool
+	fixPreviewMutationError error
+	fixPreviewError error
+	cancelFixPreview context.CancelFunc
 	vetRuns int
 	staticcheckRuns int
 	statusRuns int
@@ -1258,6 +1438,78 @@ func (e *corpusExecutor) Run(
 		e.moduleDownloads = append(e.moduleDownloads, command)
 		return corpus.CommandResult{}, nil
 	case command.Path == "/tools/glippy" && len(command.Args) > 5 && command.Args[0] == "lint":
+		if slices.Contains(command.Args, "--fix") &&
+			slices.Contains(command.Args, "--diff") {
+			e.fixPreviewRuns++
+			configIndex := slices.Index(command.Args, "--config")
+			if configIndex == -1 || configIndex + 1 >= len(command.Args) {
+				return corpus.CommandResult{}, errors.New(
+					"fix preview has no configuration",
+				)
+			}
+			e.fixPreviewConfig = command.Args[configIndex + 1]
+			configured, err := os.ReadFile(e.fixPreviewConfig)
+			if err != nil {
+				return corpus.CommandResult{}, err
+			}
+			e.fixPreviewConfiguration = slices.Clone(configured)
+			if e.cancelFixPreview != nil {
+				e.cancelFixPreview()
+				return corpus.CommandResult{ExitCode: -1}, nil
+			}
+			if e.fixPreviewError != nil {
+				return corpus.CommandResult{}, e.fixPreviewError
+			}
+			if e.createFixPreviewSourceFile {
+				if err := os.Chmod(command.Dir, 0o755); err != nil {
+					e.fixPreviewSourceWriteError = err
+				} else {
+					e.fixPreviewSourceWriteError = os.WriteFile(
+						filepath.Join(
+							command.Dir,
+							"fix-preview-mutation.txt",
+						),
+						[]byte("mutation\n"),
+						0o600,
+					)
+				}
+			}
+			if e.mutateFixPreviewWorkspaceSum {
+				path := filepath.Join(command.Dir, "go.work.sum")
+				if err := os.Chmod(path, 0o600); err != nil {
+					e.fixPreviewMutationError = err
+				} else {
+					file, err := os.OpenFile(path, os.O_APPEND | os.O_WRONLY, 0)
+					if err == nil {
+						_, writeErr := file.WriteString("after\n")
+						err = errors.Join(writeErr, file.Close())
+					}
+					e.fixPreviewMutationError = err
+				}
+			}
+			if e.mutateFixPreviewMode {
+				e.fixPreviewMutationError = os.Chmod(
+					filepath.Join(command.Dir, "go.mod"),
+					0o600,
+				)
+			}
+			if e.fixPreviewOutput != nil {
+				return corpus.CommandResult{
+					Stdout: e.fixPreviewOutput,
+					ExitCode: e.fixPreviewExitCode,
+				}, nil
+			}
+			return corpus.CommandResult{
+				Stdout: []byte(
+					fmt.Sprintf(
+						"--- %s.orig\n+++ %s\n@@ -1 +1 @@\n-old\n+new\n",
+						filepath.Join(command.Dir, "sample.go"),
+						filepath.Join(command.Dir, "sample.go"),
+					),
+				),
+				ExitCode: 1,
+			}, nil
+		}
 		if e.materializeWorkspaceSum {
 			_, err := os.Stat(filepath.Join(command.Dir, "go.work.sum"))
 			e.workspaceSumObserved = err == nil

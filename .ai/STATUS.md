@@ -3067,3 +3067,17 @@ counts, errors, and outcome categories. Invalid or incomplete output remains
 release-unresolved and requires a formatter-sourced gap. This is harness
 capability only; exact public-corpus formatter evidence requires the next run on
 the resulting pushed revision.
+
+The next v0.8 hardening batch adds a canonical recommended-profile
+`lint --fix --diff` rehearsal after the offline package preflight. The preview
+executes the production transactional coordinator, formatter normalization,
+and post-fix analysis against the read-only task-owned snapshot, records exact
+normalized output, and binds completeness and its artifact digest into result,
+adjudication, and aggregate-report schemas. Exit 0 or 1 without tool stderr is
+complete; every other tool outcome, including bounded output without a process
+exit code, is release-unresolved and requires a fixer-sourced crash or
+unsupported-construct gap. Cancellation remains a run-level failure. Exact
+post-preflight snapshot inventory binds content, symlink identity, and modes,
+including `go.work.sum`, before and after preview. No external repository is
+modified. Exact public-corpus fix evidence requires a run at the resulting
+pushed revision.
