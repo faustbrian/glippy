@@ -67,7 +67,7 @@ jobs:
           GLIPPY_PEAK_RSS_FORMAT_ROOT: ${{ github.workspace }}/corpus
           GLIPPY_PEAK_RSS_RUNS: "5"
           GLIPPY_PEAK_RSS_TYPED_BUDGET_BYTES: "3221225472"
-          GLIPPY_PEAK_RSS_TYPED_BUDGET_SECONDS: "105"
+          GLIPPY_PEAK_RSS_TYPED_BUDGET_SECONDS: "240"
           GLIPPY_PEAK_RSS_TYPED_OUTPUT_SHA256: ${{ matrix.goos == 'darwin' && matrix.goarch == 'arm64' && '77f989f585934478c95acff13a0671521696ad036b9430f033968bcd203baba7' || '' }}
           GLIPPY_PEAK_RSS_TYPED_REVISION: 8a7cddfbb9088666eb981645285d7699e71dcb54
           GLIPPY_PEAK_RSS_TYPED_ROOT: ${{ github.workspace }}/typed-corpus

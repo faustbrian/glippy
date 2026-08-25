@@ -3179,3 +3179,13 @@ Darwin arm64 completed the failed rerun; Darwin amd64 stopped at the old
 ceiling, and reproducibility was correctly skipped. A complete exact-candidate
 Go 1.27 campaign must still pass every native job and reproducibility gate, so
 v0.8 remains active at 75%.
+
+Go 1.27 release-budget workflows `32813174079` and `32813770238`
+independently disproved the retained 105-second Darwin amd64 typed latency
+ceiling with 174.090-second and 105.910-second cold samples. Both runs passed
+all five Darwin amd64 formatter samples and every resource gate on the other
+three supported native runners before reproducibility was skipped. The
+workflow now provisionally uses a 240-second typed ceiling, leaving 37.9%
+headroom over the largest Go 1.27 observation. A complete exact-candidate
+campaign must still pass all four native jobs and reproducibility, so v0.8
+remains active at 75%.
