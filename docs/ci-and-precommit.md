@@ -6,7 +6,7 @@ does not rewrite source. Exit code 1 means actionable findings; exit codes 2
 through 6 and 130 are tool, source, configuration, filesystem, conflict, or
 cancellation outcomes rather than ordinary findings.
 
-Glippy v0.5 is an unreleased development line. Provision one exact reviewed
+Glippy v0.8 is an unreleased development line. Provision one exact reviewed
 source revision and do not treat an untagged commit as a stable installation
 contract.
 
@@ -104,6 +104,69 @@ The named remote ref must exist locally. Glippy resolves its merge base with
 and treats formatting as actionable only when the complete transformation is
 owned by changed lines. Move to the unfiltered `glippy check ./...` gate once
 the repository is clean enough to enforce all findings.
+
+## Woodpecker
+
+The same source-pinned, non-mutating gate can run as one ordinary Woodpecker
+step. Replace `<full-glippy-commit-sha>` with the reviewed 40-character commit
+ID. This example deliberately uses no Glippy-specific plugin or hosted service:
+
+```yaml
+steps:
+  - name: glippy
+    image: golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651
+    commands:
+      - |
+        set -eu
+        task_root=$(mktemp -d /tmp/glippy-ci.XXXXXX)
+        cleanup() {
+          status=$?
+          trap - EXIT HUP INT TERM
+          if [ -d "$task_root/modcache" ] &&
+            ! GOMODCACHE="$task_root/modcache" go clean -modcache >/dev/null 2>&1; then
+            chmod -R u+w "$task_root/modcache"
+          fi
+          find "$task_root" -mindepth 1 -delete
+          rmdir "$task_root"
+          exit "$status"
+        }
+        trap cleanup EXIT
+        trap 'exit 129' HUP
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        git clone --filter=blob:none https://github.com/faustbrian/glippy.git "$task_root/source"
+        git -C "$task_root/source" checkout --detach <full-glippy-commit-sha>
+        GOCACHE="$task_root/cache" GOMODCACHE="$task_root/modcache" \
+          GOENV=off GOTOOLCHAIN=local GOWORK=off \
+          go build -C "$task_root/source" \
+            -o "$task_root/glippy" ./cmd/glippy
+        GOCACHE="$task_root/cache" GOMODCACHE="$task_root/modcache" \
+          GLIPPY_CACHE_DIR="$task_root/glippy-cache" GOENV=off \
+          GOTOOLCHAIN=local "$task_root/glippy" check ./...
+```
+
+Woodpecker checks out the project before the step and supplies it as the
+working directory. The temporary source, module cache, build cache, and binary
+belong only to the step and are removed on success, failure, or interruption.
+The command does not request repository credentials or a source-writing mode.
+
+## Generic Shell CI
+
+When CI already provisions an exact Glippy binary, the repository gate is the
+same on every supported runner:
+
+```sh
+set -eu
+glippy_version=$(glippy version)
+test "$glippy_version" = "glippy <pinned-version>"
+exec glippy check ./...
+```
+
+Replace `<pinned-version>` with the reviewed release or candidate version. The
+explicit version assertion prevents an ambient or silently upgraded binary
+from deciding the repository policy. Exit 1 is an actionable formatting or
+lint finding; every other nonzero exit is a tool outcome and must fail the job
+rather than being accepted as partial analysis.
 
 ## Versioned Git Hook
 
