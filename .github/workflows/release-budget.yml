@@ -56,6 +56,39 @@ jobs:
         with:
           go-version: 1.27.0
           cache: false
+      - name: Prove native write and fix contracts
+        timeout-minutes: 5
+        shell: bash
+        env:
+          GOFLAGS: ""
+          GOTOOLCHAIN: local
+          GOWORK: off
+        run: |
+          set -euo pipefail
+          task_root=$(mktemp -d "$RUNNER_TEMP/glippy-write-fix.XXXXXX")
+          cleanup() {
+            trap - EXIT HUP INT TERM
+            if [ -d "$task_root/modcache" ] &&
+              ! GOMODCACHE="$task_root/modcache" go clean -modcache >/dev/null 2>&1; then
+              chmod -R u+w "$task_root/modcache"
+            fi
+            find "$task_root" -mindepth 1 -delete
+            rmdir "$task_root"
+          }
+          trap cleanup EXIT
+          trap 'exit 129' HUP
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          export GOCACHE="$task_root/gocache"
+          export GOMODCACHE="$task_root/modcache"
+          export GOENV=off
+          go test ./internal/filesystem ./internal/fix -count=1 -timeout=2m
+          go test ./internal/cli \
+            -run='^(TestRunWriteFormatsFileAndPreservesPermissions|TestRunFormatWriteCannotEscapeRootThroughParentSymlinkRace|TestRunLintAppliesRedundantNilCheckSafeFixIdempotently|TestRunLintFixRefusesPathThroughSymlinkedDirectory)$' \
+            -count=1 \
+            -timeout=2m
+        working-directory: ${{ github.workspace }}/glippy
       - name: Measure release budgets
         shell: bash
         env:
