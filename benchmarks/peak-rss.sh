@@ -76,6 +76,12 @@ if [ ! -r "$peak_rss_select_command" ]; then
 		"$peak_rss_select_command" >&2
 	exit 1
 fi
+peak_rss_sample_command=$script_dir/peak-rss-sample.sh
+if [ ! -r "$peak_rss_sample_command" ]; then
+	printf 'peak-RSS sample command is not readable: %s\n' \
+		"$peak_rss_sample_command" >&2
+	exit 1
+fi
 format_root_input=${GLIPPY_PEAK_RSS_FORMAT_ROOT:-$repo_root}
 if [ ! -d "$format_root_input" ]; then
 	printf 'GLIPPY_PEAK_RSS_FORMAT_ROOT is not a directory: %s\n' \
@@ -258,39 +264,33 @@ measure() {
 				else
 					sample_status=$?
 				fi
-				if [ "$sample_status" -ne 0 ]; then
-					if [ "$sample_status" -eq 5 ] &&
-						! kill -0 "$measurement_pid" 2>/dev/null; then
-						if [ "$peak" -gt 0 ]; then
-							printf '%s\n' "$peak" >"$tree_peak_output"
-						else
-							printf '%s\n' missed >"$tree_peak_output"
-						fi
-						exit 0
-					fi
+				if ! decision=$(sh "$peak_rss_sample_command" \
+					"$sample_status" "$current" "$peak" 2>/dev/null); then
 					printf '%s\n' failed >"$tree_peak_output"
 					exit 0
 				fi
-				case "$current" in
-				''|*[!0-9]*)
+				decision_kind=${decision%% *}
+				decision_value=${decision#* }
+				case "$decision_kind" in
+				complete)
+					printf '%s\n' "$decision_value" >"$tree_peak_output"
+					exit 0
+					;;
+				continue)
+					peak=$decision_value
+					;;
+				*)
 					printf '%s\n' failed >"$tree_peak_output"
 					exit 0
 					;;
 				esac
-				if [ "$current" -le 0 ]; then
-					printf '%s\n' failed >"$tree_peak_output"
-					exit 0
-				fi
-				if [ "$current" -gt "$peak" ]; then
-					peak=$current
-				fi
 				if [ ! -f "$tree_sample_ready" ]; then
 					: >"$tree_sample_ready"
 				fi
 				sleep 0.01
 			done
 			if [ "$peak" -le 0 ]; then
-				printf '%s\n' failed >"$tree_peak_output"
+				printf '%s\n' missed >"$tree_peak_output"
 			else
 				printf '%s\n' "$peak" >"$tree_peak_output"
 			fi
