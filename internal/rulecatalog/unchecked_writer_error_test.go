@@ -356,9 +356,18 @@ func TestUncheckedWriterErrorExcludesRedundantDeferredTarClose(t *testing.T) {
 import (
 	"archive/tar"
 	"bytes"
+	"testing"
 )
 
 func observe(error, ...string) {}
+
+type tarWriterWrapper struct {
+	*tar.Writer
+}
+
+func (wrapper *tarWriterWrapper) replace(writer *tar.Writer) {
+	wrapper.Writer = writer
+}
 
 var packageOutput bytes.Buffer
 var packageWriter = tar.NewWriter(&packageOutput)
@@ -385,6 +394,58 @@ func checkedAfterReportedWrite() {
 	}
 	observe(reportedWriter.Close(), "archive")
 	_ = output.Bytes()
+}
+
+func checkedInIfInitializer(t *testing.T) {
+	var output bytes.Buffer
+	mobyWriter := tar.NewWriter(&output)
+	defer mobyWriter.Close()
+	if err := mobyWriter.WriteHeader(&tar.Header{Name: "entry"}); err != nil {
+		t.Fatalf("write header: %v", err)
+	}
+	if err := mobyWriter.Close(); err != nil {
+		t.Fatalf("close archive: %v", err)
+	}
+	_ = output.Bytes()
+}
+
+func nonTerminatingErrorCheck(t *testing.T) {
+	var output bytes.Buffer
+	nonTerminatingWriter := tar.NewWriter(&output)
+	defer nonTerminatingWriter.Close()
+	if err := nonTerminatingWriter.Close(); err != nil {
+		t.Errorf("close archive: %v", err)
+	}
+}
+
+func reversedErrorCheck(t *testing.T) {
+	var output bytes.Buffer
+	reversedWriter := tar.NewWriter(&output)
+	defer reversedWriter.Close()
+	if err := reversedWriter.Close(); err == nil {
+		t.Fatalf("close archive unexpectedly succeeded")
+	}
+}
+
+func conditionalFailure(t *testing.T, fail bool) {
+	var output bytes.Buffer
+	conditionalFailureWriter := tar.NewWriter(&output)
+	defer conditionalFailureWriter.Close()
+	if err := conditionalFailureWriter.Close(); err != nil {
+		if fail {
+			t.Fatalf("close archive: %v", err)
+		}
+	}
+}
+
+func promotedCloseAfterReplacement(t *testing.T) {
+	var output bytes.Buffer
+	wrapper := &tarWriterWrapper{Writer: tar.NewWriter(&output)}
+	defer wrapper.Close()
+	wrapper.replace(tar.NewWriter(&output))
+	if err := wrapper.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func conditionalClose(shouldClose bool) {
@@ -455,6 +516,10 @@ func mutablePackageReceiver() {
 		input,
 		result,
 		[]string{
+			"nonTerminatingWriter.Close()",
+			"reversedWriter.Close()",
+			"conditionalFailureWriter.Close()",
+			"wrapper.Close()",
 			"conditionalWriter.Close()",
 			"earlyWriter.Close()",
 			"first.Close()",

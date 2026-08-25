@@ -503,6 +503,9 @@ func observedTarWriterCloses(info *types.Info, statement ast.Stmt) []*ast.CallEx
 	if info == nil || statement == nil {
 		return nil
 	}
+	if observed := tarWriterCloseHandledByTestingFailure(info, statement); observed != nil {
+		return []*ast.CallExpr{observed}
+	}
 	expression, _ := statement.(*ast.ExprStmt)
 	if expression == nil {
 		return nil
@@ -534,6 +537,66 @@ func observedTarWriterCloses(info *types.Info, statement ast.Stmt) []*ast.CallEx
 		)
 	}
 	return observed
+}
+
+func tarWriterCloseHandledByTestingFailure(info *types.Info, statement ast.Stmt) *ast.CallExpr {
+	ifStatement, _ := statement.(*ast.IfStmt)
+	if ifStatement == nil ||
+		ifStatement.Else != nil ||
+		len(ifStatement.Body.List) != 1 ||
+		!isDirectTestingFailureStatement(info, ifStatement.Body.List[0]) {
+		return nil
+	}
+	assignment, _ := ifStatement.Init.(*ast.AssignStmt)
+	if assignment == nil ||
+		assignment.Tok != token.DEFINE ||
+		len(assignment.Lhs) != 1 ||
+		len(assignment.Rhs) != 1 {
+		return nil
+	}
+	errorIdentifier, _ := ast.Unparen(assignment.Lhs[0]).(*ast.Ident)
+	close, _ := ast.Unparen(assignment.Rhs[0]).(*ast.CallExpr)
+	if errorIdentifier == nil || errorIdentifier.Name == "_" || close == nil {
+		return nil
+	}
+	if _, matched := exactTarWriterCloseReceiver(info, close); !matched ||
+		!exactTarWriterMethodValueCall(info, close) {
+		return nil
+	}
+	errorObject := info.Defs[errorIdentifier]
+	condition, _ := ast.Unparen(ifStatement.Cond).(*ast.BinaryExpr)
+	if errorObject == nil ||
+		condition == nil ||
+		condition.Op != token.NEQ ||
+		!objectComparedWithNil(info, condition.X, condition.Y, errorObject) &&
+			!objectComparedWithNil(info, condition.Y, condition.X, errorObject) {
+		return nil
+	}
+	return close
+}
+
+func exactTarWriterMethodValueCall(info *types.Info, call *ast.CallExpr) bool {
+	if info == nil || call == nil {
+		return false
+	}
+	selector, _ := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	selection := info.Selections[selector]
+	if selector == nil || selection == nil || selection.Kind() != types.MethodVal {
+		return false
+	}
+	pointer, _ := types.Unalias(info.TypeOf(selector.X)).(*types.Pointer)
+	return pointer != nil && namedReceiver(pointer, "archive/tar", "Writer")
+}
+
+func objectComparedWithNil(
+	info *types.Info,
+	objectExpression ast.Expr,
+	nilExpression ast.Expr,
+	object types.Object,
+) bool {
+	identifier, _ := ast.Unparen(nilExpression).(*ast.Ident)
+	nilBuiltin, _ := info.ObjectOf(identifier).(*types.Nil)
+	return nilBuiltin != nil && directObject(info, objectExpression) == object
 }
 
 func writerStatementMayBypassFollowing(statement ast.Stmt) bool {
