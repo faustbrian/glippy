@@ -7,6 +7,10 @@ community-adoption program.
 
 ## v0.6: Real-World Rule Validation
 
+Status: complete. The exact evidence and accepted boundaries are recorded in
+the [v0.6 exit audit](research/v0.6-exit-audit-2026-08-25.md). Stable-v1
+roadmap progress is 65%, with v0.7 now active.
+
 - Run the pinned public-repository corpus with `default`, `recommended`,
   `strict`, and `pedantic`.
 - Manually adjudicate every default and recommended finding.

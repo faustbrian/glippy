@@ -2,6 +2,11 @@
 
 - Original Phase 0-5 progress: 100%
 - Active development: post-v0.1 Clippy-comparability expansion
+- Stable-v1 roadmap progress: 65%
+- Active stable-v1 milestone: v0.7 semantic depth and credible fixes
+- v0.6 real-world rule validation: complete at analyzed revision `ee2ea4f`;
+  exact corpus run `32723865179`, attempt 2, passed all 20 jobs and classified
+  all 386 default and recommended entries
 - v0.5 typed peak RSS gate: aggregate process-tree behavior unproven; runtime
   probes excluded until a non-disruptive evidence policy exists
 - v0.5 typed retained-memory attribution: complete
@@ -51,7 +56,8 @@
 
 The sections below retain chronological evidence from earlier checkpoints.
 Embedded progress statements describe those checkpoints. Post-v0.1 expansion
-does not reopen the completed original phase scale and has no percentage gate.
+does not reopen the completed original phase scale; its separate stable-v1
+roadmap progress is tracked above.
 
 Successive independent reviews found material gaps in aggregate process-tree
 RSS accounting and interruption ownership, bounded LSP supersession and
@@ -2964,3 +2970,23 @@ rule-queue entries: `ineffective-assignment` across four repositories and
 with 12 unresolved profile or comparator units belonging to CockroachDB,
 Go-Ethereum, go-sqlite3, Kubernetes, and Moby. The latest exact corpus rerun is
 still required, so stable-v1 progress remains 55% inside v0.6.
+
+Pinned corpus run `32723865179`, attempt 2, supersedes that incomplete
+candidate at exact analyzed revision `ee2ea4f`. All 20 GitHub Actions jobs
+passed, including 17 repository audits and combined evidence collection. The
+canonical adjudication classifies all 386 default and recommended entries:
+default contains 66 true positives, 26 false positives, one duplicate-vet
+entry, and 15 duplicate-Staticcheck entries; recommended contains 229 true
+positives, 33 false positives, one duplicate-vet entry, and 15
+duplicate-Staticcheck entries. Exact reconciliation carried 159 unique prior
+fingerprints, removed 27 unique superseded fingerprints, and added 119
+manually reviewed Kubernetes fingerprints. The corrected Kubernetes analysis
+completed all four profiles and removes the prior crash gap. Nine gaps remain:
+five comparator-backed missed-defect gaps queued as `ineffective-assignment` and
+`exact-suffix-as-cutset`, plus four explicitly scoped unsupported source,
+generated-build, or cgo-analysis boundaries. Ten incomplete profile or
+comparator units remain attached to those accepted boundaries; no finding is
+unclassified. This closes v0.6 and advances stable-v1 roadmap progress to 65%
+with v0.7 active. Aggregate allocated-byte measurements are recorded, while
+stable cross-platform peak-RSS budgets remain a v0.8 requirement. No public
+corpus repository was modified, and no tag or release was created.
