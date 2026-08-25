@@ -45,6 +45,7 @@ jobs:
 
           export GOCACHE="$task_root/gocache"
           export GOMODCACHE="$task_root/modcache"
+          export GLIPPY_CACHE_DIR="$task_root/glippy-cache"
           export GOENV=off
           export GOTOOLCHAIN=local
 
@@ -57,6 +58,21 @@ jobs:
           go vet "${packages[@]}"
           go mod tidy -diff
           go build -o "$task_root/glippy" ./cmd/glippy
+          cp -R testdata/upgrade "$task_root/upgrade"
+          (
+            cd "$task_root/upgrade/gox-v0.1.0"
+            configuration_output=$("$task_root/glippy" config check .)
+            test "$configuration_output" = \
+              "configuration valid: $PWD/.gox.toml (discovered)"
+            "$task_root/glippy" check ./...
+          )
+          (
+            cd "$task_root/upgrade/early-glippy"
+            configuration_output=$("$task_root/glippy" config check .)
+            test "$configuration_output" = \
+              "configuration valid: $PWD/.glippy.toml (discovered)"
+            "$task_root/glippy" check ./...
+          )
           go test -tags=glippy_runtime_probes -c \
             -o "$task_root/benchmarks.test" ./benchmarks
           go build -o "$task_root/process-group" ./benchmarks/cmd/process-group
