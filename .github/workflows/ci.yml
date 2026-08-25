@@ -50,7 +50,7 @@ jobs:
           mapfile -t packages < "$package_list"
           test "${#packages[@]}" -gt 0
           go test "${packages[@]}" -count=1
-          go test -race "${packages[@]}" -count=1
+          go test -race -p=1 "${packages[@]}" -count=1
           go vet "${packages[@]}"
           go mod tidy -diff
           go build -o "$task_root/glippy" ./cmd/glippy
