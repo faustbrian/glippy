@@ -70,6 +70,12 @@ if [ ! -x "$process_tree_rss_command" ]; then
 		"$process_tree_rss_command" >&2
 	exit 1
 fi
+peak_rss_select_command=$script_dir/peak-rss-select.sh
+if [ ! -r "$peak_rss_select_command" ]; then
+	printf 'peak-RSS selection command is not readable: %s\n' \
+		"$peak_rss_select_command" >&2
+	exit 1
+fi
 format_root_input=${GLIPPY_PEAK_RSS_FORMAT_ROOT:-$repo_root}
 if [ ! -d "$format_root_input" ]; then
 	printf 'GLIPPY_PEAK_RSS_FORMAT_ROOT is not a directory: %s\n' \
@@ -254,9 +260,12 @@ measure() {
 				fi
 				if [ "$sample_status" -ne 0 ]; then
 					if [ "$sample_status" -eq 5 ] &&
-						[ "$peak" -gt 0 ] &&
 						! kill -0 "$measurement_pid" 2>/dev/null; then
-						printf '%s\n' "$peak" >"$tree_peak_output"
+						if [ "$peak" -gt 0 ]; then
+							printf '%s\n' "$peak" >"$tree_peak_output"
+						else
+							printf '%s\n' missed >"$tree_peak_output"
+						fi
 						exit 0
 					fi
 					printf '%s\n' failed >"$tree_peak_output"
@@ -385,19 +394,10 @@ measure() {
 			exit 1
 			;;
 		esac
-		case "$sampled_peak_bytes" in
-		''|*[!0-9]*)
-			printf '%s\n' 'process-tree RSS sampling failed' >&2
+		if ! peak_bytes=$(sh "$peak_rss_select_command" \
+			"$reported_peak_bytes" "$sampled_peak_bytes"); then
+			printf '%s\n' 'peak RSS selection failed' >&2
 			exit 1
-			;;
-		esac
-		if [ "$sampled_peak_bytes" -le 0 ]; then
-			printf '%s\n' 'process-tree RSS sampling produced no positive sample' >&2
-			exit 1
-		fi
-		peak_bytes=$reported_peak_bytes
-		if [ "$sampled_peak_bytes" -gt "$peak_bytes" ]; then
-			peak_bytes=$sampled_peak_bytes
 		fi
 		if [ "$peak_bytes" -gt "$budget_bytes" ]; then
 			printf '%s peak RSS budget exceeded: %s bytes > %s bytes\n' \

@@ -398,7 +398,10 @@ probe. Results are emitted as CSV with aggregate process-tree peak RSS
 normalized to bytes on Darwin and Linux. `GLIPPY_PEAK_RSS_RUNS` may select a
 different positive sample count. Process-tree sampling runs every 10
 milliseconds, so the aggregate value is a sampled peak rather than a
-continuous measurement.
+continuous measurement. If a completed short-lived process exits before the
+first aggregate sample, the probe retains the positive `/usr/bin/time` peak
+instead; malformed or zero time output and every other sampler failure still
+fail the measurement.
 Each measured command runs behind a wrapper that signals only its exact direct
 child. It deliberately does not claim descendant cleanup or process-group
 containment. Automatic CI compiles the wrapper and syntax-checks these scripts
