@@ -19,6 +19,7 @@ const AdjudicationReportSchemaVersion = 1
 
 var findingClassifications = []string{
 	"true-positive",
+	"intentional",
 	"false-positive",
 	"duplicate-vet",
 	"duplicate-staticcheck",

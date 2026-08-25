@@ -87,13 +87,18 @@ func TestBuildAdjudicationReportAggregatesClassificationsMeasurementsAndRuleQueu
 	)
 	resultDigest := fileDigest(t, filepath.Join(options.OutputRoot, "alpha", "result.json"))
 	adjudication := []byte(
-		adjudicationJSON(
-			t,
-			manifestInput,
-			options.OutputRoot,
-			resultDigest,
-			defaultFingerprint,
-			recommendedFingerprint,
+		strings.Replace(
+			adjudicationJSON(
+				t,
+				manifestInput,
+				options.OutputRoot,
+				resultDigest,
+				defaultFingerprint,
+				recommendedFingerprint,
+			),
+			`"classification": "true-positive"`,
+			`"classification": "intentional"`,
+			1,
 		),
 	)
 
@@ -161,7 +166,7 @@ func TestBuildAdjudicationReportAggregatesClassificationsMeasurementsAndRuleQueu
 		classification string
 		count int
 	}{
-		{profile: "default", classification: "true-positive", count: 1},
+		{profile: "default", classification: "intentional", count: 1},
 		{profile: "recommended", classification: "duplicate-staticcheck", count: 1},
 	}
 	if len(document.Classifications) != len(wantClassifications) {

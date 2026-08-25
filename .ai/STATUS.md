@@ -3024,3 +3024,14 @@ diagnostics. The native effect schema and cache component advance to version 16.
 This targets the two containerd progress-writer false positives without hiding
 the separately fallible progress flushes. Stable-v1 progress remains 65% until
 the remaining tar-writer and interaction gates pass.
+
+The remaining containerd fuzz tar finding is now scoped as an accurate but
+intentional diagnostic rather than a precision false positive. The fuzz target
+consumes its in-memory buffer before deferred tar finalization, discards the
+close result, and deliberately accepts malformed archive material. Corpus
+adjudication now supports `intentional` separately from `false-positive`; Glippy
+does not guess intent from test or fuzz paths, and an upstream repository would
+use the ordinary narrow suppression contract to hide such a finding. This
+removes the unsound proposal to suppress deferred in-memory tar closes, which
+can still fail on incomplete entry state. Stable-v1 progress remains 65% until
+the v0.7 interaction gate passes.

@@ -93,6 +93,7 @@ Replace every `unresolved` classification that can be decided and retain a
 specific reason for every finding. Supported classifications are:
 
 - `true-positive`;
+- `intentional` for an accurate diagnostic on deliberately accepted source;
 - `false-positive`;
 - `duplicate-vet`;
 - `duplicate-staticcheck`;

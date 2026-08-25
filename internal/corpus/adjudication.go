@@ -660,6 +660,7 @@ func validateFindingReferences(findings []findingAdjudication) error {
 		}
 		switch finding.Classification {
 		case "true-positive",
+			"intentional",
 			"false-positive",
 			"duplicate-vet",
 			"duplicate-staticcheck",
