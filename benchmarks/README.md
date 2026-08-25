@@ -585,8 +585,9 @@ The release workflow also checks out `sqlc-dev/sqlc` at
 `8a7cddfbb9088666eb981645285d7699e71dcb54` and runs the default correctness
 policy plus `-Wsuspicious` within a 105-second and 3-GiB ceiling on every
 native runner. Darwin arm64 additionally binds normalized diagnostic SHA-256
-`13f9c3dd006a105196c13f766a1c849a882754b3083979e9386c78cc2fdb53d2` until a
-replacement is exact-diff adjudicated. Supplying the optional
+`77f989f585934478c95acff13a0671521696ad036b9430f033968bcd203baba7`, accepted
+after exact comparison run `32809489235` proved that only the two intended
+precision corrections changed diagnostic identity. Supplying the optional
 `diagnostic_comparison_revision` dispatch input skips resource measurement and
 retains normalized historical and current Darwin arm64 typed outputs plus their
 unified diff. The other native targets retain their budget summaries; their

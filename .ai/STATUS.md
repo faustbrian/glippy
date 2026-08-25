@@ -3147,3 +3147,24 @@ ceiling, while the prior exact campaign ranged from 35.390 to 70.130 seconds;
 one marginal observation does not justify widening the budget. A fresh
 four-runner campaign at the final correction must still pass completely, so
 v0.8 remains active at 75%.
+
+Exact comparison workflow `32809489235` passed at current revision `344dc3d`,
+historical revision `835a296`, typed revision `8a7cddf`, and Go 1.26.5 on
+native Darwin arm64. It reproduced historical fingerprint `13f9c3dd...fdb53d2`
+and current fingerprint `77f989f5...baba7`; the retained 32-line unified diff
+has SHA-256 `6c265a40...479723d`. Its only changes are removal of the impossible
+`nil-error-wrap` at SQLC `internal/cmd/parse.go:131` and the source-proven
+infallible-buffer `unchecked-writer-error` at
+`internal/codegen/golang/gen.go:252`. No other diagnostic identity, range,
+message, or ordering changed. The replacement fingerprint is accepted and
+bound for the next complete native campaign.
+
+SQLC corpus workflow `32808812849` also passed at exact Glippy revision
+`f720881` and SQLC revision `99a7d7d`. The source-fidelity audit completed all
+619 selected files without an internal or equivalence error, including the
+label-comment regression; 479 files have intentional canonical layout
+differences. Safe-fix preview completed without mutation. Default remained
+clean, recommended retained the three adjudicated `unchecked-scanner-error`
+findings, and strict and pedantic completed with 392 and 441 findings. The
+four-runner release-budget rerun remains the active v0.8 resource gate, so
+stable-v1 progress remains 75%.
