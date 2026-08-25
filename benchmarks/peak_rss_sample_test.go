@@ -10,51 +10,51 @@ func TestPeakRSSSampleSelection(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		status  string
+		name string
+		status string
 		current string
-		peak    string
-		want    string
+		peak string
+		want string
 		wantErr string
 	}{
 		{
-			name:    "continues with a larger current sample",
-			status:  "0",
+			name: "continues with a larger current sample",
+			status: "0",
 			current: "8192",
-			peak:    "4096",
-			want:    "continue 8192\n",
+			peak: "4096",
+			want: "continue 8192\n",
 		},
 		{
-			name:    "retains the peak through zero until parent completion",
-			status:  "0",
+			name: "retains the peak through zero until parent completion",
+			status: "0",
 			current: "0",
-			peak:    "4096",
-			want:    "continue 4096\n",
+			peak: "4096",
+			want: "continue 4096\n",
 		},
 		{
-			name:   "completes when the root leaves the snapshot",
+			name: "completes when the root leaves the snapshot",
 			status: "5",
-			peak:   "4096",
-			want:   "complete 4096\n",
+			peak: "4096",
+			want: "complete 4096\n",
 		},
 		{
-			name:   "records a missed tree for an unobserved short process",
+			name: "records a missed tree for an unobserved short process",
 			status: "5",
-			peak:   "0",
-			want:   "complete missed\n",
+			peak: "0",
+			want: "complete missed\n",
 		},
 		{
-			name:    "waits for parent completion before a short-process fallback",
-			status:  "0",
+			name: "waits for parent completion before a short-process fallback",
+			status: "0",
 			current: "0",
-			peak:    "0",
-			want:    "continue 0\n",
+			peak: "0",
+			want: "continue 0\n",
 		},
 		{
-			name:    "rejects a failed snapshot",
-			status:  "3",
+			name: "rejects a failed snapshot",
+			status: "3",
 			current: "",
-			peak:    "4096",
+			peak: "4096",
 			wantErr: "process-tree RSS sampling failed",
 		},
 	}
