@@ -90,6 +90,16 @@ single large analysis degrades into recorded incomplete evidence instead of
 exhausting the isolated CI worker. This is a harness containment policy, not a
 release peak-memory budget.
 
+Each repository audit has a 180-minute job ceiling. The previous 120-minute
+ceiling was rejected by pinned Kubernetes run `32832151515`: formatter,
+safe-fix preview, all four Glippy profiles, and `go vet` completed, but the
+final Staticcheck comparison was cancelled at the job boundary. The prior
+lint-only Kubernetes audit completed in about 95 minutes, and the four current
+Glippy profile durations remained within about 3% of that accepted run. The
+wider ceiling accounts for the subsequently added formatter and fixer evidence;
+it is a cancellation bound, not a latency budget or an allowance for unbounded
+work.
+
 An `all` run also collects the exact-run repository artifacts and initial
 adjudication template into one review bundle. The aggregate report is generated
 only after the required manual classifications and incomplete-run gaps have

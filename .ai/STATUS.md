@@ -14,6 +14,10 @@
   reproducibility; stable ceilings are 250 ms editor latency, 120 s formatter
   latency, 2 GiB aggregate formatter RSS, 240 s typed latency, and 3 GiB
   aggregate typed RSS for the pinned workloads
+- v0.8 corpus runtime bound: exploratory run `32832151515` proved that the
+  formatter, safe-fix preview, four profiles, and `go vet` complete for pinned
+  Kubernetes before the former 120-minute job ceiling, which cancelled the
+  final Staticcheck comparison; the bounded ceiling is now 180 minutes
 - v0.5 typed retained-memory attribution: complete
 - v0.5 exact printf fact isolation and 2 GiB reference-host gate: complete
 - v0.5 bounded incremental workspace-result reuse: complete
@@ -3190,4 +3194,18 @@ three supported native runners before reproducibility was skipped. The
 workflow now provisionally uses a 240-second typed ceiling, leaving 37.9%
 headroom over the largest Go 1.27 observation. A complete exact-candidate
 campaign must still pass all four native jobs and reproducibility, so v0.8
+remains active at 75%.
+
+Exploratory corpus run `32832151515` reached the 120-minute Kubernetes job
+ceiling during its final Staticcheck comparison. Before cancellation, the
+formatter, safe-fix preview, all four Glippy profiles, and `go vet` had
+completed. The four current profile durations were within roughly 1-3% of the
+previous accepted Kubernetes run, whose lint-only audit completed in about 95
+minutes; the added formatter and transactional fixer evidence, rather than a
+profile regression, exhausted the old wall-clock allowance. The corpus job is
+now bounded at 180 minutes. Cancellation also exposed concurrent deletion by
+the runner's deferred cleanup and the workflow cleanup step; exact-root cleanup
+now tolerates entries or the root disappearing concurrently while retaining a
+failure when the owned root still exists after a real deletion error. The
+complete exact corpus still must pass at the final pushed revision, so v0.8
 remains active at 75%.

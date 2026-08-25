@@ -94,7 +94,7 @@ jobs:
     name: Audit ${{ matrix.id }}
     needs: matrix
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -165,9 +165,21 @@ jobs:
         run: |
           set -euo pipefail
           task_root="$GLIPPY_CORPUS_TASK_ROOT"
-          find "$task_root" -type d -exec chmod u+w {} +
-          find "$task_root" -mindepth 1 -delete
-          rmdir "$task_root"
+          if [ -d "$task_root" ]; then
+            find "$task_root" -ignore_readdir_race -type d -exec bash -c '
+              for path in "$@"; do
+                chmod u+w "$path" || [ ! -e "$path" ] || exit 1
+              done
+            ' bash {} + ||
+              test ! -e "$task_root"
+          fi
+          if [ -d "$task_root" ]; then
+            find "$task_root" -ignore_readdir_race -mindepth 1 -delete ||
+              test ! -e "$task_root"
+          fi
+          if [ -d "$task_root" ]; then
+            rmdir "$task_root" || test ! -e "$task_root"
+          fi
 
   collect:
     name: Collect corpus evidence
