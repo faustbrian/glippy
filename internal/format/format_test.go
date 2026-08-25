@@ -1521,6 +1521,32 @@ func TestFormatPreservesStandaloneTopLevelDirectives(t *testing.T) {
 	}
 }
 
+func TestFormatPreservesBlankLinesBetweenTrailingDirectiveGroups(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(
+		"package internal\n\n" +
+			"//go:generate first\n" +
+			"//go:generate second\n\n" +
+			"//go:generate third\n" +
+			"//go:generate fourth\n",
+	)
+	file, err := source.Load("directives.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := glippyformat.File(
+		file,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("File() = %q, want trailing directive groups preserved", got)
+	}
+}
+
 func TestFormatPreservesFieldDocumentationAndTrailingComments(t *testing.T) {
 	t.Parallel()
 

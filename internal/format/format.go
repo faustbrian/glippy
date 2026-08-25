@@ -543,7 +543,7 @@ func (l *lowerer) file(file *ast.File) (doc.ID, error) {
 			parts,
 			l.arena.HardLine(),
 			l.arena.HardLine(),
-			l.commentsDocument(suffix),
+			l.boundaryCommentsBody(suffix),
 		)
 	}
 	if err := l.validateCommentAccounting(); err != nil {
