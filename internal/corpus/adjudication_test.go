@@ -119,6 +119,12 @@ func TestBuildAdjudicationReportAggregatesClassificationsMeasurementsAndRuleQueu
 			Gaps int `json:"gaps"`
 			Unresolved int `json:"unresolved"`
 		} `json:"summary"`
+		Formatter struct {
+			Repositories int `json:"repositories"`
+			CompleteRepositories int `json:"complete_repositories"`
+			Files int `json:"files"`
+			Differences int `json:"differences"`
+		} `json:"formatter"`
 		Classifications []struct {
 			Profile string `json:"profile"`
 			Classification string `json:"classification"`
@@ -154,12 +160,18 @@ func TestBuildAdjudicationReportAggregatesClassificationsMeasurementsAndRuleQueu
 	if err := json.Unmarshal(report, &document); err != nil {
 		t.Fatal(err)
 	}
-	if document.SchemaVersion != 1 ||
+	if document.SchemaVersion != 2 ||
 		document.Summary.Repositories != 1 ||
 		document.Summary.Findings != 2 ||
 		document.Summary.Gaps != 1 ||
 		document.Summary.Unresolved != 0 {
 		t.Fatalf("report summary = %#v", document.Summary)
+	}
+	if document.Formatter.Repositories != 1 ||
+		document.Formatter.CompleteRepositories != 1 ||
+		document.Formatter.Files != 1 ||
+		document.Formatter.Differences != 1 {
+		t.Fatalf("formatter summary = %#v", document.Formatter)
 	}
 	wantClassifications := []struct {
 		profile string
@@ -591,6 +603,104 @@ func TestAdjudicationTracksIncompleteProfilesAsUnresolvedEvidence(t *testing.T) 
 	}
 }
 
+func TestAdjudicationTracksIncompleteFormatterAsUnresolvedEvidence(t *testing.T) {
+	t.Parallel()
+
+	manifestInput := []byte(singleRepositoryManifestJSON())
+	manifest, err := corpus.ParseManifest(manifestInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, options, executor, _ := newRunFixture(t)
+	executor.formatOutput = []byte("formatter crashed\n")
+	executor.formatExitCode = 6
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	template, err := corpus.BuildAdjudicationTemplate(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(template), `"incomplete_format": true`) {
+		t.Fatalf("template does not record incomplete formatter: %s", template)
+	}
+	if _, err := corpus.ValidateAdjudication(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		template,
+	);
+		err == nil || !strings.Contains(err.Error(), "formatter-sourced") {
+		t.Fatalf("ValidateAdjudication() error = %v, want required formatter gap", err)
+	}
+
+	var document map[string]any
+	if err := json.Unmarshal(template, &document); err != nil {
+		t.Fatal(err)
+	}
+	repositories := document["repositories"].([]any)
+	profiles := repositories[0].(map[string]any)["profiles"].([]any)
+	for _, profile := range profiles {
+		findings := profile.(map[string]any)["findings"].([]any)
+		for _, finding := range findings {
+			entry := finding.(map[string]any)
+			entry["classification"] = "true-positive"
+			entry["reason"] = "confirmed defect"
+		}
+	}
+	document["gaps"] = []any{
+		map[string]any{
+			"id": "alpha-analysis-crash",
+			"repository": "alpha",
+			"source": "manual",
+			"kind": "crash",
+			"summary": "analysis did not complete",
+			"evidence": "alpha/result.json",
+			"disposition": "not-actionable",
+			"rule_id": "",
+			"reason": "does not classify the formatter failure",
+		},
+	}
+	if _, err := corpus.ValidateAdjudication(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		marshalJSONValue(t, document),
+	);
+		err == nil || !strings.Contains(err.Error(), "formatter-sourced") {
+		t.Fatalf("ValidateAdjudication() error = %v, want formatter-sourced gap", err)
+	}
+	document["gaps"] = []any{
+		map[string]any{
+			"id": "alpha-formatter-crash",
+			"repository": "alpha",
+			"source": "formatter",
+			"kind": "crash",
+			"summary": "formatter audit did not complete",
+			"evidence": "alpha/format.txt",
+			"disposition": "not-actionable",
+			"rule_id": "",
+			"reason": "requires a successful isolated rerun",
+		},
+	}
+	summary, err := corpus.ValidateAdjudication(
+		manifest,
+		manifestInput,
+		options.OutputRoot,
+		marshalJSONValue(t, document),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Unresolved != 1 {
+		t.Fatalf("unresolved = %d, want 1", summary.Unresolved)
+	}
+}
+
 func TestAdjudicationTracksCompleteSourceErrorsAsIncompleteEvidence(t *testing.T) {
 	t.Parallel()
 
@@ -920,13 +1030,13 @@ func TestValidateAdjudicationRejectsIncompleteOrNonCanonicalEvidence(t *testing.
 	}{
 		{
 			name: "duplicate field",
-			old: `"schema_version": 2,`,
-			new: `"schema_version": 2, "schema_version": 2,`,
+			old: `"schema_version": 3,`,
+			new: `"schema_version": 3, "schema_version": 3,`,
 			want: "duplicate field",
 		},
 		{
 			name: "case-folded field",
-			old: `"schema_version": 2,`,
+			old: `"schema_version": 3,`,
 			new: `"SCHEMA_VERSION": 1,`,
 			want: "unknown field",
 		},
@@ -1023,8 +1133,8 @@ func TestBuildAdjudicationTemplateRejectsUnboundResultArtifacts(t *testing.T) {
 					replaceFileText(
 						t,
 						filepath.Join(root, "alpha", "result.json"),
-						`"schema_version": 1`,
 						`"schema_version": 2`,
+						`"schema_version": 3`,
 					)
 				},
 				want: "result schema_version",
@@ -1035,8 +1145,8 @@ func TestBuildAdjudicationTemplateRejectsUnboundResultArtifacts(t *testing.T) {
 					replaceFileText(
 						t,
 						filepath.Join(root, "alpha", "result.json"),
-						`"schema_version": 1,`,
-						`"schema_version": 1, "schema_version": 1,`,
+						`"schema_version": 2,`,
+						`"schema_version": 2, "schema_version": 2,`,
 					)
 				},
 				want: "duplicate field",
@@ -1047,8 +1157,8 @@ func TestBuildAdjudicationTemplateRejectsUnboundResultArtifacts(t *testing.T) {
 					replaceFileText(
 						t,
 						filepath.Join(root, "alpha", "result.json"),
-						`"schema_version": 1,`,
-						`"SCHEMA_VERSION": 1,`,
+						`"schema_version": 2,`,
+						`"SCHEMA_VERSION": 2,`,
 					)
 				},
 				want: "unknown field",
@@ -1094,8 +1204,8 @@ func TestBuildAdjudicationTemplateRejectsUnboundResultArtifacts(t *testing.T) {
 					replaceFileText(
 						t,
 						findingsPath,
-						`"schema_version": 1`,
 						`"schema_version": 2`,
+						`"schema_version": 3`,
 					)
 					after, err := os.ReadFile(findingsPath)
 					if err != nil {
@@ -1117,8 +1227,8 @@ func TestBuildAdjudicationTemplateRejectsUnboundResultArtifacts(t *testing.T) {
 					mutateFindingArtifact(
 						t,
 						root,
-						`"schema_version": 1,`,
-						`"schema_version": 1, "schema_version": 1,`,
+						`"schema_version": 2,`,
+						`"schema_version": 2, "schema_version": 2,`,
 					)
 				},
 				want: "duplicate field",
@@ -1129,8 +1239,8 @@ func TestBuildAdjudicationTemplateRejectsUnboundResultArtifacts(t *testing.T) {
 					mutateFindingArtifact(
 						t,
 						root,
-						`"schema_version": 1,`,
-						`"SCHEMA_VERSION": 1,`,
+						`"schema_version": 2,`,
+						`"SCHEMA_VERSION": 2,`,
 					)
 				},
 				want: "unknown field",
@@ -1160,13 +1270,101 @@ func TestBuildAdjudicationTemplateRejectsUnboundResultArtifacts(t *testing.T) {
 				want: "diagnostic inventory mismatch",
 			},
 			{
+				name: "formatter status count mismatch",
+				mutate: func(t *testing.T, root string) {
+					mutateFormatterArtifact(
+						t,
+						root,
+						`"status": "different"`,
+						`"status": "unchanged"`,
+					)
+				},
+				want: "formatter difference count",
+			},
+			{
+				name: "formatter outcome mismatch",
+				mutate: func(t *testing.T, root string) {
+					mutateFormatterArtifact(
+						t,
+						root,
+						`"category": "findings"`,
+						`"category": "success"`,
+					)
+				},
+				want: "formatter outcome",
+			},
+			{
+				name: "formatter complete errors",
+				mutate: func(t *testing.T, root string) {
+					mutateFormatterDocument(
+						t,
+						root,
+						func(report, _ map[string]any) {
+							report["errors"] = []any{
+								map[string]any{"message": "failed"},
+							}
+						},
+					)
+				},
+				want: "formatter files or errors",
+			},
+			{
+				name: "formatter duplicate path",
+				mutate: func(t *testing.T, root string) {
+					mutateFormatterDocument(
+						t,
+						root,
+						func(report, result map[string]any) {
+							files := report["files"].([]any)
+							report["files"] = append(files, files[0])
+							report["summary"].(map[string]any)["files"] = float64(
+									2,
+								)
+							report["summary"].(map[string]any)["changed"] = float64(
+									2,
+								)
+							result["file_count"] = float64(2)
+							result["difference_count"] = float64(2)
+						},
+					)
+				},
+				want: "formatter file ordering",
+			},
+			{
+				name: "formatter noncanonical path",
+				mutate: func(t *testing.T, root string) {
+					mutateFormatterArtifact(
+						t,
+						root,
+						`"path": "sample.go"`,
+						`"path": "../sample.go"`,
+					)
+				},
+				want: "formatter file ordering",
+			},
+			{
+				name: "formatter digest mismatch",
+				mutate: func(t *testing.T, root string) {
+					if err := os.WriteFile(
+						filepath.Join(root, "alpha", "format.json"),
+						[]byte("{}\n"),
+						0o600,
+					);
+						err != nil {
+						t.Fatal(err)
+					}
+				},
+				want: "formatter report digest mismatch",
+			},
+			{
 				name: "invalid diagnostics",
 				mutate: func(t *testing.T, root string) {
-					replaceFileText(
+					mutateResultProfile(
 						t,
-						filepath.Join(root, "alpha", "result.json"),
-						`"valid_json": true`,
-						`"valid_json": false`,
+						root,
+						func(profile map[string]any) {
+							profile["diagnostics"].(map[string]any)["valid_json"] = false
+						},
 					)
 				},
 				want: "diagnostic artifact",
@@ -1268,6 +1466,52 @@ func mutateFindingArtifact(t *testing.T, root, old, replacement string) {
 	replaceFileText(t, filepath.Join(root, "alpha", "result.json"), beforeDigest, afterDigest)
 }
 
+func mutateFormatterArtifact(t *testing.T, root, old, replacement string) {
+	t.Helper()
+	formatPath := filepath.Join(root, "alpha", "format.json")
+	beforeDigest := fileDigest(t, formatPath)
+	replaceFileText(t, formatPath, old, replacement)
+	afterDigest := fileDigest(t, formatPath)
+	replaceFileText(t, filepath.Join(root, "alpha", "result.json"), beforeDigest, afterDigest)
+}
+
+func mutateFormatterDocument(
+	t *testing.T,
+	root string,
+	mutate func(map[string]any, map[string]any),
+) {
+	t.Helper()
+	formatPath := filepath.Join(root, "alpha", "format.json")
+	formatInput, err := os.ReadFile(formatPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report map[string]any
+	if err := json.Unmarshal(formatInput, &report); err != nil {
+		t.Fatal(err)
+	}
+	resultPath := filepath.Join(root, "alpha", "result.json")
+	resultInput, err := os.ReadFile(resultPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(resultInput, &result); err != nil {
+		t.Fatal(err)
+	}
+	formatResult := result["format"].(map[string]any)
+	mutate(report, formatResult)
+	encoded := marshalJSONValue(t, report)
+	if err := os.WriteFile(formatPath, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(encoded)
+	formatResult["report"].(map[string]any)["sha256"] = hex.EncodeToString(digest[:])
+	if err := os.WriteFile(resultPath, marshalJSONValue(t, result), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func mutateDiagnosticArtifact(t *testing.T, root, old, replacement string) {
 	t.Helper()
 	diagnosticsPath := filepath.Join(root, "alpha", "default", "diagnostics.json")
@@ -1290,8 +1534,31 @@ func makeDefaultDiagnosticsNonJSON(t *testing.T, root string) {
 	resultPath := filepath.Join(root, "alpha", "result.json")
 	replaceFileText(t, resultPath, `"file": "diagnostics.json"`, `"file": "diagnostics.txt"`)
 	replaceFileText(t, resultPath, beforeDigest, afterDigest)
-	replaceFileText(t, resultPath, `"valid_json": true`, `"valid_json": false`)
-	replaceFileText(t, resultPath, `"complete": true`, `"complete": false`)
+	mutateResultProfile(
+		t,
+		root,
+		func(profile map[string]any) {
+			profile["diagnostics"].(map[string]any)["valid_json"] = false
+			profile["complete"] = false
+		},
+	)
+}
+
+func mutateResultProfile(t *testing.T, root string, mutate func(map[string]any)) {
+	t.Helper()
+	resultPath := filepath.Join(root, "alpha", "result.json")
+	input, err := os.ReadFile(resultPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(input, &result); err != nil {
+		t.Fatal(err)
+	}
+	mutate(result["profiles"].([]any)[0].(map[string]any))
+	if err := os.WriteFile(resultPath, marshalJSONValue(t, result), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func makeDefaultDiagnosticsCompleteSourceError(t *testing.T, root, problemField string) {
@@ -1400,7 +1667,7 @@ func adjudicationJSON(
 	}
 	return fmt.Sprintf(
 		`{
-  "schema_version": 2,
+  "schema_version": 3,
   "manifest_sha256": %q,
   "run": {
     "id": "source-aaaaaaaa-run-1",
@@ -1413,6 +1680,7 @@ func adjudicationJSON(
       "id": "alpha",
       "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "result_sha256": %q,
+      "incomplete_format": false,
       "incomplete_profiles": [],
       "incomplete_comparators": [],
       "measurements": [

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -16,7 +17,7 @@ import (
 	"strings"
 )
 
-const AdjudicationSchemaVersion = 2
+const AdjudicationSchemaVersion = 3
 
 var (
 	adjudicationProfiles = []string{"default", "recommended"}
@@ -49,6 +50,7 @@ type repositoryAdjudication struct {
 	ID string `json:"id"`
 	Revision string `json:"revision"`
 	ResultSHA256 string `json:"result_sha256"`
+	IncompleteFormat bool `json:"incomplete_format"`
 	IncompleteProfiles []string `json:"incomplete_profiles"`
 	IncompleteComparators []string `json:"incomplete_comparators"`
 	Measurements []measurementBinding `json:"measurements"`
@@ -121,6 +123,7 @@ var (
 			"id": jsonString,
 			"revision": jsonString,
 			"result_sha256": jsonString,
+			"incomplete_format": jsonBool,
 			"incomplete_profiles": {Element: jsonString},
 			"incomplete_comparators": {Element: jsonString},
 			"measurements": {
@@ -197,6 +200,48 @@ var (
 			"staticcheck": jsonString,
 		},
 	}
+	formatResultShape = &jsonShape{
+		Fields: map[string]*jsonShape{
+			"exit_code": jsonNumber,
+			"report": artifactResultShape,
+			"file_count": jsonNumber,
+			"difference_count": jsonNumber,
+			"complete": jsonBool,
+		},
+	}
+	formatterReportShape = &jsonShape{
+		Fields: map[string]*jsonShape{
+			"schema_version": jsonNumber,
+			"command": jsonString,
+			"mode": jsonString,
+			"outcome": {
+				Fields: map[string]*jsonShape{
+					"category": jsonString,
+					"exit_code": jsonNumber,
+				},
+			},
+			"summary": {
+				Fields: map[string]*jsonShape{
+					"files": jsonNumber,
+					"changed": jsonNumber,
+					"complete": jsonBool,
+				},
+			},
+			"files": {
+				Element: &jsonShape{
+					Fields: map[string]*jsonShape{
+						"path": jsonString,
+						"status": jsonString,
+					},
+				},
+			},
+			"errors": {
+				Element: &jsonShape{
+					Fields: map[string]*jsonShape{"message": jsonString},
+				},
+			},
+		},
+	}
 	profileResultShape = &jsonShape{
 		Fields: map[string]*jsonShape{
 			"profile": jsonString,
@@ -222,6 +267,7 @@ var (
 			"repository": repositoryResultRepositoryShape,
 			"staticcheck_version": jsonString,
 			"tools": toolVersionsShape,
+			"format": formatResultShape,
 			"profiles": {Element: profileResultShape},
 			"comparators": {Element: comparatorResultShape},
 		},
@@ -297,6 +343,12 @@ func ValidateAdjudication(
 				repository.ID,
 			)
 		}
+		if repository.IncompleteFormat != state.IncompleteFormat {
+			return AdjudicationSummary{}, fmt.Errorf(
+				"repository %q incomplete formatter state does not match result",
+				repository.ID,
+			)
+		}
 		if state.Identity != document.Run {
 			return AdjudicationSummary{}, fmt.Errorf(
 				"repository %q corpus run identity does not match adjudication",
@@ -357,6 +409,9 @@ func ValidateAdjudication(
 		}
 		summary.Unresolved += len(repository.IncompleteProfiles)
 		summary.Unresolved += len(repository.IncompleteComparators)
+		if repository.IncompleteFormat {
+			summary.Unresolved++
+		}
 	}
 	return summary, nil
 }
@@ -407,6 +462,7 @@ func BuildAdjudicationTemplate(
 			ID: repository.ID,
 			Revision: repository.Revision,
 			ResultSHA256: resultSHA256,
+			IncompleteFormat: state.IncompleteFormat,
 			IncompleteProfiles: []string{},
 			IncompleteComparators: state.IncompleteComparators,
 			Measurements: make([]measurementBinding, 0, len(corpusProfiles)),
@@ -622,26 +678,45 @@ func (d adjudicationDocument) validate(manifest Manifest, manifestInput []byte) 
 		return err
 	}
 	for _, repository := range d.Repositories {
-		if len(repository.IncompleteProfiles) == 0 &&
-			len(repository.IncompleteComparators) == 0 {
-			continue
-		}
-		hasGap := false
-		for _, gap := range d.Gaps {
-			if gap.Repository == repository.ID &&
-				(gap.Kind == "crash" || gap.Kind == "unsupported-construct") {
-				hasGap = true
-				break
-			}
-		}
-		if !hasGap {
+		if repository.IncompleteFormat &&
+			!hasIncompleteGap(d.Gaps, repository.ID, "formatter") {
 			return fmt.Errorf(
-				"repository %q incomplete profiles require a crash or unsupported-construct gap",
+				"repository %q incomplete formatter evidence requires a formatter-sourced crash or unsupported-construct gap",
+				repository.ID,
+			)
+		}
+		if (len(repository.IncompleteProfiles) != 0 ||
+			len(repository.IncompleteComparators) != 0) &&
+			!hasIncompleteAnalysisGap(d.Gaps, repository.ID) {
+			return fmt.Errorf(
+				"repository %q incomplete profiles or comparators require a crash or unsupported-construct gap",
 				repository.ID,
 			)
 		}
 	}
 	return nil
+}
+
+func hasIncompleteGap(gaps []corpusGap, repository, source string) bool {
+	return slices.ContainsFunc(
+		gaps,
+		func(gap corpusGap) bool {
+			return gap.Repository == repository &&
+				gap.Source == source &&
+				(gap.Kind == "crash" || gap.Kind == "unsupported-construct")
+		},
+	)
+}
+
+func hasIncompleteAnalysisGap(gaps []corpusGap, repository string) bool {
+	return slices.ContainsFunc(
+		gaps,
+		func(gap corpusGap) bool {
+			return gap.Repository == repository &&
+				gap.Source != "formatter" &&
+				(gap.Kind == "crash" || gap.Kind == "unsupported-construct")
+		},
+	)
 }
 
 func validateFindingReferences(findings []findingAdjudication) error {
@@ -701,7 +776,10 @@ func validateCorpusGaps(gaps []corpusGap, repositories map[string]struct{}) erro
 				gap.Repository,
 			)
 		}
-		if !slices.Contains([]string{"manual", "staticcheck", "vet"}, gap.Source) {
+		if !slices.Contains(
+			[]string{"formatter", "manual", "staticcheck", "vet"},
+			gap.Source,
+		) {
 			return fmt.Errorf("gap %q has invalid source %q", gap.ID, gap.Source)
 		}
 		if !slices.Contains(
@@ -755,6 +833,7 @@ func validateCorpusGaps(gaps []corpusGap, repositories map[string]struct{}) erro
 }
 
 type boundResultState struct {
+	IncompleteFormat bool
 	IncompleteComparators []string
 	Identity evidenceIdentity
 }
@@ -822,6 +901,9 @@ func inspectBoundResult(
 			result.RunID,
 		)
 	}
+	if err := validateBoundFormat(repositoryRoot, repository.ID, result.Format); err != nil {
+		return boundResultState{}, err
+	}
 	incomplete, err := validateBoundComparators(
 		repositoryRoot,
 		repository.ID,
@@ -832,6 +914,7 @@ func inspectBoundResult(
 		return boundResultState{}, err
 	}
 	return boundResultState{
+		IncompleteFormat: !result.Format.Complete,
 		IncompleteComparators: incomplete,
 		Identity: evidenceIdentity{
 			ID: result.RunID,
@@ -840,6 +923,141 @@ func inspectBoundResult(
 			Staticcheck: result.Tools.Staticcheck,
 		},
 	}, nil
+}
+
+func validateBoundFormat(repositoryRoot, repositoryID string, result formatResult) error {
+	wantFile := "format.txt"
+	if result.Report.ValidJSON {
+		wantFile = "format.json"
+	}
+	if result.Report.File != wantFile || !digestPattern.MatchString(result.Report.SHA256) {
+		return fmt.Errorf("result for %q has invalid formatter artifact", repositoryID)
+	}
+	input, err := readRegularFile(filepath.Join(repositoryRoot, wantFile))
+	if err != nil {
+		return fmt.Errorf("read formatter report for %q: %w", repositoryID, err)
+	}
+	digest := sha256.Sum256(input)
+	if hex.EncodeToString(digest[:]) != result.Report.SHA256 {
+		return fmt.Errorf("formatter report digest mismatch for %q", repositoryID)
+	}
+	if !result.Report.ValidJSON {
+		if result.FileCount != 0 || result.DifferenceCount != 0 || result.Complete {
+			return fmt.Errorf(
+				"result for %q has invalid incomplete formatter summary",
+				repositoryID,
+			)
+		}
+		return nil
+	}
+	if err := validateJSONShape(
+		input,
+		formatterReportShape,
+		"formatter report for " + repositoryID,
+	);
+		err != nil {
+		return err
+	}
+	var report struct {
+		SchemaVersion int `json:"schema_version"`
+		Command string `json:"command"`
+		Mode string `json:"mode"`
+		Outcome struct {
+			Category string `json:"category"`
+			ExitCode int `json:"exit_code"`
+		} `json:"outcome"`
+		Summary struct {
+			Files int `json:"files"`
+			Changed int `json:"changed"`
+			Complete bool `json:"complete"`
+		} `json:"summary"`
+		Files []struct {
+			Path string `json:"path"`
+			Status string `json:"status"`
+		} `json:"files"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(input, &report); err != nil {
+		return fmt.Errorf("decode formatter report for %q: %w", repositoryID, err)
+	}
+	if report.SchemaVersion != 1 || report.Command != "fmt" || report.Mode != "check" {
+		return fmt.Errorf(
+			"result for %q has invalid formatter report identity",
+			repositoryID,
+		)
+	}
+	if report.Outcome.ExitCode != result.ExitCode ||
+		report.Summary.Files != result.FileCount ||
+		report.Summary.Changed != result.DifferenceCount ||
+		report.Summary.Complete != result.Complete ||
+		result.FileCount < 0 ||
+		result.DifferenceCount < 0 ||
+		result.DifferenceCount > result.FileCount {
+		return fmt.Errorf("result for %q has inconsistent formatter summary", repositoryID)
+	}
+	if result.Complete {
+		if len(report.Errors) != 0 || len(report.Files) != result.FileCount {
+			return fmt.Errorf(
+				"result for %q has inconsistent complete formatter files or errors",
+				repositoryID,
+			)
+		}
+		differences := 0
+		previousPath := ""
+		for index, file := range report.Files {
+			if !canonicalFormatterPath(file.Path) ||
+				index > 0 && previousPath >= file.Path {
+				return fmt.Errorf(
+					"result for %q has noncanonical formatter file ordering",
+					repositoryID,
+				)
+			}
+			previousPath = file.Path
+			switch file.Status {
+			case "different":
+				differences++
+			case "unchanged":
+			default:
+				return fmt.Errorf(
+					"result for %q has invalid complete formatter status %q",
+					repositoryID,
+					file.Status,
+				)
+			}
+		}
+		if differences != result.DifferenceCount {
+			return fmt.Errorf(
+				"result for %q formatter difference count = %d, want %d",
+				repositoryID,
+				differences,
+				result.DifferenceCount,
+			)
+		}
+		wantCategory := "success"
+		wantExitCode := 0
+		if differences != 0 {
+			wantCategory = "findings"
+			wantExitCode = 1
+		}
+		if report.Outcome.Category != wantCategory || result.ExitCode != wantExitCode {
+			return fmt.Errorf(
+				"result for %q has inconsistent complete formatter outcome",
+				repositoryID,
+			)
+		}
+	}
+	return nil
+}
+
+func canonicalFormatterPath(value string) bool {
+	return value != "" &&
+		value != "." &&
+		!strings.Contains(value, "\\") &&
+		!strings.HasPrefix(value, "/") &&
+		!strings.HasPrefix(value, "../") &&
+		path.Clean(value) == value
 }
 
 func loadBoundFindings(

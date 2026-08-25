@@ -87,12 +87,23 @@ func TestRunAuditsProfilesAndComparatorsWithoutMutatingCheckout(t *testing.T) {
 	if !slices.Equal(executor.profiles, wantProfiles) {
 		t.Fatalf("profile execution order = %v, want %v", executor.profiles, wantProfiles)
 	}
-	if executor.vetRuns != 1 || executor.staticcheckRuns != 1 || executor.statusRuns != 2 {
+	if executor.formatRuns != 1 ||
+		executor.vetRuns != 1 ||
+		executor.staticcheckRuns != 1 ||
+		executor.statusRuns != 2 {
 		t.Fatalf(
-			"comparator/status runs = vet %d, staticcheck %d, status %d",
+			"audit/comparator/status runs = format %d, vet %d, staticcheck %d, status %d",
+			executor.formatRuns,
 			executor.vetRuns,
 			executor.staticcheckRuns,
 			executor.statusRuns,
+		)
+	}
+	if executor.formatConfig == "" ||
+		strings.HasPrefix(executor.formatConfig, checkout + string(filepath.Separator)) {
+		t.Fatalf(
+			"formatter configuration path = %q, want task-owned path",
+			executor.formatConfig,
 		)
 	}
 	if !slices.ContainsFunc(
@@ -126,8 +137,18 @@ func TestRunAuditsProfilesAndComparatorsWithoutMutatingCheckout(t *testing.T) {
 	if strings.Contains(string(result), checkout) ||
 		!strings.Contains(string(result), `"run_id": "source-aaaaaaaa-run-1"`) ||
 		!strings.Contains(string(result), `"staticcheck_version": "v0.8.1"`) ||
+		!strings.Contains(string(result), `"difference_count": 1`) ||
+		!strings.Contains(string(result), `"complete": true`) ||
 		!strings.Contains(string(result), `"exit_code": 1`) {
 		t.Fatalf("result artifact = %s", result)
+	}
+	formatReport, err := os.ReadFile(filepath.Join(outputRoot, "alpha", "format.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(formatReport), checkout) ||
+		!strings.Contains(string(formatReport), `"path": "sample.go"`) {
+		t.Fatalf("normalized format report = %s", formatReport)
 	}
 }
 
@@ -230,6 +251,34 @@ func TestRunRejectsDirtyOrMismatchedCheckoutsBeforeAnalysis(t *testing.T) {
 				}
 			},
 		)
+	}
+}
+
+func TestRunRecordsInvalidFormatterMachineOutputAsIncompleteEvidence(t *testing.T) {
+	t.Parallel()
+
+	manifest, options, executor, _ := newRunFixture(t)
+	executor.formatOutput = []byte(
+		`{"schema_version":1,"command":"fmt","mode":"check","outcome":{"exit_code":1},"summary":{"files":1,"changed":1,"complete":true}}`,
+	)
+	executor.formatExitCode = 1
+	if err := corpus.Run(context.Background(), manifest, options); err != nil {
+		t.Fatal(err)
+	}
+	result, err := os.ReadFile(filepath.Join(options.OutputRoot, "alpha", "result.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(result), `"file": "format.txt"`) ||
+		!strings.Contains(string(result), `"complete": false`) {
+		t.Fatalf("result artifact = %s", result)
+	}
+	if _, err := os.Stat(filepath.Join(options.OutputRoot, "alpha", "format.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(options.OutputRoot, "alpha", "format.json"));
+		!os.IsNotExist(err) {
+		t.Fatalf("invalid formatter JSON artifact was retained: %v", err)
 	}
 }
 
@@ -1090,6 +1139,10 @@ type corpusExecutor struct {
 	statuses []string
 	checkout string
 	profiles []string
+	formatRuns int
+	formatConfig string
+	formatOutput []byte
+	formatExitCode int
 	vetRuns int
 	staticcheckRuns int
 	statusRuns int
@@ -1272,6 +1325,41 @@ func (e *corpusExecutor) Run(
 		return corpus.CommandResult{
 			Stdout: []byte(diagnostic),
 			Stderr: []byte(statistics),
+			ExitCode: 1,
+		}, nil
+	case command.Path == "/tools/glippy" &&
+		len(command.Args) == 6 &&
+		slices.Equal(
+			command.Args[:4],
+			[]string{"fmt", "--check", "--reporter=json", "--config"},
+		) &&
+		command.Args[5] == ".":
+		e.formatRuns++
+		configured, err := os.ReadFile(command.Args[4])
+		if err != nil {
+			return corpus.CommandResult{}, err
+		}
+		if string(configured) != "version = 1\n" {
+			return corpus.CommandResult{}, fmt.Errorf(
+				"formatter config %q = %q",
+				command.Args[4],
+				configured,
+			)
+		}
+		e.formatConfig = command.Args[4]
+		if e.formatOutput != nil {
+			return corpus.CommandResult{
+				Stdout: e.formatOutput,
+				ExitCode: e.formatExitCode,
+			}, nil
+		}
+		return corpus.CommandResult{
+			Stdout: []byte(
+				fmt.Sprintf(
+					`{"schema_version":1,"command":"fmt","mode":"check","outcome":{"category":"findings","exit_code":1},"summary":{"files":1,"changed":1,"complete":true},"files":[{"path":%q,"status":"different"}],"errors":[]}`,
+					filepath.Join(command.Dir, "sample.go"),
+				),
+			),
 			ExitCode: 1,
 		}, nil
 	case command.Path == "go" &&

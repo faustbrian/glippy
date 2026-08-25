@@ -15,7 +15,7 @@ import (
 // AdjudicationReportSchemaVersion identifies the deterministic corpus report
 // contract. The report summarizes one exact, validated corpus run without
 // replacing the bound result and adjudication artifacts.
-const AdjudicationReportSchemaVersion = 1
+const AdjudicationReportSchemaVersion = 2
 
 var findingClassifications = []string{
 	"true-positive",
@@ -117,11 +117,19 @@ type adjudicationReport struct {
 	ManifestSHA256 string `json:"manifest_sha256"`
 	Run evidenceIdentity `json:"run"`
 	Summary adjudicationReportSummary `json:"summary"`
+	Formatter formatterReport `json:"formatter"`
 	Classifications []classificationCount `json:"classifications"`
 	GapCounts []gapCount `json:"gap_counts"`
 	Profiles []profileReport `json:"profiles"`
 	Measurements []profileMeasurement `json:"measurements"`
 	RuleQueue []ruleQueueEntry `json:"rule_queue"`
+}
+
+type formatterReport struct {
+	Repositories int `json:"repositories"`
+	CompleteRepositories int `json:"complete_repositories"`
+	Files int `json:"files"`
+	Differences int `json:"differences"`
 }
 
 type adjudicationReportSummary struct {
@@ -249,6 +257,17 @@ func BuildAdjudicationReport(
 	}
 	for repositoryIndex, repository := range manifest.Repositories {
 		adjudicationRepository := document.Repositories[repositoryIndex]
+		formatMeasurement, err := loadFormatMeasurement(
+			resultRoot,
+			repository,
+			adjudicationRepository.ResultSHA256,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if err := addFormatMeasurement(&report.Formatter, formatMeasurement); err != nil {
+			return nil, fmt.Errorf("aggregate formatter: %w", err)
+		}
 		for profileIndex, profile := range corpusProfiles {
 			measurement, err := loadProfileMeasurement(
 				resultRoot,
@@ -272,6 +291,61 @@ func BuildAdjudicationReport(
 		return nil, fmt.Errorf("encode corpus adjudication report: %w", err)
 	}
 	return append(encoded, '\n'), nil
+}
+
+func loadFormatMeasurement(
+	resultRoot string,
+	repository Repository,
+	expectedResultDigest string,
+) (formatResult, error) {
+	resultInput, err := readRegularFile(filepath.Join(resultRoot, repository.ID, "result.json"))
+	if err != nil {
+		return formatResult{}, fmt.Errorf("read result for %q: %w", repository.ID, err)
+	}
+	digest := sha256.Sum256(resultInput)
+	if hex.EncodeToString(digest[:]) != expectedResultDigest {
+		return formatResult{}, fmt.Errorf("result digest mismatch for %q", repository.ID)
+	}
+	var result repositoryResult
+	decoder := json.NewDecoder(bytes.NewReader(resultInput))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&result); err != nil {
+		return formatResult{}, fmt.Errorf("decode result for %q: %w", repository.ID, err)
+	}
+	if err := requireJSONEOF(decoder, "result for " + repository.ID); err != nil {
+		return formatResult{}, err
+	}
+	if result.SchemaVersion != ResultSchemaVersion ||
+		!reflect.DeepEqual(result.Repository, repository) {
+		return formatResult{}, fmt.Errorf(
+			"result identity does not match manifest for %q",
+			repository.ID,
+		)
+	}
+	return result.Format, nil
+}
+
+func addFormatMeasurement(target *formatterReport, value formatResult) error {
+	var ok bool
+	target.Repositories, ok = checkedAddInt(target.Repositories, 1)
+	if !ok {
+		return fmt.Errorf("repository count overflow")
+	}
+	if value.Complete {
+		target.CompleteRepositories, ok = checkedAddInt(target.CompleteRepositories, 1)
+		if !ok {
+			return fmt.Errorf("complete repository count overflow")
+		}
+	}
+	target.Files, ok = checkedAddInt(target.Files, value.FileCount)
+	if !ok {
+		return fmt.Errorf("file count overflow")
+	}
+	target.Differences, ok = checkedAddInt(target.Differences, value.DifferenceCount)
+	if !ok {
+		return fmt.Errorf("difference count overflow")
+	}
+	return nil
 }
 
 func addProfileMeasurement(target *profileReport, value profileMeasurement) error {

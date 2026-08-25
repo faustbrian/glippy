@@ -23,10 +23,21 @@ processes receive only a small compiler/runtime environment allowlist; caller
 credentials and unrelated environment variables are not inherited. Go package
 loading is offline during the audit, including direct version-control access.
 
+Before package analysis, the runner also executes `glippy fmt --check` over the
+read-only source snapshot with a task-owned canonical configuration. Corpus
+repositories cannot supply formatter settings. A complete formatter result
+proves that every selected file reparsed, passed normalized source and
+suppression ownership validation, and was byte-idempotent through the
+formatter's acceptance path. Formatting differences are recorded without
+writing either the snapshot or the external checkout. Invalid machine output or
+an incomplete formatter result is release-blocking evidence and must receive a
+formatter-sourced crash or unsupported-construct gap in adjudication.
+
 Each repository result contains:
 
 - normalized Glippy diagnostic and measured statistics JSON per profile;
 - a sorted finding inventory per profile;
+- a normalized formatter report with selected-file and difference counts;
 - normalized `go vet` and Staticcheck output; and
 - one result document binding the repository, revision, tool versions, exit
   codes, completeness state, shared source/workflow run identity, and
@@ -125,6 +136,11 @@ contributes to the reported unresolved count even when its finding inventory
 is empty. This keeps an unsuccessful analysis from appearing as clean release
 evidence.
 
+`incomplete_format` records an invalid or incomplete formatter report. It also
+requires a crash or unsupported-construct gap and contributes to the unresolved
+count. Formatter gaps use `formatter` as their source; analysis omissions use
+the existing `manual`, `vet`, or `staticcheck` sources.
+
 Validate the completed review against the exact manifest, revisions, result
 schema, Staticcheck version, artifact digests, and finding fingerprints:
 
@@ -151,12 +167,13 @@ go run ./benchmarks/cmd/corpus-runner \
 ```
 
 The report revalidates the adjudication and exact result set. It records
-classification counts, gap counts, deterministic per-profile totals, every
-per-repository statistics digest, and one evidence-backed queue entry for each
-backlog or nursery rule candidate. Multiple gaps for one rule must use one
-consistent disposition. The duration and allocation fields come from Glippy's
-process-local statistics. `allocated_bytes` is allocation volume, not peak RSS
-or aggregate process-tree memory; those budgets require isolated CI evidence.
+classification counts, gap counts, aggregate formatter completeness and
+difference totals, deterministic per-profile totals, every per-repository
+statistics digest, and one evidence-backed queue entry for each backlog or
+nursery rule candidate. Multiple gaps for one rule must use one consistent
+disposition. The duration and allocation fields come from Glippy's process-local
+statistics. `allocated_bytes` is allocation volume, not peak RSS or aggregate
+process-tree memory; those budgets require isolated CI evidence.
 An incomplete profile whose statistics output is not JSON remains in the
 report with its bound artifact digest and `measured: false`; its crash or
 unsupported gap is not discarded merely because cost data is unavailable.

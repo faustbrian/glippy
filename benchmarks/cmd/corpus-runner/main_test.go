@@ -586,6 +586,7 @@ func writeEmptyResultArtifacts(
 				"go": "go version go1.26.0 test/arch",
 				"staticcheck": "staticcheck 2026.1.1 (0.8.1)",
 			},
+			"format": writeEmptyFormatArtifact(t, repositoryRoot),
 			"profiles": resultProfiles,
 			"comparators": comparators,
 		}
@@ -597,6 +598,36 @@ func writeEmptyResultArtifacts(
 			err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func writeEmptyFormatArtifact(t *testing.T, repositoryRoot string) map[string]any {
+	t.Helper()
+	report := map[string]any{
+		"schema_version": 1,
+		"command": "fmt",
+		"mode": "check",
+		"outcome": map[string]any{"category": "success", "exit_code": 0},
+		"summary": map[string]any{"files": 0, "changed": 0, "complete": true},
+		"files": []any{},
+		"errors": []any{},
+	}
+	input := marshalJSON(t, report)
+	if err := os.WriteFile(filepath.Join(repositoryRoot, "format.json"), input, 0o600);
+		err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(input)
+	return map[string]any{
+		"exit_code": 0,
+		"report": map[string]any{
+			"file": "format.json",
+			"sha256": hex.EncodeToString(digest[:]),
+			"valid_json": true,
+		},
+		"file_count": 0,
+		"difference_count": 0,
+		"complete": true,
 	}
 }
 

@@ -3057,3 +3057,13 @@ remain deliberately unclassified rather than being overstated as supported.
 The exact corpus rerun, formatter corpus proof, cross-platform resource budgets,
 and fix rehearsals now belong to active v0.8. No runtime process-control or RSS
 probe was run locally.
+
+The first v0.8 hardening batch extends the isolated pinned-corpus harness with
+a canonical-config `fmt --check` audit over each read-only source snapshot.
+Exact formatter machine output, file and difference totals, completeness, and
+artifact digests now participate in versioned result, adjudication, and report
+schemas. Complete results must reconcile canonical ordered paths, statuses,
+counts, errors, and outcome categories. Invalid or incomplete output remains
+release-unresolved and requires a formatter-sourced gap. This is harness
+capability only; exact public-corpus formatter evidence requires the next run on
+the resulting pushed revision.

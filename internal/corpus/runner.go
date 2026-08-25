@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	ResultSchemaVersion = 1
+	ResultSchemaVersion = 2
 	corpusCommandMemoryLimit = "4GiB"
 	maximumCommandOutput = 256 << 20
 	maximumModuleDownloadArguments = 128
@@ -75,8 +75,17 @@ type repositoryResult struct {
 	Repository Repository `json:"repository"`
 	StaticcheckVersion string `json:"staticcheck_version"`
 	Tools toolVersions `json:"tools"`
+	Format formatResult `json:"format"`
 	Profiles []profileResult `json:"profiles"`
 	Comparators []comparatorResult `json:"comparators"`
+}
+
+type formatResult struct {
+	ExitCode int `json:"exit_code"`
+	Report artifactResult `json:"report"`
+	FileCount int `json:"file_count"`
+	DifferenceCount int `json:"difference_count"`
+	Complete bool `json:"complete"`
 }
 
 type toolVersions struct {
@@ -165,6 +174,20 @@ type normalizedLintResult struct {
 	Diagnostics []finding `json:"diagnostics"`
 	PackageDiagnostics []json.RawMessage `json:"package_diagnostics"`
 	SourceProblems []json.RawMessage `json:"source_problems"`
+}
+
+type normalizedFormatResult struct {
+	SchemaVersion int `json:"schema_version"`
+	Command string `json:"command"`
+	Mode string `json:"mode"`
+	Outcome struct {
+		ExitCode int `json:"exit_code"`
+	} `json:"outcome"`
+	Summary struct {
+		Files int `json:"files"`
+		Changed int `json:"changed"`
+		Complete bool `json:"complete"`
+	} `json:"summary"`
 }
 
 // Run validates and audits every selected pinned checkout without writing to it.
@@ -308,6 +331,31 @@ func runRepository(
 	if err != nil {
 		return err
 	}
+	formatEnvironment, err := repositoryEnvironmentForScope(
+		options,
+		repository,
+		executionCheckout,
+		filepath.Join("repositories", repository.ID, "format"),
+	)
+	if err != nil {
+		return err
+	}
+	formatConfigurationPath := filepath.Join(configurationRoot, "format.toml")
+	if err := os.WriteFile(formatConfigurationPath, []byte("version = 1\n"), 0o600);
+		err != nil {
+		return fmt.Errorf("write formatter audit configuration: %w", err)
+	}
+	formatAudit, err := runFormatterAudit(
+		ctx,
+		options,
+		executionCheckout,
+		repositoryOutput,
+		formatConfigurationPath,
+		formatEnvironment,
+	)
+	if err != nil {
+		return fmt.Errorf("run formatter audit for %q: %w", repository.ID, err)
+	}
 	if workspaceSumMutable {
 		if err := permitExistingWorkspaceSumUpdate(executionCheckout); err != nil {
 			return fmt.Errorf(
@@ -352,6 +400,7 @@ func runRepository(
 		Repository: repository,
 		StaticcheckVersion: manifest.StaticcheckVersion,
 		Tools: versions,
+		Format: formatAudit,
 		Profiles: make([]profileResult, 0, len(corpusProfiles)),
 		Comparators: []comparatorResult{preflight},
 	}
@@ -414,6 +463,85 @@ func runRepository(
 		return err
 	}
 	return nil
+}
+
+func runFormatterAudit(
+	ctx context.Context,
+	options RunOptions,
+	checkout, repositoryOutput, configurationPath string,
+	environment []string,
+) (formatResult, error) {
+	execution, err := options.Executor.Run(
+		ctx,
+		Command{
+			Path: options.GlippyPath,
+			Args: []string{
+				"fmt",
+				"--check",
+				"--reporter=json",
+				"--config",
+				configurationPath,
+				".",
+			},
+			Dir: checkout,
+			Env: environment,
+		},
+	)
+	if err != nil {
+		return formatResult{}, err
+	}
+	reportInput := execution.Stdout
+	if !json.Valid(reportInput) && len(execution.Stderr) != 0 {
+		reportInput = append(slices.Clone(execution.Stdout), execution.Stderr...)
+	}
+	report, normalized, valid, err := writeNormalizedJSON(
+		filepath.Join(repositoryOutput, "format.json"),
+		reportInput,
+		newArtifactNormalizer(checkout, options),
+	)
+	if err != nil {
+		return formatResult{}, err
+	}
+	result := formatResult{ExitCode: execution.ExitCode, Report: report}
+	if !valid {
+		return result, nil
+	}
+	if err := validateJSONShape(normalized, formatterReportShape, "formatter report");
+		err != nil {
+		return writeInvalidFormatReport(repositoryOutput, normalized, execution.ExitCode)
+	}
+	var document normalizedFormatResult
+	if err := json.Unmarshal(normalized, &document); err != nil {
+		return formatResult{}, fmt.Errorf("decode normalized formatter report: %w", err)
+	}
+	if document.SchemaVersion != 1 ||
+		document.Command != "fmt" ||
+		document.Mode != "check" ||
+		document.Outcome.ExitCode != execution.ExitCode ||
+		document.Summary.Files < 0 ||
+		document.Summary.Changed < 0 ||
+		document.Summary.Changed > document.Summary.Files {
+		return writeInvalidFormatReport(repositoryOutput, normalized, execution.ExitCode)
+	}
+	result.FileCount = document.Summary.Files
+	result.DifferenceCount = document.Summary.Changed
+	result.Complete = document.Summary.Complete
+	return result, nil
+}
+
+func writeInvalidFormatReport(
+	repositoryOutput string,
+	input []byte,
+	exitCode int,
+) (formatResult, error) {
+	if err := os.Remove(filepath.Join(repositoryOutput, "format.json")); err != nil {
+		return formatResult{}, fmt.Errorf("remove invalid formatter JSON artifact: %w", err)
+	}
+	report, err := writeArtifact(filepath.Join(repositoryOutput, "format.txt"), input, false)
+	if err != nil {
+		return formatResult{}, err
+	}
+	return formatResult{ExitCode: exitCode, Report: report}, nil
 }
 
 func writeIncompleteProfile(
