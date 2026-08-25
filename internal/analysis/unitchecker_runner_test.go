@@ -209,6 +209,65 @@ func TestUnitcheckerFactAnalyzerRunnerUsesBoundedExactGoInvocation(t *testing.T)
 	}
 }
 
+func TestUnitcheckerFactAnalyzerRunnerTranslatesFileQueryForGoVet(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Glippy does not support Windows runtime execution")
+	}
+
+	root := t.TempDir()
+	argumentsPath := filepath.Join(root, "arguments")
+	goBinary := filepath.Join(root, "go")
+	if err := os.WriteFile(
+		goBinary,
+		[]byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$GLIPPY_TEST_ARGUMENTS\"\n"),
+		0o700,
+	); err != nil {
+		t.Fatal(err)
+	}
+	runner, err := NewUnitcheckerFactAnalyzerRunner(
+		UnitcheckerFactAnalyzerRunnerOptions{Executable: "/opt/glippy", GoBinary: goBinary},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = runner.RunPackageFactAnalyzer(
+		context.Background(),
+		PackageFactAnalyzerRequest{
+			Identity: UnitcheckerPrintfIdentity,
+			Analyzer: "printf",
+			LoadOptions: PackageLoadOptions{
+				Dir: root,
+				Patterns: []string{
+					"file=" + filepath.Join(root, "source.go"),
+					"file=" + filepath.Join(root, "nested", "source.go"),
+					"file=" + filepath.Join(root, "source.go"),
+					"./existing",
+				},
+				Tests: true,
+				Env: append(os.Environ(), "GLIPPY_TEST_ARGUMENTS=" + argumentsPath),
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arguments, err := os.ReadFile(argumentsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "vet\n-json\n-p=2\n-vettool=/opt/glippy\n-mod=readonly\n.\n./existing\n./nested\n"
+	if string(arguments) != want {
+		t.Fatalf("arguments = %q, want %q", arguments, want)
+	}
+	_, err = unitcheckerVetPatterns(
+		root,
+		[]string{"file=" + filepath.Join(filepath.Dir(root), "outside.go")},
+	)
+	if err == nil || !strings.Contains(err.Error(), "outside package root") {
+		t.Fatalf("outside-root file query error = %v", err)
+	}
+}
+
 func TestUnitcheckerFactAnalyzerRunnerDefersKnownPackageErrors(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Glippy does not support Windows runtime execution")

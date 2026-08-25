@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -180,7 +181,14 @@ func (r *unitcheckerFactAnalyzerRunner) RunPackageFactAnalyzer(
 	if overlayPath != "" {
 		arguments = append(arguments, "-overlay=" + overlayPath)
 	}
-	arguments = append(arguments, request.LoadOptions.Patterns...)
+	vetPatterns, err := unitcheckerVetPatterns(
+		request.LoadOptions.Dir,
+		request.LoadOptions.Patterns,
+	)
+	if err != nil {
+		return nil, err
+	}
+	arguments = append(arguments, vetPatterns...)
 	command := exec.CommandContext(ctx, r.goBinary, arguments...)
 	command.Dir = request.LoadOptions.Dir
 	command.Env = unitcheckerEnvironment(request.LoadOptions)
@@ -215,6 +223,40 @@ func (r *unitcheckerFactAnalyzerRunner) RunPackageFactAnalyzer(
 		message = runErr.Error()
 	}
 	return nil, fmt.Errorf("run external %s analyzer: %s", request.Analyzer, message)
+}
+
+func unitcheckerVetPatterns(directory string, patterns []string) ([]string, error) {
+	result := make([]string, 0, len(patterns))
+	for _, pattern := range patterns {
+		if !strings.HasPrefix(pattern, "file=") {
+			result = append(result, pattern)
+			continue
+		}
+		path := strings.TrimPrefix(pattern, "file=")
+		if path == "" {
+			return nil, fmt.Errorf("unitchecker file query is empty")
+		}
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(directory, path)
+		}
+		relative, err := filepath.Rel(directory, filepath.Dir(filepath.Clean(path)))
+		if err != nil ||
+			relative == ".." ||
+			strings.HasPrefix(relative, ".." + string(filepath.Separator)) {
+			return nil, fmt.Errorf(
+				"unitchecker file query %q is outside package root %q",
+				pattern,
+				directory,
+			)
+		}
+		if relative == "." {
+			result = append(result, ".")
+			continue
+		}
+		result = append(result, "./" + filepath.ToSlash(relative))
+	}
+	sort.Strings(result)
+	return slices.Compact(result), nil
 }
 
 func unitcheckerEnvironment(options PackageLoadOptions) []string {
