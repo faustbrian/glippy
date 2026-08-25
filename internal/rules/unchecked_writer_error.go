@@ -559,8 +559,8 @@ func tarWriterCloseHandledByTestingFailure(info *types.Info, statement ast.Stmt)
 	if errorIdentifier == nil || errorIdentifier.Name == "_" || close == nil {
 		return nil
 	}
-	if _, matched := exactTarWriterCloseReceiver(info, close); !matched ||
-		!exactTarWriterMethodValueCall(info, close) {
+	if _, matched := exactTarWriterCloseReceiver(info, close);
+		!matched || !exactTarWriterMethodValueCall(info, close) {
 		return nil
 	}
 	errorObject := info.Defs[errorIdentifier]
