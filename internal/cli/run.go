@@ -1623,7 +1623,7 @@ func formatStandardInput(
 		}
 		formatted, err := glippyformat.Fragment(fragment, options)
 		if err != nil {
-			return nil, ExitInternalError, err
+			return nil, ExitInternalError, fmt.Errorf("format %q: %w", sourcePath, err)
 		}
 		return formatted, ExitSuccess, nil
 	}
@@ -1633,7 +1633,7 @@ func formatStandardInput(
 	}
 	formatted, err := glippyformat.File(file, options)
 	if err != nil {
-		return nil, ExitInternalError, err
+		return nil, ExitInternalError, fmt.Errorf("format %q: %w", sourcePath, err)
 	}
 	return formatted, ExitSuccess, nil
 }

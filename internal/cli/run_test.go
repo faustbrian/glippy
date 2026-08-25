@@ -15,6 +15,7 @@ import (
 
 	"github.com/faustbrian/glippy/internal/discovery"
 	"github.com/faustbrian/glippy/internal/filesystem"
+	glippyformat "github.com/faustbrian/glippy/internal/format"
 	glippyreport "github.com/faustbrian/glippy/internal/report"
 	"github.com/faustbrian/glippy/internal/rules"
 	"github.com/faustbrian/glippy/internal/source"
@@ -187,6 +188,48 @@ func TestRunFormatCheckReportsOversizedFileAsIncompleteJSONSourceFailure(t *test
 	}
 	if before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
 		t.Fatal("Run(fmt check oversized) mutated source")
+	}
+}
+
+func TestFormatStandardInputReportsInternalFailurePath(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range
+		[]struct {
+			name string
+			input []byte
+			kind source.FragmentKind
+		}{
+			{name: "file", input: []byte("package sample\n")},
+			{
+				name: "fragment",
+				input: []byte("value + 1"),
+				kind: source.FragmentExpression,
+			},
+		} {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				path := filepath.Join(t.TempDir(), "failure.go")
+				_, exitCode, err := formatStandardInput(
+					test.input,
+					path,
+					test.kind,
+					glippyformat.Options{},
+				)
+				if exitCode != ExitInternalError ||
+					err == nil ||
+					!strings.Contains(err.Error(), path) {
+					t.Fatalf(
+						"formatStandardInput() = exit %d, error %v, want internal error naming %q",
+						exitCode,
+						err,
+						path,
+					)
+				}
+			},
+		)
 	}
 }
 
