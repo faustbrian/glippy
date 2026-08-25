@@ -6,7 +6,7 @@ does not rewrite source. Exit code 1 means actionable findings; exit codes 2
 through 6 and 130 are tool, source, configuration, filesystem, conflict, or
 cancellation outcomes rather than ordinary findings.
 
-Glippy v0.8 is an unreleased development line. Provision one exact reviewed
+Glippy is an unreleased development line. Provision one exact reviewed
 source revision and do not treat an untagged commit as a stable installation
 contract.
 

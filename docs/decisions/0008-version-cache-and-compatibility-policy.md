@@ -6,9 +6,9 @@
 
 ## Context And Evidence
 
-The current prototype is built with Go 1.27.0 and x/tools v0.49.0. Standard parser and
-printer behavior can drift with the build toolchain. Typed analysis also
-depends on module/workspace state, build selection, environment, dependency
+The current candidate is built with Go 1.27.0 and x/tools v0.49.0. Standard
+parser and printer behavior can drift with the build toolchain. Typed analysis
+also depends on module/workspace state, build selection, environment, dependency
 export data, and overlays. The implemented cache foundation proves canonical
 identity, bounded verified storage, corruption misses, conflict-safe
 publication, and an opt-in fact-bearing analyzer consumer.
@@ -76,7 +76,7 @@ with neither reports `devel`. Official release builders set
 flag. Version inspection performs no source, configuration, package, or network
 work.
 
-The maintainer-only prototype release builder admits macOS and Linux on amd64
+The maintainer-only release builder admits macOS and Linux on amd64
 and arm64. Windows and other operating systems are intentionally unsupported.
 It pins `GOAMD64=v1` and `GOARM64=v8.0`, uses the selected local Go
 toolchain,
@@ -96,19 +96,18 @@ toolchain version into the output. A pinned private directory owns all artifact
 writes and failure cleanup. Completed artifacts are atomically renamed to the
 requested path with a platform no-replacement primitive only after all fallible
 output closing and temporary-resource cleanup succeeds. The builder neither
-signs nor publishes remotely and must be updated after the final product-name
-decision. The 2026-08-12 release-platform rehearsal built the complete target
-set independently on network-isolated Linux arm64 and Darwin arm64 with Go
-1.26.5, executed each environment-native archive, and found all archives,
-manifest, and checksums byte-identical across environments on one physical
-Darwin host.
+signs nor publishes remotely. The 2026-08-12 release-platform rehearsal built
+the complete target set independently on network-isolated Linux arm64 and
+Darwin arm64 with Go 1.26.5, executed each environment-native archive, and found
+all archives, manifest, and checksums byte-identical across environments on one
+physical Darwin host.
 That rehearsal predates amd64 admission and proves the earlier arm64 target
 set. A later 2026-08-12 rehearsal built the four-target set independently on
 Darwin arm64 and emulated Linux amd64, found all six files byte-identical,
 validated both checksum sets, and executed every target binary on its declared
 operating system and architecture. Darwin amd64 used Rosetta, Linux amd64 used
 Docker architecture emulation, and both arm64 executions were native to their
-host architecture. This proves the prototype artifact boundary without
+host architecture. This proves the release artifact boundary without
 claiming native amd64 host evidence, reproduction on a separate physical host,
 or native amd64 host execution.
 
@@ -182,7 +181,7 @@ threshold.
 The first CLI policy is explicit and opt-in through versioned configuration.
 One typed `lint` or combined `check` invocation opens one store under
 `GLIPPY_CACHE_DIR` or the platform user-cache directory, supplies the resolved
-result-affecting canonical configuration and fixed prototype
+result-affecting canonical configuration and fixed candidate
 language/formatter identities, and closes the store before reporting.
 Versioned builds use their product version as tool identity; `devel` builds use
 the SHA-256 digest of the running executable rather than sharing the generic

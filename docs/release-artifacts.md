@@ -1,14 +1,14 @@
-# Prototype Release Artifacts
+# Release Artifacts
 
 The maintainer-only release builder produces deterministic artifacts for the
-admitted prototype targets. It is not a public Glippy command and does not widen
+admitted release targets. It is not a public Glippy command and does not widen
 the product CLI.
 
 Run it from a clean source revision with a task-owned disposable `GOCACHE`:
 
 ```text
 go run ./internal/releasecmd \
-  --version v0.8.0 \
+  --version v1.0.0-rc.1 \
   --revision <complete Git object ID> \
   --output <new output directory>
 ```
@@ -34,7 +34,7 @@ explicit caller-owned `GOMODCACHE`, and admits only the minimal host environment
 needed to locate the toolchain, module cache, and temporary directory. It does
 not sign, publish, upload, tag, or modify a repository.
 
-The current prototype target set is:
+The current target set is:
 
 - `darwin/amd64`;
 - `darwin/arm64`;
@@ -46,15 +46,15 @@ unsupported. Darwin amd64 has Rosetta execution evidence and
 Linux amd64 has Docker architecture-emulation evidence; neither substitutes
 for a native amd64 host claim.
 
-For version `v0.8.0`, the builder emits:
+For version `v1.0.0-rc.1`, the builder emits:
 
 ```text
-glippy_v0.8.0_darwin_amd64.tar.gz
-glippy_v0.8.0_darwin_arm64.tar.gz
-glippy_v0.8.0_linux_amd64.tar.gz
-glippy_v0.8.0_linux_arm64.tar.gz
-glippy_v0.8.0_manifest.json
-glippy_v0.8.0_checksums.txt
+glippy_v1.0.0-rc.1_darwin_amd64.tar.gz
+glippy_v1.0.0-rc.1_darwin_arm64.tar.gz
+glippy_v1.0.0-rc.1_linux_amd64.tar.gz
+glippy_v1.0.0-rc.1_linux_arm64.tar.gz
+glippy_v1.0.0-rc.1_manifest.json
+glippy_v1.0.0-rc.1_checksums.txt
 ```
 
 Each archive contains the executable `glippy`, the exact tracked 0BSD `LICENSE`,
@@ -99,10 +99,11 @@ different archive, manifest, or checksum, or non-native version execution fails
 the workflow.
 
 Candidate run
-[`31697171821`](https://github.com/faustbrian/glippy/actions/runs/31697171821)
-passed this complete matrix and comparison for revision `06cce4a`. The raw
-budgets and artifact digests are recorded in the
-[release-candidate evidence](research/release-candidate-evidence-2026-08-13.md).
+[`32814696805`](https://github.com/faustbrian/glippy/actions/runs/32814696805)
+passed this complete matrix and comparison for revision `8ed359d` with Go
+1.27.0. The native latency, aggregate-memory, and reproducibility results are
+recorded in the
+[v0.8 budget calibration](research/v0.8-aggregate-budget-calibration-2026-08-25.md).
 
 GitHub Releases is the selected publication channel. A push of a canonical
 semantic-version tag invokes the repository's `Publish release` workflow. It
@@ -126,7 +127,7 @@ gh attestation verify <artifact> --repo faustbrian/glippy
 The builder's checksum file remains the portable offline integrity surface;
 the signed attestation proves repository and workflow provenance when GitHub is
 available. GitHub Release archives and version-pinned `go install` are the
-intended v0.8 installation channels; package-manager metadata remains deferred.
+intended v1 installation channels; package-manager metadata remains deferred.
 A signed Git tag is not part of this artifact-provenance claim.
 
 The historical Gox `v0.1.0` release was built from reviewed commit `c0435d6` by

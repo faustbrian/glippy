@@ -6,11 +6,12 @@ deterministic width-aware layout decisions. Its linter keeps correctness-focused
 defaults, pays only for the analysis tiers enabled rules require, and routes
 all source changes through an explicit conflict-safe transaction.
 
-Glippy v0.8 is under development and is not tagged or published. The current
-catalog contains 127 rules, including 19 rules with safe or suggestion fixes.
-The current candidate is an unreleased engineering snapshot. Aggregate
-process-tree memory and process containment remain unproven until a
-non-disruptive evidence policy exists.
+Glippy is under development and is not tagged or published. The current
+catalog contains 129 rules, including 20 rules with safe, suggestion, or unsafe
+fixes. The current candidate is an unreleased engineering snapshot. Native
+macOS/Linux latency, aggregate-memory, and archive-reproducibility budgets are
+proven for the pinned campaign; the exact large-repository corpus remains an
+active release gate.
 The existing
 v0.1.0 release remains Gox under `github.com/faustbrian/gox`; its module tags,
 binary, archives, and attestations are immutable historical identities. The

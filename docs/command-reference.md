@@ -1,6 +1,6 @@
 # Command Reference
 
-Glippy v0.8 uses its intended product and binary identity. This reference
+Glippy uses its intended product and binary identity. This reference
 documents the implemented command surface; it is not an installation contract
 or release announcement. No tag or release is authorized until the corrected
 candidate passes its complete verification and independent-review gates.

@@ -10,8 +10,8 @@ The latter requires Go 1.25.
 
 ## Conclusion
 
-The standard Go frontend satisfies Gox syntax and semantic requirements. Gox
-needs a thin concrete-source ledger over immutable bytes and a second
+The standard Go frontend satisfies Glippy syntax and semantic requirements.
+Glippy needs a thin concrete-source ledger over immutable bytes and a second
 `go/scanner` pass; no competing parser is justified.
 
 `go/parser` does not expose its scanner stream. The scanner uniquely reports
@@ -71,7 +71,7 @@ expanding the external analyzer boundary.
 
 ## Fidelity Matrix
 
-| Concern | Standard frontend | Required Gox state |
+| Concern | Standard frontend | Required Glippy state |
 | --- | --- | --- |
 | Tokens | Scanner kind, start, and literal | Raw start/end slice, delimiter ledger, semicolon origin |
 | Whitespace | Token positions only | Every gap, tabs, blank lines, trailing bytes |
@@ -114,21 +114,22 @@ physical diagnostics require deduplication. A custom concurrent-safe
 `SkipObjectResolution`.
 
 `ast/inspector` pays one full indexing traversal and becomes favorable only
-when repeated filtered queries amortize that index. Gox performs one union
+when repeated filtered queries amortize that index. Glippy performs one union
 node-interest dispatch, so the Phase 3 benchmark compared direct shared
 `ast.Inspect`, one inspector union query, and naive per-rule walks at 1, 3, 5,
 10, and 25 rules. One naive walk had a 1.81-microsecond lower median at one
 rule; direct dispatch had lower medians from three through 25 rules and used
-456-1,896 bytes per operation versus 28,672-30,160 for inspector indexing. Gox
-keeps one direct shared traversal path until a representative workload with
-repeated queries or a material one-rule regression provides contrary evidence.
+456-1,896 bytes per operation versus 28,672-30,160 for inspector indexing.
+Glippy keeps one direct shared traversal path until a representative workload
+with repeated queries or a material one-rule regression provides contrary
+evidence.
 
 ## `go/analysis` Boundary
 
-The native rule API remains primary because `analysis.Analyzer` has no Gox
+The native rule API remains primary because `analysis.Analyzer` has no Glippy
 requirement tier, severity/preset metadata, generated-file policy, fix safety,
 typed configuration schema, or node-interest declaration. Imported suggested
-fixes default to suggestion-only, carry a source digest through the Gox
+fixes default to suggestion-only, carry a source digest through the Glippy
 adapter, and pass through the same conflict and validation coordinator.
 
 The Phase 3 adapter therefore accepts only analyzers without prerequisites,
@@ -155,7 +156,7 @@ syntax-only contract requires a maintainer audit before registration.
 
 `go/printer` and `go/format` remain differential references. They expose no
 document grouping API; `go/format` sorts imports and normalizes literals; the
-printer can relocate or synthesize build constraints. Gox must not use them as
-a post-pass or fidelity validator. `go/format` also documents that output can
-change across Go releases, so all compatibility evidence records the exact
+printer can relocate or synthesize build constraints. Glippy must not use them
+as a post-pass or fidelity validator. `go/format` also documents that output
+can change across Go releases, so all compatibility evidence records the exact
 toolchain.
