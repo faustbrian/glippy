@@ -567,7 +567,7 @@ budget requires a new recorded campaign and rationale.
 ### Native Runner Campaign
 
 The manually dispatched `Release budget evidence` GitHub Actions workflow pins
-the corpus revision, Go 1.26.5, the 250-millisecond editor maximum, and the
+the corpus revision, Go 1.27.0, the 250-millisecond editor maximum, and the
 90-second/2-GiB formatter maximum. It runs on native GitHub-hosted
 `macos-15-intel`, `macos-15`, `ubuntu-24.04`, and `ubuntu-24.04-arm` runners,
 covering Darwin and Linux on amd64 and arm64. Action dependencies are pinned by

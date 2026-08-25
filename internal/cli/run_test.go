@@ -3804,7 +3804,7 @@ func TestRunRejectsUnsupportedStandardInputSourceVersion(t *testing.T) {
 		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitSourceError)
 	}
 	if stdout.Len() != 0 ||
-		!strings.Contains(stderr.String(), "supports Go 1.25 through Go 1.26") {
+		!strings.Contains(stderr.String(), "supports Go 1.25 through Go 1.27") {
 		t.Fatalf("Run() stdout = %q, stderr = %q", stdout.String(), stderr.String())
 	}
 }
@@ -3817,7 +3817,7 @@ func TestRunRejectsUnsupportedSourceVersionBeforeWrite(t *testing.T) {
 	original := []byte("package sample\nfunc run(){work()}\n")
 	if err := os.WriteFile(
 		filepath.Join(root, "go.mod"),
-		[]byte("module example.com/project\n\ngo 1.27\n"),
+		[]byte("module example.com/project\n\ngo 1.28\n"),
 		0o600,
 	);
 		err != nil {
@@ -3835,7 +3835,7 @@ func TestRunRejectsUnsupportedSourceVersionBeforeWrite(t *testing.T) {
 		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitSourceError)
 	}
 	if stdout.Len() != 0 ||
-		!strings.Contains(stderr.String(), "supports Go 1.25 through Go 1.26") {
+		!strings.Contains(stderr.String(), "supports Go 1.25 through Go 1.27") {
 		t.Fatalf("Run() stdout = %q, stderr = %q", stdout.String(), stderr.String())
 	}
 	got, err := os.ReadFile(path)

@@ -48,6 +48,27 @@ standard-library, project-contract, and selected-module no-return predicate at
 the standard frontend. No Go 1.26.7 or x/tools v0.48.0 evidence requires a new
 parser, type checker, CFG, SSA implementation, or broader analyzer adapter.
 
+## v0.8 Go 1.27 Refresh
+
+The frontend boundary was refreshed on 2026-08-25 against Go 1.27.0 at tag
+[`8af2175`](https://go.googlesource.com/go/+/8af21751f066eced273ca3ce49506b366847c623)
+and `golang.org/x/tools` v0.49.0 at
+[`18332fe`](https://go.googlesource.com/tools/+/18332fec72972efbb8ab9881984fec2d8cfc2b58).
+
+Go 1.27 adds generic methods and promoted-field keys in struct literals.
+The standard parser, AST, token, scanner, types, package loader, and SSA layers
+represent both forms without a competing frontend. Glippy fixtures exercise
+formatting, reparsing, idempotency, typed loading, and SSA construction for
+these forms. The original-source and trivia requirements remain unchanged:
+neither new AST shape owns whitespace, semicolon origin, exact comment bytes,
+or formatter attachment policy.
+
+x/tools v0.49.0 retains the package-loading, analyzer, CFG, SSA, and fact
+boundaries Glippy uses. Its analyzer updates are covered by the adapted-rule
+contract tests and the refreshed Go vet compatibility inventory. No Go 1.27.0
+or x/tools v0.49.0 evidence requires replacing the standard frontend or
+expanding the external analyzer boundary.
+
 ## Fidelity Matrix
 
 | Concern | Standard frontend | Required Gox state |

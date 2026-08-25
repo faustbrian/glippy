@@ -174,7 +174,7 @@ for one explicit file or stdin. Multiple filesystem inputs require `--write`,
 MAY use `--stdin-filepath` for language version and configuration context but
 MUST NOT make that path writable.
 
-Source-language discovery and the supported Go 1.25 through Go 1.26 range are
+Source-language discovery and the supported Go 1.25 through Go 1.27 range are
 defined in [`supported-go-versions.md`](../supported-go-versions.md).
 Unsupported or malformed selected language directives are source errors and
 must fail before output or mutation.

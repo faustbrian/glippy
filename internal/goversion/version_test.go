@@ -44,6 +44,22 @@ func TestResolveUsesWorkspaceWhenNoModuleOwnsPath(t *testing.T) {
 	}
 }
 
+func TestResolveAcceptsNewestSupportedSourceVersion(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	mod := filepath.Join(root, "go.mod")
+	writeFile(t, mod, "module example.com/project\n\ngo 1.27.0\n")
+
+	selection, err := goversion.Resolve(filepath.Join(root, "source.go"), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selection.Language != "go1.27" || selection.Path != mod {
+		t.Fatalf("Resolve() = %#v, want module Go 1.27", selection)
+	}
+}
+
 func TestResolveDefaultsWithoutDirective(t *testing.T) {
 	t.Parallel()
 
@@ -66,15 +82,34 @@ func TestResolveDefaultsWithoutDirective(t *testing.T) {
 func TestResolveRejectsUnsupportedSourceVersion(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
-	mod := filepath.Join(root, "go.mod")
-	writeFile(t, mod, "module example.com/project\n\ngo 1.24\n")
+	for _, version := range []string{"1.24", "1.28"} {
+		t.Run(
+			version,
+			func(t *testing.T) {
+				t.Parallel()
 
-	_, err := goversion.Resolve(filepath.Join(root, "source.go"), root)
-	if err == nil ||
-		!strings.Contains(err.Error(), "supports Go 1.25 through Go 1.26") ||
-		!strings.Contains(err.Error(), mod) {
-		t.Fatalf("Resolve() error = %v, want located unsupported-version error", err)
+				root := t.TempDir()
+				mod := filepath.Join(root, "go.mod")
+				writeFile(
+					t,
+					mod,
+					"module example.com/project\n\ngo " + version + "\n",
+				)
+
+				_, err := goversion.Resolve(filepath.Join(root, "source.go"), root)
+				if err == nil ||
+					!strings.Contains(
+						err.Error(),
+						"supports Go 1.25 through Go 1.27",
+					) ||
+					!strings.Contains(err.Error(), mod) {
+					t.Fatalf(
+						"Resolve() error = %v, want located unsupported-version error",
+						err,
+					)
+				}
+			},
+		)
 	}
 }
 

@@ -11,7 +11,7 @@ here.
 
 ## Release Support
 
-Gox v0.1.0 is the current stable release. Glippy v0.5 branch heads, commits,
+Gox v0.1.0 is the current stable release. Glippy v0.8 branch heads, commits,
 locally built binaries, workflow artifacts, rehearsal archives, and prerelease
 plans are development artifacts and are not supported releases. Release
 support follows this table:
@@ -53,7 +53,7 @@ The exact filesystem and atomic-replacement boundaries are defined in
 ## Supported Go Source And Toolchains
 
 Product release support and Go source-language support are separate. The
-current source contract admits Go 1.25 and Go 1.26 as documented in
+current source contract admits Go 1.25 through Go 1.27 as documented in
 [`supported-go-versions.md`](supported-go-versions.md). Official binaries do
 not require a separately installed Go runtime. Source installation requires
 the toolchain selected by `go.mod`.

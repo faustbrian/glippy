@@ -189,6 +189,81 @@ func (owner) method() {}
 	}
 }
 
+func TestRunSSASupportsGo127GenericMethods(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/current\n\ngo 1.27.0\n",
+	)
+	writeTypesFixture(
+		t,
+		filepath.Join(root, "current.go"),
+		`package current
+
+type Box[T any] struct { value T }
+
+func (box Box[T]) Map[U any](fn func(T) U) U {
+	return fn(box.value)
+}
+
+type Inner struct { Value int }
+type Outer struct { Inner }
+
+var selected = Outer{Value: 1}
+`,
+	)
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireSSA,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Diagnostics) != 0 {
+		t.Fatalf("Go 1.27 package diagnostics = %#v", loaded.Diagnostics)
+	}
+
+	visits := 0
+	rule := ssaRule{
+		metadata: ssaMetadata("go127-ssa"),
+		run: func(ctx *rules.SSAContext) ([]rules.Finding, error) {
+			declaration, ok := ctx.Syntax().(*ast.FuncDecl)
+			if ok && declaration.Name.Name == "Map" {
+				visits++
+				if ctx.Function().Signature.TypeParams().Len() != 1 {
+					t.Fatalf(
+						"generic method signature = %s",
+						ctx.Function().Signature,
+					)
+				}
+			}
+			return nil, nil
+		},
+	}
+	registry, err := rules.NewRegistry(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := registry.Resolve(rules.PresetCorrectness, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysis.RunSSA(context.Background(), loaded, registry, selection);
+		err != nil {
+		t.Fatal(err)
+	}
+	if visits != 1 {
+		t.Fatalf("generic method SSA visits = %d, want 1", visits)
+	}
+}
+
 func TestRunSSAInvokesInitializerRulesPerPhysicalFile(t *testing.T) {
 	t.Parallel()
 

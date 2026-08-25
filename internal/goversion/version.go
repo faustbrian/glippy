@@ -16,7 +16,7 @@ const (
 	// Minimum is the oldest source language supported by this Glippy release line.
 	Minimum = "go1.25"
 	// Maximum is the newest source language supported by this Glippy release line.
-	Maximum = "go1.26"
+	Maximum = "go1.27"
 	// Default applies when no project language directive is available.
 	Default = Maximum
 )
@@ -161,9 +161,11 @@ func validate(raw, path string) (Selection, error) {
 	}
 	if version.Compare(language, Minimum) < 0 || version.Compare(language, Maximum) > 0 {
 		return Selection{}, fmt.Errorf(
-			"source language file %q selects %s; Glippy supports Go 1.25 through Go 1.26",
+			"source language file %q selects %s; Glippy supports Go %s through Go %s",
 			path,
 			language[2:],
+			Minimum[2:],
+			Maximum[2:],
 		)
 	}
 	return Selection{Language: language, Path: path}, nil

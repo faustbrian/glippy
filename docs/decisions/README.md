@@ -6,7 +6,7 @@ deferred status is an explicit gate, not silent approval.
 | Required decision | Record |
 | --- | --- |
 | Product, binary, and module name | ADR 0001 records immutable Gox v0.1 history; ADR 0016 owns the Glippy v0.2 migration and compatibility window |
-| Supported Go versions | ADR 0008 and supported-version policy; Go 1.25 and Go 1.26 accepted |
+| Supported Go versions | ADR 0008 and supported-version policy; Go 1.25 through Go 1.27 accepted |
 | Source/trivia representation | ADR 0005 and source model specification |
 | Document IR and line breaking | ADR 0002 |
 | Width and tabs | ADR 0003 |

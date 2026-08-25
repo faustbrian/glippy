@@ -97,6 +97,49 @@ func TestFormatExpandsMotivatingHostileGo(t *testing.T) {
 	}
 }
 
+func TestFormatGo127Syntax(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(
+		"package current\n" +
+			"type Box[T any]struct{value T}\n" +
+			"func(box Box[T])Map[U any](fn func(T)U)U{return fn(box.value)}\n" +
+			"type Inner struct{Value int}\n" +
+			"type Outer struct{Inner}\n" +
+			"var selected=Outer{Value:1}\n",
+	)
+	file, err := source.Load("go127.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := glippyformat.Options{Width: 40, TabWidth: 8, FitBudget: 1_000}
+	got, err := glippyformat.File(file, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package current\n\n" +
+		"type Box[T any] struct {\n\tvalue T\n}\n\n" +
+		"func (box Box[T]) Map[U any](\n\tfn func(T) U,\n) U {\n" +
+		"\treturn fn(box.value)\n}\n\n" +
+		"type Inner struct {\n\tValue int\n}\n\n" +
+		"type Outer struct {\n\tInner\n}\n\n" +
+		"var selected = Outer{Value: 1}\n"
+	if !bytes.Equal(got, []byte(want)) {
+		t.Fatalf("File() =\n%s\nwant:\n%s", got, want)
+	}
+	reparsed, err := source.Load("formatted_go127.go", got)
+	if err != nil {
+		t.Fatalf("formatted output does not parse: %v", err)
+	}
+	again, err := glippyformat.File(reparsed, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(again, got) {
+		t.Fatalf("formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, again)
+	}
+}
+
 func TestFormatFragmentsAtTheirSelectedUserBoundary(t *testing.T) {
 	t.Parallel()
 

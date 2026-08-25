@@ -5,7 +5,7 @@ with one rule registry, preset model, suppression syntax, baseline format,
 deterministic reporter, and fix coordinator. It does **not** claim to replace
 the complete `go vet` command.
 
-This boundary was refreshed on 2026-08-19 against Go 1.26.6 and x/tools v0.48.0.
+This boundary was refreshed on 2026-08-25 against Go 1.27.0 and x/tools v0.49.0.
 It must be revisited when either dependency changes its analyzer catalog or
 behavior.
 
@@ -57,7 +57,7 @@ differences rather than analyzer-equivalence claims.
 
 ## Unsupported Default Vet Analyzers
 
-Glippy does not currently run these Go 1.26.6 default analyzers:
+Glippy does not currently run these Go 1.27.0 default analyzers:
 
 - `asmdecl` and `framepointer`, which require Go assembly ownership;
 - `cgocall` and `unsafeptr`, whose unsafe and cgo boundaries need separate

@@ -2,11 +2,11 @@
 
 - Status: accepted
 - Date: 2026-08-09
-- Refreshed: 2026-08-12
+- Refreshed: 2026-08-25
 
 ## Context And Evidence
 
-The prototype is built with Go 1.26.5 and x/tools v0.48.0. Standard parser and
+The current prototype is built with Go 1.27.0 and x/tools v0.49.0. Standard parser and
 printer behavior can drift with the build toolchain. Typed analysis also
 depends on module/workspace state, build selection, environment, dependency
 export data, and overlays. The implemented cache foundation proves canonical
@@ -25,24 +25,33 @@ Go-specific and limited to the package-loading and typed-analysis costs already
 measured in this repository.
 
 The [Go release policy](https://go.dev/doc/devel/release#policy) supports each
-major release until two newer major releases exist. With Go 1.26 as the build
-frontend, that makes Go 1.25 and Go 1.26 the evidence and compatibility range
-instead of an open-ended promise for every language version the parser may
-happen to accept.
+major release until two newer major releases exist. Before the 2026-08-25
+refresh, Go 1.26 was the build frontend and Go 1.25 through Go 1.26 was the
+evidence and compatibility range instead of an open-ended promise for every
+language version the parser might accept.
+
+Go 1.27.0 was released on 2026-08-19. The 2026-08-25 refresh rebuilt the
+frontend boundary with Go 1.27.0 and exercised generic methods and promoted
+field keys in struct literals through formatting, reparsing, and
+idempotency checks. Go 1.25 remains the minimum while Go 1.27 becomes the
+maximum and default. The earlier Go 1.26.5 and Go 1.26.7 observations below
+remain historical evidence for the previous frontend rather than claims about
+the refreshed build.
 
 ## Decision
 
-Glippy supports Go 1.25 and Go 1.26 source. Release archives will be built with
-Go 1.26.5 and will have no external Go runtime dependency. Source installation
-uses the module's Go 1.26 toolchain requirement. Windows is intentionally
+Glippy supports Go 1.25 through Go 1.27 source. Release archives will be built
+with Go 1.27.0 and will have no external Go runtime dependency. Source
+installation uses the module's Go 1.27 toolchain requirement. Windows is
+intentionally
 unsupported; the admitted release targets are macOS and Linux on amd64 and
 arm64.
 
 For each physical source path, Glippy selects the nearest containing `go.mod`
-within the discovered project root, then the root `go.work`, then Go 1.26 as
+within the discovered project root, then the root `go.work`, then Go 1.27 as
 the explicit default. Patch directives normalize to their language family.
 Missing directives use the default; malformed files and versions outside Go
-1.25 through Go 1.26 fail before formatting, analysis, or writes. Editor stdin
+1.25 through Go 1.27 fail before formatting, analysis, or writes. Editor stdin
 uses `--stdin-filepath` only as this context and never reads or writes that
 source path. Rule scheduling omits metadata whose minimum language family is
 newer than the selected source version. Cache identity uses that same selected

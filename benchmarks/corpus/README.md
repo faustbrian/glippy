@@ -94,9 +94,9 @@ An `all` run also collects the exact-run repository artifacts and initial
 adjudication template into one review bundle. The aggregate report is generated
 only after the required manual classifications and incomplete-run gaps have
 been recorded.
-The current corpus harness uses Go 1.26.6 because several pinned repositories
-declare that patch level; this is evidence metadata rather than a change to the
-separately documented Glippy release toolchain.
+The current corpus harness uses the recorded Go 1.27.0 release toolchain. Pinned
+repositories retain their own source-language directives; those directives are
+evidence metadata and do not select a different Glippy build toolchain.
 
 Every `default` and `recommended` finding must be classified as true positive,
 false positive, duplicate of vet or Staticcheck, unsupported source/build

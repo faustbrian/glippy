@@ -1583,7 +1583,7 @@ func TestRunLintRejectsUnsupportedSourceVersion(t *testing.T) {
 		t.Fatalf("Run() exit code = %d, want %d", exitCode, ExitSourceError)
 	}
 	if stdout.Len() != 0 ||
-		!strings.Contains(stderr.String(), "supports Go 1.25 through Go 1.26") {
+		!strings.Contains(stderr.String(), "supports Go 1.25 through Go 1.27") {
 		t.Fatalf("Run() stdout = %q, stderr = %q", stdout.String(), stderr.String())
 	}
 }
