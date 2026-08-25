@@ -52,6 +52,7 @@ func NewRegistry() (*rules.Registry, error) {
 		rules.NewHTTPResponseBodyUsedAfterCloseRule(),
 		rules.NewInconsistentReceiverNameRule(),
 		rules.NewImpossibleComparisonRule(),
+		rules.NewIneffectiveAssignmentRule(),
 		rules.NewInvalidBinaryWriteRule(),
 		rules.NewInvalidRandomBoundRule(),
 		rules.NewInvalidRegexpRule(),

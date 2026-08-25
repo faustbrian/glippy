@@ -101,6 +101,13 @@ rule. It is deliberately narrower than Staticcheck SA4006: only error-typed
 values followed by another definition of the same object report, while any
 observable use or explicit blank assignment prevents a finding.
 
+The error-flow track now also admits `ineffective-assignment` as an opt-in
+nursery rule from the v0.6 corpus queue. It reports direct identifier
+assignments, compound assignments, tuple components, receives, and increments
+whose resulting SSA value is never observed, while preserving RHS effects and
+offering no guessed fix. Exact error overwrites remain owned by the more
+specific `overwritten-error` diagnostic when both rules are enabled.
+
 The error-flow track now also admits `failed-type-assertion-value` as a default
 correctness rule. It matches only the exact
 `if value, ok := value.(T); ok` shadowing form and reports a failure-branch read

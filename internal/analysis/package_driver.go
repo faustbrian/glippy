@@ -289,6 +289,8 @@ func preferSpecificDiagnostics(diagnostics []rules.Diagnostic) []rules.Diagnosti
 		switch diagnostic.RuleID {
 		case "must-use-result":
 			genericRules = []string{"deferred-function-not-called", "discarded-error"}
+		case "overwritten-error":
+			genericRules = []string{"ineffective-assignment"}
 		case "writer-not-finalized":
 			genericRules = []string{"resource-not-closed"}
 		}

@@ -52,6 +52,7 @@ not stable release promises.
 - [impossible-interface-nil-comparison](#impossible-interface-nil-comparison)
 - [impossible-type-assertion](#impossible-type-assertion)
 - [inconsistent-receiver-name](#inconsistent-receiver-name)
+- [ineffective-assignment](#ineffective-assignment)
 - [ineffective-break](#ineffective-break)
 - [ineffective-url-query-mutation](#ineffective-url-query-mutation)
 - [ineffective-value-receiver-assignment](#ineffective-value-receiver-assignment)
@@ -2356,6 +2357,64 @@ func (c *Client) Close() {}
 ```go
 func (c *Client) Open() {}
 func (c *Client) Close() {}
+```
+
+## ineffective-assignment
+
+detects assigned values that are never read
+
+An assigned value that is never read can indicate a forgotten consumer, a stale computation, or an
+ineffective state update. The rule preserves right-hand-side effects, follows SSA values through
+branch joins, and reports only direct identifier destinations whose assigned value has no observable
+use.
+
+- Default severity: `warn`
+- Presets: `nursery`
+- Minimum Go: `1.25`
+- Analysis tier: SSA
+- Node interests: none
+- Dependency syntax: not required
+- Effect facts: not required
+- Generated files: excluded
+- Type-error packages: excluded
+- Categories: `correctness`, `suspicious`
+
+### Fixes
+
+None.
+
+### Configuration
+
+None.
+
+### Known limitations
+
+- Only assignments to direct identifiers are considered; fields, indexes, dereferences, range
+  variables, standalone var declarations, and incoming parameter values are excluded.
+- Constant SSA values are excluded because the compiler and SSA builder can merge them independently
+  of the source assignment.
+- Address-taken values may be represented through memory and are conservatively excluded when SSA
+  cannot identify the assigned value precisely.
+- Generated files and packages with type errors are excluded.
+
+### Example: Consume the value produced by an assignment
+
+**Incorrect**
+
+```go
+name := input
+use(name)
+name = normalize(input)
+return input
+```
+
+**Correct**
+
+```go
+name := input
+use(name)
+name = normalize(input)
+return name
 ```
 
 ## ineffective-break
