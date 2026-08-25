@@ -28,7 +28,15 @@ go test ./internal/format/doc -run '^$' -fuzz '^FuzzRenderDeterministic$' -fuzzt
 
 (
   task_cache=$(mktemp -d "${TMPDIR:-/tmp}/glippy-editor-benchmark.XXXXXX")
-  trap 'find "$task_cache" -mindepth 1 -delete; rmdir "$task_cache"' EXIT HUP INT TERM
+  cleanup() {
+    trap - EXIT HUP INT TERM
+    find "$task_cache" -mindepth 1 -delete
+    rmdir "$task_cache"
+  }
+  trap cleanup EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   GOWORK=off GOCACHE="$task_cache" go test ./benchmarks -run '^$' -bench '^BenchmarkGlippyEditorStdin$' -benchmem -benchtime=10x -count=5
 )
 ./benchmarks/editor-latency.sh

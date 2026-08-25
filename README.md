@@ -332,11 +332,21 @@ To evaluate an untagged checkout with Go 1.27, build a disposable development
 binary:
 
 ```sh
-task_root=$(mktemp -d "${TMPDIR:-/tmp}/glippy-eval.XXXXXX")
-trap 'find "$task_root" -mindepth 1 -delete; rmdir "$task_root"' EXIT HUP INT TERM
-go build -o "$task_root/glippy" ./cmd/glippy
-"$task_root/glippy" version
-"$task_root/glippy" fmt --diff /absolute/path/to/project
+(
+  task_root=$(mktemp -d "${TMPDIR:-/tmp}/glippy-eval.XXXXXX")
+  cleanup() {
+    trap - EXIT HUP INT TERM
+    find "$task_root" -mindepth 1 -delete
+    rmdir "$task_root"
+  }
+  trap cleanup EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  GOCACHE="$task_root/cache" go build -o "$task_root/glippy" ./cmd/glippy
+  "$task_root/glippy" version
+  "$task_root/glippy" fmt --diff /absolute/path/to/project
+)
 ```
 
 Pin the source revision used by every developer and CI job. Do not run another

@@ -23,7 +23,10 @@ cleanup() {
 	find "$task_root" -mindepth 1 -delete
 	rmdir "$task_root"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 env -u GOWORK GOCACHE="$task_root/cache" GOMODCACHE="$task_root/modcache" go -C "$repo_root" build \
 	-o "$task_root/glippy" ./cmd/glippy
