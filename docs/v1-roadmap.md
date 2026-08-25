@@ -8,8 +8,8 @@ community-adoption program.
 ## v0.6: Real-World Rule Validation
 
 Status: complete. The exact evidence and accepted boundaries are recorded in
-the [v0.6 exit audit](research/v0.6-exit-audit-2026-08-25.md). Stable-v1
-roadmap progress is 65%, with v0.7 now active.
+the [v0.6 exit audit](research/v0.6-exit-audit-2026-08-25.md). At v0.6 closure,
+stable-v1 roadmap progress advanced to 65% and v0.7 became active.
 
 - Run the pinned public-repository corpus with `default`, `recommended`,
   `strict`, and `pedantic`.
@@ -25,13 +25,9 @@ them or seek upstream adoption.
 
 ## v0.7: Semantic Depth And Credible Fixes
 
-Status: active. Both v0.6 comparator-backed rule candidates are implemented.
-The first corpus-noise correction propagates exact testing-failure wrapper
-provenance and targets 17 classified Kubernetes return-shim false positives.
-Source-proven nil `Write` results now cross selected-module boundaries and
-target the two containerd progress-writer false positives. The remaining
-containerd tar finding is an accurate but intentional fuzz-target diagnostic,
-so the interaction work is now the remaining v0.7 gate.
+Status: complete. The exact evidence and conservative boundaries are recorded
+in the [v0.7 exit audit](research/v0.7-exit-audit-2026-08-25.md). Stable-v1
+roadmap progress is 75%, with v0.8 now active.
 
 - Improve bounded interprocedural alias, interface, recursion, and ownership
   reasoning.

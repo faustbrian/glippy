@@ -2,8 +2,10 @@
 
 - Original Phase 0-5 progress: 100%
 - Active development: post-v0.1 Clippy-comparability expansion
-- Stable-v1 roadmap progress: 65%
-- Active stable-v1 milestone: v0.7 semantic depth and credible fixes
+- Stable-v1 roadmap progress: 75%
+- Active stable-v1 milestone: v0.8 large-repository hardening
+- v0.7 semantic depth and credible fixes: complete at revision `35e93c5`;
+  focused interaction and independent-review gates passed
 - v0.6 real-world rule validation: complete at analyzed revision `ee2ea4f`;
   exact corpus run `32723865179`, attempt 2, passed all 20 jobs and classified
   all 386 default and recommended entries
@@ -3044,3 +3046,14 @@ in-memory fmt provenance now accepts that authoritative scalar standard-library
 type alongside basic values and `time.Time`, while user-defined method sets
 remain conservative. The exact Moby corpus still reruns in v0.8. Stable-v1
 progress remains 65% until the v0.7 interaction gate passes.
+
+The v0.7 exit audit closes semantic depth and credible fixes at 75% stable-v1
+progress. Both comparator-backed nursery candidates are implemented; all 26
+historical default false-positive entries have a bounded current disposition;
+safe, suggestion, and unsafe authorization, conflict rollback, formatter and
+suppression ownership, diagnostic precedence, and native-cache invalidation
+pass one focused interaction matrix. Recursive testing-failure wrapper cycles
+remain deliberately unclassified rather than being overstated as supported.
+The exact corpus rerun, formatter corpus proof, cross-platform resource budgets,
+and fix rehearsals now belong to active v0.8. No runtime process-control or RSS
+probe was run locally.
