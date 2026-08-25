@@ -45,6 +45,25 @@ func TestNativeTestingSkipFactsUseStableCrossLoadFunctionIdentity(t *testing.T) 
 	}
 }
 
+func TestNativeTestingFailureFactsUseStableCrossLoadFunctionIdentity(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestFunction("example.com/project/terminate", "Fatal")
+	second := effectTestFunction("example.com/project/terminate", "Fatal")
+	other := effectTestFunction("example.com/project/terminate", "Stop")
+	facts := newNativeEffectFacts()
+	facts.testingFailures[stableFunctionIdentity(first)] = struct{}{}
+	if !facts.testingFailure(second) {
+		t.Fatal("testing-failure effect fact did not survive an independent type identity")
+	}
+	if facts.testingFailure(other) {
+		t.Fatal("testing-failure effect fact matched another function")
+	}
+	if !cloneNativeEffectFacts(facts).testingFailure(second) {
+		t.Fatal("testing-failure effect fact did not survive cloning")
+	}
+}
+
 func TestTestingSkipFactsIntersectPackageVariants(t *testing.T) {
 	t.Parallel()
 
@@ -52,8 +71,13 @@ func TestTestingSkipFactsIntersectPackageVariants(t *testing.T) {
 	second := effectTestFunction("example.com/project/terminate", "Skip")
 	analysis := &noReturnAnalysis{
 		definitions: map[*types.Func]*noReturnDefinition{
-			first: {noReturn: true, testingSkipBuilt: true, testingSkip: true},
-			second: {noReturn: true, testingSkipBuilt: true},
+			first: {
+				noReturn: true,
+				testingSkipBuilt: true,
+				testingSkip: true,
+				testingFailureBuilt: true,
+			},
+			second: {noReturn: true, testingSkipBuilt: true, testingFailureBuilt: true},
 		},
 	}
 	facts := newNativeEffectFacts()
@@ -67,6 +91,57 @@ func TestTestingSkipFactsIntersectPackageVariants(t *testing.T) {
 	facts.addNoReturns(analysis)
 	if !facts.testingSkip(first) {
 		t.Fatal("testing-skip fact was lost across agreeing package variants")
+	}
+}
+
+func TestTestingFailureFactsIntersectPackageVariants(t *testing.T) {
+	t.Parallel()
+
+	first := effectTestFunction("example.com/project/terminate", "Fatal")
+	second := effectTestFunction("example.com/project/terminate", "Fatal")
+	analysis := &noReturnAnalysis{
+		definitions: map[*types.Func]*noReturnDefinition{
+			first: {
+				noReturn: true,
+				testingSkipBuilt: true,
+				testingFailureBuilt: true,
+				testingFailure: true,
+			},
+			second: {noReturn: true, testingSkipBuilt: true, testingFailureBuilt: true},
+		},
+	}
+	facts := newNativeEffectFacts()
+	facts.addNoReturns(analysis)
+	if facts.testingFailure(first) {
+		t.Fatal("testing-failure fact survived a disagreeing package variant")
+	}
+
+	analysis.definitions[second].testingFailure = true
+	facts = newNativeEffectFacts()
+	facts.addNoReturns(analysis)
+	if !facts.testingFailure(first) {
+		t.Fatal("testing-failure fact was lost across agreeing package variants")
+	}
+}
+
+func TestTestingFailureMethodsAreAuthoritativeNoReturnCalls(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"FailNow", "Fatal", "Fatalf"} {
+		failure := effectTestMethod("testing", "T", name)
+		if !isAuthoritativeNoReturn(failure) || !isAuthoritativeTestingFailure(failure) {
+			t.Fatalf("testing.T.%s was not classified as a testing failure", name)
+		}
+	}
+	for _, name := range []string{"Skip", "Skipf", "SkipNow", "Error", "Fail"} {
+		nonFailure := effectTestMethod("testing", "T", name)
+		if isAuthoritativeTestingFailure(nonFailure) {
+			t.Fatalf("testing.T.%s was classified as a testing failure", name)
+		}
+	}
+	lookalike := effectTestMethod("example.com/testing", "T", "Fatal")
+	if isAuthoritativeNoReturn(lookalike) || isAuthoritativeTestingFailure(lookalike) {
+		t.Fatal("testing failure lookalike was classified as authoritative")
 	}
 }
 
@@ -104,11 +179,15 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	first.noReturns["a"] = struct{}{}
 	first.testingSkips["z-skip"] = struct{}{}
 	first.testingSkips["a-skip"] = struct{}{}
+	first.testingFailures["z-failure"] = struct{}{}
+	first.testingFailures["a-failure"] = struct{}{}
 	second := newNativeEffectFacts()
 	second.noReturns["a"] = struct{}{}
 	second.noReturns["z"] = struct{}{}
 	second.testingSkips["a-skip"] = struct{}{}
 	second.testingSkips["z-skip"] = struct{}{}
+	second.testingFailures["a-failure"] = struct{}{}
+	second.testingFailures["z-failure"] = struct{}{}
 	first.parameters["function"] = map[int]rules.ParameterEffectSummary{
 		1: {
 			Known: true,
@@ -163,6 +242,11 @@ func TestNativeEffectFactDigestIsOrderedAndContentSensitive(t *testing.T) {
 	delete(changed.testingSkips, "a-skip")
 	if first.digest() == changed.digest() {
 		t.Fatal("effect fact digest ignored a testing-skip change")
+	}
+	changed = cloneNativeEffectFacts(first)
+	delete(changed.testingFailures, "a-failure")
+	if first.digest() == changed.digest() {
+		t.Fatal("effect fact digest ignored a testing-failure change")
 	}
 	changed = cloneNativeEffectFacts(first)
 	changed.parameters["function"][1] = rules.ParameterEffectSummary{

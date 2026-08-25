@@ -136,6 +136,12 @@ and cache component to `native-effects-v14`. Exact selected-module wrappers
 around standard-library testing skips or Ginkgo `Skip` retain that provenance
 across independent package loads. Name-only lookalikes remain returning.
 
+The 2026-08-25 testing-failure provenance refinement advances the active
+schema and cache component to `native-effects-v15`. Exact selected-module
+wrappers retain testing-failure provenance only when every terminal path ends
+in `testing.FailNow`, `Fatal`, or `Fatalf`; mixed terminal behavior and
+name-only lookalikes remain ordinary no-return calls.
+
 ## Alternatives
 
 - Load the complete dependency syntax closure with `packages.NeedDeps`:

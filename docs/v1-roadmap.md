@@ -25,6 +25,11 @@ them or seek upstream adoption.
 
 ## v0.7: Semantic Depth And Credible Fixes
 
+Status: active. Both v0.6 comparator-backed rule candidates are implemented.
+The first corpus-noise correction propagates exact testing-failure wrapper
+provenance and targets 17 classified Kubernetes return-shim false positives;
+the remaining in-memory writer and interaction work is still open.
+
 - Improve bounded interprocedural alias, interface, recursion, and ownership
   reasoning.
 - Expand high-signal concurrency, lifecycle, error-flow, and standard-library

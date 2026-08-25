@@ -3002,3 +3002,14 @@ classified unsafe because it intentionally corrects observable trimming
 behavior. Both remain outside curated profiles pending the v0.8 corpus
 rerun. Stable-v1 progress remains 65% inside the broader v0.7 semantic-depth,
 precision, credible-fix, and interaction gate.
+
+The first v0.7 corpus-noise correction propagates exact testing-failure
+provenance through selected local-source wrappers. `unreachable-code` now
+accepts a final bare return shim after a wrapper only when every terminal path
+resolves to `testing.FailNow`, `Fatal`, or `Fatalf`; mixed panic, skip, dynamic,
+and lookalike paths remain diagnostics. The native effect schema and cache
+component advance to version 15 so cross-load facts and package variants stay
+deterministic. This targets the 17 classified Kubernetes default false
+positives without suppressing the 17 actionable post-mortem and cleanup
+findings. Stable-v1 progress remains 65% until the complete v0.7 precision and
+interaction gate passes.

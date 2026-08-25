@@ -6505,10 +6505,11 @@ None.
 - A direct proven no-return helper call may be followed by a final unlabeled break or continue
   without being reported; labeled branches, compound terminal flow, and retained work remain
   diagnostics.
-- An exact testing FailNow, Fatal, or Fatalf call may also be followed by a final bare return, or in
-  a value-returning function by one zero-value variable declaration and a return of only those
-  variables, without being reported; empty or initialized declarations, retained work, and
-  lookalikes remain diagnostics.
+- An exact testing FailNow, Fatal, or Fatalf call, or a proven selected local-source wrapper whose
+  terminal paths are testing failures, may also be followed by a final bare return without being
+  reported. Exact testing calls in value-returning functions may additionally use one zero-value
+  variable declaration and a return of only those variables; empty or initialized declarations,
+  retained work, mixed terminal wrappers, and lookalikes remain diagnostics.
 - Source retained after an exact testing Skip, Skipf, or SkipNow call, an exact Ginkgo Skip call, or
   a proven selected local-source skip wrapper is treated as an intentional disabled-test body and is
   not reported.

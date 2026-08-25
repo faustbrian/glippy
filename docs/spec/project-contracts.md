@@ -200,9 +200,9 @@ retain the ordinary deterministic target-union behavior. Fix modes retain the
 existing target-matrix prohibition.
 
 Contract changes MUST invalidate affected persistent native results. The
-`native-effects-v14` component binds no-return, testing-skip, parameter, receiver,
-returned-state, unconditional result-state, must-use, blocking, and alias facts
-through stable
+`native-effects-v15` component binds no-return, testing-skip, testing-failure,
+parameter, receiver, returned-state, unconditional result-state, must-use,
+blocking, and alias facts through stable
 package-qualified function identities, including the distinction between
 possible terminal effect kinds
 and effects independently guaranteed on every returning path. Contract source
@@ -224,6 +224,11 @@ cross exact static single-result and same-arity tuple delegation through that
 bounded traversal. Project contracts do not declare those relationships; they
 are proven only from selected local-source modules and exact source or
 control-flow behavior.
+
+The version-15 component additionally binds selected local-source
+testing-failure wrappers whose every terminal path reaches an exact
+`testing.FailNow`, `Fatal`, or `Fatalf` call. Mixed panic, exit, skip, dynamic,
+or unresolved terminal paths remain unclassified.
 
 A source-derived no-op Close fact MUST identify an exact selected-module
 `Close() error` method whose complete body consists of one return statement for

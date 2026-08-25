@@ -652,6 +652,7 @@ type ControlFlowContext struct {
 	effects EffectFacts
 	callMayReturn func(*ast.CallExpr) bool
 	callIsTestingSkip func(*ast.CallExpr) bool
+	callIsTestingFailure func(*ast.CallExpr) bool
 	shared *ControlFlowShared
 }
 
@@ -945,6 +946,7 @@ func NewControlFlowContext(
 	effects EffectFacts,
 	callMayReturn func(*ast.CallExpr) bool,
 	callIsTestingSkip func(*ast.CallExpr) bool,
+	callIsTestingFailure func(*ast.CallExpr) bool,
 	shared *ControlFlowShared,
 ) *ControlFlowContext {
 	return &ControlFlowContext{
@@ -955,6 +957,7 @@ func NewControlFlowContext(
 		effects: effects,
 		callMayReturn: callMayReturn,
 		callIsTestingSkip: callIsTestingSkip,
+		callIsTestingFailure: callIsTestingFailure,
 		shared: shared,
 	}
 }
@@ -1001,6 +1004,17 @@ func (c *ControlFlowContext) CallIsTestingSkip(call *ast.CallExpr) bool {
 		return false
 	}
 	return c.callIsTestingSkip(call)
+}
+
+// CallIsTestingFailure reports whether a statically resolved no-return call is
+// a direct testing failure or a selected local-source wrapper whose terminal
+// paths are testing failures. Unknown and dynamic calls conservatively return
+// false.
+func (c *ControlFlowContext) CallIsTestingFailure(call *ast.CallExpr) bool {
+	if c == nil || c.callIsTestingFailure == nil || call == nil {
+		return false
+	}
+	return c.callIsTestingFailure(call)
 }
 
 // ParameterEffect returns the conservative summary for one argument of a

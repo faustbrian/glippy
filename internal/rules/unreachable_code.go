@@ -43,7 +43,7 @@ func (unreachableCodeRule) Metadata() Metadata {
 			"Same-module imported no-return helpers are recognized; dynamic calls, recursion without a proven terminal path, and helpers outside selected modules remain conservatively returning.",
 			"A direct return or built-in panic required for a value-returning function to satisfy Go's syntactic termination check after a proven helper call is not reported.",
 			"A direct proven no-return helper call may be followed by a final unlabeled break or continue without being reported; labeled branches, compound terminal flow, and retained work remain diagnostics.",
-			"An exact testing FailNow, Fatal, or Fatalf call may also be followed by a final bare return, or in a value-returning function by one zero-value variable declaration and a return of only those variables, without being reported; empty or initialized declarations, retained work, and lookalikes remain diagnostics.",
+			"An exact testing FailNow, Fatal, or Fatalf call, or a proven selected local-source wrapper whose terminal paths are testing failures, may also be followed by a final bare return without being reported. Exact testing calls in value-returning functions may additionally use one zero-value variable declaration and a return of only those variables; empty or initialized declarations, retained work, mixed terminal wrappers, and lookalikes remain diagnostics.",
 			"Source retained after an exact testing Skip, Skipf, or SkipNow call, an exact Ginkgo Skip call, or a proven selected local-source skip wrapper is treated as an intentional disabled-test body and is not reported.",
 			"A built-in panic with the constant message \"unreachable\" after a proven no-return call is treated as an intentional sentinel and is not reported.",
 			"Removal remains suggestion-only because comments and intentionally retained examples require review.",
@@ -347,7 +347,7 @@ func (w *unreachableWalker) walkList(statements []ast.Stmt) {
 			w.sentinelAfterNoReturn = false
 			continue
 		}
-		if !isTestingTerminationStatement(w.ctx.Info(), statement) {
+		if !isTestingFailureStatement(w.ctx, statement) {
 			continue
 		}
 		if isTestingReturnShim(remaining) {
@@ -356,7 +356,9 @@ func (w *unreachableWalker) walkList(statements []ast.Stmt) {
 			w.sentinelAfterNoReturn = false
 			continue
 		}
-		if w.hasResults && isZeroReturnShim(w.ctx.Info(), remaining) {
+		if w.hasResults &&
+			isDirectTestingFailureStatement(w.ctx.Info(), statement) &&
+			isZeroReturnShim(w.ctx.Info(), remaining) {
 			index += 2
 			w.requiresReturn = false
 			w.sentinelAfterNoReturn = false
@@ -410,7 +412,19 @@ func (w *unreachableWalker) discardNoReturnShimBreak(statement ast.Stmt) {
 	w.breaks[target]--
 }
 
-func isTestingTerminationStatement(info *types.Info, statement ast.Stmt) bool {
+func isTestingFailureStatement(ctx *ControlFlowContext, statement ast.Stmt) bool {
+	if ctx == nil {
+		return false
+	}
+	expression, _ := statement.(*ast.ExprStmt)
+	if expression == nil {
+		return false
+	}
+	call, _ := expression.X.(*ast.CallExpr)
+	return call != nil && ctx.CallIsTestingFailure(call)
+}
+
+func isDirectTestingFailureStatement(info *types.Info, statement ast.Stmt) bool {
 	expression, _ := statement.(*ast.ExprStmt)
 	if expression == nil {
 		return false

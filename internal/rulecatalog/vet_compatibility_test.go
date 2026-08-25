@@ -908,6 +908,132 @@ func skipped(t *testing.T) {
 	}
 }
 
+func TestUnreachableCodeAcceptsImportedTestingFailureWrapperReturnShims(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/failurewrapper\n\ngo 1.25.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "wrapped", "wrapped.go"),
+		`package wrapped
+
+import "testing"
+
+func Fatal(t *testing.T) {
+	t.Fatal("terminal test failure")
+}
+
+func NestedFatal(t *testing.T) {
+	Fatal(t)
+}
+
+func Mixed(t *testing.T, fail bool) {
+	if fail {
+		t.Fatal("terminal test failure")
+	}
+	panic("terminal panic")
+}
+
+func Panic() {
+	panic("terminal panic")
+}
+`,
+	)
+	input := `package app
+
+import (
+	"testing"
+
+	"example.com/failurewrapper/wrapped"
+)
+
+func shim(t *testing.T) {
+	wrapped.Fatal(t)
+	return
+}
+
+func nestedShim(t *testing.T) {
+	wrapped.NestedFatal(t)
+	return
+}
+
+func wrapperValueShimKeepsExistingBoundary(t *testing.T) int {
+	wrapped.Fatal(t)
+	var zero int
+	return zero
+}
+
+func mixedIsNotATestingFailureShim(t *testing.T, fail bool) {
+	wrapped.Mixed(t, fail)
+	return
+}
+
+func panicIsNotATestingFailureShim() {
+	wrapped.Panic()
+	return
+}
+`
+	path := filepath.Join(root, "app", "app.go")
+	writeFixture(t, path, input)
+	registry, err := rulecatalog.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{
+				"unreachable-code": rules.SeverityWarn,
+			},
+			SourceGoVersion: "go1.25",
+		},
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"./app"},
+			ModuleMode: analysis.ModuleReadonly,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []int{
+		strings.Index(input, "var zero int"),
+		strings.Index(input, "func mixedIsNotATestingFailureShim") +
+			strings.Index(
+				input[strings.Index(input, "func mixedIsNotATestingFailureShim"):],
+				"return",
+			),
+		strings.Index(input, "func panicIsNotATestingFailureShim") +
+			strings.Index(
+				input[strings.Index(input, "func panicIsNotATestingFailureShim"):],
+				"return",
+			),
+	}
+	if len(result.Files) != 1 ||
+		result.Files[0].Path != path ||
+		len(result.Files[0].Diagnostics) != len(want) {
+		t.Fatalf("imported testing failure wrapper result = %#v", result)
+	}
+	for index, diagnostic := range result.Files[0].Diagnostics {
+		length := len("return")
+		if index == 0 {
+			length = len("var zero int")
+		}
+		if diagnostic.RuleID != "unreachable-code" ||
+			diagnostic.Range.Start != want[index] ||
+			diagnostic.Range.End != want[index] + length {
+			t.Fatalf("testing failure wrapper diagnostic[%d] = %#v", index, diagnostic)
+		}
+	}
+}
+
 func TestRemainingVetCompatibilityPackReportsDefects(t *testing.T) {
 	t.Parallel()
 
