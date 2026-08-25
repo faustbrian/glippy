@@ -2,6 +2,12 @@
 
 Date: 2026-08-09
 
+The current v0.9 comparison is recorded in the
+[2026-08-25 product-reference refresh](v0.9-reference-refresh-2026-08-25.md).
+It reviews Oxfmt 0.65.0, Oxlint 1.80.0, and current Oxc source alongside the
+current Clippy, rustfmt, Go vet, and Staticcheck boundaries. The chronological
+evidence below remains the design history.
+
 Audited source: Oxc commit
 [`9d19ab3`](https://github.com/oxc-project/oxc/commit/9d19ab308066d82dc3e53d5fc359807f8127b3d4),
 website commit

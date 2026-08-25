@@ -1,0 +1,104 @@
+name: Final fuzz evidence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: final-fuzz-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - name: source
+            package: ./internal/source
+            targets: >-
+              FuzzSourceLedgerReconstruction
+              FuzzSourceFragmentLedgerReconstruction
+          - name: formatter
+            package: ./internal/format
+            targets: >-
+              FuzzFormatValidSource
+              FuzzFormatValidFragment
+          - name: document-renderer
+            package: ./internal/format/doc
+            targets: FuzzRenderDeterministic
+          - name: fix-coordinator
+            package: ./internal/fix
+            targets: FuzzCoordinate
+          - name: suppressions
+            package: ./internal/suppressions
+            targets: FuzzParse
+          - name: configuration
+            package: ./internal/config
+            targets: FuzzParseDeterministic
+          - name: baseline
+            package: ./internal/baseline
+            targets: FuzzParseCanonicalRoundTrip
+          - name: cache
+            package: ./internal/cache
+            targets: FuzzDecodeEntry
+          - name: analysis-facts
+            package: ./internal/analysis
+            targets: >-
+              FuzzDecodePackageFactSnapshot
+              FuzzDecodePackageAnalyzerCacheEntry
+              FuzzDecodeNativePackageCacheEntry
+    steps:
+      - name: Check out Glippy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install the recorded Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: 1.27.0
+          cache: false
+      - name: Fuzz the bounded contract
+        shell: bash
+        env:
+          FUZZ_PACKAGE: ${{ matrix.package }}
+          FUZZ_TARGETS: ${{ matrix.targets }}
+        run: |
+          set -euo pipefail
+          task_root=$(mktemp -d "$RUNNER_TEMP/glippy-fuzz.XXXXXX")
+          cleanup() {
+            trap - EXIT HUP INT TERM
+            if [ -d "$task_root/modcache" ] &&
+              ! GOMODCACHE="$task_root/modcache" go clean -modcache >/dev/null 2>&1; then
+              chmod -R u+w "$task_root/modcache"
+            fi
+            find "$task_root" -mindepth 1 -delete
+            rmdir "$task_root"
+          }
+          trap cleanup EXIT
+          trap 'exit 129' HUP
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          export GOCACHE="$task_root/gocache"
+          export GOMODCACHE="$task_root/modcache"
+          export GOENV=off
+          export GOTOOLCHAIN=local
+          export GOMEMLIMIT=4GiB
+          export XDG_CACHE_HOME="$task_root/xdg-cache"
+          export XDG_CONFIG_HOME="$task_root/xdg-config"
+          mkdir -p "$XDG_CONFIG_HOME/go/telemetry"
+          printf 'off\n' > "$XDG_CONFIG_HOME/go/telemetry/mode"
+
+          for target in $FUZZ_TARGETS; do
+            go test "$FUZZ_PACKAGE" \
+              -run='^$' \
+              -fuzz="^${target}$" \
+              -fuzztime=30s
+          done
