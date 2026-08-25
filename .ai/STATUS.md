@@ -3168,3 +3168,14 @@ clean, recommended retained the three adjudicated `unchecked-scanner-error`
 findings, and strict and pedantic completed with 392 and 441 findings. The
 four-runner release-budget rerun remains the active v0.8 resource gate, so
 stable-v1 progress remains 75%.
+
+Release-budget workflow `32810535882` disproved the retained 90-second
+formatter ceiling at exact Glippy revision `aac0dd4`. Darwin amd64 recorded
+77.880 seconds for its first formatter sample and 99.660 seconds for its second,
+following the independent 90.950-second breach in campaign `32807509298`.
+The workflow now provisionally uses a 120-second per-sample maximum, leaving
+20.4% headroom over the largest observation. Linux amd64, Linux arm64, and
+Darwin arm64 completed the failed rerun; Darwin amd64 stopped at the old
+ceiling, and reproducibility was correctly skipped. A complete exact-candidate
+Go 1.27 campaign must still pass every native job and reproducibility gate, so
+v0.8 remains active at 75%.

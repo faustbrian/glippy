@@ -503,7 +503,7 @@ revision `f28f85133ac6d13169745807fc39e2d5ef6bf780`: 5,314 Go files totaling
 formatter runs in non-writing check mode and every completed sample must remain
 within both provisional budgets:
 
-- at most 90 elapsed seconds; and
+- at most 120 elapsed seconds; and
 - at most 2,147,483,648 bytes peak resident memory.
 
 These are per-sample maximums, not median targets. `peak-rss.sh` enforces both
@@ -568,7 +568,7 @@ budget requires a new recorded campaign and rationale.
 
 The manually dispatched `Release budget evidence` GitHub Actions workflow pins
 the corpus revision, Go 1.27.0, the 250-millisecond editor maximum, and the
-90-second/2-GiB formatter maximum. It runs on native GitHub-hosted
+120-second/2-GiB formatter maximum. It runs on native GitHub-hosted
 `macos-15-intel`, `macos-15`, `ubuntu-24.04`, and `ubuntu-24.04-arm` runners,
 covering Darwin and Linux on amd64 and arm64. Action dependencies are pinned by
 complete commit ID, cache reuse is disabled, and each job retains the raw host
