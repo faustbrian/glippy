@@ -1,0 +1,9 @@
+version = 1
+
+[analysis]
+goos = "linux"
+goarch = "amd64"
+cgo-enabled = false
+
+[lint]
+profile = "strict"

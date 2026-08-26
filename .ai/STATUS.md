@@ -3249,3 +3249,12 @@ alone cannot silently redefine command help, rule IDs, preset membership,
 analysis tiers, or fix availability. Formatter, configuration, exit-code, and
 machine-schema freeze evidence remains separate work, and stable-v1 progress
 remains 75% until v0.8 closes.
+
+The configuration-freeze candidate now pins exact resolved output for the
+default, recommended, strict, and pedantic profiles against a controlled Go
+1.27 module and explicit Linux amd64 build selection. The focused CLI contract
+test and every native release-candidate binary must reproduce the same enabled
+rules, reasons, options, maximum tier, source policy, and cache defaults.
+Configuration schema evolution beyond this supported schema-v1 snapshot remains
+a compatibility-policy decision; stable-v1 progress remains 75% until v0.8
+closes.

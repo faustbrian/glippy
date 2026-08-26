@@ -1,0 +1,472 @@
+## default
+project root: <ROOT>
+configuration: <ROOT>/default.toml (explicit)
+source language: go1.27 (<ROOT>/go.mod)
+migration target: unset
+format: line-width=100 tab-width=8
+profile: default
+presets: correctness
+warnings-as-errors: false
+path overrides: configured=0 matched=none path=.
+rule append-no-values: warn (profile default)
+rule atomic-update-assignment: warn (profile default)
+rule bad-bit-mask: warn (profile default)
+rule channel-used-after-close: warn (profile default)
+rule context-cancel-leak: warn (profile default)
+rule contradictory-condition: warn (profile default)
+rule copied-lock: warn (profile default)
+rule deferred-lock: warn (profile default)
+rule deferred-time-since: warn (profile default)
+rule duplicate-condition: warn (profile default)
+rule errors-as-target: warn (profile default)
+rule exec-pipe-run: warn (profile default)
+rule failed-type-assertion-value: warn (profile default)
+rule finalizer-captures-object: warn (profile default)
+rule http-response-before-error: warn (profile default)
+rule impossible-comparison: warn (profile default)
+rule impossible-interface-nil-comparison: warn (profile default)
+rule impossible-type-assertion: warn (profile default)
+rule ineffective-break: warn (profile default)
+rule ineffective-url-query-mutation: warn (profile default)
+rule infinite-recursion: warn (profile default)
+rule invalid-binary-write: warn (profile default)
+rule invalid-build-constraint: warn (profile default)
+rule invalid-directive: warn (profile default)
+rule invalid-random-bound: warn (profile default)
+rule invalid-regexp: warn (profile default)
+rule invalid-slog-arguments: warn (profile default)
+rule invalid-strconv-argument: warn (profile default)
+rule invalid-struct-tag: warn (profile default)
+rule invalid-test-signature: warn (profile default)
+rule invalid-unmarshal-target: warn (profile default)
+rule loop-capture: warn (profile default)
+rule must-use-result: warn (profile default)
+rule nan-comparison: warn (profile default)
+rule net-ip-bytes-equal: warn (profile default)
+rule nil-context: warn (profile default)
+  option include-tests=false
+rule nil-function-comparison: warn (profile default)
+rule nil-map-write: warn (profile default)
+rule non-slice-sort: warn (profile default)
+rule overlapping-encoder-slices: warn (profile default)
+rule oversized-shift: warn (profile default)
+rule printf-arguments: warn (profile default)
+rule self-assignment: warn (profile default)
+rule sql-transaction-not-completed: warn (profile default)
+rule sql-transaction-used-after-completion: warn (profile default)
+rule standard-library-version: warn (profile default)
+rule testing-goroutine-call: warn (profile default)
+rule time-layout: warn (profile default)
+rule unbuffered-signal-channel: warn (profile default)
+rule uncatchable-signal: warn (profile default)
+rule unchecked-csv-writer-error: warn (profile default)
+rule unchecked-writer-error: warn (profile default)
+rule unlock-without-lock: warn (profile default)
+rule unreachable-code: warn (profile default)
+rule unsafe-host-port: warn (profile default)
+rule unused-result: warn (profile default)
+rule waitgroup-misuse: warn (profile default)
+rule waitgroup-negative-counter: warn (profile default)
+rule writer-not-finalized: warn (profile default)
+rule zero-regexp-match-limit: warn (profile default)
+rule zero-replace-count: warn (profile default)
+maximum analysis tier: SSA
+generated files: readable; writes refused; enabled rules eligible=0/61
+type errors: enabled rules eligible=5/61
+test files: included through package selection
+testdata and fixtures: excluded unless explicitly selected
+vendor: excluded from recursive discovery
+analysis: goos=linux goarch=amd64 cgo=false build-tags=none
+analysis targets: 0
+semantic contracts: 0 files; 0 functions
+baseline: unset
+suppressions: require-reason=false expiry-cutoff=unset
+cache: enabled=false max-entries=4096 max-bytes=536870912
+## recommended
+project root: <ROOT>
+configuration: <ROOT>/recommended.toml (explicit)
+source language: go1.27 (<ROOT>/go.mod)
+migration target: unset
+format: line-width=100 tab-width=8
+profile: recommended
+presets: correctness
+warnings-as-errors: false
+path overrides: configured=0 matched=none path=.
+rule almost-swapped: warn (profile recommended)
+rule append-no-values: warn (profile recommended)
+rule atomic-update-assignment: warn (profile recommended)
+rule bad-bit-mask: warn (profile recommended)
+rule channel-used-after-close: warn (profile recommended)
+rule context-cancel-leak: warn (profile recommended)
+rule contradictory-condition: warn (profile recommended)
+rule copied-lock: warn (profile recommended)
+rule defer-before-error-check: warn (profile recommended)
+rule defer-in-infinite-loop: warn (profile recommended)
+rule deferred-lock: warn (profile recommended)
+rule deferred-time-since: warn (profile recommended)
+rule duplicate-condition: warn (profile recommended)
+rule errors-as-target: warn (profile recommended)
+rule errors-is-arguments: warn (profile recommended)
+rule exec-pipe-run: warn (profile recommended)
+rule failed-type-assertion-value: warn (profile recommended)
+rule finalizer-captures-object: warn (profile recommended)
+rule http-response-before-error: warn (profile recommended)
+rule http-response-body-not-closed: warn (profile recommended)
+rule identical-branches: warn (profile recommended)
+rule ignored-append-result: warn (profile recommended)
+rule impossible-comparison: warn (profile recommended)
+rule impossible-interface-nil-comparison: warn (profile recommended)
+rule impossible-type-assertion: warn (profile recommended)
+rule ineffective-break: warn (profile recommended)
+rule ineffective-url-query-mutation: warn (profile recommended)
+rule ineffective-value-receiver-assignment: warn (profile recommended)
+rule infinite-recursion: warn (profile recommended)
+rule invalid-binary-write: warn (profile recommended)
+rule invalid-build-constraint: warn (profile recommended)
+rule invalid-directive: warn (profile recommended)
+rule invalid-random-bound: warn (profile recommended)
+rule invalid-regexp: warn (profile recommended)
+rule invalid-slog-arguments: warn (profile recommended)
+rule invalid-strconv-argument: warn (profile recommended)
+rule invalid-struct-tag: warn (profile recommended)
+rule invalid-test-signature: warn (profile recommended)
+rule invalid-unmarshal-target: warn (profile recommended)
+rule loop-capture: warn (profile recommended)
+rule must-use-result: warn (profile recommended)
+rule nan-comparison: warn (profile recommended)
+rule net-ip-bytes-equal: warn (profile recommended)
+rule nil-context: warn (profile recommended)
+  option include-tests=false
+rule nil-error-wrap: warn (profile recommended)
+rule nil-function-comparison: warn (profile recommended)
+rule nil-map-write: warn (profile recommended)
+rule nilness: warn (profile recommended)
+rule non-slice-sort: warn (profile recommended)
+rule overlapping-encoder-slices: warn (profile recommended)
+rule oversized-shift: warn (profile recommended)
+rule overwritten-error: warn (profile recommended)
+rule printf-arguments: warn (profile recommended)
+rule self-assignment: warn (profile recommended)
+rule shadowed-error: warn (profile recommended)
+rule sql-transaction-not-completed: warn (profile recommended)
+rule sql-transaction-used-after-completion: warn (profile recommended)
+rule standard-library-version: warn (profile recommended)
+rule subsumed-condition: warn (profile recommended)
+rule suspicious-range: warn (profile recommended)
+rule suspicious-string-conversion: warn (profile recommended)
+rule testing-goroutine-call: warn (profile recommended)
+rule time-duration-unit: warn (profile recommended)
+rule time-layout: warn (profile recommended)
+rule typed-nil-error-return: warn (profile recommended)
+rule unbuffered-signal-channel: warn (profile recommended)
+rule uncatchable-signal: warn (profile recommended)
+rule unchecked-csv-writer-error: warn (profile recommended)
+rule unchecked-rows-error: warn (profile recommended)
+rule unchecked-scanner-error: warn (profile recommended)
+rule unchecked-writer-error: warn (profile recommended)
+rule unlock-without-lock: warn (profile recommended)
+rule unreachable-code: warn (profile recommended)
+rule unsafe-host-port: warn (profile recommended)
+rule unused-result: warn (profile recommended)
+rule waitgroup-misuse: warn (profile recommended)
+rule waitgroup-negative-counter: warn (profile recommended)
+rule writer-not-finalized: warn (profile recommended)
+rule zero-regexp-match-limit: warn (profile recommended)
+rule zero-replace-count: warn (profile recommended)
+maximum analysis tier: SSA
+generated files: readable; writes refused; enabled rules eligible=0/80
+type errors: enabled rules eligible=5/80
+test files: included through package selection
+testdata and fixtures: excluded unless explicitly selected
+vendor: excluded from recursive discovery
+analysis: goos=linux goarch=amd64 cgo=false build-tags=none
+analysis targets: 0
+semantic contracts: 0 files; 0 functions
+baseline: unset
+suppressions: require-reason=false expiry-cutoff=unset
+cache: enabled=false max-entries=4096 max-bytes=536870912
+## strict
+project root: <ROOT>
+configuration: <ROOT>/strict.toml (explicit)
+source language: go1.27 (<ROOT>/go.mod)
+migration target: unset
+format: line-width=100 tab-width=8
+profile: strict
+presets: correctness,suspicious,performance,complexity,style
+warnings-as-errors: false
+path overrides: configured=0 matched=none path=.
+rule almost-swapped: warn (profile strict)
+rule append-no-values: warn (profile strict)
+rule atomic-update-assignment: warn (profile strict)
+rule bad-bit-mask: warn (profile strict)
+rule busy-select-loop: warn (profile strict)
+rule channel-used-after-close: warn (profile strict)
+rule context-cancel-leak: warn (profile strict)
+rule context-key: warn (profile strict)
+rule contradictory-condition: warn (profile strict)
+rule copied-lock: warn (profile strict)
+rule dangerous-remove-all: warn (profile strict)
+rule defer-before-error-check: warn (profile strict)
+rule defer-in-infinite-loop: warn (profile strict)
+rule defer-in-loop: warn (profile strict)
+rule deferred-function-not-called: warn (profile strict)
+rule deferred-lock: warn (profile strict)
+rule deferred-time-since: warn (profile strict)
+rule discarded-error: warn (profile strict)
+  option include-tests=false
+rule duplicate-condition: warn (profile strict)
+rule errors-as-target: warn (profile strict)
+rule errors-is-arguments: warn (profile strict)
+rule excessive-nesting: warn (profile strict)
+  option maximum=5
+  option include-tests=false
+rule exec-pipe-run: warn (profile strict)
+rule failed-type-assertion-value: warn (profile strict)
+rule finalizer-captures-object: warn (profile strict)
+rule http-canonical-header-key: warn (profile strict)
+rule http-response-before-error: warn (profile strict)
+rule http-response-body-not-closed: warn (profile strict)
+rule http-response-body-used-after-close: warn (profile strict)
+rule identical-branches: warn (profile strict)
+rule ignored-append-result: warn (profile strict)
+rule impossible-comparison: warn (profile strict)
+rule impossible-interface-nil-comparison: warn (profile strict)
+rule impossible-type-assertion: warn (profile strict)
+rule ineffective-break: warn (profile strict)
+rule ineffective-url-query-mutation: warn (profile strict)
+rule ineffective-value-receiver-assignment: warn (profile strict)
+rule inefficient-io-string-write: warn (profile strict)
+rule infinite-recursion: warn (profile strict)
+rule integer-division-before-conversion: warn (profile strict)
+rule invalid-binary-write: warn (profile strict)
+rule invalid-build-constraint: warn (profile strict)
+rule invalid-directive: warn (profile strict)
+rule invalid-random-bound: warn (profile strict)
+rule invalid-regexp: warn (profile strict)
+rule invalid-slog-arguments: warn (profile strict)
+rule invalid-strconv-argument: warn (profile strict)
+rule invalid-struct-tag: warn (profile strict)
+rule invalid-test-signature: warn (profile strict)
+rule invalid-unmarshal-target: warn (profile strict)
+rule lock-held-across-blocking-call: warn (profile strict)
+rule lock-not-released: warn (profile strict)
+rule loop-capture: warn (profile strict)
+rule must-use-result: warn (profile strict)
+rule nan-comparison: warn (profile strict)
+rule net-ip-bytes-equal: warn (profile strict)
+rule nil-context: warn (profile strict)
+  option include-tests=false
+rule nil-error-wrap: warn (profile strict)
+rule nil-function-comparison: warn (profile strict)
+rule nil-map-write: warn (profile strict)
+rule nilness: warn (profile strict)
+rule non-octal-file-mode: warn (profile strict)
+rule non-slice-sort: warn (profile strict)
+rule overlapping-encoder-slices: warn (profile strict)
+rule oversized-shift: warn (profile strict)
+rule overwritten-error: warn (profile strict)
+rule printf-arguments: warn (profile strict)
+rule redundant-bool-comparison: warn (profile strict)
+rule regexp-compile-in-loop: warn (profile strict)
+rule resource-not-closed: warn (profile strict)
+rule self-assignment: warn (profile strict)
+rule shadowed-error: warn (profile strict)
+rule sql-transaction-not-completed: warn (profile strict)
+rule sql-transaction-used-after-completion: warn (profile strict)
+rule standard-library-version: warn (profile strict)
+rule string-range-rune-conversion: warn (profile strict)
+rule subsumed-condition: warn (profile strict)
+rule suspicious-range: warn (profile strict)
+rule suspicious-string-conversion: warn (profile strict)
+rule sync-pool-non-pointer: warn (profile strict)
+rule testing-goroutine-call: warn (profile strict)
+rule time-duration-unit: warn (profile strict)
+rule time-layout: warn (profile strict)
+rule too-many-lines: warn (profile strict)
+  option maximum=100
+  option include-tests=false
+rule too-many-parameters: warn (profile strict)
+  option maximum=7
+  option include-tests=false
+rule too-many-results: warn (profile strict)
+  option maximum=3
+  option include-tests=false
+rule typed-nil-error-return: warn (profile strict)
+rule unbuffered-signal-channel: warn (profile strict)
+rule uncatchable-signal: warn (profile strict)
+rule unchecked-csv-writer-error: warn (profile strict)
+rule unchecked-rows-error: warn (profile strict)
+rule unchecked-scanner-error: warn (profile strict)
+rule unchecked-writer-error: warn (profile strict)
+rule unlock-without-lock: warn (profile strict)
+rule unreachable-code: warn (profile strict)
+rule unsafe-host-port: warn (profile strict)
+rule unused-result: warn (profile strict)
+rule waitgroup-misuse: warn (profile strict)
+rule waitgroup-negative-counter: warn (profile strict)
+rule writer-not-finalized: warn (profile strict)
+rule zero-regexp-match-limit: warn (profile strict)
+rule zero-replace-count: warn (profile strict)
+maximum analysis tier: SSA
+generated files: readable; writes refused; enabled rules eligible=0/102
+type errors: enabled rules eligible=5/102
+test files: included through package selection
+testdata and fixtures: excluded unless explicitly selected
+vendor: excluded from recursive discovery
+analysis: goos=linux goarch=amd64 cgo=false build-tags=none
+analysis targets: 0
+semantic contracts: 0 files; 0 functions
+baseline: unset
+suppressions: require-reason=false expiry-cutoff=unset
+cache: enabled=false max-entries=4096 max-bytes=536870912
+## pedantic
+project root: <ROOT>
+configuration: <ROOT>/pedantic.toml (explicit)
+source language: go1.27 (<ROOT>/go.mod)
+migration target: unset
+format: line-width=100 tab-width=8
+profile: pedantic
+presets: correctness,suspicious,performance,complexity,style,pedantic
+warnings-as-errors: false
+path overrides: configured=0 matched=none path=.
+rule almost-swapped: warn (profile pedantic)
+rule append-no-values: warn (profile pedantic)
+rule atomic-update-assignment: warn (profile pedantic)
+rule bad-bit-mask: warn (profile pedantic)
+rule buffer-string-conversion: warn (profile pedantic)
+rule busy-select-loop: warn (profile pedantic)
+rule channel-used-after-close: warn (profile pedantic)
+rule context-cancel-leak: warn (profile pedantic)
+rule context-key: warn (profile pedantic)
+rule contradictory-condition: warn (profile pedantic)
+rule copied-lock: warn (profile pedantic)
+rule dangerous-remove-all: warn (profile pedantic)
+rule defer-before-error-check: warn (profile pedantic)
+rule defer-in-infinite-loop: warn (profile pedantic)
+rule defer-in-loop: warn (profile pedantic)
+rule deferred-function-not-called: warn (profile pedantic)
+rule deferred-lock: warn (profile pedantic)
+rule deferred-time-since: warn (profile pedantic)
+rule discarded-error: warn (profile pedantic)
+  option include-tests=false
+rule duplicate-condition: warn (profile pedantic)
+rule empty-branch: warn (profile pedantic)
+rule errors-as-target: warn (profile pedantic)
+rule errors-is-arguments: warn (profile pedantic)
+rule excessive-nesting: warn (profile pedantic)
+  option maximum=5
+  option include-tests=false
+rule exec-pipe-run: warn (profile pedantic)
+rule failed-type-assertion-value: warn (profile pedantic)
+rule finalizer-captures-object: warn (profile pedantic)
+rule http-canonical-header-key: warn (profile pedantic)
+rule http-response-before-error: warn (profile pedantic)
+rule http-response-body-not-closed: warn (profile pedantic)
+rule http-response-body-used-after-close: warn (profile pedantic)
+rule identical-branches: warn (profile pedantic)
+rule ignored-append-result: warn (profile pedantic)
+rule impossible-comparison: warn (profile pedantic)
+rule impossible-interface-nil-comparison: warn (profile pedantic)
+rule impossible-type-assertion: warn (profile pedantic)
+rule inconsistent-receiver-name: warn (profile pedantic)
+rule ineffective-break: warn (profile pedantic)
+rule ineffective-url-query-mutation: warn (profile pedantic)
+rule ineffective-value-receiver-assignment: warn (profile pedantic)
+rule inefficient-io-string-write: warn (profile pedantic)
+rule inefficient-string-comparison: warn (profile pedantic)
+rule infinite-recursion: warn (profile pedantic)
+rule integer-division-before-conversion: warn (profile pedantic)
+rule invalid-binary-write: warn (profile pedantic)
+rule invalid-build-constraint: warn (profile pedantic)
+rule invalid-directive: warn (profile pedantic)
+rule invalid-random-bound: warn (profile pedantic)
+rule invalid-regexp: warn (profile pedantic)
+rule invalid-slog-arguments: warn (profile pedantic)
+rule invalid-strconv-argument: warn (profile pedantic)
+rule invalid-struct-tag: warn (profile pedantic)
+rule invalid-test-signature: warn (profile pedantic)
+rule invalid-unmarshal-target: warn (profile pedantic)
+rule lock-held-across-blocking-call: warn (profile pedantic)
+rule lock-not-released: warn (profile pedantic)
+rule loop-capture: warn (profile pedantic)
+rule manual-min-max: warn (profile pedantic)
+rule mixed-receiver-type: warn (profile pedantic)
+rule must-use-result: warn (profile pedantic)
+rule nan-comparison: warn (profile pedantic)
+rule needless-blank-identifier: warn (profile pedantic)
+rule net-ip-bytes-equal: warn (profile pedantic)
+rule nil-context: warn (profile pedantic)
+  option include-tests=false
+rule nil-error-wrap: warn (profile pedantic)
+rule nil-function-comparison: warn (profile pedantic)
+rule nil-map-write: warn (profile pedantic)
+rule nilness: warn (profile pedantic)
+rule non-octal-file-mode: warn (profile pedantic)
+rule non-slice-sort: warn (profile pedantic)
+rule overlapping-encoder-slices: warn (profile pedantic)
+rule oversized-shift: warn (profile pedantic)
+rule overwritten-error: warn (profile pedantic)
+rule printf-arguments: warn (profile pedantic)
+rule redundant-bool-comparison: warn (profile pedantic)
+rule redundant-closure: warn (profile pedantic)
+rule redundant-else: warn (profile pedantic)
+rule redundant-nil-check: warn (profile pedantic)
+rule redundant-type-declaration: warn (profile pedantic)
+rule regexp-compile-in-loop: warn (profile pedantic)
+rule resource-not-closed: warn (profile pedantic)
+rule self-assignment: warn (profile pedantic)
+rule shadowed-error: warn (profile pedantic)
+rule sql-transaction-not-completed: warn (profile pedantic)
+rule sql-transaction-used-after-completion: warn (profile pedantic)
+rule standard-library-version: warn (profile pedantic)
+rule standard-method-signature: warn (profile pedantic)
+rule string-range-rune-conversion: warn (profile pedantic)
+rule subsumed-condition: warn (profile pedantic)
+rule suspicious-range: warn (profile pedantic)
+rule suspicious-string-conversion: warn (profile pedantic)
+rule sync-pool-non-pointer: warn (profile pedantic)
+rule testing-goroutine-call: warn (profile pedantic)
+rule time-duration-unit: warn (profile pedantic)
+rule time-layout: warn (profile pedantic)
+rule time-since: warn (profile pedantic)
+rule time-until: warn (profile pedantic)
+rule too-many-lines: warn (profile pedantic)
+  option maximum=100
+  option include-tests=false
+rule too-many-parameters: warn (profile pedantic)
+  option maximum=7
+  option include-tests=false
+rule too-many-results: warn (profile pedantic)
+  option maximum=3
+  option include-tests=false
+rule typed-nil-error-return: warn (profile pedantic)
+rule unbuffered-signal-channel: warn (profile pedantic)
+rule uncatchable-signal: warn (profile pedantic)
+rule unchecked-csv-writer-error: warn (profile pedantic)
+rule unchecked-rows-error: warn (profile pedantic)
+rule unchecked-scanner-error: warn (profile pedantic)
+rule unchecked-writer-error: warn (profile pedantic)
+rule unlock-without-lock: warn (profile pedantic)
+rule unnecessary-conversion: warn (profile pedantic)
+rule unnecessary-format: warn (profile pedantic)
+rule unnecessary-sprintf: warn (profile pedantic)
+rule unreachable-code: warn (profile pedantic)
+rule unsafe-host-port: warn (profile pedantic)
+rule unused-result: warn (profile pedantic)
+rule waitgroup-misuse: warn (profile pedantic)
+rule waitgroup-negative-counter: warn (profile pedantic)
+rule writer-not-finalized: warn (profile pedantic)
+rule zero-regexp-match-limit: warn (profile pedantic)
+rule zero-replace-count: warn (profile pedantic)
+maximum analysis tier: SSA
+generated files: readable; writes refused; enabled rules eligible=0/119
+type errors: enabled rules eligible=5/119
+test files: included through package selection
+testdata and fixtures: excluded unless explicitly selected
+vendor: excluded from recursive discovery
+analysis: goos=linux goarch=amd64 cgo=false build-tags=none
+analysis targets: 0
+semantic contracts: 0 files; 0 functions
+baseline: unset
+suppressions: require-reason=false expiry-cutoff=unset
+cache: enabled=false max-entries=4096 max-bytes=536870912

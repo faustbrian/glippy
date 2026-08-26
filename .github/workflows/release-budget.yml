@@ -162,6 +162,17 @@ jobs:
           "$binary" rules >"$contracts/rules.txt"
           diff -u testdata/contracts/v1/help.txt "$contracts/help.txt"
           diff -u testdata/contracts/v1/rules.txt "$contracts/rules.txt"
+          configuration_root=$(cd testdata/contracts/v1/config && pwd -P)
+          {
+            for profile in default recommended strict pedantic; do
+              printf '## %s\n' "$profile"
+              "$binary" config show \
+                --config "$configuration_root/$profile.toml" \
+                "$configuration_root" |
+                sed "s|$configuration_root|<ROOT>|g"
+            done
+          } >"$contracts/profiles.txt"
+          diff -u testdata/contracts/v1/profiles.txt "$contracts/profiles.txt"
           "$binary" fmt testdata/corpus/hostile/compatibility.go \
             >"$contracts/compatibility.go"
           diff -u \
@@ -194,7 +205,8 @@ jobs:
             >"$contracts/upgrade.txt"
           (
             cd "$contracts"
-            shasum -a 256 compatibility.go help.txt rules.txt upgrade.txt \
+            shasum -a 256 \
+              compatibility.go help.txt profiles.txt rules.txt upgrade.txt \
               >SHA256SUMS
           )
         working-directory: ${{ github.workspace }}/glippy
