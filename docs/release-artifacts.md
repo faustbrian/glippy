@@ -98,6 +98,13 @@ requires every file to be byte-identical across runners. Any missing runner,
 different archive, manifest, or checksum, or non-native version execution fails
 the workflow.
 
+The workflow links these tagless artifacts as `v1.0.0-rc.1`. They are unsigned
+evaluation candidates retained only as workflow artifacts; dispatching the
+workflow does not create a tag, attestation, or GitHub Release. The version is
+the v0.9 contract-freeze identity, not a published support promise. A later
+source change invalidates the candidate and requires a new exact-revision run
+with the same identity until the maintainer approves the final tree.
+
 Candidate run
 [`32814696805`](https://github.com/faustbrian/glippy/actions/runs/32814696805)
 passed this complete matrix and comparison for revision `8ed359d` with Go

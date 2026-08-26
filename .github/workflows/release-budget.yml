@@ -125,7 +125,7 @@ jobs:
         shell: bash
         env:
           GOTOOLCHAIN: local
-          GLIPPY_RELEASE_VERSION: v0.0.0-release-candidate
+          GLIPPY_RELEASE_VERSION: v1.0.0-rc.1
         run: |
           set -euo pipefail
           task_root=$(mktemp -d "$RUNNER_TEMP/glippy-release-candidate.XXXXXX")
@@ -377,7 +377,7 @@ jobs:
       - name: Compare every candidate byte-for-byte
         shell: bash
         env:
-          GLIPPY_RELEASE_VERSION: v0.0.0-release-candidate
+          GLIPPY_RELEASE_VERSION: v1.0.0-rc.1
         run: |
           set -euo pipefail
           candidates="$RUNNER_TEMP/release-candidates"
