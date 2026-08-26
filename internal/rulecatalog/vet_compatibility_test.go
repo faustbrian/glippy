@@ -1034,6 +1034,105 @@ func panicIsNotATestingFailureShim() {
 	}
 }
 
+func TestUnreachableCodeAcceptsGinkgoFailureWrapperReturnShims(t *testing.T) {
+	t.Parallel()
+
+	for _, ginkgo := range
+		[]struct {
+			path string
+			version string
+		}{
+			{path: "github.com/onsi/ginkgo", version: "v1.16.5"},
+			{path: "github.com/onsi/ginkgo/v2", version: "v2.0.0"},
+		} {
+		root := t.TempDir()
+		writeFixture(
+			t,
+			filepath.Join(root, "go.mod"),
+			"module example.com/ginkgofailurewrapper\n\ngo 1.25.0\n\nrequire " +
+				ginkgo.path +
+				" " +
+				ginkgo.version +
+				"\n\nreplace " +
+				ginkgo.path +
+				" => ./ginkgo\n",
+		)
+		writeFixture(
+			t,
+			filepath.Join(root, "ginkgo", "go.mod"),
+			"module " + ginkgo.path + "\n\ngo 1.25.0\n",
+		)
+		writeFixture(
+			t,
+			filepath.Join(root, "ginkgo", "ginkgo.go"),
+			`package ginkgo
+
+func Fail(message string, callerSkip ...int) {
+	panic(message)
+}
+`,
+		)
+		writeFixture(
+			t,
+			filepath.Join(root, "wrapped", "wrapped.go"),
+			`package wrapped
+
+import (
+	"fmt"
+
+	"` +
+				ginkgo.path +
+				`"
+)
+
+func Failf(format string, args ...any) {
+	ginkgo.Fail(fmt.Sprintf(format, args...), 1)
+	panic("unreachable")
+}
+`,
+		)
+		input := `package app
+
+import "example.com/ginkgofailurewrapper/wrapped"
+
+func shim() {
+	wrapped.Failf("terminal test failure")
+	return
+}
+`
+		path := filepath.Join(root, "app", "app.go")
+		writeFixture(t, path, input)
+		registry, err := rulecatalog.NewRegistry()
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := analysis.RunPackages(
+			context.Background(),
+			registry,
+			analysis.RunOptions{
+				Presets: []rules.Preset{},
+				Overrides: map[string]rules.Severity{
+					"unreachable-code": rules.SeverityWarn,
+				},
+				SourceGoVersion: "go1.25",
+			},
+			analysis.PackageLoadOptions{
+				Dir: root,
+				Patterns: []string{"./app"},
+				ModuleMode: analysis.ModuleReadonly,
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Files) != 1 ||
+			result.Files[0].Path != path ||
+			len(result.Files[0].Diagnostics) != 0 {
+			t.Fatalf("Ginkgo %s failure wrapper result = %#v", ginkgo.path, result)
+		}
+	}
+}
+
 func TestRemainingVetCompatibilityPackReportsDefects(t *testing.T) {
 	t.Parallel()
 

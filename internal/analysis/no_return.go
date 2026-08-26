@@ -161,19 +161,26 @@ func isAuthoritativeNoReturn(function *types.Func) bool {
 }
 
 func isAuthoritativeTestingFailure(function *types.Func) bool {
-	if function == nil || function.Pkg() == nil || function.Pkg().Path() != "testing" {
+	if function == nil || function.Pkg() == nil {
 		return false
 	}
 	signature, _ := function.Type().(*types.Signature)
-	if signature == nil || signature.Recv() == nil {
+	if signature == nil {
 		return false
 	}
-	switch function.Name() {
-	case "FailNow", "Fatal", "Fatalf":
-		return true
-	default:
-		return false
+	switch function.Pkg().Path() {
+	case "testing":
+		if signature.Recv() == nil {
+			return false
+		}
+		switch function.Name() {
+		case "FailNow", "Fatal", "Fatalf":
+			return true
+		}
+	case "github.com/onsi/ginkgo", "github.com/onsi/ginkgo/v2":
+		return function.Name() == "Fail" && exactGinkgoTerminationSignature(signature)
 	}
+	return false
 }
 
 func isAuthoritativeTestingSkip(function *types.Func) bool {
@@ -194,9 +201,25 @@ func isAuthoritativeTestingSkip(function *types.Func) bool {
 			return true
 		}
 	case "github.com/onsi/ginkgo", "github.com/onsi/ginkgo/v2":
-		return signature.Recv() == nil && function.Name() == "Skip"
+		return function.Name() == "Skip" && exactGinkgoTerminationSignature(signature)
 	}
 	return false
+}
+
+func exactGinkgoTerminationSignature(signature *types.Signature) bool {
+	if signature == nil ||
+		signature.Recv() != nil ||
+		!signature.Variadic() ||
+		signature.Params() == nil ||
+		signature.Params().Len() != 2 ||
+		(signature.Results() != nil && signature.Results().Len() != 0) {
+		return false
+	}
+	return types.Identical(signature.Params().At(0).Type(), types.Typ[types.String]) &&
+		types.Identical(
+			signature.Params().At(1).Type(),
+			types.NewSlice(types.Typ[types.Int]),
+		)
 }
 
 func (a *noReturnAnalysis) testingSkip(function *types.Func) bool {

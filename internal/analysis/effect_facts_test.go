@@ -143,6 +143,25 @@ func TestTestingFailureMethodsAreAuthoritativeNoReturnCalls(t *testing.T) {
 	if isAuthoritativeNoReturn(lookalike) || isAuthoritativeTestingFailure(lookalike) {
 		t.Fatal("testing failure lookalike was classified as authoritative")
 	}
+	for _, packagePath := range
+		[]string{"github.com/onsi/ginkgo", "github.com/onsi/ginkgo/v2"} {
+		failure := effectTestGinkgoFunction(packagePath, "Fail")
+		if !isAuthoritativeNoReturn(failure) || !isAuthoritativeTestingFailure(failure) {
+			t.Fatalf("%s.Fail was not classified as a testing failure", packagePath)
+		}
+		lookalike := effectTestFunction(packagePath, "Failf")
+		if isAuthoritativeNoReturn(lookalike) || isAuthoritativeTestingFailure(lookalike) {
+			t.Fatalf("%s.Failf was classified as a testing failure", packagePath)
+		}
+		wrongSignature := effectTestFunction(packagePath, "Fail")
+		if isAuthoritativeNoReturn(wrongSignature) ||
+			isAuthoritativeTestingFailure(wrongSignature) {
+			t.Fatalf(
+				"%s.Fail with the wrong signature was classified as a testing failure",
+				packagePath,
+			)
+		}
+	}
 }
 
 func TestGinkgoSkipIsAnAuthoritativeTestingTermination(t *testing.T) {
@@ -150,7 +169,7 @@ func TestGinkgoSkipIsAnAuthoritativeTestingTermination(t *testing.T) {
 
 	for _, packagePath := range
 		[]string{"github.com/onsi/ginkgo", "github.com/onsi/ginkgo/v2"} {
-		skip := effectTestFunction(packagePath, "Skip")
+		skip := effectTestGinkgoFunction(packagePath, "Skip")
 		if !isAuthoritativeNoReturn(skip) || !isAuthoritativeTestingSkip(skip) {
 			t.Fatalf(
 				"%s.Skip was not classified as an authoritative testing termination",
@@ -161,6 +180,14 @@ func TestGinkgoSkipIsAnAuthoritativeTestingTermination(t *testing.T) {
 		if isAuthoritativeNoReturn(lookalike) || isAuthoritativeTestingSkip(lookalike) {
 			t.Fatalf(
 				"%s.Skipf was classified as an authoritative testing termination",
+				packagePath,
+			)
+		}
+		wrongSignature := effectTestFunction(packagePath, "Skip")
+		if isAuthoritativeNoReturn(wrongSignature) ||
+			isAuthoritativeTestingSkip(wrongSignature) {
+			t.Fatalf(
+				"%s.Skip with the wrong signature was classified as a testing termination",
 				packagePath,
 			)
 		}
@@ -660,6 +687,21 @@ func TestEffectModulePrefixesIncludeReachableLocalModulesOnly(t *testing.T) {
 func effectTestFunction(packagePath string, name string) *types.Func {
 	package_ := types.NewPackage(packagePath, "terminate")
 	signature := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	return types.NewFunc(token.NoPos, package_, name, signature)
+}
+
+func effectTestGinkgoFunction(packagePath string, name string) *types.Func {
+	package_ := types.NewPackage(packagePath, "ginkgo")
+	parameters := types.NewTuple(
+		types.NewVar(token.NoPos, package_, "message", types.Typ[types.String]),
+		types.NewVar(
+			token.NoPos,
+			package_,
+			"callerSkip",
+			types.NewSlice(types.Typ[types.Int]),
+		),
+	)
+	signature := types.NewSignatureType(nil, nil, nil, parameters, nil, true)
 	return types.NewFunc(token.NoPos, package_, name, signature)
 }
 

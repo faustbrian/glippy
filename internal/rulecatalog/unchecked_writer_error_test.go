@@ -1015,6 +1015,378 @@ func TestStableInMemoryWriters(t *testing.T) {
 	}
 }
 
+func TestUncheckedWriterErrorMatchesPinnedKubernetesInMemoryShapes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwriterkubernetes\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "stream.go"),
+		`package sample
+
+import (
+	"encoding/xml"
+	"io"
+)
+
+type suites struct {
+	XMLName xml.Name ` +
+			"`xml:\"testsuites\"`" +
+			`
+}
+
+func streamXML(output io.Writer, value *suites) error {
+	_, err := output.Write([]byte("<?xml version=\"1.0\"?>\n"))
+	if err != nil {
+		return err
+	}
+	encoder := xml.NewEncoder(output)
+	encoder.Indent("", "\t")
+	if err := encoder.Encode(value); err != nil {
+		return err
+	}
+	return encoder.Flush()
+}
+
+func unrelated(output io.Writer) error {
+	_, err := output.Write([]byte("payload"))
+	return err
+}
+`,
+	)
+	input := `package sample
+
+import (
+	"bufio"
+	"bytes"
+	"testing"
+)
+
+func TestPrune(t *testing.T) {
+	var output bytes.Buffer
+	writer := bufio.NewWriter(&output)
+	_ = streamXML(writer, &suites{})
+	_ = writer.Flush()
+}
+`
+	writeFixture(t, filepath.Join(root, "stream_test.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", true)
+	for _, file := range result.Files {
+		if len(file.Diagnostics) != 0 {
+			t.Fatalf("pinned Kubernetes in-memory result = %#v", result.Files)
+		}
+	}
+}
+
+func TestUncheckedWriterErrorRejectsEscapedOrAsynchronousXMLEncoderBorrows(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwriterxmlborrow\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "stream.go"),
+		`package sample
+
+import (
+	"encoding/xml"
+	"io"
+)
+
+func escapedEncoder(output io.Writer) *xml.Encoder {
+	encoder := xml.NewEncoder(output)
+	return encoder
+}
+
+func asynchronousEncoder(output io.Writer) {
+	encoder := xml.NewEncoder(output)
+	go encoder.Indent("", "\t")
+}
+
+func deferredEncoder(output io.Writer) {
+	encoder := xml.NewEncoder(output)
+	defer encoder.Flush()
+}
+
+func capturedAsynchronousEncoder(output io.Writer) {
+	encoder := xml.NewEncoder(output)
+	go func() {
+		encoder.Indent("", "\t")
+	}()
+}
+
+type retainingXMLValue struct{}
+
+var retainedEncoder *xml.Encoder
+
+func (retainingXMLValue) MarshalXML(encoder *xml.Encoder, start xml.StartElement) error {
+	retainedEncoder = encoder
+	return nil
+}
+
+func callbackEncoder(output io.Writer) error {
+	encoder := xml.NewEncoder(output)
+	return encoder.Encode(retainingXMLValue{})
+}
+`,
+	)
+	input := `package sample
+
+import (
+	"bufio"
+	"bytes"
+)
+
+func render() {
+	var output bytes.Buffer
+	escapedWriter := bufio.NewWriter(&output)
+	_ = escapedEncoder(escapedWriter)
+	escapedWriter.Flush()
+	asynchronousWriter := bufio.NewWriter(&output)
+	asynchronousEncoder(asynchronousWriter)
+	asynchronousWriter.Flush()
+	deferredWriter := bufio.NewWriter(&output)
+	deferredEncoder(deferredWriter)
+	deferredWriter.Flush()
+	capturedWriter := bufio.NewWriter(&output)
+	capturedAsynchronousEncoder(capturedWriter)
+	capturedWriter.Flush()
+	callbackWriter := bufio.NewWriter(&output)
+	_ = callbackEncoder(callbackWriter)
+	callbackWriter.Flush()
+}
+`
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", false)
+	var diagnostics []rules.Diagnostic
+	for _, file := range result.Files {
+		if filepath.Base(file.Path) == "sample.go" {
+			diagnostics = file.Diagnostics
+			break
+		}
+	}
+	assertUncheckedWriterDiagnostics(
+		t,
+		input,
+		analysis.PackageResult{Files: []analysis.Result{{Diagnostics: diagnostics}}},
+		[]string{
+			"escapedWriter.Flush()",
+			"asynchronousWriter.Flush()",
+			"deferredWriter.Flush()",
+			"capturedWriter.Flush()",
+			"callbackWriter.Flush()",
+		},
+	)
+}
+
+func TestUncheckedWriterErrorAcceptsKubernetesResourcePrinterBorrow(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwriterprinter\n\ngo 1.26.0\n\nrequire (\n\tk8s.io/apimachinery v0.0.0\n\tk8s.io/cli-runtime v0.0.0\n)\n\nreplace k8s.io/apimachinery => ./apimachinery\n\nreplace k8s.io/cli-runtime => ./cli-runtime\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "apimachinery", "go.mod"),
+		"module k8s.io/apimachinery\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "apimachinery", "pkg", "runtime", "runtime.go"),
+		"package runtime\n\ntype Object interface{}\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "cli-runtime", "go.mod"),
+		"module k8s.io/cli-runtime\n\ngo 1.26.0\n\nrequire k8s.io/apimachinery v0.0.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "cli-runtime", "pkg", "printers", "printers.go"),
+		`package printers
+
+import (
+	"fmt"
+	"io"
+
+	"k8s.io/apimachinery/pkg/runtime"
+)
+
+type ResourcePrinter interface {
+	PrintObj(runtime.Object, io.Writer) error
+}
+
+type PrintOptions struct{}
+
+type humanReadablePrinter struct{}
+
+func NewTablePrinter(PrintOptions) ResourcePrinter { return &humanReadablePrinter{} }
+
+func (*humanReadablePrinter) PrintObj(value runtime.Object, output io.Writer) error {
+	_, err := fmt.Fprint(output, value)
+	return err
+}
+`,
+	)
+	input := `package sample
+
+import (
+	"bytes"
+	"io"
+	"text/tabwriter"
+
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/cli-runtime/pkg/printers"
+)
+
+type retainingPrinter struct {
+	output io.Writer
+}
+
+var retainedCallback func()
+
+func retain(callback func()) {
+	retainedCallback = callback
+}
+
+func (printer *retainingPrinter) PrintObj(_ runtime.Object, output io.Writer) error {
+	printer.output = output
+	return nil
+}
+
+func render() string {
+	var output bytes.Buffer
+	table := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	printer := printers.NewTablePrinter(printers.PrintOptions{})
+	_ = printer.PrintObj("value", table)
+	table.Flush()
+	dynamicTable := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	var dynamic printers.ResourcePrinter = &retainingPrinter{}
+	_ = dynamic.PrintObj("value", dynamicTable)
+	dynamicTable.Flush()
+	reassignedTable := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	reassigned := printers.NewTablePrinter(printers.PrintOptions{})
+	reassigned = &retainingPrinter{}
+	_ = reassigned.PrintObj("value", reassignedTable)
+	reassignedTable.Flush()
+	deferredTable := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	deferred := printers.NewTablePrinter(printers.PrintOptions{})
+	defer deferred.PrintObj("value", deferredTable)
+	deferredTable.Flush()
+	asynchronousTable := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	asynchronous := printers.NewTablePrinter(printers.PrintOptions{})
+	go asynchronous.PrintObj("value", asynchronousTable)
+	asynchronousTable.Flush()
+	closureTable := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	closurePrinter := printers.NewTablePrinter(printers.PrintOptions{})
+	retain(func() {
+		_ = closurePrinter.PrintObj("value", closureTable)
+	})
+	closureTable.Flush()
+	return output.String()
+}
+`
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", false)
+	assertUncheckedWriterDiagnostics(
+		t,
+		input,
+		result,
+		[]string{
+			"dynamicTable.Flush()",
+			"reassignedTable.Flush()",
+			"deferredTable.Flush()",
+			"asynchronousTable.Flush()",
+			"closureTable.Flush()",
+		},
+	)
+}
+
+func TestUncheckedWriterErrorRejectsKubernetesResourcePrinterSignatureLookalikes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/uncheckedwriterprinterlookalike\n\ngo 1.26.0\n\nrequire (\n\tk8s.io/apimachinery v0.0.0\n\tk8s.io/cli-runtime v0.0.0\n)\n\nreplace k8s.io/apimachinery => ./apimachinery\n\nreplace k8s.io/cli-runtime => ./cli-runtime\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "apimachinery", "go.mod"),
+		"module k8s.io/apimachinery\n\ngo 1.26.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "apimachinery", "pkg", "runtime", "runtime.go"),
+		"package runtime\n\ntype Object interface{}\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "cli-runtime", "go.mod"),
+		"module k8s.io/cli-runtime\n\ngo 1.26.0\n\nrequire k8s.io/apimachinery v0.0.0\n",
+	)
+	writeFixture(
+		t,
+		filepath.Join(root, "cli-runtime", "pkg", "printers", "printers.go"),
+		`package printers
+
+import (
+	"io"
+
+	"k8s.io/apimachinery/pkg/runtime"
+)
+
+type ResourcePrinter interface {
+	PrintObj(*runtime.Object, io.Writer) error
+}
+
+type PrintOptions struct{}
+
+type printer struct{}
+
+func NewTablePrinter(*PrintOptions) ResourcePrinter { return &printer{} }
+
+func (*printer) PrintObj(*runtime.Object, io.Writer) error { return nil }
+`,
+	)
+	input := `package sample
+
+import (
+	"bytes"
+	"text/tabwriter"
+
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/cli-runtime/pkg/printers"
+)
+
+func render() string {
+	var output bytes.Buffer
+	table := tabwriter.NewWriter(&output, 1, 8, 1, ' ', 0)
+	printer := printers.NewTablePrinter(&printers.PrintOptions{})
+	var value runtime.Object = "value"
+	_ = printer.PrintObj(&value, table)
+	table.Flush()
+	return output.String()
+}
+`
+	writeFixture(t, filepath.Join(root, "sample.go"), input)
+	result := runUncheckedWriterError(t, root, "go1.26", false)
+	assertUncheckedWriterDiagnostics(t, input, result, []string{"table.Flush()"})
+}
+
 func TestUncheckedWriterErrorUsesCrossPackageInfallibleWriteFacts(t *testing.T) {
 	t.Parallel()
 

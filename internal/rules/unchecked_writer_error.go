@@ -958,6 +958,7 @@ type stableWriterState struct {
 	helperSinks map[*ast.CallExpr]ast.Expr
 	callTiming map[*ast.CallExpr]writerCallTiming
 	straightLineRebinds map[*ast.CallExpr]struct{}
+	kubernetesResourcePrinters map[types.Object]struct{}
 	writerBorrow func(*ast.CallExpr, int) bool
 	deferredEffects []deferredWriterEffect
 }
@@ -1111,6 +1112,7 @@ func stableWriterConstructorsInNode(
 		helperSinks: make(map[*ast.CallExpr]ast.Expr),
 		callTiming: callTiming,
 		straightLineRebinds: straightLineWriterRebinds(syntax),
+		kubernetesResourcePrinters: knownKubernetesResourcePrinters(info, syntax),
 		writerBorrow: writerBorrow,
 	}
 	lateConstructors := make(map[*ast.CallExpr]*ast.CallExpr)
@@ -1653,7 +1655,8 @@ func (state *stableWriterState) observe(info *types.Info, node ast.Node) bool {
 			state.invalidateCandidate(candidate, node.Pos())
 		}
 		for index, argument := range node.Args {
-			if standardWriterOperation(info, node, index) ||
+			if state.kubernetesResourcePrinterBorrow(info, node, index) ||
+				standardWriterOperation(info, node, index) ||
 				state.writerArgumentCannotRebind(info, node, index) {
 				continue
 			}
@@ -2323,6 +2326,7 @@ func writerMutationParameters(
 	parameterIndexes := newWriterParameterAliasResolver(info, function, body)
 	mutated := make(map[int]struct{})
 	localFunctions := writerLocalFunctionLiterals(info, body)
+	parents := writerASTParents(body)
 	markExpression := func(expression ast.Node, position token.Pos) {
 		ast.Inspect(
 			expression,
@@ -2377,6 +2381,13 @@ func writerMutationParameters(
 				}
 				for index, argument := range call.Args {
 					if standardWriterOperation(info, call, index) ||
+						localXMLWriterAcquisitionBorrow(
+							info,
+							body,
+							parents,
+							call,
+							index,
+						) ||
 						callee != nil ||
 						(receiver != nil &&
 							writerSinkExpression(info, call) ==
@@ -2423,6 +2434,161 @@ func writerMutationParameters(
 		},
 	)
 	return mutated
+}
+
+func localXMLWriterAcquisitionBorrow(
+	info *types.Info,
+	body *ast.BlockStmt,
+	parents map[ast.Node]ast.Node,
+	call *ast.CallExpr,
+	argument int,
+) bool {
+	if info == nil || body == nil || call == nil || argument != 0 {
+		return false
+	}
+	function := typeutil.StaticCallee(info, call)
+	if function == nil ||
+		function.Pkg() == nil ||
+		function.Pkg().Path() != "encoding/xml" ||
+		function.Name() != "NewEncoder" {
+		return false
+	}
+	parent := parents[call]
+	for {
+		paren, ok := parent.(*ast.ParenExpr)
+		if !ok {
+			break
+		}
+		parent = parents[paren]
+	}
+	assignment, _ := parent.(*ast.AssignStmt)
+	if assignment == nil || len(assignment.Lhs) != 1 || len(assignment.Rhs) != 1 {
+		return false
+	}
+	identifier, _ := assignment.Lhs[0].(*ast.Ident)
+	encoder := directObject(info, identifier)
+	if identifier == nil ||
+		encoder == nil ||
+		info.Defs[identifier] != encoder ||
+		packageScopeObject(encoder) {
+		return false
+	}
+	stable := true
+	ast.Inspect(
+		body,
+		func(node ast.Node) bool {
+			if !stable || node == nil {
+				return stable
+			}
+			use, _ := node.(*ast.Ident)
+			if use == nil ||
+				info.ObjectOf(use) != encoder ||
+				info.Defs[use] == encoder {
+				return true
+			}
+			selector, _ := parents[use].(*ast.SelectorExpr)
+			methodCall, _ := parents[selector].(*ast.CallExpr)
+			if selector == nil ||
+				selector.X != use ||
+				methodCall == nil ||
+				ast.Unparen(methodCall.Fun) != selector ||
+				!xmlEncoderMethodBorrowSafe(info, selector, methodCall) {
+				stable = false
+				return false
+			}
+			for parent := parents[methodCall];
+				parent != nil && parent != body;
+				parent = parents[parent] {
+				switch parent.(type) {
+				case *ast.DeferStmt, *ast.FuncLit, *ast.GoStmt:
+					stable = false
+					return false
+				}
+			}
+			return true
+		},
+	)
+	return stable
+}
+
+func xmlEncoderMethodBorrowSafe(
+	info *types.Info,
+	selector *ast.SelectorExpr,
+	call *ast.CallExpr,
+) bool {
+	if info == nil || selector == nil || call == nil {
+		return false
+	}
+	selection := info.Selections[selector]
+	if selection == nil {
+		return false
+	}
+	function, _ := selection.Obj().(*types.Func)
+	if function == nil || function.Pkg() == nil || function.Pkg().Path() != "encoding/xml" {
+		return false
+	}
+	signature, _ := types.Unalias(function.Type()).(*types.Signature)
+	if signature == nil ||
+		signature.Recv() == nil ||
+		!namedReceiver(signature.Recv().Type(), "encoding/xml", "Encoder") {
+		return false
+	}
+	switch function.Name() {
+	case "Close", "Flush", "Indent":
+		return true
+	case "Encode", "EncodeElement":
+		return len(call.Args) != 0 && xmlValueCannotCallback(info.TypeOf(call.Args[0]))
+	default:
+		return false
+	}
+}
+
+func xmlValueCannotCallback(type_ types.Type) bool {
+	remaining := 1024
+	seen := make(map[types.Type]struct{})
+	var inspect func(types.Type) bool
+	inspect = func(current types.Type) bool {
+		if current == nil || remaining == 0 {
+			return false
+		}
+		remaining--
+		current = types.Unalias(current)
+		if _, visited := seen[current]; visited {
+			return true
+		}
+		seen[current] = struct{}{}
+		for _, candidate := range []types.Type{current, types.NewPointer(current)} {
+			methods := types.NewMethodSet(candidate)
+			for index := 0; index < methods.Len(); index++ {
+				name := methods.At(index).Obj().Name()
+				if name == "MarshalText" || name == "MarshalXML" {
+					return false
+				}
+			}
+		}
+		switch current := current.(type) {
+		case *types.Named:
+			return inspect(current.Underlying())
+		case *types.Basic:
+			return true
+		case *types.Pointer:
+			return inspect(current.Elem())
+		case *types.Slice:
+			return inspect(current.Elem())
+		case *types.Array:
+			return inspect(current.Elem())
+		case *types.Struct:
+			for index := 0; index < current.NumFields(); index++ {
+				if !inspect(current.Field(index).Type()) {
+					return false
+				}
+			}
+			return true
+		default:
+			return false
+		}
+	}
+	return inspect(type_)
 }
 
 type writerParameterAliasSet map[int]struct{}
@@ -3116,6 +3282,183 @@ func standardWriterOperation(info *types.Info, call *ast.CallExpr, argument int)
 	return false
 }
 
+func kubernetesResourcePrinterMethod(function *types.Func, argument int) bool {
+	if function == nil ||
+		function.Pkg() == nil ||
+		function.Pkg().Path() != "k8s.io/cli-runtime/pkg/printers" ||
+		function.Name() != "PrintObj" ||
+		argument != 1 {
+		return false
+	}
+	signature, _ := types.Unalias(function.Type()).(*types.Signature)
+	return signature != nil &&
+		signature.Recv() != nil &&
+		exactNamedType(
+			signature.Recv().Type(),
+			"k8s.io/cli-runtime/pkg/printers",
+			"ResourcePrinter",
+		) &&
+		signature.Params() != nil &&
+		signature.Params().Len() == 2 &&
+		exactNamedType(
+			signature.Params().At(0).Type(),
+			"k8s.io/apimachinery/pkg/runtime",
+			"Object",
+		) &&
+		exactNamedType(signature.Params().At(1).Type(), "io", "Writer") &&
+		signature.Results() != nil &&
+		signature.Results().Len() == 1 &&
+		isBuiltinErrorType(signature.Results().At(0).Type())
+}
+
+func (state *stableWriterState) kubernetesResourcePrinterBorrow(
+	info *types.Info,
+	call *ast.CallExpr,
+	argument int,
+) bool {
+	if state == nil ||
+		info == nil ||
+		call == nil ||
+		state.callTiming[call] != writerCallImmediate {
+		return false
+	}
+	return state.kubernetesResourcePrinterCall(info, call, argument)
+}
+
+func (state *stableWriterState) kubernetesResourcePrinterCall(
+	info *types.Info,
+	call *ast.CallExpr,
+	argument int,
+) bool {
+	if state == nil || info == nil || call == nil {
+		return false
+	}
+	selector, _ := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	selection := info.Selections[selector]
+	if selection == nil || selection.Kind() != types.MethodVal {
+		return false
+	}
+	function, _ := selection.Obj().(*types.Func)
+	if !kubernetesResourcePrinterMethod(function, argument) {
+		return false
+	}
+	_, known := state.kubernetesResourcePrinters[directObject(info, selector.X)]
+	return known
+}
+
+func knownKubernetesResourcePrinters(info *types.Info, root ast.Node) map[types.Object]struct{} {
+	known := make(map[types.Object]struct{})
+	if info == nil || root == nil {
+		return known
+	}
+	parents := writerASTParents(root)
+	ast.Inspect(
+		root,
+		func(node ast.Node) bool {
+			identifier, _ := node.(*ast.Ident)
+			if identifier == nil || info.Defs[identifier] == nil {
+				return true
+			}
+			object := info.Defs[identifier]
+			if packageScopeObject(object) {
+				return true
+			}
+			var initializer ast.Expr
+			switch parent := parents[identifier].(type) {
+			case *ast.AssignStmt:
+				if len(parent.Lhs) == 1 &&
+					len(parent.Rhs) == 1 &&
+					parent.Lhs[0] == identifier {
+					initializer = parent.Rhs[0]
+				}
+			case *ast.ValueSpec:
+				if len(parent.Names) == 1 &&
+					len(parent.Values) == 1 &&
+					parent.Names[0] == identifier {
+					initializer = parent.Values[0]
+				}
+			}
+			if kubernetesTablePrinterConstructor(info, initializer) {
+				known[object] = struct{}{}
+			}
+			return true
+		},
+	)
+	if len(known) == 0 {
+		return known
+	}
+	ast.Inspect(
+		root,
+		func(node ast.Node) bool {
+			identifier, _ := node.(*ast.Ident)
+			if identifier == nil {
+				return true
+			}
+			object := info.ObjectOf(identifier)
+			if _, candidate := known[object];
+				!candidate || info.Defs[identifier] == object {
+				return true
+			}
+			selector, _ := parents[identifier].(*ast.SelectorExpr)
+			call, _ := parents[selector].(*ast.CallExpr)
+			selection := info.Selections[selector]
+			var function *types.Func
+			if selection != nil {
+				function, _ = selection.Obj().(*types.Func)
+			}
+			if selector == nil ||
+				selector.X != identifier ||
+				call == nil ||
+				ast.Unparen(call.Fun) != selector ||
+				!kubernetesResourcePrinterMethod(function, 1) {
+				delete(known, object)
+			}
+			return true
+		},
+	)
+	return known
+}
+
+func kubernetesTablePrinterConstructor(info *types.Info, expression ast.Expr) bool {
+	call, _ := ast.Unparen(expression).(*ast.CallExpr)
+	if info == nil || call == nil {
+		return false
+	}
+	function := typeutil.StaticCallee(info, call)
+	if function == nil ||
+		function.Pkg() == nil ||
+		function.Pkg().Path() != "k8s.io/cli-runtime/pkg/printers" ||
+		function.Name() != "NewTablePrinter" {
+		return false
+	}
+	signature, _ := types.Unalias(function.Type()).(*types.Signature)
+	return signature != nil &&
+		signature.Recv() == nil &&
+		signature.Params() != nil &&
+		signature.Params().Len() == 1 &&
+		exactNamedType(
+			signature.Params().At(0).Type(),
+			"k8s.io/cli-runtime/pkg/printers",
+			"PrintOptions",
+		) &&
+		signature.Results() != nil &&
+		signature.Results().Len() == 1 &&
+		exactNamedType(
+			signature.Results().At(0).Type(),
+			"k8s.io/cli-runtime/pkg/printers",
+			"ResourcePrinter",
+		)
+}
+
+func exactNamedType(type_ types.Type, packagePath, name string) bool {
+	named, _ := types.Unalias(type_).(*types.Named)
+	return named != nil &&
+		named.Obj() != nil &&
+		named.Obj().Pkg() != nil &&
+		named.Obj().Pkg().Path() == packagePath &&
+		named.Obj().Name() == name
+}
+
 func writerFormattingValueCannotCallBack(type_ types.Type) bool {
 	if type_ == nil {
 		return false
@@ -3259,7 +3602,8 @@ func (state *stableWriterState) invalidateNonImmediateWriterBorrows(
 		return
 	}
 	for index, argument := range call.Args {
-		if !state.writerArgumentCannotRebind(info, call, index) {
+		if !state.writerArgumentCannotRebind(info, call, index) &&
+			!state.kubernetesResourcePrinterCall(info, call, index) {
 			continue
 		}
 		if candidate := state.candidates[directObject(info, argument)]; candidate != nil {
