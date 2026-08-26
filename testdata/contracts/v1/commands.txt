@@ -1,0 +1,33 @@
+## fmt
+Usage:
+  glippy fmt [--write|--check|--diff] [--reporter=text|json] [--config=<path>] [--stdin-filepath=<path>] [--fragment=declaration|statement|expression] [path...]
+## lint
+Usage:
+  glippy lint [--fix] [--fix-suggestions] [--fix-unsafe] [--diff] [-A|--allow <rules-or-groups>] [-W|--warn <rules-or-groups>] [-D|--deny <rules-or-groups>] [-F|--forbid <rules-or-groups>] [--only=<rules>] [--except=<rules>] [--new-from=<git-ref>] [--generate-baseline=<path>] [--reporter=text|short|json|github|sarif] [--stats[=text|json]] [--config=<path>] [path...]
+## check
+Usage:
+  glippy check [-A|--allow <rules-or-groups>] [-W|--warn <rules-or-groups>] [-D|--deny <rules-or-groups>] [-F|--forbid <rules-or-groups>] [--new-from=<git-ref>] [--reporter=text|short|json|github|sarif] [--stats[=text|json]] [--config=<path>] [path...]
+## lsp
+Usage:
+  glippy lsp [--fix-suggestions] [--fix-unsafe] [--config=<path>]
+## init
+Usage:
+  glippy init [--profile=<profile>] [directory]
+## config
+Usage:
+  glippy config <check|show> [--config=<path>] [path]
+## rules
+Usage:
+  glippy rules [--preset=<preset>] [--fixable] [--tier=lexical|syntax|types|cfg|ssa]
+## explain
+Usage:
+  glippy explain <rule> [--json]
+## version
+Usage:
+  glippy version
+## completion
+Usage:
+  glippy completion <bash|zsh|fish>
+## help
+Usage:
+  glippy help [command]

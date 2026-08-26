@@ -3276,3 +3276,10 @@ the earlier single-file candidate rehearsal across blocks, comments,
 directives, empty statements, expressions, generics, statement expansion,
 gofmt-compatibility boundaries, and width-sensitive motivating layouts.
 Stable-v1 progress remains 75% until v0.8 closes.
+
+The v0.9 CLI contract now pins exact usage for all eleven top-level commands in
+addition to the top-level summary. Focused tests and every native candidate
+must reproduce the same command order, option spellings, reporter choices,
+write and fix modes, path shapes, and help behavior, and the combined output
+participates in cross-runner contract digests. Stable-v1 progress remains 75%
+until v0.8 closes.

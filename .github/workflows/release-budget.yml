@@ -165,8 +165,17 @@ jobs:
           contracts="$RUNNER_TEMP/glippy-release-contracts"
           mkdir "$contracts"
           "$binary" --help >"$contracts/help.txt"
+          {
+            for command in \
+              fmt lint check lsp init config rules explain version \
+              completion help; do
+              printf '## %s\n' "$command"
+              "$binary" help "$command"
+            done
+          } >"$contracts/commands.txt"
           "$binary" rules >"$contracts/rules.txt"
           diff -u testdata/contracts/v1/help.txt "$contracts/help.txt"
+          diff -u testdata/contracts/v1/commands.txt "$contracts/commands.txt"
           diff -u testdata/contracts/v1/rules.txt "$contracts/rules.txt"
           configuration_root=$(cd testdata/contracts/v1/config && pwd -P)
           {
@@ -264,8 +273,8 @@ jobs:
           (
             cd "$contracts"
             shasum -a 256 \
-              formatter.txt help.txt machine.txt profiles.txt rules.txt \
-              upgrade.txt \
+              commands.txt formatter.txt help.txt machine.txt profiles.txt \
+              rules.txt upgrade.txt \
               >SHA256SUMS
           )
         working-directory: ${{ github.workspace }}/glippy

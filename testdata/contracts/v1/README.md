@@ -4,6 +4,7 @@ These files are the maintainer-approved Glippy v1 text contracts consumed by
 focused CLI tests and every native tagless release-candidate rehearsal.
 
 - `help.txt` freezes top-level CLI help.
+- `commands.txt` freezes exact usage for every top-level command.
 - `rules.txt` freezes rule identifiers, default severity, preset membership,
   analysis tier, and fix availability.
 - `profiles.txt` freezes resolved default, recommended, strict, and pedantic

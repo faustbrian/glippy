@@ -55,6 +55,75 @@ func TestV1TextContractsMatchApprovedGoldens(t *testing.T) {
 	}
 }
 
+func TestV1CommandHelpContractMatchesApprovedGolden(t *testing.T) {
+	t.Parallel()
+
+	contractRoot := filepath.Join("..", "..", "testdata", "contracts", "v1")
+	want, err := os.ReadFile(filepath.Join(contractRoot, "commands.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	commands := []string{
+		"fmt",
+		"lint",
+		"check",
+		"lsp",
+		"init",
+		"config",
+		"rules",
+		"explain",
+		"version",
+		"completion",
+		"help",
+	}
+	var listedCommands []string
+	inCommands := false
+	for _, line := range strings.Split(topLevelHelp, "\n") {
+		if line == "Commands:" {
+			inCommands = true
+			continue
+		}
+		if inCommands && line == "" {
+			break
+		}
+		if inCommands {
+			fields := strings.Fields(line)
+			if len(fields) > 0 {
+				listedCommands = append(listedCommands, fields[0])
+			}
+		}
+	}
+	if strings.Join(commands, "\n") != strings.Join(listedCommands, "\n") {
+		t.Fatalf("command contract does not match top-level help: %v", listedCommands)
+	}
+
+	var got bytes.Buffer
+	for _, command := range commands {
+		got.WriteString("## " + command + "\n")
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		exitCode := Run(
+			[]string{"help", command},
+			bytes.NewReader(nil),
+			&stdout,
+			&stderr,
+		)
+		if exitCode != ExitSuccess || stderr.Len() != 0 {
+			t.Fatalf(
+				"help %s exit = %d, stderr = %q",
+				command,
+				exitCode,
+				stderr.String(),
+			)
+		}
+		got.Write(stdout.Bytes())
+	}
+	if !bytes.Equal(got.Bytes(), want) {
+		t.Fatal("command help output does not match commands.txt")
+	}
+}
+
 func TestV1FormatterOutputContractsMatchApprovedGoldens(t *testing.T) {
 	t.Parallel()
 
