@@ -3785,11 +3785,58 @@ func (l *lowerer) ifStatement(statement *ast.IfStmt) (doc.ID, error) {
 	}
 	result := []doc.ID{header, tail}
 	if statement.Else != nil {
+		bodyClosing, bodyClosingFound := l.source.PhysicalOffset(statement.Body.Rbrace)
+		alternativeStart, alternativeStartFound := l.source.PhysicalOffset(
+			statement.Else.Pos(),
+		)
+		if !bodyClosingFound || !alternativeStartFound {
+			return doc.ID{}, errors.New("if alternative has no physical boundary")
+		}
+		elseToken, err := l.uniqueTokenBetween(
+			token.ELSE,
+			bodyClosing + len("}"),
+			alternativeStart,
+		)
+		if err != nil {
+			return doc.ID{}, fmt.Errorf("if alternative boundary: %w", err)
+		}
+		beforeElse, err := l.inlineComments(
+			l.commentsBetween(bodyClosing + len("}"), elseToken.Range.Start),
+			true,
+		)
+		if err != nil {
+			return doc.ID{}, err
+		}
 		alternative, err := l.statement(statement.Else)
 		if err != nil {
 			return doc.ID{}, err
 		}
-		result = append(result, l.arena.Text(" else "), alternative)
+		result = append(result, beforeElse)
+		afterElse := l.commentsBetween(elseToken.Range.End, alternativeStart)
+		hasLineComment := false
+		for _, comment := range afterElse {
+			hasLineComment = hasLineComment || strings.HasPrefix(comment.Raw, "//")
+		}
+		if hasLineComment {
+			result = append(
+				result,
+				l.arena.Text(" else "),
+				l.boundaryCommentsDocument(afterElse, alternativeStart),
+				alternative,
+			)
+		} else {
+			afterElseDocument, err := l.inlineComments(afterElse, true)
+			if err != nil {
+				return doc.ID{}, err
+			}
+			result = append(
+				result,
+				l.arena.Text(" else"),
+				afterElseDocument,
+				l.arena.Text(" "),
+				alternative,
+			)
+		}
 	}
 	return l.arena.Concat(result...), nil
 }

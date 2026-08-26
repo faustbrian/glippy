@@ -3121,6 +3121,77 @@ func TestFormatPreservesClauseBoundaryComments(t *testing.T) {
 	}
 }
 
+func TestFormatPreservesCommentBetweenElseAndBlock(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(
+		"package control\nfunc run(value int){if value==0{work()}else /* value != 0 */{retry()}}\n",
+	)
+	file, err := source.Load("else_comment.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := glippyformat.File(
+		file,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package control\n\nfunc run(value int) {\n\tif value == 0 {\n\t\twork()\n\t} else /* value != 0 */ {\n\t\tretry()\n\t}\n}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant preserved else comment:\n%s", got, want)
+	}
+}
+
+func TestFormatPreservesCommentsAroundElseKeyword(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(
+		"package control\n" +
+			"func before(value int){if value==0{work()} /* zero */ else{retry()}}\n" +
+			"func line(value int){if value==0{work()}else // nonzero\n{retry()}}\n" +
+			"func chain(value int){if value==0{work()}else /* retry */ if value==1{retry()}}\n",
+	)
+	file, err := source.Load("else_boundaries.go", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := glippyformat.File(
+		file,
+		glippyformat.Options{Width: 100, TabWidth: 8, FitBudget: 1_000},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "package control\n\n" +
+		"func before(value int) {\n" +
+		"\tif value == 0 {\n" +
+		"\t\twork()\n" +
+		"\t} /* zero */ else {\n" +
+		"\t\tretry()\n" +
+		"\t}\n" +
+		"}\n\n" +
+		"func line(value int) {\n" +
+		"\tif value == 0 {\n" +
+		"\t\twork()\n" +
+		"\t} else // nonzero\n" +
+		"\t{\n" +
+		"\t\tretry()\n" +
+		"\t}\n" +
+		"}\n\n" +
+		"func chain(value int) {\n" +
+		"\tif value == 0 {\n" +
+		"\t\twork()\n" +
+		"\t} else /* retry */ if value == 1 {\n" +
+		"\t\tretry()\n" +
+		"\t}\n" +
+		"}\n"
+	if string(got) != want {
+		t.Fatalf("File() =\n%s\nwant preserved else boundaries:\n%s", got, want)
+	}
+}
+
 func TestFormatPreservesAcceptedByteOrderMark(t *testing.T) {
 	t.Parallel()
 
