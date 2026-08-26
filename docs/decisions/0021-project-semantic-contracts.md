@@ -118,6 +118,12 @@ cannot declare these facts. The analyzer accepts only direct non-retaining
 writer operations or delegation to another source-proven borrower and
 intersects package variants before publishing the fact.
 
+Build-variant-safe result facts advance the active representation to version
+18 and `native-effects-v18`. Project contracts remain explicit declarations,
+but inferred result-state and nil/error facts are withheld from functions in
+build-constrained or GOOS/GOARCH-suffixed files because unloaded variants
+cannot be proven to agree.
+
 Contract files are data only. They do not execute code, provide replacement Go
 types, load runtime plugins, or grant write authority. Syntax-only lint does
 not load type state because contracts are configured. External contracts use

@@ -240,10 +240,95 @@ func Lookup() (*Value, error) { return &Value{}, nil }
 	}
 }
 
+func TestReturnStateAnalysisRejectsBuildVariantSources(t *testing.T) {
+	t.Parallel()
+
+	for _, fixture := range
+		[]struct {
+			name string
+			file string
+			source string
+			wantDefinitions int
+		}{
+			{
+				name: "unconstrained",
+				file: "fixture.go",
+				source: "package fixture\nfunc Result() error { return nil }\n",
+				wantDefinitions: 1,
+			},
+			{
+				name: "go build constraint",
+				file: "fixture.go",
+				source: "//go:build !windows\n\npackage fixture\nfunc Result() error { return nil }\n",
+				wantDefinitions: 0,
+			},
+			{
+				name: "legacy build constraint",
+				file: "fixture.go",
+				source: "// +build !windows\n\npackage fixture\nfunc Result() error { return nil }\n",
+				wantDefinitions: 0,
+			},
+			{
+				name: "GOOS suffix",
+				file: "fixture_linux.go",
+				source: "package fixture\nfunc Result() error { return nil }\n",
+				wantDefinitions: 0,
+			},
+			{
+				name: "GOARCH test suffix",
+				file: "fixture_arm64_test.go",
+				source: "package fixture\nfunc Result() error { return nil }\n",
+				wantDefinitions: 0,
+			},
+			{
+				name: "dotted GOOS suffix",
+				file: "fixture_linux.generated.go",
+				source: "package fixture\nfunc Result() error { return nil }\n",
+				wantDefinitions: 0,
+			},
+		} {
+		fixture := fixture
+		t.Run(
+			fixture.name,
+			func(t *testing.T) {
+				t.Parallel()
+				package_ := returnStateTestPackageFile(
+					t,
+					fixture.file,
+					fixture.source,
+				)
+				analysis := newReturnStateAnalysis(
+					context.Background(),
+					[]*packages.Package{package_},
+					nil,
+					nil,
+				)
+				if len(analysis.definitions) != fixture.wantDefinitions {
+					t.Fatalf(
+						"definitions = %d, want %d",
+						len(analysis.definitions),
+						fixture.wantDefinitions,
+					)
+				}
+			},
+		)
+	}
+}
+
 func returnStateTestPackage(t *testing.T, source string) *packages.Package {
 	t.Helper()
+	return returnStateTestPackageFile(t, "fixture.go", source)
+}
+
+func returnStateTestPackageFile(t *testing.T, filename string, source string) *packages.Package {
+	t.Helper()
 	fileSet := token.NewFileSet()
-	file, err := parser.ParseFile(fileSet, "fixture.go", source, parser.AllErrors)
+	file, err := parser.ParseFile(
+		fileSet,
+		filename,
+		source,
+		parser.AllErrors | parser.ParseComments,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

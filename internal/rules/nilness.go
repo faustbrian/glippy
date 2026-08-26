@@ -30,6 +30,7 @@ func (nilnessRule) Metadata() Metadata {
 		KnownLimitations: []string{
 			"Control-flow joins may lose nilness facts, so the rule intentionally misses some defects rather than guessing.",
 			"The shared SSA program propagates no-return behavior and explicit nil/error return relationships through selected local-source modules. Third-party helpers outside those modules remain conservative unless they match an exact standard-library terminal API.",
+			"Functions defined in build-constrained or GOOS/GOARCH-suffixed files do not export return-state relationships because an unloaded platform or tag variant may have a different contract.",
 			"Return relationships require explicit results with exact nil, definitely non-nil allocation forms, errors.New, or fmt.Errorf. Exact static same-arity delegation may reuse a selected local-source relationship through a bounded recursion-rejecting summary. Bare returns, dynamic or recursive results, &*x expressions, unknown error construction, aliases, and conflicting returns remain unknown.",
 			"Functions marked with //go:cgo_unsafe_args are excluded because their runtime behavior is not represented faithfully in SSA.",
 			"Generated files and packages with type errors are excluded.",

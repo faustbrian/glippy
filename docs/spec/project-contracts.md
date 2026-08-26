@@ -200,7 +200,7 @@ retain the ordinary deterministic target-union behavior. Fix modes retain the
 existing target-matrix prohibition.
 
 Contract changes MUST invalidate affected persistent native results. The
-`native-effects-v17` component binds no-return, testing-skip, testing-failure,
+`native-effects-v18` component binds no-return, testing-skip, testing-failure,
 parameter, receiver, returned-state, unconditional result-state, must-use,
 blocking, and alias facts through stable
 package-qualified function identities, including the distinction between

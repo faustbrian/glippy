@@ -160,6 +160,13 @@ infallible sink across a proven display helper without treating arbitrary
 writer consumers as safe. Consumers accept the fact only for immediate calls;
 deferred and asynchronous call sites remain conservative.
 
+The v0.8 build-variant correction advances the active schema and cache
+component to `native-effects-v18`. A function defined in a file with a build
+constraint or a recognized GOOS or GOARCH filename suffix does not export
+unconditional result states or nil/error return relationships. The selected
+build alone cannot prove that an unloaded platform or tag variant agrees, so
+the cross-package fact remains unknown.
+
 ## Alternatives
 
 - Load the complete dependency syntax closure with `packages.NeedDeps`:

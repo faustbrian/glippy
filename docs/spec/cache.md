@@ -108,7 +108,7 @@ native execution. A valid warm entry MAY bypass native callbacks and CFG or SSA
 construction because the key and payload bind every selected rule and
 loaded-graph input.
 
-An effect-aware native entry MUST include the `native-effects-v17` component.
+An effect-aware native entry MUST include the `native-effects-v18` component.
 Its digest binds the effect schema version, canonically ordered no-return
 identities, testing-skip identities, testing-failure identities, and every
 exported parameter-effect identity, parameter index,

@@ -368,6 +368,101 @@ func Lookup(found bool) (*helper.Value, error) { return helper.Lookup(found) }
 	}
 }
 
+func TestNilnessDoesNotExportBuildVariantReturnStates(t *testing.T) {
+	t.Parallel()
+
+	root, path := writeNilnessModule(
+		t,
+		`package sample
+
+import "example.com/nilness/helper"
+
+func inspect() error {
+	config, pool, resource, err := helper.Setup()
+	if err != nil {
+		return err
+	}
+	_ = config
+	_ = resource
+	if pool != nil {
+		println(pool)
+	}
+	return nil
+}
+`,
+	)
+	helperRoot := filepath.Join(root, "helper")
+	if err := os.MkdirAll(helperRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(helperRoot, "helper_other.go"),
+		[]byte(
+			`//go:build !windows
+
+package helper
+
+type Config struct{}
+type Pool struct{}
+type Resource struct{}
+
+func Setup() (*Config, *Pool, *Resource, error) {
+	return nil, nil, &Resource{}, nil
+}
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(helperRoot, "helper_windows.go"),
+		[]byte(
+			`//go:build windows
+
+package helper
+
+import "errors"
+
+type Config struct{}
+type Pool struct{}
+type Resource struct{}
+
+func Setup() (*Config, *Pool, *Resource, error) {
+	return nil, nil, nil, errors.New("unavailable")
+}
+`,
+		),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+
+	registry, err := rules.NewDefaultRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := analysis.RunPackages(
+		context.Background(),
+		registry,
+		analysis.RunOptions{
+			Presets: []rules.Preset{},
+			Overrides: map[string]rules.Severity{"nilness": rules.SeverityWarn},
+		},
+		analysis.PackageLoadOptions{Dir: root, Patterns: []string{"."}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 ||
+		result.Files[0].Path != path ||
+		len(result.Files[0].Diagnostics) != 0 {
+		t.Fatalf("build-variant return-state diagnostics = %#v", result.Files)
+	}
+}
+
 func TestNilnessPreservesReturnStateAssertionsInTestFiles(t *testing.T) {
 	t.Parallel()
 

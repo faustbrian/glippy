@@ -3,7 +3,10 @@ package analysis
 import (
 	"context"
 	"go/ast"
+	"go/build/constraint"
 	"go/types"
+	"path/filepath"
+	"strings"
 
 	"github.com/faustbrian/glippy/internal/rules"
 	"golang.org/x/tools/go/cfg"
@@ -66,6 +69,9 @@ func newReturnStateAnalysis(
 			if ctx.Err() != nil {
 				break
 			}
+			if !returnStateSourceIsBuildInvariant(pkg, file) {
+				continue
+			}
 			for _, declaration := range file.Decls {
 				if ctx.Err() != nil {
 					break
@@ -97,6 +103,94 @@ func newReturnStateAnalysis(
 		analysis.definitionsByFunction[definition.function] = definition
 	}
 	return analysis
+}
+
+func returnStateSourceIsBuildInvariant(pkg *packages.Package, file *ast.File) bool {
+	if pkg == nil || pkg.Fset == nil || file == nil {
+		return false
+	}
+	for _, group := range file.Comments {
+		if group == nil || group.Pos() > file.Package {
+			break
+		}
+		for _, comment := range group.List {
+			if comment != nil &&
+				(constraint.IsGoBuild(comment.Text) ||
+					constraint.IsPlusBuild(comment.Text)) {
+				return false
+			}
+		}
+	}
+	position := pkg.Fset.PositionFor(file.Package, false)
+	return position.Filename != "" &&
+		!goFileNameHasPlatformSuffix(filepath.Base(position.Filename))
+}
+
+func goFileNameHasPlatformSuffix(name string) bool {
+	if !strings.HasSuffix(name, ".go") {
+		return false
+	}
+	name, _, _ = strings.Cut(name, ".")
+	if !strings.Contains(name, "_") {
+		return false
+	}
+	parts := strings.Split(name, "_")
+	if parts[len(parts) - 1] == "test" {
+		parts = parts[:len(parts) - 1]
+	}
+	if len(parts) < 2 {
+		return false
+	}
+	suffix := parts[len(parts) - 1]
+	return knownBuildOS[suffix] || knownBuildArch[suffix]
+}
+
+var knownBuildOS = map[string]bool{
+	"aix": true,
+	"android": true,
+	"darwin": true,
+	"dragonfly": true,
+	"freebsd": true,
+	"hurd": true,
+	"illumos": true,
+	"ios": true,
+	"js": true,
+	"linux": true,
+	"nacl": true,
+	"netbsd": true,
+	"openbsd": true,
+	"plan9": true,
+	"solaris": true,
+	"wasip1": true,
+	"windows": true,
+	"zos": true,
+}
+
+var knownBuildArch = map[string]bool{
+	"386": true,
+	"amd64": true,
+	"amd64p32": true,
+	"arm": true,
+	"armbe": true,
+	"arm64": true,
+	"arm64be": true,
+	"loong64": true,
+	"mips": true,
+	"mipsle": true,
+	"mips64": true,
+	"mips64le": true,
+	"mips64p32": true,
+	"mips64p32le": true,
+	"ppc": true,
+	"ppc64": true,
+	"ppc64le": true,
+	"riscv": true,
+	"riscv64": true,
+	"s390": true,
+	"s390x": true,
+	"sparc": true,
+	"sparc64": true,
+	"wasm": true,
 }
 
 func (a *returnStateAnalysis) buildAll() {
