@@ -20,10 +20,14 @@ contain `version = 1`. Unknown keys, duplicate semantic
 keys, unknown rule IDs, and invalid values MUST fail with a source-located
 diagnostic where the TOML decoder permits it.
 
-During the v0.2 compatibility window, automatic discovery accepts `.gox.toml`
-only when no `.glippy.toml` exists in the searched project scope. Finding both
-names fails rather than choosing one. An explicit `--config=<path>` remains an
-exact selection and bypasses automatic-name ambiguity.
+Through the first stable Glippy release, automatic discovery MUST accept
+`.gox.toml` only when no `.glippy.toml` exists in the searched project scope.
+Automatic discovery MUST fail when both names occur rather than choosing one.
+An explicit `--config=<path>` MUST select only that exact path and MUST bypass
+automatic-name ambiguity. Selecting the legacy filename does not itself emit a
+migration finding; configuration commands report the exact selected path.
+Legacy `//gox:` suppression migration findings remain governed by the
+[suppression contract](../suppressions.md).
 
 `glippy init [--profile=<profile>] [directory]` creates this canonical starter
 policy through exclusive atomic creation and refuses to replace any existing

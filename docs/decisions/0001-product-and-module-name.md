@@ -1,6 +1,6 @@
 # ADR 0001: Product And Module Name
 
-- Status: superseded by ADR 0016 for v0.2
+- Status: superseded by ADR 0016 for post-v0.1 Glippy development
 - Date: 2026-08-09
 - Refreshed: 2026-08-13
 
@@ -34,7 +34,8 @@ acceptance was not jurisdiction- or class-specific legal clearance.
 ## Consequences
 
 The v0.1 tags, module path, binaries, release assets, and evidence remain
-immutable historical Gox identities. ADR 0016 owns the v0.2 Glippy migration.
+immutable historical Gox identities. ADR 0016 owns the post-v0.1 Glippy
+migration.
 
 ## Revisit Trigger
 

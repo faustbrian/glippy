@@ -15,7 +15,8 @@ active release gate.
 The existing
 v0.1.0 release remains Gox under `github.com/faustbrian/gox`; its module tags,
 binary, archives, and attestations are immutable historical identities. The
-maintainer accepted the documented Glippy ecosystem-collision risk for v0.2;
+maintainer accepted the documented Glippy ecosystem-collision risk for the
+initial Glippy development line;
 that product decision is not legal clearance. Untagged commits and locally
 built binaries remain unsupported development artifacts.
 

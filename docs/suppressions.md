@@ -24,7 +24,7 @@ Suppression directives are exact line comments with no space between `//` and
 There is no list syntax and no disable-all directive. Use a separate comment
 for each waived rule.
 
-During the v0.2 compatibility window, legacy `//gox:` forms retain the same
+Through the first stable Glippy release, legacy `//gox:` forms retain the same
 scope and suppression behavior but always produce a deterministic
 `legacy-directive` finding. Replace the prefix with `//glippy:`; there is no
 flag that silently hides this migration finding.
