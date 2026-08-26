@@ -160,6 +160,8 @@ jobs:
           mkdir "$contracts"
           "$binary" --help >"$contracts/help.txt"
           "$binary" rules >"$contracts/rules.txt"
+          diff -u testdata/contracts/v1/help.txt "$contracts/help.txt"
+          diff -u testdata/contracts/v1/rules.txt "$contracts/rules.txt"
           "$binary" fmt testdata/corpus/hostile/compatibility.go \
             >"$contracts/compatibility.go"
           diff -u \

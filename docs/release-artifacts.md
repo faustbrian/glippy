@@ -93,9 +93,10 @@ The manual `Release budget evidence` workflow closes that boundary for a
 release candidate. Its native Darwin and Linux amd64 and arm64 runners each
 build the complete six-file target set and execute the archive matching their
 own operating system and architecture. Each extracted candidate also renders
-top-level help and the complete rule list, formats the frozen hostile-source
-fixture to its canonical golden output, and consumes the retained Gox v0.1.0
-and early-Glippy configuration and baseline fixtures. A separate Linux job
+top-level help and the complete rule list, requires both to match the approved
+v1 text contracts, formats the frozen hostile-source fixture to its canonical
+golden output, and consumes the retained Gox v0.1.0 and early-Glippy
+configuration and baseline fixtures. A separate Linux job
 downloads all four retained candidates, verifies their manifest identity and
 checksums, and requires both release files and the digested contract snapshots
 to be byte-identical across runners. Any missing runner, different archive,

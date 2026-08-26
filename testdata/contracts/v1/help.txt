@@ -1,0 +1,19 @@
+Glippy formats, lints, and safely fixes Go source.
+
+Usage:
+  glippy <command> [options]
+
+Commands:
+  fmt         Format Go source
+  lint        Report diagnostics and apply selected fixes
+  check       Check formatting and diagnostics without mutation
+  lsp         Serve editor integrations over stdio
+  init        Create a starter configuration
+  config      Validate or show configuration
+  rules       List compiled lint rules
+  explain     Explain one lint rule
+  version     Print version information
+  completion  Generate shell completion
+  help        Show command help
+
+Run 'glippy help <command>' for command usage.
