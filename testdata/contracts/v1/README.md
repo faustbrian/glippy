@@ -5,6 +5,8 @@ focused CLI tests and every native tagless release-candidate rehearsal.
 
 - `help.txt` freezes top-level CLI help.
 - `commands.txt` freezes exact usage for every top-level command.
+- `completions.txt` freezes SHA-256, byte, and line identities for generated
+  Bash, Zsh, and Fish completion scripts.
 - `rules.txt` freezes rule identifiers, default severity, preset membership,
   analysis tier, and fix availability.
 - `profiles.txt` freezes resolved default, recommended, strict, and pedantic

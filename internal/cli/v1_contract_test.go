@@ -124,6 +124,47 @@ func TestV1CommandHelpContractMatchesApprovedGolden(t *testing.T) {
 	}
 }
 
+func TestV1CompletionContractsMatchApprovedDigests(t *testing.T) {
+	t.Parallel()
+
+	contractRoot := filepath.Join("..", "..", "testdata", "contracts", "v1")
+	want, err := os.ReadFile(filepath.Join(contractRoot, "completions.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got bytes.Buffer
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		exitCode := Run(
+			[]string{"completion", shell},
+			bytes.NewReader(nil),
+			&stdout,
+			&stderr,
+		)
+		if exitCode != ExitSuccess || stderr.Len() != 0 {
+			t.Fatalf(
+				"completion %s exit = %d, stderr = %q",
+				shell,
+				exitCode,
+				stderr.String(),
+			)
+		}
+		fmt.Fprintf(
+			&got,
+			"%s\t%x\t%d\t%d\n",
+			shell,
+			sha256.Sum256(stdout.Bytes()),
+			stdout.Len(),
+			bytes.Count(stdout.Bytes(), []byte("\n")),
+		)
+	}
+	if !bytes.Equal(got.Bytes(), want) {
+		t.Fatal("completion output does not match completions.txt")
+	}
+}
+
 func TestV1FormatterOutputContractsMatchApprovedGoldens(t *testing.T) {
 	t.Parallel()
 

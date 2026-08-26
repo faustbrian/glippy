@@ -177,6 +177,23 @@ jobs:
           diff -u testdata/contracts/v1/help.txt "$contracts/help.txt"
           diff -u testdata/contracts/v1/commands.txt "$contracts/commands.txt"
           diff -u testdata/contracts/v1/rules.txt "$contracts/rules.txt"
+          : >"$contracts/completions.txt"
+          for shell_name in bash zsh fish; do
+            "$binary" completion "$shell_name" \
+              >"$task_root/completion-$shell_name"
+            completion_digest=$(shasum -a 256 \
+              "$task_root/completion-$shell_name" | awk '{print $1}')
+            completion_bytes=$(wc -c \
+              <"$task_root/completion-$shell_name" | tr -d ' ')
+            completion_lines=$(wc -l \
+              <"$task_root/completion-$shell_name" | tr -d ' ')
+            printf '%s\t%s\t%s\t%s\n' \
+              "$shell_name" "$completion_digest" \
+              "$completion_bytes" "$completion_lines" \
+              >>"$contracts/completions.txt"
+          done
+          diff -u testdata/contracts/v1/completions.txt \
+            "$contracts/completions.txt"
           configuration_root=$(cd testdata/contracts/v1/config && pwd -P)
           {
             for profile in default recommended strict pedantic; do
@@ -326,8 +343,9 @@ jobs:
           (
             cd "$contracts"
             shasum -a 256 \
-              commands.txt configuration.txt formatter.txt help.txt \
-              machine.txt profiles.txt reporters.txt rules.txt upgrade.txt \
+              commands.txt completions.txt configuration.txt formatter.txt \
+              help.txt machine.txt profiles.txt reporters.txt rules.txt \
+              upgrade.txt \
               >SHA256SUMS
           )
         working-directory: ${{ github.workspace }}/glippy
