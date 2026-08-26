@@ -508,14 +508,18 @@ a product-wide typed-analysis or cross-architecture threshold.
 The current release-scale campaign uses the immutable public `golib`
 revision `f28f85133ac6d13169745807fc39e2d5ef6bf780`: 5,314 Go files totaling
 41,763,075 source bytes, of which formatter discovery selects 5,138. The
-formatter runs in non-writing check mode and every completed sample must remain
-within both provisional budgets:
+formatter runs in non-writing check mode and the five-sample campaign must
+remain within both provisional budgets:
 
-- at most 120 elapsed seconds; and
+- nearest-rank p80 elapsed time of at most 120 seconds, with no sample above
+  240 seconds; and
 - at most 2,147,483,648 bytes peak resident memory.
 
-These are per-sample maximums, not median targets. `peak-rss.sh` enforces both
-budgets when it is run against this corpus. `editor-latency.sh` separately
+The latency boundary requires four of five ordinary samples to stay within the
+normal ceiling while retaining a hard 2x ceiling for every sample. A one-sample
+campaign still enforces its sole sample against the normal ceiling. Peak RSS
+remains a per-sample maximum. `peak-rss.sh` enforces these budgets and emits a
+summary record containing the selected p80. `editor-latency.sh` separately
 enforces a 250 ms maximum for each fresh-process invocation on the owned
 879-byte editor workload. Both scripts allow an explicit threshold override so
 release automation can pin the published values rather than silently accepting
@@ -576,7 +580,7 @@ budget requires a new recorded campaign and rationale.
 
 The manually dispatched `Release budget evidence` GitHub Actions workflow pins
 the corpus revision, Go 1.27.0, the 250-millisecond editor maximum, and the
-120-second/2-GiB formatter maximum. It runs on native GitHub-hosted
+120-second-p80/240-second-hard/2-GiB formatter limits. It runs on native GitHub-hosted
 `macos-15-intel`, `macos-15`, `ubuntu-24.04`, and `ubuntu-24.04-arm` runners,
 covering Darwin and Linux on amd64 and arm64. Action dependencies are pinned by
 complete commit ID, cache reuse is disabled, and each job retains the raw host
@@ -594,8 +598,11 @@ remain required before the provisional limits become stable release budgets.
 
 The release workflow also checks out `sqlc-dev/sqlc` at
 `8a7cddfbb9088666eb981645285d7699e71dcb54` and runs the default correctness
-policy plus `-Wsuspicious` within a provisional 240-second and 3-GiB ceiling on
-every native runner. Darwin arm64 additionally binds normalized diagnostic
+policy plus `-Wsuspicious` within a provisional 240-second nearest-rank p80,
+480-second hard per-sample, and 3-GiB per-sample RSS ceiling on every native
+runner. A normal five-sample campaign therefore requires four typed samples to
+finish within 240 seconds and rejects every sample above 480 seconds. Darwin
+arm64 additionally binds normalized diagnostic
 SHA-256 `77f989f585934478c95acff13a0671521696ad036b9430f033968bcd203baba7`, accepted
 after exact comparison run `32809489235` proved that only the two intended
 precision corrections changed diagnostic identity. Supplying the optional

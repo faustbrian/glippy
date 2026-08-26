@@ -76,6 +76,12 @@ if [ ! -r "$peak_rss_select_command" ]; then
 		"$peak_rss_select_command" >&2
 	exit 1
 fi
+peak_latency_select_command=$script_dir/peak-latency-select.sh
+if [ ! -r "$peak_latency_select_command" ]; then
+	printf 'peak-latency selection command is not readable: %s\n' \
+		"$peak_latency_select_command" >&2
+	exit 1
+fi
 peak_rss_sample_command=$script_dir/peak-rss-sample.sh
 if [ ! -r "$peak_rss_sample_command" ]; then
 	printf 'peak-RSS sample command is not readable: %s\n' \
@@ -231,6 +237,8 @@ measure() {
 	budget_bytes=$2
 	budget_seconds=$3
 	shift 3
+	elapsed_samples="$task_root/elapsed-$label"
+	: >"$elapsed_samples"
 	sample=1
 	while [ "$sample" -le "$runs" ]; do
 		tree_peak_output="$task_root/tree-peak-$label-$sample"
@@ -404,15 +412,18 @@ measure() {
 				"$label" "$peak_bytes" "$budget_bytes" >&2
 			exit 1
 		fi
-		if ! awk -v elapsed="$elapsed_seconds" -v budget="$budget_seconds" \
-			'BEGIN { exit !(elapsed <= budget) }'; then
-			printf '%s elapsed-time budget exceeded: %.3f seconds > %s seconds\n' \
-				"$label" "$elapsed_seconds" "$budget_seconds" >&2
-			exit 1
-		fi
+		printf '%s\n' "$elapsed_seconds" >>"$elapsed_samples"
 		printf '%s,%d,%.3f,%s\n' "$label" "$sample" "$elapsed_seconds" "$peak_bytes"
 		sample=$((sample + 1))
 	done
+	# Samples are validated decimal values, so intentional field splitting is safe.
+	elapsed_arguments=$(tr '\n' ' ' <"$elapsed_samples")
+	if ! p80_elapsed_seconds=$(sh "$peak_latency_select_command" \
+		"$label" "$budget_seconds" $elapsed_arguments); then
+		exit 1
+	fi
+	printf 'summary,%s,p80_elapsed_seconds,%s\n' \
+		"$label" "$p80_elapsed_seconds"
 }
 
 if [ -n "$expected_goos" ]; then

@@ -78,6 +78,7 @@ jobs:
           go build -o "$task_root/process-group" ./benchmarks/cmd/process-group
           sh -n benchmarks/editor-latency.sh
           sh -n benchmarks/peak-rss.sh
+          sh -n benchmarks/peak-latency-select.sh
           sh -n benchmarks/peak-rss-sample.sh
           sh -n benchmarks/peak-rss-select.sh
           sh -n benchmarks/process-tree-rss.sh

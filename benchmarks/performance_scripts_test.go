@@ -228,7 +228,7 @@ chmod +x "$output"
 				typedLatencyBudget: "10",
 				formatSleep: "2",
 				wantError: true,
-				wantOutput: "formatter-check elapsed-time budget exceeded",
+				wantOutput: "formatter-check sustained elapsed-time budget exceeded",
 			},
 			{
 				name: "typed memory over budget",
@@ -247,7 +247,7 @@ chmod +x "$output"
 				typedLatencyBudget: "1",
 				typedSleep: "2",
 				wantError: true,
-				wantOutput: "typed-lint elapsed-time budget exceeded",
+				wantOutput: "typed-lint sustained elapsed-time budget exceeded",
 			},
 			{
 				name: "typed diagnostic fingerprint mismatch",
@@ -532,7 +532,8 @@ exit 1
 	if err == nil {
 		t.Fatalf("peak-rss.sh succeeded, output = %q", output)
 	}
-	want := "formatter-check elapsed-time budget exceeded: 15.500 seconds > 15 seconds"
+	want := "formatter-check sustained elapsed-time budget exceeded: " +
+		"15.500 seconds > 15 seconds"
 	if !strings.Contains(string(output), want) {
 		t.Fatalf("peak-rss.sh output = %q, want %q", output, want)
 	}
