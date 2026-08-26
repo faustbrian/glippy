@@ -3231,3 +3231,13 @@ help remain invalid invocations. The help path does not initialize project or
 rule state, and Bash, Zsh, and Fish completion expose the same command surface.
 This advances contract-freeze preparation without closing the still-running
 exact v0.8 corpus gate, so stable-v1 progress remains 75%.
+
+The tagless v0.9 release-budget candidate now rehearses more than archive
+construction and version execution: every native extracted binary renders the
+same help and rule catalog, reproduces the frozen hostile formatter golden, and
+consumes the retained Gox v0.1.0 and early-Glippy upgrade fixtures. The
+reproducibility job compares those digested contract snapshots across all four
+supported runners alongside the release files. Upgrade consumption also fails
+if either copied fixture tree changes and records a deterministic unchanged-tree
+snapshot. This gate remains unproven until an exact pushed workflow completes,
+and it does not advance progress while the v0.8 corpus run remains open.

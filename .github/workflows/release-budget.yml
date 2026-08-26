@@ -152,8 +152,49 @@ jobs:
           archive="$RUNNER_TEMP/glippy-release/glippy_${GLIPPY_RELEASE_VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
           mkdir "$task_root/extracted"
           tar -xzf "$archive" -C "$task_root/extracted"
-          version_output=$("$task_root/extracted/glippy" version)
+          binary="$task_root/extracted/glippy"
+          version_output=$("$binary" version)
           test "$version_output" = "glippy $GLIPPY_RELEASE_VERSION"
+
+          contracts="$RUNNER_TEMP/glippy-release-contracts"
+          mkdir "$contracts"
+          "$binary" --help >"$contracts/help.txt"
+          "$binary" rules >"$contracts/rules.txt"
+          "$binary" fmt testdata/corpus/hostile/compatibility.go \
+            >"$contracts/compatibility.go"
+          diff -u \
+            testdata/corpus/hostile/compatibility.golden \
+            "$contracts/compatibility.go"
+
+          cp -R testdata/upgrade "$task_root/upgrade"
+          export GLIPPY_CACHE_DIR="$task_root/glippy-cache"
+          export GOCACHE="$task_root/gocache"
+          export GOMODCACHE="$task_root/modcache"
+          export GOENV=off
+          (
+            cd "$task_root/upgrade/gox-v0.1.0"
+            configuration_output=$("$binary" config check .)
+            test "$configuration_output" = \
+              "configuration valid: $PWD/.gox.toml (discovered)"
+            GOWORK=off "$binary" check ./...
+          )
+          (
+            cd "$task_root/upgrade/early-glippy"
+            configuration_output=$("$binary" config check .)
+            test "$configuration_output" = \
+              "configuration valid: $PWD/.glippy.toml (discovered)"
+            GOWORK=off "$binary" check ./...
+          )
+          diff -r testdata/upgrade "$task_root/upgrade"
+          printf '%s\n' \
+            'gox-v0.1.0: unchanged' \
+            'early-glippy: unchanged' \
+            >"$contracts/upgrade.txt"
+          (
+            cd "$contracts"
+            shasum -a 256 compatibility.go help.txt rules.txt upgrade.txt \
+              >SHA256SUMS
+          )
         working-directory: ${{ github.workspace }}/glippy
       - name: Retain normalized typed diagnostics for fingerprint review
         if: ${{ always() && matrix.goos == 'darwin' && matrix.goarch == 'arm64' }}
@@ -218,6 +259,7 @@ jobs:
             ${{ runner.temp }}/release-budget-${{ matrix.goos }}-${{ matrix.goarch }}.log
             ${{ runner.temp }}/release-budget-${{ matrix.goos }}-${{ matrix.goarch }}-typed-output.txt
             ${{ runner.temp }}/glippy-release
+            ${{ runner.temp }}/glippy-release-contracts
           if-no-files-found: error
           retention-days: 14
 
@@ -387,6 +429,7 @@ jobs:
           )
           test "${#releases[@]}" -eq 4
           reference=${releases[0]}
+          reference_contracts=$(dirname "$reference")/glippy-release-contracts
           for release in "${releases[@]}"; do
             manifest="$release/glippy_${GLIPPY_RELEASE_VERSION}_manifest.json"
             checksums="$release/glippy_${GLIPPY_RELEASE_VERSION}_checksums.txt"
@@ -400,4 +443,6 @@ jobs:
               sha256sum -c "$(basename "$checksums")"
             )
             diff -r --no-dereference "$reference" "$release"
+            contracts=$(dirname "$release")/glippy-release-contracts
+            diff -r --no-dereference "$reference_contracts" "$contracts"
           done

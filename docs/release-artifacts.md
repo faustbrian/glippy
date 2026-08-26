@@ -92,11 +92,15 @@ that rehearsal alone does not establish separate-host reproduction.
 The manual `Release budget evidence` workflow closes that boundary for a
 release candidate. Its native Darwin and Linux amd64 and arm64 runners each
 build the complete six-file target set and execute the archive matching their
-own operating system and architecture. A separate Linux job downloads all four
-retained candidates, verifies their manifest identity and checksums, and
-requires every file to be byte-identical across runners. Any missing runner,
-different archive, manifest, or checksum, or non-native version execution fails
-the workflow.
+own operating system and architecture. Each extracted candidate also renders
+top-level help and the complete rule list, formats the frozen hostile-source
+fixture to its canonical golden output, and consumes the retained Gox v0.1.0
+and early-Glippy configuration and baseline fixtures. A separate Linux job
+downloads all four retained candidates, verifies their manifest identity and
+checksums, and requires both release files and the digested contract snapshots
+to be byte-identical across runners. Any missing runner, different archive,
+manifest, checksum, help or rule output, formatter result, failed upgrade, or
+non-native version execution fails the workflow.
 
 The workflow links these tagless artifacts as `v1.0.0-rc.1`. They are unsigned
 evaluation candidates retained only as workflow artifacts; dispatching the
@@ -105,11 +109,13 @@ the v0.9 contract-freeze identity, not a published support promise. A later
 source change invalidates the candidate and requires a new exact-revision run
 with the same identity until the maintainer approves the final tree.
 
-Candidate run
+Historical candidate run
 [`32814696805`](https://github.com/faustbrian/glippy/actions/runs/32814696805)
-passed this complete matrix and comparison for revision `8ed359d` with Go
-1.27.0. The native latency, aggregate-memory, and reproducibility results are
-recorded in the
+passed the native budget, archive, and reproducibility matrix for revision
+`8ed359d` with Go 1.27.0. It predates the expanded help, rule, formatter, and
+upgrade contract rehearsal, which remains unproven until the revised workflow
+passes at an exact candidate revision. The historical native latency,
+aggregate-memory, and reproducibility results are recorded in the
 [v0.8 budget calibration](research/v0.8-aggregate-budget-calibration-2026-08-25.md).
 
 GitHub Releases is the selected publication channel. A push of a canonical
