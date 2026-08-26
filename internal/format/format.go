@@ -794,10 +794,18 @@ func (l *lowerer) trailingComments(start, limit int) []source.Comment {
 
 func (l *lowerer) commentsBetween(start, end int) []source.Comment {
 	var owned []source.Comment
-	for index, comment := range l.comments {
-		if l.emittedComment[index] ||
-			comment.Range.Start < start ||
-			comment.Range.End > end {
+	first := sort.Search(
+		len(l.comments),
+		func(index int) bool {
+			return l.comments[index].Range.Start >= start
+		},
+	)
+	for index := first; index < len(l.comments); index++ {
+		comment := l.comments[index]
+		if comment.Range.End > end {
+			break
+		}
+		if l.emittedComment[index] {
 			continue
 		}
 		l.emittedComment[index] = true
