@@ -1,6 +1,8 @@
 package completion_test
 
 import (
+	"bytes"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -20,7 +22,8 @@ func TestRenderProducesDeterministicShellCompletions(t *testing.T) {
 			shell: completion.Bash,
 			markers: []string{
 				"complete -F _glippy_completion glippy",
-				"fmt lint check lsp init config rules explain version completion",
+				"fmt lint check lsp init config rules explain version completion help -h --help",
+				"help)",
 				"--fix --fix-suggestions --fix-unsafe --diff",
 				"-A -W -D -F --allow --warn --deny --forbid",
 				"--only --except",
@@ -42,7 +45,9 @@ func TestRenderProducesDeterministicShellCompletions(t *testing.T) {
 			shell: completion.Zsh,
 			markers: []string{
 				"#compdef glippy",
-				"fmt lint check lsp init config rules explain version completion",
+				"fmt lint check lsp init config rules explain version completion help",
+				"{-h,--help}[show help]",
+				"help)",
 				"--stdin-filepath",
 				"--only",
 				"--except",
@@ -77,6 +82,8 @@ func TestRenderProducesDeterministicShellCompletions(t *testing.T) {
 				" -l new-from ",
 				" -a rules -d 'List lint rules'",
 				" -a lsp -d 'Serve editor diagnostics and code actions'",
+				" -a help -d 'Show command help'",
+				" -s h -l help -d 'Show help'",
 				" -l preset ",
 				"-a 'correctness suspicious performance complexity style pedantic nursery restriction migration'",
 				" -l fixable ",
@@ -137,6 +144,32 @@ func TestRenderProducesDeterministicShellCompletions(t *testing.T) {
 				}
 			},
 		)
+	}
+}
+
+func TestRenderBashCompletesHelpFlagsForConfig(t *testing.T) {
+	t.Parallel()
+
+	script, err := completion.Render(completion.Bash, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("bash")
+	command.Stdin = strings.NewReader(
+		string(script) +
+			"\nCOMP_WORDS=(glippy config '')\n" +
+			"COMP_CWORD=2\n" +
+			"_glippy_completion\n" +
+			"printf '%s\\n' \"${COMPREPLY[@]}\"\n",
+	)
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("execute Bash completion: %v; stderr = %q", err, stderr.String())
+	}
+	if string(output) != "check\nshow\n-h\n--help\n" {
+		t.Fatalf("config completions = %q", output)
 	}
 }
 

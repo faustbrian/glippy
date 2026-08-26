@@ -35,6 +35,13 @@ candidate passes its complete verification and independent-review gates.
 | `glippy explain <rule> --json` | Print versioned canonical rule metadata | No |
 | `glippy version` | Print the resolved Glippy version | No |
 | `glippy completion <shell>` | Generate Bash, Zsh, or Fish completion | No |
+| `glippy help [command]` | Print the top-level summary or exact command usage | No |
+
+Running `glippy` with no arguments is equivalent to `glippy --help`,
+`glippy -h`, or `glippy help` and exits successfully. Command usage is available
+through `glippy help <command>`, `glippy <command> --help`, and
+`glippy <command> -h`; help is written to standard output without loading a
+project or rule registry.
 
 ## Inputs
 

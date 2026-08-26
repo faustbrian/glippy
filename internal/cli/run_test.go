@@ -4219,7 +4219,7 @@ func TestRunRejectsInvalidCompleteFileWithoutPartialOutput(t *testing.T) {
 func TestRunRejectsUnsupportedInvocation(t *testing.T) {
 	t.Parallel()
 
-	for _, arguments := range [][]string{nil, {"unknown"}} {
+	for _, arguments := range [][]string{{"unknown"}} {
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
 
@@ -4236,7 +4236,7 @@ func TestRunRejectsUnsupportedInvocation(t *testing.T) {
 		if stdout.Len() != 0 {
 			t.Fatalf("Run(%q) stdout = %q, want empty", arguments, stdout.String())
 		}
-		if stderr.String() != formatUsage {
+		if stderr.String() != "glippy: unknown command \"unknown\"\n" {
 			t.Fatalf("Run(%q) stderr = %q", arguments, stderr.String())
 		}
 	}

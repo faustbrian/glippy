@@ -18,7 +18,7 @@ func TestRunCompletionRendersSupportedShellsWithoutProjectInput(t *testing.T) {
 		{
 			shell: "bash",
 			marker: "complete -F _glippy_completion glippy",
-			configMarker: `compgen -W "check show"`,
+			configMarker: `compgen -W "check show -h --help"`,
 		},
 		{
 			shell: "zsh",

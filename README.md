@@ -120,7 +120,12 @@ glippy explain <rule>
 glippy explain <rule> --json
 glippy version
 glippy completion <bash|zsh|fish>
+glippy help [command]
 ```
+
+Running `glippy`, `glippy --help`, or `glippy -h` prints the top-level command
+summary. `glippy help <command>` and `<command> --help` or `<command> -h` print
+the exact usage accepted by that command.
 
 `glippy check ./...` is the non-mutating combined CI entry point. Safe fixes are
 selected with `lint --fix`; suggestion and unsafe classes require their own

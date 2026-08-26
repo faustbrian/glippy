@@ -65,11 +65,11 @@ _glippy_completion() {
 	command="${COMP_WORDS[1]}"
 
 	if (( COMP_CWORD == 1 )); then
-		COMPREPLY=( $(compgen -W "fmt lint check lsp init config rules explain version completion" -- "$current") )
+		COMPREPLY=( $(compgen -W "fmt lint check lsp init config rules explain version completion help -h --help" -- "$current") )
 		return
 	fi
 	if [[ "$command" == "config" && COMP_CWORD -eq 2 ]]; then
-		COMPREPLY=( $(compgen -W "check show" -- "$current") )
+		COMPREPLY=( $(compgen -W "check show -h --help" -- "$current") )
 		return
 	fi
 
@@ -151,7 +151,11 @@ _glippy_completion() {
 		completion)
 			COMPREPLY=( $(compgen -W "bash zsh fish" -- "$current") )
 			;;
+		help)
+			COMPREPLY=( $(compgen -W "fmt lint check lsp init config rules explain version completion help" -- "$current") )
+			;;
 	esac
+	COMPREPLY+=( $(compgen -W "-h --help" -- "$current") )
 }
 complete -F _glippy_completion glippy
 `
@@ -166,7 +170,8 @@ _glippy() {
 	local context state state_descr line
 	typeset -A opt_args
 	_arguments -C \
-		'1:command:(fmt lint check lsp init config rules explain version completion)' \
+		'{-h,--help}[show help]' \
+		'1:command:(fmt lint check lsp init config rules explain version completion help)' \
 		'*::argument:->arguments'
 
 	case "$line[1]" in
@@ -289,6 +294,9 @@ _glippy() {
 		completion)
 			_arguments '1:shell:(bash zsh fish)'
 			;;
+		help)
+			_arguments '1:command:(fmt lint check lsp init config rules explain version completion help)'
+			;;
 	esac
 }
 
@@ -312,6 +320,8 @@ complete -c glippy -n '__fish_use_subcommand' -a rules -d 'List lint rules'
 complete -c glippy -n '__fish_use_subcommand' -a explain -d 'Explain a lint rule'
 complete -c glippy -n '__fish_use_subcommand' -a version -d 'Print the Glippy version'
 complete -c glippy -n '__fish_use_subcommand' -a completion -d 'Generate shell completions'
+complete -c glippy -n '__fish_use_subcommand' -a help -d 'Show command help'
+complete -c glippy -s h -l help -d 'Show help'
 complete -c glippy -n '__fish_seen_subcommand_from fmt lint check' -F
 complete -c glippy -n '__fish_seen_subcommand_from config; and __fish_seen_subcommand_from check show' -F
 complete -c glippy -n '__fish_seen_subcommand_from init' -a '(__fish_complete_directories)'
@@ -374,6 +384,7 @@ complete -c glippy -n '__fish_seen_subcommand_from explain' -l json -d 'Render v
 	}
 	output.WriteString(
 		`complete -c glippy -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
+complete -c glippy -n '__fish_seen_subcommand_from help' -a 'fmt lint check lsp init config rules explain version completion help'
 `,
 	)
 	return output.String()

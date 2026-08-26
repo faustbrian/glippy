@@ -3223,3 +3223,11 @@ provisionally uses a runner-specific 180-second p80 and 360-second hard ceiling;
 the other targets retain 120 and 240 seconds. A complete exact-candidate rerun
 must pass before this becomes stable release evidence, so v0.8 remains active
 at 75%.
+
+The v0.9 CLI-freeze candidate now provides successful top-level help for an
+empty invocation, `--help`, `-h`, and `help`, plus exact usage through
+`help <command>` and each command's help flags. Unknown commands and malformed
+help remain invalid invocations. The help path does not initialize project or
+rule state, and Bash, Zsh, and Fish completion expose the same command surface.
+This advances contract-freeze preparation without closing the still-running
+exact v0.8 corpus gate, so stable-v1 progress remains 75%.

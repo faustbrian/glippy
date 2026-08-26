@@ -85,6 +85,12 @@ func RunContext(
 		}
 		return report(stderr, ExitFilesystemError, "glippy: process streams are required\n")
 	}
+	if topic, requested, valid := parseHelpInvocation(arguments); requested {
+		if !valid {
+			return report(stderr, ExitInvalidInvocation, helpUsage)
+		}
+		return runHelp(ctx, topic, stdout, stderr)
+	}
 	if len(arguments) > 0 && arguments[0] == "version" {
 		return runVersion(ctx, arguments, stdout, stderr)
 	}
@@ -218,6 +224,14 @@ func RunContext(
 			return runLintFix(ctx, invocation, stdout, stderr, registry)
 		}
 		return runLintCheck(ctx, invocation, stdout, stderr, registry)
+	}
+	if len(arguments) > 0 && arguments[0] != "fmt" {
+		return report(
+			stderr,
+			ExitInvalidInvocation,
+			"glippy: unknown command %q\n",
+			arguments[0],
+		)
 	}
 	invocation, valid := parseFormatInvocation(arguments)
 	if !valid {
