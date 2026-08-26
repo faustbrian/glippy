@@ -2003,7 +2003,7 @@ func prepareLintPackageFixExecutions(
 	if err := applyConfiguredPackageBaseline(task, &packageResult, registry); err != nil {
 		return nil, lintBaselineErrorExitCode(err), err
 	}
-	if err := validateLintPackagePrerequisites(packageResult); err != nil {
+	if err := validateLintPackageFixPrerequisites(packageResult); err != nil {
 		return nil, ExitSourceError, err
 	}
 	if err := filterChangedPackageResult(changedScope, &packageResult); err != nil {
@@ -2024,6 +2024,15 @@ func prepareLintPackageFixExecutions(
 		selections, err := fixengine.Select(result.Diagnostics, selectionOptions)
 		if err != nil {
 			return executions, ExitInternalError, err
+		}
+		if len(selections) > 0 {
+			if err := validateLintPackageFixPrerequisitesForPath(
+				packageResult,
+				result.Path,
+			);
+				err != nil {
+				return executions, ExitSourceError, err
+			}
 		}
 		if file.Metadata().Generated && len(selections) > 0 {
 			return executions, ExitFilesystemError, fmt.Errorf(
@@ -2091,7 +2100,7 @@ func refreshLintPackageFixExecutions(
 		err != nil {
 		return lintBaselineErrorExitCode(err), err
 	}
-	if err := validateLintPackagePrerequisites(packageResult); err != nil {
+	if err := validateLintPackageFixPrerequisites(packageResult); err != nil {
 		return ExitSourceError, err
 	}
 	results := make(map[string]analysis.Result, len(packageResult.Files))
@@ -2120,6 +2129,15 @@ func refreshLintPackageFixExecutions(
 		selections, err := fixengine.Select(result.Diagnostics, selectionOptions)
 		if err != nil {
 			return ExitInternalError, err
+		}
+		if len(selections) > 0 {
+			if err := validateLintPackageFixPrerequisitesForPath(
+				packageResult,
+				result.Path,
+			);
+				err != nil {
+				return ExitSourceError, err
+			}
 		}
 		if file.Metadata().Generated && len(selections) > 0 {
 			return ExitFilesystemError, fmt.Errorf(
@@ -2163,7 +2181,7 @@ func refreshFinalLintPackageResults(
 	if err := applyConfiguredPackageBaseline(task, &packageResult, registry); err != nil {
 		return lintBaselineErrorExitCode(err), err
 	}
-	if err := validateLintPackagePrerequisites(packageResult); err != nil {
+	if err := validateLintPackageFixPrerequisites(packageResult); err != nil {
 		return ExitSourceError, err
 	}
 	results := make(map[string]analysis.Result, len(packageResult.Files))
@@ -2177,6 +2195,15 @@ func refreshFinalLintPackageResults(
 	}
 	for index := range executions {
 		execution := &executions[index]
+		if len(execution.outcome.Applied) > 0 {
+			if err := validateLintPackageFixPrerequisitesForPath(
+				packageResult,
+				execution.file.Path(),
+			);
+				err != nil {
+				return ExitSourceError, err
+			}
+		}
 		result, found := results[execution.file.Path()]
 		if !found {
 			return ExitSourceError, newLintPackageValidationError(
@@ -2252,7 +2279,8 @@ func validateLintPackageFix(
 	if err != nil {
 		return analysis.Result{}, nil, err
 	}
-	if err := validateLintPackagePrerequisites(packageResult); err != nil {
+	if err := validateLintPackageFixPrerequisitesForPath(packageResult, formatted.Path());
+		err != nil {
 		return analysis.Result{}, nil, err
 	}
 	for _, result := range packageResult.Files {
@@ -2314,6 +2342,34 @@ func packageLoadOptions(
 	}
 }
 
+func validateLintPackageFixPrerequisites(result analysis.PackageResult) error {
+	if len(result.SourceProblems) > 0 {
+		problem := result.SourceProblems[0]
+		return newLintPackageValidationError(
+			"typed package source %q failed validation: %s",
+			problem.Path,
+			problem.Message,
+		)
+	}
+	for _, diagnostic := range result.LoadDiagnostics {
+		if diagnostic.IsCgoBoundary() {
+			continue
+		}
+		if diagnostic.Position != "" {
+			return newLintPackageValidationError(
+				"typed package validation failed at %s: %s",
+				diagnostic.Position,
+				diagnostic.Message,
+			)
+		}
+		return newLintPackageValidationError(
+			"typed package validation failed: %s",
+			diagnostic.Message,
+		)
+	}
+	return nil
+}
+
 func validateLintPackagePrerequisites(result analysis.PackageResult) error {
 	if len(result.SourceProblems) > 0 {
 		problem := result.SourceProblems[0]
@@ -2325,6 +2381,42 @@ func validateLintPackagePrerequisites(result analysis.PackageResult) error {
 	}
 	if len(result.LoadDiagnostics) > 0 {
 		diagnostic := result.LoadDiagnostics[0]
+		if diagnostic.Position != "" {
+			return newLintPackageValidationError(
+				"typed package validation failed at %s: %s",
+				diagnostic.Position,
+				diagnostic.Message,
+			)
+		}
+		return newLintPackageValidationError(
+			"typed package validation failed: %s",
+			diagnostic.Message,
+		)
+	}
+	return nil
+}
+
+func validateLintPackageFixPrerequisitesForPath(result analysis.PackageResult, path string) error {
+	if err := validateLintPackageFixPrerequisites(result); err != nil {
+		return err
+	}
+	packageID := ""
+	for _, file := range result.Files {
+		if file.Path == path {
+			packageID = file.PackageID
+			break
+		}
+	}
+	if packageID == "" {
+		return newLintPackageValidationError(
+			"typed package identity %q is missing during fix validation",
+			path,
+		)
+	}
+	for _, diagnostic := range result.LoadDiagnostics {
+		if !diagnostic.IsCgoBoundary() || diagnostic.PackageID != packageID {
+			continue
+		}
 		if diagnostic.Position != "" {
 			return newLintPackageValidationError(
 				"typed package validation failed at %s: %s",

@@ -214,6 +214,12 @@ Accepted edits are reparsed, formatted, reanalyzed, and validated before one
 file is replaced. Fix transactions are single-file and do not claim multi-file
 atomicity.
 
+A retained cgo source that is unavailable to typed analysis does not block
+fixes in a different package. Glippy still refuses every fix in the affected
+cgo package because it cannot complete that package's post-fix typed
+validation. Other parse, source-capture, package-load, and type-checking
+failures remain fix-wide prerequisites.
+
 Lint accepts `--config=<path>` and
 `--reporter=text|short|json|github|sarif`. Text is the default and renders
 bounded physical-source frames with primary underlines. `short` retains one

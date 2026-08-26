@@ -73,6 +73,25 @@ type PackageDiagnostic struct {
 	Position string
 	Message string
 	Kind packages.ErrorKind
+	Cause PackageDiagnosticCause
+}
+
+// PackageDiagnosticCause identifies a Glippy-owned package-loading boundary
+// independently from its human-facing message.
+type PackageDiagnosticCause uint8
+
+const (
+	PackageDiagnosticCauseNone PackageDiagnosticCause = iota
+	PackageDiagnosticCauseCgoBoundary
+)
+
+const cgoBoundaryMessage = "typed analysis is unavailable for cgo source; syntax analysis remains available"
+
+// IsCgoBoundary reports whether a diagnostic identifies a retained cgo source
+// that the standard package loader could not represent in the typed syntax
+// graph.
+func (d PackageDiagnostic) IsCgoBoundary() bool {
+	return d.Cause == PackageDiagnosticCauseCgoBoundary
 }
 
 // PackageLoadResult owns one compatible typed package graph for a run.
@@ -1028,8 +1047,9 @@ func cgoBoundaryDiagnostics(
 			PackageDiagnostic{
 				PackageID: pkg.ID,
 				Position: file.Path(),
-				Message: "typed analysis is unavailable for cgo source; syntax analysis remains available",
+				Message: cgoBoundaryMessage,
 				Kind: packages.UnknownError,
+				Cause: PackageDiagnosticCauseCgoBoundary,
 			},
 		)
 	}

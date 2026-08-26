@@ -132,6 +132,16 @@ func RunPackages(
 	if err != nil {
 		return result, err
 	}
+	packageIDsByPath := make(map[string]string, len(files))
+	for _, work := range files {
+		if work.package_ == nil || strings.TrimSpace(work.package_.ID) == "" {
+			return result, fmt.Errorf(
+				"package analysis source %q has no package identity",
+				work.source.Path(),
+			)
+		}
+		packageIDsByPath[work.source.Path()] = work.package_.ID
+	}
 
 	syntaxSelection := selectRequirement(selection, rules.RequireSyntax)
 	typesSelection := selectRequirement(selection, rules.RequireTypes)
@@ -256,6 +266,7 @@ func RunPackages(
 			Result{
 				Path: file.Path(),
 				Digest: file.Digest(),
+				PackageID: packageIDsByPath[file.Path()],
 				Requirement: rules.MaximumRequirement(fileSelection),
 				Selection: slices.Clone(fileSelection),
 				Diagnostics: application.Diagnostics,

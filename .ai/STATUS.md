@@ -3305,3 +3305,17 @@ identities for Bash, Zsh, and Fish output. Focused tests and native candidates
 must preserve the complete command and option grammar encoded for each shell,
 and the canonical completion manifest participates in cross-runner contract
 digests. Stable-v1 progress remains 75% until v0.8 closes.
+
+The exact v0.8 Moby job in corpus run `32919251857` completed all four lint
+profiles but exposed two incomplete auxiliary paths. Recursive formatting
+selected the nested `api/go.mod` Go 1.24 directive, which is outside Glippy's
+documented Go 1.25-1.27 range and remains an explicit formatter-sourced
+unsupported-source gap rather than a discovery exception. Safe-fix preview
+incorrectly let that repository's cgo boundary block fixes in unrelated typed
+packages. A red-green correction now gives synthesized cgo diagnostics
+structured provenance, binds package analysis results to their canonical
+package identity, permits fixes in distinct packages including same-directory
+external test packages, and still refuses fixes in the affected cgo package.
+All other parse, capture, load, and type prerequisites remain fix-wide. The
+exact corpus must rerun on the resulting pushed revision, so stable-v1 progress
+remains 75%.

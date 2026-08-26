@@ -187,7 +187,9 @@ func mergeTargetPackageResults(
 }
 
 func mergeTargetFileResults(left, right analysis.Result) (analysis.Result, error) {
-	if left.Path != right.Path || left.Digest != right.Digest {
+	if left.Path != right.Path ||
+		left.Digest != right.Digest ||
+		left.PackageID != right.PackageID {
 		return analysis.Result{}, fmt.Errorf(
 			"target matrix source identity changed for %q",
 			right.Path,
@@ -290,7 +292,8 @@ func mergePackageDiagnostics(
 			if result[index].PackageID == candidate.PackageID &&
 				result[index].Position == candidate.Position &&
 				result[index].Message == candidate.Message &&
-				result[index].Kind == candidate.Kind {
+				result[index].Kind == candidate.Kind &&
+				result[index].Cause == candidate.Cause {
 				result[index].Targets = mergeTargetNames(
 					result[index].Targets,
 					candidate.Targets,

@@ -41,6 +41,7 @@ type RunOptions struct {
 type Result struct {
 	Path string
 	Digest source.Digest
+	PackageID string
 	Targets []string
 	Requirement rules.Requirement
 	Selection []rules.Selection

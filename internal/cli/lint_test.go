@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -4988,6 +4989,267 @@ func TestRunLintFixRejectsTypedFixThatFailsPackageValidation(t *testing.T) {
 			stdout.String(),
 			stderr.String(),
 			got,
+		)
+	}
+}
+
+func TestRunLintFixDiffIgnoresUnrelatedCgoPackageBoundary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows is not a supported Glippy runtime")
+	}
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/project\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n\n[analysis]\ncgo-enabled = true\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	cgoPath := filepath.Join(root, "native", "native.go")
+	if err := os.MkdirAll(filepath.Dir(cgoPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		cgoPath,
+		[]byte("package native\n\n/* int answer(void) { return 42; } */\nimport \"C\"\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	regularPath := filepath.Join(root, "regular", "source.go")
+	if err := os.MkdirAll(filepath.Dir(regularPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	input := []byte(
+		"package regular\n\nfunc run() { target() }\nfunc target() {}\nfunc primary() {}\n",
+	)
+	if err := os.WriteFile(regularPath, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			fix: true,
+			diff: true,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.Text,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesFixRegistry(t, "primary"),
+	)
+
+	got, err := os.ReadFile(regularPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "+++ " + regularPath + "\n") ||
+		!strings.Contains(stdout.String(), "+\tprimary()\n") ||
+		!bytes.Equal(got, input) {
+		t.Fatalf(
+			"runLintFix(unrelated cgo) = exit %d, stdout %q, stderr %q, source %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			got,
+		)
+	}
+}
+
+func TestRunLintFixRejectsFixInCgoPackageWithoutTypedSource(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows is not a supported Glippy runtime")
+	}
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/project\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n\n[analysis]\ncgo-enabled = true\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	packageRoot := filepath.Join(root, "native")
+	if err := os.MkdirAll(packageRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cgoPath := filepath.Join(packageRoot, "native.go")
+	if err := os.WriteFile(
+		cgoPath,
+		[]byte("package native\n\n/* int answer(void) { return 42; } */\nimport \"C\"\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	regularPath := filepath.Join(packageRoot, "source.go")
+	input := []byte(
+		"package native\n\nfunc run() { target() }\nfunc target() {}\nfunc primary() {}\n",
+	)
+	if err := os.WriteFile(regularPath, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			fix: true,
+			diff: true,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.Text,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesFixRegistry(t, "primary"),
+	)
+
+	got, err := os.ReadFile(regularPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitSourceError ||
+		stdout.Len() != 0 ||
+		!strings.Contains(
+			stderr.String(),
+			"typed analysis is unavailable for cgo source",
+		) ||
+		!strings.Contains(stderr.String(), cgoPath) ||
+		!bytes.Equal(got, input) {
+		t.Fatalf(
+			"runLintFix(cgo package) = exit %d, stdout %q, stderr %q, source %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			got,
+		)
+	}
+}
+
+func TestRunLintFixDiffAllowsExternalTestPackageBesideCgoPackage(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows is not a supported Glippy runtime")
+	}
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module example.com/project\n\ngo 1.26.0\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	configurationPath := filepath.Join(root, ".glippy.toml")
+	if err := os.WriteFile(
+		configurationPath,
+		[]byte("version = 1\n\n[analysis]\ncgo-enabled = true\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	packageRoot := filepath.Join(root, "native")
+	if err := os.MkdirAll(packageRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(packageRoot, "native.go"),
+		[]byte("package native\n\n/* int answer(void) { return 42; } */\nimport \"C\"\n"),
+		0o600,
+	);
+		err != nil {
+		t.Fatal(err)
+	}
+	testPath := filepath.Join(packageRoot, "external_test.go")
+	input := []byte(
+		"package native_test\n\nfunc run() { target() }\nfunc target() {}\nfunc primary() {}\n",
+	)
+	if err := os.WriteFile(testPath, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runLintFix(
+		context.Background(),
+		lintInvocation{
+			configPath: configurationPath,
+			fix: true,
+			diff: true,
+			paths: []string{filepath.Join(root, "...")},
+			reporter: glippyreport.Text,
+		},
+		&stdout,
+		&stderr,
+		newCLITypesFixRegistry(t, "primary"),
+	)
+
+	got, err := os.ReadFile(testPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != ExitFindings ||
+		stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "+++ " + testPath + "\n") ||
+		!strings.Contains(stdout.String(), "+\tprimary()\n") ||
+		!bytes.Equal(got, input) {
+		t.Fatalf(
+			"runLintFix(external cgo test) = exit %d, stdout %q, stderr %q, source %q",
+			exitCode,
+			stdout.String(),
+			stderr.String(),
+			got,
+		)
+	}
+}
+
+func TestValidateLintPackageFixPrerequisitesDoesNotTrustDiagnosticText(t *testing.T) {
+	t.Parallel()
+
+	err := validateLintPackageFixPrerequisites(
+		analysis.PackageResult{
+			LoadDiagnostics: []analysis.PackageDiagnostic{
+				{
+					PackageID: "example.com/project",
+					Message: "typed analysis is unavailable for cgo source; syntax analysis remains available",
+				},
+			},
+		},
+	)
+	if err == nil {
+		t.Fatal(
+			"validateLintPackageFixPrerequisites() accepted unstructured diagnostic text",
 		)
 	}
 }
