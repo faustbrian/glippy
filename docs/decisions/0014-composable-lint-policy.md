@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-08-13
+- Amended: 2026-08-26
 
 ## Context
 
@@ -33,8 +34,13 @@ and remains accepted, but singular and plural forms are mutually exclusive.
 
 Selectable groups are `correctness`, `suspicious`, `performance`,
 `complexity`, `style`, `pedantic`, and `nursery`. Nursery is an explicit
-validation group for rules that have not yet earned stable membership through
-large-corpus signal and cost evidence. No curated profile selects it.
+validation group for rules that have not yet earned promotion through
+large-corpus signal and cost evidence. No curated profile selects it. Before
+version 1.0 its IDs, membership, reporting boundaries, severity, and fix
+availability are prerelease surfaces. The first stable release freezes the
+nursery rule contracts it ships; after v1, nursery validation status is not a
+compatibility exception. New rules and promotions follow the public
+compatibility policy.
 Restriction metadata exists so rules can be classified consistently, but the
 group cannot be enabled wholesale; projects opt into exact restriction rule
 IDs. Migration metadata remains valid, while selecting the migration group is
@@ -93,8 +99,10 @@ changes when group membership or warning escalation changes.
 
 Nursery provides an honest holding area for evidence-backed candidates whose
 false-positive boundary, cost, or fix contract still needs broader validation.
-Its opt-in contract does not grant rule-ID or behavior stability, and promotion
-requires the ordinary admission evidence for the destination group.
+Before v1 its opt-in contract does not grant rule-ID or behavior stability.
+The first stable release freezes every shipped nursery ID and rule contract;
+promotion after v1 requires ordinary destination-group admission evidence and
+retains nursery membership through the current major release.
 
 One invocation can evaluate or temporarily strengthen policy without editing
 project configuration. Because directives are ordered, scripts must preserve

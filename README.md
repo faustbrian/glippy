@@ -55,8 +55,9 @@ inside formatting, and layout policy is not duplicated as lint noise.
   form with bounded fit work.
 - **High-signal linting:** correctness is the default preset group;
   suspicious, performance, complexity, style, pedantic, and nursery groups are
-  composable opt-ins. Nursery rules are explicitly unstable validation
-  candidates, while restriction rules remain individually selected.
+  composable opt-ins. Nursery rules are validation candidates excluded from
+  curated profiles; v1 freezes their shipped IDs and reporting contracts while
+  restriction rules remain individually selected.
 - **Demand-driven analysis:** syntax-only work does not construct types, CFG,
   or SSA; deeper representations are shared within one package run. CFG and
   SSA consumers share demand-driven no-return and nil/error return summaries,
@@ -227,8 +228,9 @@ schema-versioned machine contract.
 
 The `nursery` group is never included by `default`, `recommended`, `strict`,
 or `pedantic`. It contains opt-in rules still undergoing broad corpus
-validation and may change membership or behavior before promotion. Select it
-explicitly with `lint.presets = ["nursery"]`, `-Wnursery`, or
+validation. Before v1 it may change between prereleases; at v1 its shipped
+IDs, membership, severities, reporting boundaries, and fixes become stable.
+Select it explicitly with `lint.presets = ["nursery"]`, `-Wnursery`, or
 `glippy rules --preset=nursery`.
 
 ```toml

@@ -94,12 +94,20 @@ highly suspicious behavior; style, performance, complexity, and migration
 policy MUST remain opt-in unless their admission and compatibility evidence
 explicitly justifies a default change.
 
-The `nursery` group is an explicitly unstable pre-admission surface. No curated
-profile includes it. Nursery rule IDs, membership, severity, reporting
-boundaries, and fix availability MAY change between pre-1.0 minor releases when
-the release documents the corpus evidence and migration impact. Promotion from
-nursery to a stable group follows that destination group's ordinary admission
-and compatibility requirements.
+Before version 1.0, the `nursery` group is an explicitly unstable
+pre-admission surface. No curated profile includes it. Nursery rule IDs,
+membership, severity, reporting boundaries, and fix availability MAY change
+between pre-1.0 minor releases when the release documents the corpus evidence
+and migration impact.
+
+The first stable release freezes every nursery rule ID, problem definition,
+severity, reporting boundary, and fix contract shipped by that release. At or
+after version 1.0, nursery is an opt-in validation group, not a compatibility
+exception. New opt-in rule IDs MAY be added to it in a minor release, but every
+existing rule follows the ordinary stable opt-in rule policy above. Promotion
+MAY add the destination group after its admission and compatibility gates pass;
+the rule MUST retain nursery membership through the current major release so a
+consumer selecting nursery does not silently lose diagnostics.
 
 Profile names and composition become compatibility surfaces with Glippy's first
 public release. Adding a rule to `default` or `recommended`, or adding a group

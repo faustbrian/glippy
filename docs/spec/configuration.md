@@ -126,8 +126,11 @@ explicit rule policy applies.
 
 `lint.preset` remains a compatibility alias for selecting one group. A
 configuration MUST NOT specify both singular and plural fields. The `nursery`
-group MAY be selected explicitly, but its membership and rule behavior are not
-stable until individual rules graduate through the admission process. A
+group MAY be selected explicitly. Before version 1.0 it is a prerelease
+validation surface; the first stable release freezes the IDs, membership,
+reporting boundaries, severities, and fix contracts that it ships. New
+post-v1 nursery rules and promotions follow the
+[compatibility policy](../compatibility-policy.md#lint-rules-and-presets). A
 `restriction` rule MUST be enabled only through its exact ID in `lint.rules`;
 the restriction group MUST NOT be selected wholesale. The `migration` group
 remains unavailable until configuration supplies an explicit migration target.
