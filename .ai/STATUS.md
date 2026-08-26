@@ -11,8 +11,11 @@
   all 386 default and recommended entries
 - v0.8 native release budgets: exact workflow `32814696805` passed all four
   supported macOS/Linux amd64/arm64 jobs and cross-runner byte-for-byte archive
-  reproducibility; stable ceilings are 250 ms editor latency, 120 s formatter
-  latency, 2 GiB aggregate formatter RSS, 240 s typed latency, and 3 GiB
+  reproducibility; later workflow `32921575657` rejected its universal 120 s
+  formatter latency ceiling on Darwin amd64. That runner provisionally uses
+  180 s p80/360 s hard while the other targets retain 120 s/240 s; a green
+  exact-candidate rerun remains required. The stable ceilings remain 250 ms
+  editor latency, 2 GiB aggregate formatter RSS, 240 s typed latency, and 3 GiB
   aggregate typed RSS for the pinned workloads
 - v0.8 corpus runtime bound: exploratory run `32832151515` proved that the
   formatter, safe-fix preview, four profiles, and `go vet` complete for pinned
@@ -3209,3 +3212,14 @@ now tolerates entries or the root disappearing concurrently while retaining a
 failure when the owned root still exists after a real deletion error. The
 complete exact corpus still must pass at the final pushed revision, so v0.8
 remains active at 75%.
+
+Release-budget workflow `32921575657` rejected the universal 120-second
+formatter p80 at its Darwin amd64 job. The exact five samples were 92.200,
+133.410, 120.710, 142.850, and 144.070 seconds, selecting 142.850 seconds as
+nearest-rank p80. All formatter RSS samples remained between 1,381,236,736 and
+1,592,143,872 bytes, so the 2 GiB ceiling remains unchanged. Linux amd64,
+Linux arm64, and Darwin arm64 passed the same campaign. Darwin amd64 now
+provisionally uses a runner-specific 180-second p80 and 360-second hard ceiling;
+the other targets retain 120 and 240 seconds. A complete exact-candidate rerun
+must pass before this becomes stable release evidence, so v0.8 remains active
+at 75%.
