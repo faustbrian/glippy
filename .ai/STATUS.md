@@ -2,8 +2,12 @@
 
 - Original Phase 0-5 progress: 100%
 - Active development: post-v0.1 Clippy-comparability expansion
-- Stable-v1 roadmap progress: 75%
-- Active stable-v1 milestone: v0.8 large-repository hardening
+- Stable-v1 roadmap progress: 85%
+- Active stable-v1 milestone: v0.9 stability freeze and tagless release candidate
+- v0.8 large-repository hardening: complete at revision `3afa56c`;
+  exact corpus run `32962070813` passed all 20 jobs, classified all 334
+  default and recommended findings, retained zero known default false
+  positives, and produced no new rule candidate
 - v0.7 semantic depth and credible fixes: complete at revision `35e93c5`;
   focused interaction and independent-review gates passed
 - v0.6 real-world rule validation: complete at analyzed revision `ee2ea4f`;
@@ -20,6 +24,9 @@
   formatter, safe-fix preview, four profiles, and `go vet` complete for pinned
   Kubernetes before the former 120-minute job ceiling, which cancelled the
   final Staticcheck comparison; the bounded ceiling is now 180 minutes
+- v0.8 exact final-candidate gates: CI `32960773579`, fuzz `32967508684`,
+  release-budget and cross-runner reproducibility `32967515640`, and corpus
+  `32962070813` passed at revision `3afa56c`
 - v0.5 typed retained-memory attribution: complete
 - v0.5 exact printf fact isolation and 2 GiB reference-host gate: complete
 - v0.5 bounded incremental workspace-result reuse: complete

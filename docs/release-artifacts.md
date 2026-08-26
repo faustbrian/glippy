@@ -118,9 +118,9 @@ source change invalidates the candidate and requires a new exact-revision run
 with the same identity until the maintainer approves the final tree.
 
 Exact candidate run
-[`32956423419`](https://github.com/faustbrian/glippy/actions/runs/32956423419)
+[`32967515640`](https://github.com/faustbrian/glippy/actions/runs/32967515640)
 passed the native budget, expanded contract, archive, and cross-runner
-reproducibility matrix for revision `b47d7ef` with Go 1.27.0. All four native
+reproducibility matrix for revision `3afa56c` with Go 1.27.0. All four native
 macOS/Linux amd64/arm64 jobs passed, and the dependent reproducibility job
 proved byte-identical release files and contract snapshots across runners.
 The native latency, aggregate-memory, and reproducibility results are recorded

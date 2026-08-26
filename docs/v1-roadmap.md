@@ -44,14 +44,20 @@ not become a package marketplace or plugin system.
 
 ## v0.8: Large-Repository Hardening
 
-Status: active. The corpus harness now binds exact formatter and transactional
-safe-fix preview evidence from immutable snapshots. Plain CI documentation and
-the bounded prerelease-upgrade rehearsal are complete. Native macOS/Linux
-resource budgets and cross-runner archive reproducibility are proven. The
-exact-revision corpus, source-fidelity, fixer, and variant gates remain open.
+Status: complete. Exact corpus run `32962070813` passed all 20 jobs at
+`3afa56c`, classified all 334 default and recommended findings, retained zero
+known default false positives, and produced no new rule candidate. Formatter,
+transactional safe-fix preview, source-fidelity, build-variant, upgrade,
+macOS/Linux resource-budget, and cross-runner reproducibility gates are proven.
+The accepted unsupported-source, generated-prerequisite, cgo-coverage, and
+nested-module boundaries remain explicitly dispositioned rather than being
+silently excluded. Stable-v1 roadmap progress is 85%, with v0.9 now active.
 
-- Repeat the complete corpus at exact revisions and classify every formatter
-  divergence and diagnostic.
+- Repeat the complete corpus at exact revisions, account for every formatter
+  execution and fidelity failure, and manually classify every default and
+  recommended diagnostic. Canonical formatter differences are aggregate
+  adoption evidence; parse, equivalence, comment, directive, or idempotency
+  failures require individual investigation and disposition.
 - Prove formatter idempotency and source fidelity on the corpus.
 - Establish macOS and Linux cold, warm, editor, and memory budgets in isolated
   CI.
@@ -66,6 +72,12 @@ This milestone does not include a custom Action, editor plugin, package-manager
 integration, contract marketplace, hosted service, or upstream adoption work.
 
 ## v0.9: Stability Freeze And Tagless Release Candidate
+
+Status: active. The formatter, rule, profile, configuration, CLI, completion,
+reporter, exit-code, and machine-schema contracts are frozen in executable v1
+fixtures. The tagless candidate reproduces those contracts and historical
+upgrade fixtures across all four supported native targets. Final exact-tree
+verification and the acceptance audit remain open.
 
 - Freeze formatter output, rule IDs, profiles, configuration, CLI behavior,
   exit codes, and machine schemas.
