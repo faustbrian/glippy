@@ -11,9 +11,9 @@ func TestPeakLatencySelection(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
+		name string
 		arguments []string
-		want      string
+		want string
 		wantError string
 	}{
 		{
@@ -58,13 +58,13 @@ func TestPeakLatencySelection(t *testing.T) {
 				"241.000 seconds > 240.000 seconds",
 		},
 		{
-			name:      "enforces one-sample campaigns",
+			name: "enforces one-sample campaigns",
 			arguments: []string{"typed-lint", "15", "15.500"},
 			wantError: "typed-lint sustained elapsed-time budget exceeded: " +
 				"15.500 seconds > 15 seconds",
 		},
 		{
-			name:      "rejects malformed evidence",
+			name: "rejects malformed evidence",
 			arguments: []string{"formatter-check", "120", "not-seconds"},
 			wantError: "latency samples must be non-negative decimal seconds",
 		},
@@ -77,12 +77,19 @@ func TestPeakLatencySelection(t *testing.T) {
 				t.Parallel()
 				command := exec.Command(
 					"sh",
-					append([]string{"peak-latency-select.sh"}, test.arguments...)...,
+					append(
+						[]string{"peak-latency-select.sh"},
+						test.arguments...,
+					)...,
 				)
 				output, err := command.CombinedOutput()
 				if test.wantError == "" {
 					if err != nil {
-						t.Fatalf("peak-latency-select.sh error = %v, output = %q", err, output)
+						t.Fatalf(
+							"peak-latency-select.sh error = %v, output = %q",
+							err,
+							output,
+						)
 					}
 					if string(output) != test.want {
 						t.Fatalf(
@@ -94,7 +101,10 @@ func TestPeakLatencySelection(t *testing.T) {
 					return
 				}
 				if err == nil {
-					t.Fatalf("peak-latency-select.sh succeeded, output = %q", output)
+					t.Fatalf(
+						"peak-latency-select.sh succeeded, output = %q",
+						output,
+					)
 				}
 				if !strings.Contains(string(output), test.wantError) {
 					t.Fatalf(
@@ -116,12 +126,8 @@ func TestPeakLatencySelectionUsesPortableDecimalOutput(t *testing.T) {
 
 	var decimalCommaLocale string
 	for _, available := range strings.Fields(string(localeOutput)) {
-		for _, candidate := range []string{
-			"de_DE.UTF-8",
-			"de_DE.utf8",
-			"fr_FR.UTF-8",
-			"fr_FR.utf8",
-		} {
+		for _, candidate := range
+			[]string{"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "fr_FR.utf8"} {
 			if strings.EqualFold(available, candidate) {
 				decimalCommaLocale = available
 				break
@@ -146,7 +152,7 @@ func TestPeakLatencySelectionUsesPortableDecimalOutput(t *testing.T) {
 		"90.340",
 		"167.530",
 	)
-	command.Env = append(os.Environ(), "LC_ALL="+decimalCommaLocale)
+	command.Env = append(os.Environ(), "LC_ALL=" + decimalCommaLocale)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("peak-latency-select.sh error = %v, output = %q", err, output)
