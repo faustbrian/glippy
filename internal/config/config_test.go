@@ -25,8 +25,20 @@ func TestParseReportsStrictDecodeErrorsAtSourceLocation(t *testing.T) {
 		name string
 		input string
 		wantLine int
+		wantMessage string
 	}{
-		{name: "unknown key", input: "version = 1\nwidht = 80\n", wantLine: 2},
+		{
+			name: "unknown key",
+			input: "version = 1\nwidht = 80\n",
+			wantLine: 2,
+			wantMessage: `unknown configuration field "widht"`,
+		},
+		{
+			name: "unknown nested key",
+			input: "version = 1\n[format]\nline-widht = 80\n",
+			wantLine: 3,
+			wantMessage: `unknown configuration field "format.line-widht"`,
+		},
 		{name: "duplicate key", input: "version = 1\nversion = 1\n", wantLine: 2},
 		{name: "invalid type", input: "version = \"one\"\n", wantLine: 1},
 		{
@@ -73,6 +85,14 @@ func TestParseReportsStrictDecodeErrorsAtSourceLocation(t *testing.T) {
 					":"
 				if !strings.HasPrefix(err.Error(), location) {
 					t.Fatalf("Parse() error = %q, want source location", err)
+				}
+				if test.wantMessage != "" &&
+					!strings.Contains(err.Error(), test.wantMessage) {
+					t.Fatalf(
+						"Parse() error = %q, want containing %q",
+						err,
+						test.wantMessage,
+					)
 				}
 			},
 		)

@@ -358,6 +358,94 @@ func TestV1ConfigurationProfilesMatchApprovedGolden(t *testing.T) {
 	}
 }
 
+func TestV1ConfigurationBoundaryContractMatchesApprovedGolden(t *testing.T) {
+	t.Parallel()
+
+	contractRoot := filepath.Join("..", "..", "testdata", "contracts", "v1")
+	want, err := os.ReadFile(filepath.Join(contractRoot, "configuration.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	absoluteContractRoot, err := filepath.Abs(contractRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machineRoot, err := filepath.Abs(filepath.Join(contractRoot, "machine"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	initRoot := t.TempDir()
+
+	var got bytes.Buffer
+	for _, profile := range []string{"default", "recommended", "strict", "pedantic"} {
+		root := filepath.Join(initRoot, profile)
+		if err := os.Mkdir(root, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		exitCode := Run(
+			[]string{"init", "--profile=" + profile, root},
+			bytes.NewReader(nil),
+			&stdout,
+			&stderr,
+		)
+		if exitCode != ExitSuccess {
+			t.Fatalf("init %s exit = %d, stderr = %q", profile, exitCode, stderr.String())
+		}
+		configuration, err := os.ReadFile(filepath.Join(root, ".glippy.toml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(filepath.Join(root, ".glippy.toml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got.WriteString("## init-" + profile + "\n")
+		got.WriteString("exit: " + strconv.Itoa(exitCode) + "\n")
+		got.WriteString("stdout:\n")
+		got.WriteString(strings.ReplaceAll(stdout.String(), initRoot, "<INIT>"))
+		got.WriteString("stderr:\n")
+		got.WriteString(strings.ReplaceAll(stderr.String(), initRoot, "<INIT>"))
+		got.WriteString("configuration:\n")
+		got.Write(configuration)
+		fmt.Fprintf(&got, "mode: %04o\n", info.Mode().Perm())
+	}
+
+	for _, caseName := range []string{"invalid-version", "invalid-unknown"} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		exitCode := Run(
+			[]string{
+				"config",
+				"check",
+				"--config=" + filepath.Join(contractRoot, "config", caseName+".toml"),
+				machineRoot,
+			},
+			bytes.NewReader(nil),
+			&stdout,
+			&stderr,
+		)
+		if exitCode != ExitInvalidInvocation {
+			t.Fatalf(
+				"%s exit = %d, stderr = %q",
+				caseName,
+				exitCode,
+				stderr.String(),
+			)
+		}
+		got.WriteString("## " + caseName + "\n")
+		got.WriteString("exit: " + strconv.Itoa(exitCode) + "\n")
+		got.WriteString("stdout:\n")
+		got.WriteString(strings.ReplaceAll(stdout.String(), absoluteContractRoot, "<CONTRACT>"))
+		got.WriteString("stderr:\n")
+		got.WriteString(strings.ReplaceAll(stderr.String(), absoluteContractRoot, "<CONTRACT>"))
+	}
+	if !bytes.Equal(got.Bytes(), want) {
+		t.Fatal("configuration boundary output does not match configuration.txt")
+	}
+}
+
 func TestV1DiagnosticReporterContractsMatchApprovedGolden(t *testing.T) {
 	t.Parallel()
 

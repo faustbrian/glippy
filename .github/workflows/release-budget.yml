@@ -189,6 +189,37 @@ jobs:
           } >"$contracts/profiles.txt"
           diff -u testdata/contracts/v1/profiles.txt "$contracts/profiles.txt"
 
+          init_root="$task_root/config-init"
+          mkdir "$init_root"
+          {
+            for profile in default recommended strict pedantic; do
+              mkdir "$init_root/$profile"
+              printf '## init-%s\n' "$profile"
+              set +e
+              "$binary" init --profile="$profile" "$init_root/$profile" \
+                >"$task_root/contract-stdout" \
+                2>"$task_root/contract-stderr"
+              contract_exit=$?
+              set -e
+              test "$contract_exit" -eq 0
+              printf 'exit: %s\nstdout:\n' "$contract_exit"
+              sed "s|$init_root|<INIT>|g" "$task_root/contract-stdout"
+              printf 'stderr:\n'
+              sed "s|$init_root|<INIT>|g" "$task_root/contract-stderr"
+              printf 'configuration:\n'
+              cat "$init_root/$profile/.glippy.toml"
+              if [ "${{ matrix.goos }}" = "darwin" ]; then
+                configuration_mode=$(stat -f '%Lp' \
+                  "$init_root/$profile/.glippy.toml")
+              else
+                configuration_mode=$(stat -c '%a' \
+                  "$init_root/$profile/.glippy.toml")
+              fi
+              test "$configuration_mode" = "600"
+              printf 'mode: 0%s\n' "$configuration_mode"
+            done
+          } >"$contracts/configuration.txt"
+
           machine_root=$(cd testdata/contracts/v1/machine && pwd -P)
           machine_configuration="$machine_root/.glippy.toml"
           machine_alpha="$machine_root/alpha.go"
@@ -232,6 +263,18 @@ jobs:
             run_machine_contract conflict 4 init "$machine_root"
           } >"$contracts/machine.txt"
           diff -u testdata/contracts/v1/machine.txt "$contracts/machine.txt"
+          contract_root=$(cd testdata/contracts/v1 && pwd -P)
+          {
+            for case_name in invalid-version invalid-unknown; do
+              run_machine_contract "$case_name" 3 \
+                config check \
+                --config="$contract_root/config/$case_name.toml" \
+                "$machine_root"
+            done
+          } | sed "s|$contract_root|<CONTRACT>|g" \
+            >>"$contracts/configuration.txt"
+          diff -u testdata/contracts/v1/configuration.txt \
+            "$contracts/configuration.txt"
           {
             for reporter in text short github sarif; do
               run_machine_contract "$reporter" 1 \
@@ -283,8 +326,8 @@ jobs:
           (
             cd "$contracts"
             shasum -a 256 \
-              commands.txt formatter.txt help.txt machine.txt profiles.txt \
-              reporters.txt rules.txt upgrade.txt \
+              commands.txt configuration.txt formatter.txt help.txt \
+              machine.txt profiles.txt reporters.txt rules.txt upgrade.txt \
               >SHA256SUMS
           )
         working-directory: ${{ github.workspace }}/glippy

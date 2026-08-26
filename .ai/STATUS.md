@@ -3291,3 +3291,11 @@ locations, help and fix metadata, URI and annotation encoding, rule
 descriptors, and canonical diagnostic ordering. The normalized reporter bundle
 participates in cross-runner contract digests. Stable-v1 progress remains 75%
 until v0.8 closes.
+
+The v0.9 configuration boundary now pins the exact mode-0600 starter file
+generated for default, recommended, strict, and pedantic projects plus
+schema-version and unknown-key rejection at their source locations. Focused
+tests and native candidates must create the same non-overwriting configuration
+bytes and retain clear exit-3 failures for unsupported or misspelled policy.
+Historical Gox and early-Glippy consumption remains separately rehearsed.
+Stable-v1 progress remains 75% until v0.8 closes.

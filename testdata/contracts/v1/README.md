@@ -9,6 +9,9 @@ focused CLI tests and every native tagless release-candidate rehearsal.
   analysis tier, and fix availability.
 - `profiles.txt` freezes resolved default, recommended, strict, and pedantic
   configuration policy using the explicit fixtures in `config/`.
+- `configuration.txt` freezes generated starter files and modes for every
+  curated profile plus unsupported-version and unknown-key rejection using
+  `config/`.
 - `formatter.txt` freezes the canonical output and digest of the complete
   hostile corpus plus every motivating example at their reviewed widths using
   the explicit configurations in `formatter/`.

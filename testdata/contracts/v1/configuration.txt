@@ -1,0 +1,74 @@
+## init-default
+exit: 0
+stdout:
+glippy init: created <INIT>/default/.glippy.toml
+stderr:
+configuration:
+version = 1
+
+[format]
+line-width = 100
+tab-width = 8
+
+[lint]
+profile = "default"
+warnings-as-errors = false
+mode: 0600
+## init-recommended
+exit: 0
+stdout:
+glippy init: created <INIT>/recommended/.glippy.toml
+stderr:
+configuration:
+version = 1
+
+[format]
+line-width = 100
+tab-width = 8
+
+[lint]
+profile = "recommended"
+warnings-as-errors = false
+mode: 0600
+## init-strict
+exit: 0
+stdout:
+glippy init: created <INIT>/strict/.glippy.toml
+stderr:
+configuration:
+version = 1
+
+[format]
+line-width = 100
+tab-width = 8
+
+[lint]
+profile = "strict"
+warnings-as-errors = false
+mode: 0600
+## init-pedantic
+exit: 0
+stdout:
+glippy init: created <INIT>/pedantic/.glippy.toml
+stderr:
+configuration:
+version = 1
+
+[format]
+line-width = 100
+tab-width = 8
+
+[lint]
+profile = "pedantic"
+warnings-as-errors = false
+mode: 0600
+## invalid-version
+exit: 3
+stdout:
+stderr:
+glippy config check: <CONTRACT>/config/invalid-version.toml: unsupported configuration version 2
+## invalid-unknown
+exit: 3
+stdout:
+stderr:
+glippy config check: <CONTRACT>/config/invalid-unknown.toml:3:1: unknown configuration field "format.line-widht"

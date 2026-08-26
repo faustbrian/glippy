@@ -1089,6 +1089,12 @@ func locatedDecodeError(path string, cause error) error {
 	if errors.As(cause, &decoded) {
 		result.Line, result.Column = decoded.Position()
 		result.Message = strings.TrimPrefix(decoded.Error(), "toml: ")
+		if result.Message == "unknown field" && len(decoded.Key()) != 0 {
+			result.Message = fmt.Sprintf(
+				"unknown configuration field %q",
+				strings.Join(decoded.Key(), "."),
+			)
+		}
 	}
 	return result
 }
