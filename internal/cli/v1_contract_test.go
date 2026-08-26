@@ -3,7 +3,9 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -50,6 +52,114 @@ func TestV1TextContractsMatchApprovedGoldens(t *testing.T) {
 				t.Fatalf("Run(%v) output does not match %s", test.args, test.golden)
 			}
 		})
+	}
+}
+
+func TestV1FormatterOutputContractsMatchApprovedGoldens(t *testing.T) {
+	t.Parallel()
+
+	repositoryRoot := filepath.Join("..", "..")
+	contractRoot := filepath.Join(repositoryRoot, "testdata", "contracts", "v1")
+	manifest, err := os.ReadFile(filepath.Join(contractRoot, "formatter.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seenNames := make(map[string]struct{})
+	seenInputs := make(map[string]struct{})
+
+	for _, line := range strings.Split(strings.TrimSpace(string(manifest)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 5 {
+			t.Fatalf("invalid formatter contract entry %q", line)
+		}
+		name, width := fields[0], fields[1]
+		if _, exists := seenNames[name]; exists {
+			t.Fatalf("duplicate formatter contract name %q", name)
+		}
+		seenNames[name] = struct{}{}
+		if _, exists := seenInputs[fields[2]]; exists {
+			t.Fatalf("duplicate formatter contract input %q", fields[2])
+		}
+		seenInputs[fields[2]] = struct{}{}
+		inputPath := filepath.Join(repositoryRoot, filepath.FromSlash(fields[2]))
+		goldenPath := filepath.Join(repositoryRoot, filepath.FromSlash(fields[3]))
+		wantDigest := fields[4]
+
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			input, err := os.ReadFile(inputPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := os.ReadFile(goldenPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			exitCode := Run(
+				[]string{
+					"fmt",
+					"--config=" + filepath.Join(
+						contractRoot,
+						"formatter",
+						"width-"+width+".toml",
+					),
+				},
+				bytes.NewReader(input),
+				&stdout,
+				&stderr,
+			)
+			if exitCode != ExitSuccess || stderr.Len() != 0 {
+				t.Fatalf(
+					"formatter contract exit = %d, stderr = %q",
+					exitCode,
+					stderr.String(),
+				)
+			}
+			if !bytes.Equal(stdout.Bytes(), want) {
+				t.Fatalf("formatter output does not match %s", fields[3])
+			}
+			gotDigest := fmt.Sprintf("%x", sha256.Sum256(stdout.Bytes()))
+			if gotDigest != wantDigest {
+				t.Fatalf("formatter digest = %s, want %s", gotDigest, wantDigest)
+			}
+		})
+	}
+
+	expectedInputs := make(map[string]struct{})
+	for _, pattern := range []string{
+		"testdata/corpus/hostile/*.go",
+		"testdata/format/motivating/*.input",
+	} {
+		matches, err := filepath.Glob(filepath.Join(
+			repositoryRoot,
+			filepath.FromSlash(pattern),
+		))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(matches) == 0 {
+			t.Fatalf("formatter contract pattern %q is empty", pattern)
+		}
+		for _, match := range matches {
+			relative, err := filepath.Rel(repositoryRoot, match)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expectedInputs[filepath.ToSlash(relative)] = struct{}{}
+		}
+	}
+	for input := range expectedInputs {
+		if _, exists := seenInputs[input]; !exists {
+			t.Errorf("formatter contract does not freeze %s", input)
+		}
+	}
+	for input := range seenInputs {
+		if _, exists := expectedInputs[input]; !exists {
+			t.Errorf("formatter contract has unexpected input %s", input)
+		}
 	}
 }
 

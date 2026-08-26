@@ -224,11 +224,22 @@ jobs:
           } >"$contracts/machine.txt"
           diff -u testdata/contracts/v1/machine.txt "$contracts/machine.txt"
 
-          "$binary" fmt testdata/corpus/hostile/compatibility.go \
-            >"$contracts/compatibility.go"
-          diff -u \
-            testdata/corpus/hostile/compatibility.golden \
-            "$contracts/compatibility.go"
+          : >"$contracts/formatter.txt"
+          while IFS=$'\t' read -r \
+            case_name width input_path golden_path expected_digest; do
+            formatted="$task_root/formatter-$case_name.go"
+            "$binary" fmt \
+              --config="testdata/contracts/v1/formatter/width-$width.toml" \
+              <"$input_path" >"$formatted"
+            diff -u "$golden_path" "$formatted"
+            actual_digest=$(shasum -a 256 "$formatted" | awk '{print $1}')
+            test "$actual_digest" = "$expected_digest"
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+              "$case_name" "$width" "$input_path" "$golden_path" \
+              "$actual_digest" >>"$contracts/formatter.txt"
+          done <testdata/contracts/v1/formatter.txt
+          diff -u testdata/contracts/v1/formatter.txt \
+            "$contracts/formatter.txt"
 
           cp -R testdata/upgrade "$task_root/upgrade"
           (
@@ -253,8 +264,8 @@ jobs:
           (
             cd "$contracts"
             shasum -a 256 \
-              compatibility.go help.txt machine.txt profiles.txt \
-              rules.txt upgrade.txt \
+              formatter.txt help.txt machine.txt profiles.txt rules.txt \
+              upgrade.txt \
               >SHA256SUMS
           )
         working-directory: ${{ github.workspace }}/glippy

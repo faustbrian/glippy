@@ -95,14 +95,15 @@ build the complete six-file target set and execute the archive matching their
 own operating system and architecture. Each extracted candidate also renders
 top-level help, the complete rule list, and every curated profile's resolved
 configuration; requires them to match the approved v1 text contracts; formats
-the frozen hostile-source fixture to its canonical golden output; reproduces
+the complete hostile corpus and every motivating fixture at their reviewed
+widths and matches each canonical output and digest; reproduces
 versioned formatter, lint, combined-check, and rule-metadata machine output plus
 process exit categories 0 through 4; and consumes the retained Gox v0.1.0 and
 early-Glippy configuration and baseline fixtures. A separate Linux job
 downloads all four retained candidates, verifies their manifest identity and
 checksums, and requires both release files and the digested contract snapshots
 to be byte-identical across runners. Any missing runner, different archive,
-manifest, checksum, help, rule, profile, or machine output, formatter result,
+manifest, checksum, help, rule, profile, machine, or formatter output,
 failed upgrade, or non-native version execution fails the workflow.
 
 The workflow links these tagless artifacts as `v1.0.0-rc.1`. They are unsigned

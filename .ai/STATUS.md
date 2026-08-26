@@ -3266,3 +3266,13 @@ failure injection separately pins filesystem, internal-invariant, and canceled
 outcomes at exits 5, 6, and 130 without process signals. Every native candidate
 must reproduce the process-level snapshot, and all contract outputs participate
 in cross-runner digests. Stable-v1 progress remains 75% until v0.8 closes.
+
+The v0.9 formatter-contract freeze now requires every focused contract test and
+native candidate to reproduce the complete hostile corpus and all four
+motivating examples at their reviewed widths. Each exact output is compared to
+its human-reviewed golden and its pinned SHA-256 identity; the canonical case
+manifest also participates in the cross-runner contract digest. This expands
+the earlier single-file candidate rehearsal across blocks, comments,
+directives, empty statements, expressions, generics, statement expansion,
+gofmt-compatibility boundaries, and width-sensitive motivating layouts.
+Stable-v1 progress remains 75% until v0.8 closes.

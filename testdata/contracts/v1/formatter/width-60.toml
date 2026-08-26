@@ -1,0 +1,5 @@
+version = 1
+
+[format]
+line-width = 60
+tab-width = 8
