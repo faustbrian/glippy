@@ -17,8 +17,8 @@ func TestV1TextContractsMatchApprovedGoldens(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		args   []string
+		name string
+		args []string
 		golden string
 	}{
 		{name: "help", args: []string{"--help"}, golden: "help.txt"},
@@ -27,31 +27,45 @@ func TestV1TextContractsMatchApprovedGoldens(t *testing.T) {
 
 	for _, test := range tests {
 		test := test
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			want, err := os.ReadFile(filepath.Join(
-				"..", "..", "testdata", "contracts", "v1", test.golden,
-			))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			var stdout bytes.Buffer
-			var stderr bytes.Buffer
-			exitCode := Run(test.args, bytes.NewReader(nil), &stdout, &stderr)
-			if exitCode != ExitSuccess || stderr.Len() != 0 {
-				t.Fatalf(
-					"Run(%v) exit = %d, stderr = %q",
-					test.args,
-					exitCode,
-					stderr.String(),
+				want, err := os.ReadFile(
+					filepath.Join(
+						"..",
+						"..",
+						"testdata",
+						"contracts",
+						"v1",
+						test.golden,
+					),
 				)
-			}
-			if !bytes.Equal(stdout.Bytes(), want) {
-				t.Fatalf("Run(%v) output does not match %s", test.args, test.golden)
-			}
-		})
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				exitCode := Run(test.args, bytes.NewReader(nil), &stdout, &stderr)
+				if exitCode != ExitSuccess || stderr.Len() != 0 {
+					t.Fatalf(
+						"Run(%v) exit = %d, stderr = %q",
+						test.args,
+						exitCode,
+						stderr.String(),
+					)
+				}
+				if !bytes.Equal(stdout.Bytes(), want) {
+					t.Fatalf(
+						"Run(%v) output does not match %s",
+						test.args,
+						test.golden,
+					)
+				}
+			},
+		)
 	}
 }
 
@@ -103,12 +117,7 @@ func TestV1CommandHelpContractMatchesApprovedGolden(t *testing.T) {
 		got.WriteString("## " + command + "\n")
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
-		exitCode := Run(
-			[]string{"help", command},
-			bytes.NewReader(nil),
-			&stdout,
-			&stderr,
-		)
+		exitCode := Run([]string{"help", command}, bytes.NewReader(nil), &stdout, &stderr)
 		if exitCode != ExitSuccess || stderr.Len() != 0 {
 			t.Fatalf(
 				"help %s exit = %d, stderr = %q",
@@ -195,58 +204,63 @@ func TestV1FormatterOutputContractsMatchApprovedGoldens(t *testing.T) {
 		goldenPath := filepath.Join(repositoryRoot, filepath.FromSlash(fields[3]))
 		wantDigest := fields[4]
 
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			input, err := os.ReadFile(inputPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			want, err := os.ReadFile(goldenPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var stdout bytes.Buffer
-			var stderr bytes.Buffer
-			exitCode := Run(
-				[]string{
-					"fmt",
-					"--config=" + filepath.Join(
-						contractRoot,
-						"formatter",
-						"width-"+width+".toml",
-					),
-				},
-				bytes.NewReader(input),
-				&stdout,
-				&stderr,
-			)
-			if exitCode != ExitSuccess || stderr.Len() != 0 {
-				t.Fatalf(
-					"formatter contract exit = %d, stderr = %q",
-					exitCode,
-					stderr.String(),
+				input, err := os.ReadFile(inputPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want, err := os.ReadFile(goldenPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				exitCode := Run(
+					[]string{
+						"fmt",
+						"--config=" +
+							filepath.Join(
+								contractRoot,
+								"formatter",
+								"width-" + width + ".toml",
+							),
+					},
+					bytes.NewReader(input),
+					&stdout,
+					&stderr,
 				)
-			}
-			if !bytes.Equal(stdout.Bytes(), want) {
-				t.Fatalf("formatter output does not match %s", fields[3])
-			}
-			gotDigest := fmt.Sprintf("%x", sha256.Sum256(stdout.Bytes()))
-			if gotDigest != wantDigest {
-				t.Fatalf("formatter digest = %s, want %s", gotDigest, wantDigest)
-			}
-		})
+				if exitCode != ExitSuccess || stderr.Len() != 0 {
+					t.Fatalf(
+						"formatter contract exit = %d, stderr = %q",
+						exitCode,
+						stderr.String(),
+					)
+				}
+				if !bytes.Equal(stdout.Bytes(), want) {
+					t.Fatalf("formatter output does not match %s", fields[3])
+				}
+				gotDigest := fmt.Sprintf("%x", sha256.Sum256(stdout.Bytes()))
+				if gotDigest != wantDigest {
+					t.Fatalf(
+						"formatter digest = %s, want %s",
+						gotDigest,
+						wantDigest,
+					)
+				}
+			},
+		)
 	}
 
 	expectedInputs := make(map[string]struct{})
-	for _, pattern := range []string{
-		"testdata/corpus/hostile/*.go",
-		"testdata/format/motivating/*.input",
-	} {
-		matches, err := filepath.Glob(filepath.Join(
-			repositoryRoot,
-			filepath.FromSlash(pattern),
-		))
+	for _, pattern := range
+		[]string{"testdata/corpus/hostile/*.go", "testdata/format/motivating/*.input"} {
+		matches, err := filepath.Glob(
+			filepath.Join(repositoryRoot, filepath.FromSlash(pattern)),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -289,12 +303,12 @@ func TestV1FailureExitContractsMatchApprovedGolden(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
+		name string
 		exitCode int
-		run      func(*bytes.Buffer, *bytes.Buffer) int
+		run func(*bytes.Buffer, *bytes.Buffer) int
 	}{
 		{
-			name:     "filesystem-error",
+			name: "filesystem-error",
 			exitCode: ExitFilesystemError,
 			run: func(_ *bytes.Buffer, stderr *bytes.Buffer) int {
 				return Run(
@@ -306,14 +320,14 @@ func TestV1FailureExitContractsMatchApprovedGolden(t *testing.T) {
 			},
 		},
 		{
-			name:     "internal-error",
+			name: "internal-error",
 			exitCode: ExitInternalError,
 			run: func(stdout, stderr *bytes.Buffer) int {
 				return runHelp(nil, "", stdout, stderr)
 			},
 		},
 		{
-			name:     "canceled",
+			name: "canceled",
 			exitCode: ExitCanceled,
 			run: func(stdout, stderr *bytes.Buffer) int {
 				ctx, cancel := context.WithCancel(context.Background())
@@ -377,7 +391,7 @@ func TestV1ConfigurationProfilesMatchApprovedGolden(t *testing.T) {
 				"config",
 				"show",
 				"--config",
-				filepath.Join(configurationRoot, profile+".toml"),
+				filepath.Join(configurationRoot, profile + ".toml"),
 				configurationRoot,
 			},
 			bytes.NewReader(nil),
@@ -432,7 +446,12 @@ func TestV1ConfigurationBoundaryContractMatchesApprovedGolden(t *testing.T) {
 			&stderr,
 		)
 		if exitCode != ExitSuccess {
-			t.Fatalf("init %s exit = %d, stderr = %q", profile, exitCode, stderr.String())
+			t.Fatalf(
+				"init %s exit = %d, stderr = %q",
+				profile,
+				exitCode,
+				stderr.String(),
+			)
 		}
 		configuration, err := os.ReadFile(filepath.Join(root, ".glippy.toml"))
 		if err != nil {
@@ -460,7 +479,8 @@ func TestV1ConfigurationBoundaryContractMatchesApprovedGolden(t *testing.T) {
 			[]string{
 				"config",
 				"check",
-				"--config=" + filepath.Join(contractRoot, "config", caseName+".toml"),
+				"--config=" +
+					filepath.Join(contractRoot, "config", caseName + ".toml"),
 				machineRoot,
 			},
 			bytes.NewReader(nil),
@@ -468,19 +488,18 @@ func TestV1ConfigurationBoundaryContractMatchesApprovedGolden(t *testing.T) {
 			&stderr,
 		)
 		if exitCode != ExitInvalidInvocation {
-			t.Fatalf(
-				"%s exit = %d, stderr = %q",
-				caseName,
-				exitCode,
-				stderr.String(),
-			)
+			t.Fatalf("%s exit = %d, stderr = %q", caseName, exitCode, stderr.String())
 		}
 		got.WriteString("## " + caseName + "\n")
 		got.WriteString("exit: " + strconv.Itoa(exitCode) + "\n")
 		got.WriteString("stdout:\n")
-		got.WriteString(strings.ReplaceAll(stdout.String(), absoluteContractRoot, "<CONTRACT>"))
+		got.WriteString(
+			strings.ReplaceAll(stdout.String(), absoluteContractRoot, "<CONTRACT>"),
+		)
 		got.WriteString("stderr:\n")
-		got.WriteString(strings.ReplaceAll(stderr.String(), absoluteContractRoot, "<CONTRACT>"))
+		got.WriteString(
+			strings.ReplaceAll(stderr.String(), absoluteContractRoot, "<CONTRACT>"),
+		)
 	}
 	if !bytes.Equal(got.Bytes(), want) {
 		t.Fatal("configuration boundary output does not match configuration.txt")
@@ -518,7 +537,12 @@ func TestV1DiagnosticReporterContractsMatchApprovedGolden(t *testing.T) {
 			&stderr,
 		)
 		if exitCode != ExitFindings {
-			t.Fatalf("%s reporter exit = %d, stderr = %q", reporter, exitCode, stderr.String())
+			t.Fatalf(
+				"%s reporter exit = %d, stderr = %q",
+				reporter,
+				exitCode,
+				stderr.String(),
+			)
 		}
 		got.WriteString("## " + reporter + "\n")
 		got.WriteString("exit: " + strconv.Itoa(exitCode) + "\n")
@@ -551,57 +575,65 @@ func TestV1MachineAndExitContractsMatchApprovedGolden(t *testing.T) {
 	invalidPath := filepath.Join(machineRoot, "invalid", "source.go")
 
 	tests := []struct {
-		name     string
-		args     []string
+		name string
+		args []string
 		exitCode int
 	}{
 		{
 			name: "format",
 			args: []string{
-				"fmt", "--check", "--reporter=json",
-				"--config=" + configurationPath, sourcePath,
+				"fmt",
+				"--check",
+				"--reporter=json",
+				"--config=" + configurationPath,
+				sourcePath,
 			},
 			exitCode: ExitSuccess,
 		},
 		{
 			name: "lint",
 			args: []string{
-				"lint", "--reporter=json",
-				"--config=" + configurationPath, sourcePath, alphaPath,
+				"lint",
+				"--reporter=json",
+				"--config=" + configurationPath,
+				sourcePath,
+				alphaPath,
 			},
 			exitCode: ExitFindings,
 		},
 		{
 			name: "check",
 			args: []string{
-				"check", "--reporter=json",
-				"--config=" + configurationPath, sourcePath, alphaPath,
+				"check",
+				"--reporter=json",
+				"--config=" + configurationPath,
+				sourcePath,
+				alphaPath,
 			},
 			exitCode: ExitFindings,
 		},
 		{
-			name:     "explain",
-			args:     []string{"explain", "self-assignment", "--json"},
+			name: "explain",
+			args: []string{"explain", "self-assignment", "--json"},
 			exitCode: ExitSuccess,
 		},
 		{
 			name: "source-error",
 			args: []string{
-				"fmt", "--check", "--reporter=json",
-				"--config=" + configurationPath, invalidPath,
+				"fmt",
+				"--check",
+				"--reporter=json",
+				"--config=" + configurationPath,
+				invalidPath,
 			},
 			exitCode: ExitSourceError,
 		},
 		{
-			name:     "invalid-invocation",
-			args:     []string{"unknown"},
+			name: "invalid-invocation",
+			args: []string{"unknown"},
 			exitCode: ExitInvalidInvocation,
 		},
-		{
-			name:     "conflict",
-			args:     []string{"init", machineRoot},
-			exitCode: ExitConflict,
-		},
+		{name: "conflict", args: []string{"init", machineRoot}, exitCode: ExitConflict},
 	}
 
 	var got bytes.Buffer

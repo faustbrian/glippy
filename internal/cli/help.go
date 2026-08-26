@@ -66,11 +66,7 @@ func isHelpFlag(argument string) bool {
 	return argument == "--help" || argument == "-h"
 }
 
-func runHelp(
-	ctx context.Context,
-	topic string,
-	stdout, stderr io.Writer,
-) int {
+func runHelp(ctx context.Context, topic string, stdout, stderr io.Writer) int {
 	if ctx == nil {
 		return report(stderr, ExitInternalError, "glippy help: context is required\n")
 	}
@@ -121,8 +117,5 @@ func helpTopicUsage(topic string) (string, bool) {
 	default:
 		return "", false
 	}
-	return strings.TrimSuffix(
-		strings.TrimPrefix(usage, "glippy: expected '"),
-		"'\n",
-	), true
+	return strings.TrimSuffix(strings.TrimPrefix(usage, "glippy: expected '"), "'\n"), true
 }
