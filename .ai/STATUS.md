@@ -3283,3 +3283,11 @@ must reproduce the same command order, option spellings, reporter choices,
 write and fix modes, path shapes, and help behavior, and the combined output
 participates in cross-runner contract digests. Stable-v1 progress remains 75%
 until v0.8 closes.
+
+The v0.9 reporter contract now pins canonical text, short, GitHub annotation,
+and SARIF 2.1.0 output for the same two deliberately reverse-ordered source
+inputs. Focused tests and native candidates must preserve severity, source
+locations, help and fix metadata, URI and annotation encoding, rule
+descriptors, and canonical diagnostic ordering. The normalized reporter bundle
+participates in cross-runner contract digests. Stable-v1 progress remains 75%
+until v0.8 closes.

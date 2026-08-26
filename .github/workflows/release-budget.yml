@@ -232,6 +232,16 @@ jobs:
             run_machine_contract conflict 4 init "$machine_root"
           } >"$contracts/machine.txt"
           diff -u testdata/contracts/v1/machine.txt "$contracts/machine.txt"
+          {
+            for reporter in text short github sarif; do
+              run_machine_contract "$reporter" 1 \
+                lint --reporter="$reporter" \
+                --config="$machine_configuration" \
+                "$machine_source" "$machine_alpha"
+            done
+          } >"$contracts/reporters.txt"
+          diff -u testdata/contracts/v1/reporters.txt \
+            "$contracts/reporters.txt"
 
           : >"$contracts/formatter.txt"
           while IFS=$'\t' read -r \
@@ -274,7 +284,7 @@ jobs:
             cd "$contracts"
             shasum -a 256 \
               commands.txt formatter.txt help.txt machine.txt profiles.txt \
-              rules.txt upgrade.txt \
+              reporters.txt rules.txt upgrade.txt \
               >SHA256SUMS
           )
         working-directory: ${{ github.workspace }}/glippy

@@ -358,6 +358,51 @@ func TestV1ConfigurationProfilesMatchApprovedGolden(t *testing.T) {
 	}
 }
 
+func TestV1DiagnosticReporterContractsMatchApprovedGolden(t *testing.T) {
+	t.Parallel()
+
+	contractRoot := filepath.Join("..", "..", "testdata", "contracts", "v1")
+	want, err := os.ReadFile(filepath.Join(contractRoot, "reporters.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	machineRoot := filepath.Join(contractRoot, "machine")
+	absoluteRoot, err := filepath.Abs(machineRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got bytes.Buffer
+	for _, reporter := range []string{"text", "short", "github", "sarif"} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		exitCode := Run(
+			[]string{
+				"lint",
+				"--reporter=" + reporter,
+				"--config=" + filepath.Join(machineRoot, ".glippy.toml"),
+				filepath.Join(machineRoot, "source.go"),
+				filepath.Join(machineRoot, "alpha.go"),
+			},
+			bytes.NewReader(nil),
+			&stdout,
+			&stderr,
+		)
+		if exitCode != ExitFindings {
+			t.Fatalf("%s reporter exit = %d, stderr = %q", reporter, exitCode, stderr.String())
+		}
+		got.WriteString("## " + reporter + "\n")
+		got.WriteString("exit: " + strconv.Itoa(exitCode) + "\n")
+		got.WriteString("stdout:\n")
+		got.WriteString(strings.ReplaceAll(stdout.String(), absoluteRoot, "<ROOT>"))
+		got.WriteString("stderr:\n")
+		got.WriteString(strings.ReplaceAll(stderr.String(), absoluteRoot, "<ROOT>"))
+	}
+	if !bytes.Equal(got.Bytes(), want) {
+		t.Fatal("diagnostic reporter output does not match reporters.txt")
+	}
+}
+
 func TestV1MachineAndExitContractsMatchApprovedGolden(t *testing.T) {
 	t.Parallel()
 
