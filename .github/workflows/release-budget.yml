@@ -155,6 +155,12 @@ jobs:
           binary="$task_root/extracted/glippy"
           version_output=$("$binary" version)
           test "$version_output" = "glippy $GLIPPY_RELEASE_VERSION"
+          export GLIPPY_CACHE_DIR="$task_root/glippy-cache"
+          export GOCACHE="$task_root/gocache"
+          export GOMODCACHE="$task_root/modcache"
+          export GOENV=off
+          export GOFLAGS=""
+          export GOWORK=off
 
           contracts="$RUNNER_TEMP/glippy-release-contracts"
           mkdir "$contracts"
@@ -173,6 +179,51 @@ jobs:
             done
           } >"$contracts/profiles.txt"
           diff -u testdata/contracts/v1/profiles.txt "$contracts/profiles.txt"
+
+          machine_root=$(cd testdata/contracts/v1/machine && pwd -P)
+          machine_configuration="$machine_root/.glippy.toml"
+          machine_alpha="$machine_root/alpha.go"
+          machine_source="$machine_root/source.go"
+          machine_invalid="$machine_root/invalid/source.go"
+          run_machine_contract() {
+            case_name=$1
+            expected_exit=$2
+            shift 2
+            set +e
+            "$binary" "$@" \
+              >"$task_root/contract-stdout" \
+              2>"$task_root/contract-stderr"
+            contract_exit=$?
+            set -e
+            test "$contract_exit" -eq "$expected_exit"
+            printf '## %s\nexit: %s\nstdout:\n' \
+              "$case_name" "$contract_exit"
+            sed "s|$machine_root|<ROOT>|g" "$task_root/contract-stdout"
+            printf 'stderr:\n'
+            sed "s|$machine_root|<ROOT>|g" "$task_root/contract-stderr"
+          }
+          {
+            run_machine_contract format 0 \
+              fmt --check --reporter=json \
+              --config="$machine_configuration" "$machine_source"
+            run_machine_contract lint 1 \
+              lint --reporter=json \
+              --config="$machine_configuration" \
+              "$machine_source" "$machine_alpha"
+            run_machine_contract check 1 \
+              check --reporter=json \
+              --config="$machine_configuration" \
+              "$machine_source" "$machine_alpha"
+            run_machine_contract explain 0 \
+              explain self-assignment --json
+            run_machine_contract source-error 2 \
+              fmt --check --reporter=json \
+              --config="$machine_configuration" "$machine_invalid"
+            run_machine_contract invalid-invocation 3 unknown
+            run_machine_contract conflict 4 init "$machine_root"
+          } >"$contracts/machine.txt"
+          diff -u testdata/contracts/v1/machine.txt "$contracts/machine.txt"
+
           "$binary" fmt testdata/corpus/hostile/compatibility.go \
             >"$contracts/compatibility.go"
           diff -u \
@@ -180,10 +231,6 @@ jobs:
             "$contracts/compatibility.go"
 
           cp -R testdata/upgrade "$task_root/upgrade"
-          export GLIPPY_CACHE_DIR="$task_root/glippy-cache"
-          export GOCACHE="$task_root/gocache"
-          export GOMODCACHE="$task_root/modcache"
-          export GOENV=off
           (
             cd "$task_root/upgrade/gox-v0.1.0"
             configuration_output=$("$binary" config check .)
@@ -206,7 +253,8 @@ jobs:
           (
             cd "$contracts"
             shasum -a 256 \
-              compatibility.go help.txt profiles.txt rules.txt upgrade.txt \
+              compatibility.go help.txt machine.txt profiles.txt \
+              rules.txt upgrade.txt \
               >SHA256SUMS
           )
         working-directory: ${{ github.workspace }}/glippy

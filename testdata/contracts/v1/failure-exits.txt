@@ -1,0 +1,15 @@
+## filesystem-error
+exit: 5
+stdout:
+stderr:
+glippy help: write standard output: contract stream failure
+## internal-error
+exit: 6
+stdout:
+stderr:
+glippy help: context is required
+## canceled
+exit: 130
+stdout:
+stderr:
+glippy help: context canceled

@@ -3258,3 +3258,11 @@ rules, reasons, options, maximum tier, source policy, and cache defaults.
 Configuration schema evolution beyond this supported schema-v1 snapshot remains
 a compatibility-policy decision; stable-v1 progress remains 75% until v0.8
 closes.
+
+The v0.9 machine-contract freeze now pins representative schema-version-1
+formatter, lint, and rule-metadata JSON, schema-version-2 combined-check JSON,
+stable diagnostic identity and ordering, and process exits 0 through 4. Focused
+failure injection separately pins filesystem, internal-invariant, and canceled
+outcomes at exits 5, 6, and 130 without process signals. Every native candidate
+must reproduce the process-level snapshot, and all contract outputs participate
+in cross-runner digests. Stable-v1 progress remains 75% until v0.8 closes.

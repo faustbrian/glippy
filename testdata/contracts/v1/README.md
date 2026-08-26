@@ -8,6 +8,11 @@ focused CLI tests and every native tagless release-candidate rehearsal.
   analysis tier, and fix availability.
 - `profiles.txt` freezes resolved default, recommended, strict, and pedantic
   configuration policy using the explicit fixtures in `config/`.
+- `machine.txt` freezes representative formatter, lint, combined-check, rule
+  metadata, source-error, invocation, and conflict output with process exits
+  0 through 4 using `machine/`.
+- `failure-exits.txt` freezes injected filesystem, internal-invariant, and
+  cancellation outcomes with exits 5, 6, and 130.
 
 Changes require the formatter or rule compatibility evidence required by the
 v1 roadmap. Cross-platform agreement alone does not authorize updating these

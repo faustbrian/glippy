@@ -1,0 +1,275 @@
+## format
+exit: 0
+stdout:
+{
+  "schema_version": 1,
+  "command": "fmt",
+  "mode": "check",
+  "outcome": {
+    "category": "success",
+    "exit_code": 0
+  },
+  "summary": {
+    "files": 1,
+    "changed": 0,
+    "complete": true
+  },
+  "files": [
+    {
+      "path": "<ROOT>/source.go",
+      "status": "unchanged"
+    }
+  ],
+  "errors": []
+}
+stderr:
+## lint
+exit: 1
+stdout:
+{
+  "schema_version": 1,
+  "command": "lint",
+  "mode": "check",
+  "outcome": {
+    "category": "findings",
+    "exit_code": 1
+  },
+  "summary": {
+    "files": 2,
+    "diagnostics": 2,
+    "suppressed": 0,
+    "baselined": 0,
+    "baseline_problems": 0,
+    "suppression_problems": 0,
+    "unused_suppressions": 0,
+    "complete": true
+  },
+  "files": [
+    {
+      "path": "<ROOT>/alpha.go",
+      "source_digest": "c5f32c988bf976c5bccecae0c9e70cd1373d64c69c99c1f8e46473a242c1eebf",
+      "status": "analyzed"
+    },
+    {
+      "path": "<ROOT>/source.go",
+      "source_digest": "35b664d2ebe26e68cc1b12538e371b588d274b45dc16f3bd41df95719f3472f4",
+      "status": "analyzed"
+    }
+  ],
+  "diagnostics": [
+    {
+      "rule_id": "self-assignment",
+      "severity": "warn",
+      "message_key": "assign",
+      "message": "self-assignment of value",
+      "path": "<ROOT>/alpha.go",
+      "source_digest": "c5f32c988bf976c5bccecae0c9e70cd1373d64c69c99c1f8e46473a242c1eebf",
+      "range": {
+        "start": 52,
+        "end": 52
+      },
+      "related": [],
+      "notes": [],
+      "help": "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/assign",
+      "fixes": [
+        {
+          "name": "remove-self-assignment",
+          "safety": "suggestion"
+        }
+      ]
+    },
+    {
+      "rule_id": "self-assignment",
+      "severity": "warn",
+      "message_key": "assign",
+      "message": "self-assignment of value",
+      "path": "<ROOT>/source.go",
+      "source_digest": "35b664d2ebe26e68cc1b12538e371b588d274b45dc16f3bd41df95719f3472f4",
+      "range": {
+        "start": 47,
+        "end": 47
+      },
+      "related": [],
+      "notes": [],
+      "help": "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/assign",
+      "fixes": [
+        {
+          "name": "remove-self-assignment",
+          "safety": "suggestion"
+        }
+      ]
+    }
+  ],
+  "suppression_problems": [],
+  "unused_suppressions": [],
+  "baseline_problems": [],
+  "errors": []
+}
+stderr:
+## check
+exit: 1
+stdout:
+{
+  "schema_version": 2,
+  "command": "check",
+  "mode": "check",
+  "outcome": {
+    "category": "findings",
+    "exit_code": 1
+  },
+  "summary": {
+    "files": 2,
+    "formatting_differences": 0,
+    "diagnostics": 2,
+    "suppressed": 0,
+    "baselined": 0,
+    "baseline_problems": 0,
+    "suppression_problems": 0,
+    "unused_suppressions": 0,
+    "complete": true
+  },
+  "files": [
+    {
+      "path": "<ROOT>/alpha.go",
+      "source_digest": "c5f32c988bf976c5bccecae0c9e70cd1373d64c69c99c1f8e46473a242c1eebf",
+      "format_status": "unchanged"
+    },
+    {
+      "path": "<ROOT>/source.go",
+      "source_digest": "35b664d2ebe26e68cc1b12538e371b588d274b45dc16f3bd41df95719f3472f4",
+      "format_status": "unchanged"
+    }
+  ],
+  "diagnostics": [
+    {
+      "rule_id": "self-assignment",
+      "severity": "warn",
+      "message_key": "assign",
+      "message": "self-assignment of value",
+      "path": "<ROOT>/alpha.go",
+      "source_digest": "c5f32c988bf976c5bccecae0c9e70cd1373d64c69c99c1f8e46473a242c1eebf",
+      "range": {
+        "start": 52,
+        "end": 52
+      },
+      "related": [],
+      "notes": [],
+      "help": "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/assign",
+      "fixes": [
+        {
+          "name": "remove-self-assignment",
+          "safety": "suggestion"
+        }
+      ]
+    },
+    {
+      "rule_id": "self-assignment",
+      "severity": "warn",
+      "message_key": "assign",
+      "message": "self-assignment of value",
+      "path": "<ROOT>/source.go",
+      "source_digest": "35b664d2ebe26e68cc1b12538e371b588d274b45dc16f3bd41df95719f3472f4",
+      "range": {
+        "start": 47,
+        "end": 47
+      },
+      "related": [],
+      "notes": [],
+      "help": "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/assign",
+      "fixes": [
+        {
+          "name": "remove-self-assignment",
+          "safety": "suggestion"
+        }
+      ]
+    }
+  ],
+  "suppression_problems": [],
+  "unused_suppressions": [],
+  "baseline_problems": [],
+  "errors": []
+}
+stderr:
+## explain
+exit: 0
+stdout:
+{
+  "schema_version": 1,
+  "command": "explain",
+  "rule": {
+    "id": "self-assignment",
+    "summary": "detects assignments that leave a value unchanged",
+    "documentation": "A value assigned directly to itself has no effect and usually indicates a copied expression, a mistaken assignment target, or code left behind after a refactor. Glippy exposes the standard Go assign analyzer through its typed scheduler, deterministic diagnostics, suppressions, baselines, and fix-safety model.",
+    "default_severity": "warn",
+    "presets": [
+      "correctness"
+    ],
+    "minimum_go_version": "1.25",
+    "analysis_tier": "types",
+    "node_interests": [
+      "file"
+    ],
+    "requires_dependency_syntax": false,
+    "requires_effect_facts": false,
+    "run_on_generated": false,
+    "run_despite_type_errors": false,
+    "categories": [
+      "correctness"
+    ],
+    "fixes": [
+      {
+        "name": "remove-self-assignment",
+        "description": "remove the ineffective self-assignment",
+        "safety": "suggestion"
+      }
+    ],
+    "options": [],
+    "known_limitations": [
+      "The rule follows the standard Go assign analyzer and intentionally excludes assignments whose evaluation can have observable effects, including map index expressions.",
+      "The removal fix is suggestion-only because deleting an assignment requires confirmation that the statement was not an intentional marker.",
+      "Removing a statement that shares a physical line through an explicit semicolon can retain an empty statement after formatting; review suggestion output before accepting it."
+    ],
+    "examples": [
+      {
+        "title": "Assign the intended value",
+        "incorrect": "value = value",
+        "correct": "value = replacement"
+      }
+    ]
+  }
+}
+stderr:
+## source-error
+exit: 2
+stdout:
+{
+  "schema_version": 1,
+  "command": "fmt",
+  "mode": "check",
+  "outcome": {
+    "category": "source_error",
+    "exit_code": 2
+  },
+  "summary": {
+    "files": 1,
+    "changed": 0,
+    "complete": false
+  },
+  "files": [],
+  "errors": [
+    {
+      "message": "<ROOT>/invalid/source.go:3:15: expected ')', found '{'"
+    }
+  ]
+}
+stderr:
+## invalid-invocation
+exit: 3
+stdout:
+stderr:
+glippy: unknown command "unknown"
+## conflict
+exit: 4
+stdout:
+stderr:
+glippy init: configuration "<ROOT>/.glippy.toml" already exists
