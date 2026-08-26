@@ -191,9 +191,10 @@ Each developer enables the repository-owned hook once:
 git config core.hooksPath .githooks
 ```
 
-Install or provision the repository's pinned Glippy release before enabling the
-hook; leaving `GLIPPY_BIN` unset resolves `glippy` from `PATH`. The hook uses the same
-non-mutating command as CI and must not use `fmt --write`, `lint --fix`,
+Install or provision the repository's pinned Glippy release or reviewed source
+revision before enabling the hook; leaving `GLIPPY_BIN` unset resolves `glippy`
+from `PATH`. The hook uses the same non-mutating command as CI and must not use
+`fmt --write`, `lint --fix`,
 suggestion fixes, or unsafe fixes. Developers can run those commands
 deliberately before committing and review the resulting source changes.
 

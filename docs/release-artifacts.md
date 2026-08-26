@@ -117,13 +117,14 @@ the v0.9 contract-freeze identity, not a published support promise. A later
 source change invalidates the candidate and requires a new exact-revision run
 with the same identity until the maintainer approves the final tree.
 
-Historical candidate run
-[`32814696805`](https://github.com/faustbrian/glippy/actions/runs/32814696805)
-passed the native budget, archive, and reproducibility matrix for revision
-`8ed359d` with Go 1.27.0. It predates the expanded help, rule, formatter, and
-upgrade contract rehearsal, which remains unproven until the revised workflow
-passes at an exact candidate revision. The historical native latency,
-aggregate-memory, and reproducibility results are recorded in the
+Exact candidate run
+[`32956423419`](https://github.com/faustbrian/glippy/actions/runs/32956423419)
+passed the native budget, expanded contract, archive, and cross-runner
+reproducibility matrix for revision `b47d7ef` with Go 1.27.0. All four native
+macOS/Linux amd64/arm64 jobs passed, and the dependent reproducibility job
+proved byte-identical release files and contract snapshots across runners.
+The native latency, aggregate-memory, and reproducibility results are recorded
+in the
 [v0.8 budget calibration](research/v0.8-aggregate-budget-calibration-2026-08-25.md).
 
 GitHub Releases is the selected publication channel. A push of a canonical

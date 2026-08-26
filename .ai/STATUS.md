@@ -9,14 +9,13 @@
 - v0.6 real-world rule validation: complete at analyzed revision `ee2ea4f`;
   exact corpus run `32723865179`, attempt 2, passed all 20 jobs and classified
   all 386 default and recommended entries
-- v0.8 native release budgets: exact workflow `32814696805` passed all four
+- v0.8 native release budgets: exact workflow `32956423419` passed all four
   supported macOS/Linux amd64/arm64 jobs and cross-runner byte-for-byte archive
-  reproducibility; later workflow `32921575657` rejected its universal 120 s
-  formatter latency ceiling on Darwin amd64. That runner provisionally uses
-  180 s p80/360 s hard while the other targets retain 120 s/240 s; a green
-  exact-candidate rerun remains required. The stable ceilings remain 250 ms
-  editor latency, 2 GiB aggregate formatter RSS, 240 s typed latency, and 3 GiB
-  aggregate typed RSS for the pinned workloads
+  and contract reproducibility at revision `b47d7ef`. Darwin amd64 uses the
+  calibrated 180 s p80/360 s hard formatter limits while the other targets
+  retain 120 s/240 s. The stable ceilings remain 250 ms editor latency, 2 GiB
+  aggregate formatter RSS, 240 s typed latency, and 3 GiB aggregate typed RSS
+  for the pinned workloads
 - v0.8 corpus runtime bound: exploratory run `32832151515` proved that the
   formatter, safe-fix preview, four profiles, and `go vet` complete for pinned
   Kubernetes before the former 120-minute job ceiling, which cancelled the
@@ -3319,3 +3318,12 @@ external test packages, and still refuses fixes in the affected cgo package.
 All other parse, capture, load, and type prerequisites remain fix-wide. The
 exact corpus must rerun on the resulting pushed revision, so stable-v1 progress
 remains 75%.
+
+Exact release-budget workflow `32956423419` passed at Glippy revision
+`b47d7eff281e14c689cc20e3fa7a9f07c5b21787` and Go 1.27.0. All four native
+macOS/Linux amd64/arm64 jobs passed editor, formatter, typed-analysis,
+aggregate-memory, native write/fix, tagless archive, upgrade, and frozen
+contract gates; the dependent reproducibility job proved byte-identical release
+files and contract snapshots across all runners. This closes the v0.8 native
+resource and candidate-reproduction gate for the exact revision. The complete
+corpus run remains active, so stable-v1 progress remains 75%.

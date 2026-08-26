@@ -5,10 +5,11 @@ adopts Glippy must make it the sole formatting authority for the selected files.
 Running gofmt, gofumpt, or golines after Glippy can create permanent formatting
 churn.
 
-Glippy is the selected development identity. Its public binary and module contract
-remain gated on the final naming audit and release work. Use a pinned, locally
-built revision for a rehearsal; do not treat the current command path as a
-stable release contract.
+Glippy is the selected development identity, and its collision review is
+complete for the current binary and module contract. Publication remains gated
+on final release work and explicit authorization. Use a pinned, locally built
+revision for a rehearsal; do not treat an untagged command path as a stable
+release.
 
 ## Why The Outputs Differ
 

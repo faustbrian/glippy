@@ -15,7 +15,7 @@ formatted file on standard output:
 glippy fmt --stdin-filepath=/absolute/path/to/source.go
 ```
 
-`--stdin-filepath` supplies project-root and `glippy.toml` discovery context. It
+`--stdin-filepath` supplies project-root and `.glippy.toml` discovery context. It
 may name a file that does not exist yet, and Glippy never writes that path in
 standard-input mode. Omit the option when no meaningful project path exists;
 the default formatter configuration is then used. Fragment buffers require an
