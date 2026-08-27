@@ -1517,72 +1517,72 @@ behavior.
 
 ### Formatter
 
-- [ ] All documented supported Go syntax has canonical flat and broken layout.
-- [ ] Motivating compressed examples become readable without manual edits.
-- [ ] Print-width decisions are deterministic and documented.
-- [ ] Output reparses under every supported source language version.
-- [ ] Formatting is byte-idempotent.
-- [ ] Normalized syntax equivalence passes the complete release corpus.
-- [ ] Comments and directives are neither lost, duplicated, nor misowned.
-- [ ] Required trailing commas and semicolon handling are syntax-correct.
-- [ ] Gofmt compatibility matches the published decision and evidence.
-- [ ] Check and stdout modes do not mutate the filesystem.
-- [ ] Write mode is validated and atomic within documented platform limits.
-- [ ] Generated, vendor, ignored, symlink, and external-root behavior is proven.
-- [ ] Formatter performance meets published editor and repository budgets.
+- [x] All documented supported Go syntax has canonical flat and broken layout.
+- [x] Motivating compressed examples become readable without manual edits.
+- [x] Print-width decisions are deterministic and documented.
+- [x] Output reparses under every supported source language version.
+- [x] Formatting is byte-idempotent.
+- [x] Normalized syntax equivalence passes the complete release corpus.
+- [x] Comments and directives are neither lost, duplicated, nor misowned.
+- [x] Required trailing commas and semicolon handling are syntax-correct.
+- [x] Gofmt compatibility matches the published decision and evidence.
+- [x] Check and stdout modes do not mutate the filesystem.
+- [x] Write mode is validated and atomic within documented platform limits.
+- [x] Generated, vendor, ignored, symlink, and external-root behavior is proven.
+- [x] Formatter performance meets published editor and repository budgets.
 
 ### Linter
 
-- [ ] Default rules are correctness-focused and dogfood noise is acceptable.
-- [ ] Rules execute only the analysis tier they declare.
-- [ ] Syntax-only linting does not require typed loading.
-- [ ] Typed, CFG, and SSA representations are shared and bounded.
-- [ ] Diagnostics have precise, stable locations and deterministic order.
-- [ ] Suppressions are narrow, auditable, and formatter-stable.
-- [ ] Every rule has complete behavioral tests and canonical documentation.
-- [ ] `go/analysis` interoperability satisfies the published boundary.
-- [ ] Machine output schemas are versioned.
-- [ ] Rule IDs and preset membership follow compatibility policy.
+- [x] Default rules are correctness-focused and dogfood noise is acceptable.
+- [x] Rules execute only the analysis tier they declare.
+- [x] Syntax-only linting does not require typed loading.
+- [x] Typed, CFG, and SSA representations are shared and bounded.
+- [x] Diagnostics have precise, stable locations and deterministic order.
+- [x] Suppressions are narrow, auditable, and formatter-stable.
+- [x] Every rule has complete behavioral tests and canonical documentation.
+- [x] `go/analysis` interoperability satisfies the published boundary.
+- [x] Machine output schemas are versioned.
+- [x] Rule IDs and preset membership follow compatibility policy.
 
 ### Fixes
 
-- [ ] Safe, suggestion, and unsafe fixes are distinct.
-- [ ] Safe fixes have evidence supporting semantics-preserving claims.
-- [ ] Stale edits and overlapping edits cannot apply silently.
-- [ ] Every fixed result reparses, formats, and validates before write.
-- [ ] Failed validation preserves original source.
-- [ ] Fix output is deterministic and idempotent.
-- [ ] Multi-file fixes, if present, have a documented failure transaction.
+- [x] Safe, suggestion, and unsafe fixes are distinct.
+- [x] Safe fixes have evidence supporting semantics-preserving claims.
+- [x] Stale edits and overlapping edits cannot apply silently.
+- [x] Every fixed result reparses, formats, and validates before write.
+- [x] Failed validation preserves original source.
+- [x] Fix output is deterministic and idempotent.
+- [x] Multi-file fixes, if present, have a documented failure transaction.
 
 ### Product And Operations
 
-- [ ] One binary exposes the documented command surface.
-- [ ] Configuration discovery, validation, precedence, and migration are stable.
-- [ ] Exit codes distinguish findings from tool failures.
-- [ ] Modules, workspaces, tests, build tags, GOOS, and GOARCH are covered.
-- [ ] Cancellation and bounded concurrency are proven.
-- [ ] Cache keys cover every result-changing input and corruption is recoverable.
-- [ ] Editor and CI examples use stable generic interfaces without requiring
+- [x] One binary exposes the documented command surface.
+- [x] Configuration discovery, validation, precedence, and migration are stable.
+- [x] Exit codes distinguish findings from tool failures.
+- [x] Modules, workspaces, tests, build tags, GOOS, and GOARCH are covered.
+- [x] Cancellation and bounded concurrency are proven.
+- [x] Cache keys cover every result-changing input and corruption is recoverable.
+- [x] Editor and CI examples use stable generic interfaces without requiring
   first-party plugins or Actions.
-- [ ] Release artifacts are reproducible and checksummed with GitHub provenance.
-- [ ] Naming and module-path audits are complete.
-- [ ] Supported-version and vulnerability policies are published.
-- [ ] Final corpus, fuzz, race, integration, and performance gates pass.
-- [ ] The pinned public-repository corpus has complete documented validation and
+- [x] Release artifacts are reproducible and checksummed with GitHub provenance.
+- [x] Naming and module-path audits are complete.
+- [x] Supported-version and vulnerability policies are published.
+- [x] Final corpus, fuzz, race, integration, and performance gates pass.
+- [x] The pinned public-repository corpus has complete documented validation and
   default/recommended adjudication without requiring upstream adoption.
 
 ### Architecture
 
-- [ ] Formatter and linter remain separate engines over a shared frontend.
-- [ ] Layout rules are not duplicated as lint rules.
-- [ ] Semantic fixes do not hide inside formatting.
-- [ ] The standard Go frontend is reused wherever it satisfies requirements.
-- [ ] Source fidelity does not rely on AST data alone.
-- [ ] Document rendering has bounded complexity.
-- [ ] Expensive analysis is demand-driven and shared.
-- [ ] No premature plugin or public package surface freezes unstable internals.
-- [ ] Current Oxfmt and Oxlint behavior has been reviewed at final readiness.
-- [ ] Additional rule expansion begins only after the foundation audit passes.
+- [x] Formatter and linter remain separate engines over a shared frontend.
+- [x] Layout rules are not duplicated as lint rules.
+- [x] Semantic fixes do not hide inside formatting.
+- [x] The standard Go frontend is reused wherever it satisfies requirements.
+- [x] Source fidelity does not rely on AST data alone.
+- [x] Document rendering has bounded complexity.
+- [x] Expensive analysis is demand-driven and shared.
+- [x] No premature plugin or public package surface freezes unstable internals.
+- [x] Current Oxfmt and Oxlint behavior has been reviewed at final readiness.
+- [x] Additional rule expansion begins only after the foundation audit passes.
 
 ## Completion Definition
 

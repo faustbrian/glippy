@@ -2,7 +2,8 @@
 
 ## Decision
 
-Status: pre-publication acceptance complete; publication transaction pending.
+Status: complete; publication closed by the separate
+[v1.0.0 release evidence](release-v1.0.0-evidence-2026-08-27.md).
 
 The accepted source-bearing candidate is
 `18004f2eba702471e03c9ab5656c905cf470e946`. CI run `33056719958` and native
@@ -11,8 +12,9 @@ budget/reproducibility run `33056742540` passed at that revision. Final fuzz run
 the intervening changes cannot affect formatter, lint, fix, fuzz, or corpus
 results. The canonical corpus adjudication retains all 334 prior finding
 fingerprints, zero false positives, and 11 accepted gaps. Independent final
-review found no issues. Pre-publication acceptance is complete and stable-v1
-roadmap progress advances to 95%.
+review found no issues. Pre-publication acceptance advanced stable-v1 roadmap
+progress to 95%; the subsequent verified release transaction advances it to
+100%.
 
 `Proven` means the current candidate has direct implementation, behavioral, or
 external evidence for the complete stated boundary. `Pending` means the
@@ -74,8 +76,8 @@ criterion cannot yet support release readiness.
 | Cancellation and bounded concurrency are proven | Proven | Scheduler, loader, analysis, write, CLI, and resource-budget contracts |
 | Cache keys are complete and corruption is recoverable | Proven | ADR 0008, cache specification, invalidation/corruption suites, and cache fuzzing |
 | Editor and CI integrations use stable supported interfaces | Proven | Stdin/stdout, existing LSP, GitHub Actions, Woodpecker, shell CI, and pre-commit documentation |
-| Release archives are reproducible and checksummed | Proven for tagless candidate | Run `33056742540` reproduced four archives, manifest, checksum file, and frozen contracts across every runner |
-| Publication provenance is verified | Pending | The tag-only workflow must publish and attest the exact final candidate |
+| Release archives are reproducible and checksummed | Proven | Run `33056742540` reproduced four archives, manifest, checksum file, and frozen contracts across every runner; publication run `33060261742` rebuilt and published the tagged source |
+| Publication provenance is verified | Proven | Every `v1.0.0` release asset passed checksum and GitHub attestation verification against tag target `a2e526c` |
 | Naming and module-path audit is complete | Proven | ADR 0016 binds the Glippy name, module, binary, configuration, suppressions, caches, and artifacts |
 | Supported-version and vulnerability policies are published | Proven | Supported-Go, support, compatibility, security, and vulnerability-reporting documents |
 | Final corpus, fuzz, race, integration, and performance gates pass | Proven | Corpus `33040254261` and fuzz `33040254402` validly carry to source-bearing candidate `18004f2`, whose exact CI `33056719958` and native budgets `33056742540` pass |
@@ -99,13 +101,12 @@ criterion cannot yet support release readiness.
 
 ## Publication Boundary
 
-A successful pre-publication audit advances the final source candidate to 95%,
-not 100%. The canonical `v1.0.0` tag must point to the exact accepted commit.
-The tag-only workflow must then rebuild the source, publish all six checksummed
-files, create GitHub OIDC provenance attestations for every file, and publish a
-non-draft, non-prerelease GitHub Release. Post-publication verification must
-check the tag target, release assets, manifest revision and toolchain, checksum
-closure, native version metadata, and attestations before the project can claim
-100%.
-
-No `v1.0.0` tag or release exists.
+The pre-publication audit advanced the final source candidate to 95%. Annotated
+tag `v1.0.0` subsequently resolved to the accepted documentation closure at
+`a2e526c`, whose parent is the exact source-bearing candidate `18004f2`.
+Publication run `33060261742` rebuilt that tag, published all six checksummed
+files, created GitHub OIDC provenance attestations for every file, and created a
+non-draft, non-prerelease GitHub Release. The separate release evidence verifies
+the tag target, assets, manifest revision and toolchain, checksum closure,
+native version metadata, attestations, release body, and `go install` channel.
+The publication boundary is satisfied and stable-v1 progress is 100%.

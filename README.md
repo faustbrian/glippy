@@ -365,6 +365,7 @@ precise scope.
 - [Lint rule catalog](docs/lint-rules.md)
 - [Go vet compatibility](docs/go-vet-compatibility.md)
 - [Rule roadmap](docs/rule-roadmap.md)
+- [v1.0.0 release evidence](docs/research/release-v1.0.0-evidence-2026-08-27.md)
 - [v0.4 exit audit](docs/research/v0.4-exit-audit-2026-08-15.md)
 - [v0.4 ecosystem dogfood](docs/research/v0.4-diverse-ecosystem-dogfood-2026-08-15.md)
 - [v0.4 fixability sweep](docs/research/v0.4-catalog-fixability-sweep-2026-08-15.md)

@@ -154,6 +154,15 @@ available. GitHub Release archives and version-pinned `go install` are the
 intended v1 installation channels; package-manager metadata remains deferred.
 A signed Git tag is not part of this artifact-provenance claim.
 
+Glippy `v1.0.0` was published from annotated tag target `a2e526c` by successful
+workflow run
+[`33060261742`](https://github.com/faustbrian/glippy/actions/runs/33060261742).
+The workflow published all six deterministic assets and GitHub attestations.
+Independent verification closed the checksums, manifest, archive contents,
+native Darwin arm64 binary metadata, canonical release body, provenance, and
+version-pinned `go install` channel. Exact identities and digests are in the
+[v1.0.0 release evidence](research/release-v1.0.0-evidence-2026-08-27.md).
+
 The historical Gox `v0.1.0` release was built from reviewed commit `c0435d6` by
 successful workflow run
 [`31699926922`](https://github.com/faustbrian/gox/actions/runs/31699926922).

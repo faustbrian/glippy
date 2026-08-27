@@ -1,9 +1,9 @@
 # Glippy Development Status
 
 - Original Phase 0-5 progress: 100%
-- Active development: post-v0.1 Clippy-comparability expansion
-- Stable-v1 roadmap progress: 95%
-- Active stable-v1 milestone: v1.0 publication and post-publication verification
+- Active development: stable v1.0 released; subsequent work is post-v1
+- Stable-v1 roadmap progress: 100%
+- Active stable-v1 milestone: complete
 - v0.8 large-repository hardening: complete at revision `3afa56c`;
   exact corpus run `32962070813` passed all 20 jobs, classified all 334
   default and recommended findings, retained zero known default false
@@ -34,6 +34,10 @@
 - v0.9 final audit-bearing candidate: CI `33056719958` and native
   release-budget/reproducibility `33056742540` passed at revision `18004f2`;
   independent review found no issues and v0.9 is complete
+- v1.0 stable release: annotated tag `v1.0.0` resolves to `a2e526c`;
+  publication workflow `33060261742` published six checksummed and attested
+  assets, post-publication verification passed, and the version-pinned
+  `go install` channel produced `glippy v1.0.0`
 - v0.5 typed retained-memory attribution: complete
 - v0.5 exact printf fact isolation and 2 GiB reference-host gate: complete
 - v0.5 bounded incremental workspace-result reuse: complete

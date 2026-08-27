@@ -96,9 +96,13 @@ is 95%; tag publication and post-publication verification remain.
 
 ## v1.0: Stable CLI
 
-Status: active. Pre-publication acceptance is complete. The authorized
-`v1.0.0` tag transaction and post-publication asset, checksum, version, and
-attestation verification remain.
+Status: complete. Annotated tag `v1.0.0` resolves to `a2e526c`, publication
+workflow `33060261742` passed, and the non-draft, non-prerelease GitHub Release
+contains all six checksummed and attested assets. Post-publication verification
+proved the release identity, manifest, archives, native version metadata, and
+version-pinned `go install` channel. The exact evidence is recorded in the
+[v1.0.0 release evidence](research/release-v1.0.0-evidence-2026-08-27.md).
+Stable-v1 roadmap progress is 100%.
 
 The exact candidate must prove deterministic and source-preserving formatting,
 zero known default-correctness false positives over the audited corpus,
