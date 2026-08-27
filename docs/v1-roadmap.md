@@ -51,7 +51,8 @@ transactional safe-fix preview, source-fidelity, build-variant, upgrade,
 macOS/Linux resource-budget, and cross-runner reproducibility gates are proven.
 The accepted unsupported-source, generated-prerequisite, cgo-coverage, and
 nested-module boundaries remain explicitly dispositioned rather than being
-silently excluded. Stable-v1 roadmap progress is 85%, with v0.9 now active.
+silently excluded. This milestone advanced stable-v1 roadmap progress to 85%
+and activated v0.9.
 
 - Repeat the complete corpus at exact revisions, account for every formatter
   execution and fidelity failure, and manually classify every default and
@@ -73,13 +74,14 @@ integration, contract marketplace, hosted service, or upstream adoption work.
 
 ## v0.9: Stability Freeze And Tagless Release Candidate
 
-Status: active. The formatter, rule, profile, configuration, CLI, completion,
-reporter, exit-code, and machine-schema contracts are frozen in executable v1
-fixtures. Corpus run `33040254261` passed all 20 jobs with zero known default
-or recommended false positives and no changed finding fingerprint. The tagless
-candidate reproduces the frozen contracts and historical upgrade fixtures
-across all four supported native targets. Final exact-tree CI, native candidate
-reproduction, independent review, and the acceptance audit remain open.
+Status: complete at source-bearing revision `18004f2`. The formatter, rule,
+profile, configuration, CLI, completion, reporter, exit-code, and
+machine-schema contracts are frozen in executable v1 fixtures. Corpus run
+`33040254261` passed all 20 jobs with zero known default or recommended false
+positives and no changed finding fingerprint. CI `33056719958` and native
+release-budget/reproducibility run `33056742540` passed the final audit-bearing
+candidate, and independent review found no issues. Stable-v1 roadmap progress
+is 95%; tag publication and post-publication verification remain.
 
 - Freeze formatter output, rule IDs, profiles, configuration, CLI behavior,
   exit codes, and machine schemas.
@@ -93,6 +95,10 @@ reproduction, independent review, and the acceptance audit remain open.
 - Rehearse upgrades from historical Gox and Glippy prerelease snapshots.
 
 ## v1.0: Stable CLI
+
+Status: active. Pre-publication acceptance is complete. The authorized
+`v1.0.0` tag transaction and post-publication asset, checksum, version, and
+attestation verification remain.
 
 The exact candidate must prove deterministic and source-preserving formatting,
 zero known default-correctness false positives over the audited corpus,

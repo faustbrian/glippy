@@ -2,8 +2,8 @@
 
 - Original Phase 0-5 progress: 100%
 - Active development: post-v0.1 Clippy-comparability expansion
-- Stable-v1 roadmap progress: 85%
-- Active stable-v1 milestone: v0.9 stability freeze and tagless release candidate
+- Stable-v1 roadmap progress: 95%
+- Active stable-v1 milestone: v1.0 publication and post-publication verification
 - v0.8 large-repository hardening: complete at revision `3afa56c`;
   exact corpus run `32962070813` passed all 20 jobs, classified all 334
   default and recommended findings, retained zero known default false
@@ -30,8 +30,10 @@
 - v0.9 exact corpus: run `33040254261` passed all 20 jobs at revision
   `8f52f20`, retained all 334 previously adjudicated default and recommended
   fingerprints with zero false positives, and preserved the 11 accepted gaps
-  covering 19 deliberately incomplete units. Final audit-bearing CI, native
-  release-candidate reproduction, and independent review remain open
+  covering 19 deliberately incomplete units
+- v0.9 final audit-bearing candidate: CI `33056719958` and native
+  release-budget/reproducibility `33056742540` passed at revision `18004f2`;
+  independent review found no issues and v0.9 is complete
 - v0.5 typed retained-memory attribution: complete
 - v0.5 exact printf fact isolation and 2 GiB reference-host gate: complete
 - v0.5 bounded incremental workspace-result reuse: complete
