@@ -27,6 +27,11 @@
 - v0.8 exact final-candidate gates: CI `32960773579`, fuzz `32967508684`,
   release-budget and cross-runner reproducibility `32967515640`, and corpus
   `32962070813` passed at revision `3afa56c`
+- v0.9 exact corpus: run `33040254261` passed all 20 jobs at revision
+  `8f52f20`, retained all 334 previously adjudicated default and recommended
+  fingerprints with zero false positives, and preserved the 11 accepted gaps
+  covering 19 deliberately incomplete units. Final audit-bearing CI, native
+  release-candidate reproduction, and independent review remain open
 - v0.5 typed retained-memory attribution: complete
 - v0.5 exact printf fact isolation and 2 GiB reference-host gate: complete
 - v0.5 bounded incremental workspace-result reuse: complete

@@ -5,11 +5,9 @@ adopts Glippy must make it the sole formatting authority for the selected files.
 Running gofmt, gofumpt, or golines after Glippy can create permanent formatting
 churn.
 
-Glippy is the selected development identity, and its collision review is
-complete for the current binary and module contract. Publication remains gated
-on final release work and explicit authorization. Use a pinned, locally built
-revision for a rehearsal; do not treat an untagged command path as a stable
-release.
+Glippy v1 is the stable binary and module identity selected by the completed
+collision review. Adopt the versioned release through GitHub Releases or
+`go install`; untagged command paths remain unsupported development artifacts.
 
 ## Why The Outputs Differ
 

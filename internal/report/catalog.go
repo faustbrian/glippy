@@ -25,9 +25,9 @@ func RenderRuleCatalogMarkdown(registry *rules.Registry) ([]byte, error) {
 	)
 	output.WriteString("registry, scheduler, configuration decoder, and `glippy explain`.\n")
 	output.WriteString(
-		"Preset membership and defaults describe the current development binary and are\n",
+		"Preset membership and defaults are stable beginning with Glippy v1 and follow\n",
 	)
-	output.WriteString("not stable release promises.\n\n")
+	output.WriteString("the documented compatibility policy.\n\n")
 	output.WriteString("## Rules\n\n")
 	if len(ids) == 0 {
 		output.WriteString("None.\n")

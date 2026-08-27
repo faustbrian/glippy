@@ -1,0 +1,2473 @@
+{
+  "schema_version": 4,
+  "manifest_sha256": "34a3118eb7b1cdebac2f60c636333ba2b7b1193de098f28c7586a0ef52998f85",
+  "run": {
+    "id": "8f52f20deea6ceb9bb316d312e26e65646ca9f6d-33040254261",
+    "glippy": "glippy v0.0.0-20260827044204-8f52f20deea6",
+    "go": "go version go1.27.0 linux/amd64",
+    "staticcheck": "staticcheck 2026.2.1 (0.8.1)"
+  },
+  "repositories": [
+    {
+      "id": "caddy",
+      "revision": "0cf03d32f7d99cf160d5375e8a40fbe3d910d515",
+      "result_sha256": "1d4ba604045a8193580136a88e1a3ba752e0cd1c2896d6e104ba431cf2f5f2a9",
+      "incomplete_format": false,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "77268584fd99918482c7e10535196f25b6425ff9f2de4e9f077c33637e968acf"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "0db096ce7e8d8c79f0465c8fcd425b0dcdb377a80ca715b28b0b01db8b450e7e"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "44bb391e7586c931bad29344324bebdf6ef069294efe150a4232a09227de0fed"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "68884b7c36bad84f665f865fbee6d2531c86b8aa40183c878af9f1cb9401d7e2"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": [
+            {
+              "fingerprint": "9720c62721801420800522032024895ee5e0494265ab59cd1bf301365c9a1d3c",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at caddytest/integration/stream_test.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            }
+          ]
+        },
+        {
+          "profile": "recommended",
+          "findings": [
+            {
+              "fingerprint": "698896f81fad4e5113910eacbd8cc8e3fc0eb001b5545f6ee784d3e9c44970d1",
+              "classification": "true-positive",
+              "reason": "manual review confirms http-response-body-not-closed at cmd/commandfuncs.go: HTTP response \"resp\" body is not closed or transferred on every normally returning path"
+            },
+            {
+              "fingerprint": "7d81e1812a7142b94b83e61f792f324761a99484dc60da08d606ae53ae9173db",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at caddytest/integration/panic_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "9720c62721801420800522032024895ee5e0494265ab59cd1bf301365c9a1d3c",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at caddytest/integration/stream_test.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cockroach",
+      "revision": "8812064a015d2faf99d3fc7e15880f94042954b0",
+      "result_sha256": "3148d7bdc62f2df00a619e96eb959514de67518bfc063545166a67190fea2bb4",
+      "incomplete_format": true,
+      "incomplete_fix_preview": true,
+      "incomplete_profiles": [
+        "default",
+        "recommended"
+      ],
+      "incomplete_comparators": [
+        "go-vet",
+        "staticcheck"
+      ],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "a953d4ea69d0de46020343f572861b5e28914c31ca19ce58df18c284d53559b8"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "a953d4ea69d0de46020343f572861b5e28914c31ca19ce58df18c284d53559b8"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "a953d4ea69d0de46020343f572861b5e28914c31ca19ce58df18c284d53559b8"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "a953d4ea69d0de46020343f572861b5e28914c31ca19ce58df18c284d53559b8"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": []
+        },
+        {
+          "profile": "recommended",
+          "findings": []
+        }
+      ]
+    },
+    {
+      "id": "containerd",
+      "revision": "6c12665e1c31e7728d0e0eb1224288bd9153114b",
+      "result_sha256": "3cd479b682cb1873b0d70f76828589b7f1a4255f61e306528d1ca9ba5673bd80",
+      "incomplete_format": false,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "776b821ecd02ac44462271663d27aa77796b545d7961bd17ce90876fbb1bf3c4"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "fd064a7fe638062fbb6632a47995b88dd387cc94103e27ebbdfb3677f1ba2ea1"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "7f3e3eb76f3d2482d639475c47c11c0da7a296baed47485a978ab859009eb95b"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "da76998d0f4423c64f396ea1a1834ef172ce6e52266011a3724a1a8a8ab7f9b4"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": [
+            {
+              "fingerprint": "5faf3f310a00f93623b818f607dc537bd87f1c7432da9e9cd92659cdb4bd3483",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/ctr/commands/images/images.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "ca364cce59aeb5ec17bba1868004ee264b2605f34fa476b303aaccbf0b6dd929",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at core/images/archive/exporter.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "d34bb52e633fde36ced6ed6f3c64e88c361e2e6902a1425fd71b8143201f283c",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/ctr/commands/content/content.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "dde4a67ab1f44a29e87209e92c288dd48bb14a7b085792e4c96443290f6d518d",
+              "classification": "intentional",
+              "reason": "manual review confirms the fuzz target intentionally consumes an in-memory tar stream before deferred finalization and accepts malformed archive material; the diagnostic remains accurate and suppression is repository policy"
+            },
+            {
+              "fingerprint": "f3e6f61d73cceab12f14973c4d1df2528a33d12c471b4f05bf63f008c71f9da6",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/ctr/commands/sandboxes/sandboxes.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            }
+          ]
+        },
+        {
+          "profile": "recommended",
+          "findings": [
+            {
+              "fingerprint": "5faf3f310a00f93623b818f607dc537bd87f1c7432da9e9cd92659cdb4bd3483",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/ctr/commands/images/images.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "6cb112f79a933bfa8f42686aaaa09ff59f1971a4790833759e2765a7527e1fa2",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at integration/client/daemon_config_linux_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "ca364cce59aeb5ec17bba1868004ee264b2605f34fa476b303aaccbf0b6dd929",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at core/images/archive/exporter.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "cef9a94a6901d947e2b166fbf564b9bd9449c729b55d1ff38f033f049fa15401",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at core/runtime/v2/shim_load.go: tautological condition: non-nil != nil"
+            },
+            {
+              "fingerprint": "d34bb52e633fde36ced6ed6f3c64e88c361e2e6902a1425fd71b8143201f283c",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/ctr/commands/content/content.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "dacf364d5164d8aecafda92eaf1b7a714da705368e7301c1e5315680693c9157",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/fsverity/fsverity_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "dde4a67ab1f44a29e87209e92c288dd48bb14a7b085792e4c96443290f6d518d",
+              "classification": "intentional",
+              "reason": "manual review confirms the fuzz target intentionally consumes an in-memory tar stream before deferred finalization and accepts malformed archive material; the diagnostic remains accurate and suppression is repository policy"
+            },
+            {
+              "fingerprint": "f3e6f61d73cceab12f14973c4d1df2528a33d12c471b4f05bf63f008c71f9da6",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/ctr/commands/sandboxes/sandboxes.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "etcd",
+      "revision": "c34dc7ee0048fd2bcc44d50beff002e5e8069b69",
+      "result_sha256": "855a19c235be76622a5b84b30513e71aec4060eae6edafe87a0d36daa0e41b6c",
+      "incomplete_format": false,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "e1cef8ca3d2b7889f9cb3455c87f1aee5abfce8d4225154bea82d5b2c3442b7c"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "58476493bd099588d3bbf55f549b0675a9fc718d7cb2761d2e08f5d304b6b0d1"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "cd1fd6fe9928c5893e4824e54d79447915fed7744954e1e48d481829b3f21f9d"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "977f3077a91f6d932fa63d28643f066ac81e921b4c91801a5a408108c37445a3"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": []
+        },
+        {
+          "profile": "recommended",
+          "findings": []
+        }
+      ]
+    },
+    {
+      "id": "go-ethereum",
+      "revision": "02b73d4ea7181464175e0a6cbecc0a3a2655a562",
+      "result_sha256": "7bfdcc1836668c83459c2f6f145fe6f74ceb813f522db5d526e60160c8fa6387",
+      "incomplete_format": true,
+      "incomplete_fix_preview": true,
+      "incomplete_profiles": [
+        "default",
+        "recommended"
+      ],
+      "incomplete_comparators": [
+        "go-vet",
+        "staticcheck"
+      ],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "a953d4ea69d0de46020343f572861b5e28914c31ca19ce58df18c284d53559b8"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "a953d4ea69d0de46020343f572861b5e28914c31ca19ce58df18c284d53559b8"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "a953d4ea69d0de46020343f572861b5e28914c31ca19ce58df18c284d53559b8"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "a953d4ea69d0de46020343f572861b5e28914c31ca19ce58df18c284d53559b8"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": []
+        },
+        {
+          "profile": "recommended",
+          "findings": []
+        }
+      ]
+    },
+    {
+      "id": "go-sqlite3",
+      "revision": "58c8e145308ceded07d1df2ac1b65999499e7055",
+      "result_sha256": "2d1062b3d712bf15d56d33c4191fa0ac1b2586da56cdf7db91dd304153ecf11e",
+      "incomplete_format": true,
+      "incomplete_fix_preview": true,
+      "incomplete_profiles": [
+        "default",
+        "recommended"
+      ],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": []
+        },
+        {
+          "profile": "recommended",
+          "findings": []
+        }
+      ]
+    },
+    {
+      "id": "grafana",
+      "revision": "45a80328c0dd976720af0366efcad0787762b142",
+      "result_sha256": "d74f78c95662fb8833239a5bf71091d3f2422939ca3c9be03297c4b7dab7d5b9",
+      "incomplete_format": false,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "d019c5288e3a48a81461869ad51718e06650b6c5b7aeec0d92ff882e015e0549"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "bafff284b3185cbfbe5321292a2fb910b7f773bde78cbbd08ad3186751ce54eb"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "31a9f0b6843b25294083769d71ddef5a70534f0a19d77b7adb586c009f1ad74a"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "d557e19d1484e60eaf8ebb6fd9653a3ff181080dd74cdb4aebcb1815e28443b8"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": [
+            {
+              "fingerprint": "dfe2ac796a6e654f5df7bf96154f2075f18da63fff3b9f3592e336bad7149a4a",
+              "classification": "duplicate-vet",
+              "reason": "Go vet reports the same source-version defect"
+            }
+          ]
+        },
+        {
+          "profile": "recommended",
+          "findings": [
+            {
+              "fingerprint": "0939c6fbf948471efa4b8da0e17cac98c96b725d95cda74bd206bf1dff19c8f6",
+              "classification": "true-positive",
+              "reason": "manual review confirms nil-error-wrap at pkg/registry/apis/collections/legacy/stars.go: fmt.Errorf wraps an error that is proven nil on this path"
+            },
+            {
+              "fingerprint": "18e42f1db4c59c4cc9254fe675a1df57082cb84c36d4e2947a62f8a9bad6d818",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/storage/unified/resource/datastore_test.go: nil dereference in field selection"
+            },
+            {
+              "fingerprint": "1b72fdfbb12fbf54d495ccf9b876371a12e2308afca7a6be8d5d22fd2d15570e",
+              "classification": "true-positive",
+              "reason": "manual review confirms nil-error-wrap at pkg/storage/secret/metadata/keeper_store.go: fmt.Errorf wraps an error that is proven nil on this path"
+            },
+            {
+              "fingerprint": "251fc3b90122001e3dc0001324c15729aad3ff23dd2ed728bc570e72edbe5c7f",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/registry/apis/iam/resourcepermission/sql.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "275d388a3fc382d2c1058826e6180307763a0aecc5e5188777f1bfe2ef1f93ab",
+              "classification": "true-positive",
+              "reason": "manual review confirms nil-error-wrap at pkg/storage/unified/apistore/managed.go: fmt.Errorf wraps an error that is proven nil on this path"
+            },
+            {
+              "fingerprint": "2cd6670260891c37f33fa545086f2ca4cf55b6f422bca430e0556bff0c1cc848",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/services/authz/rbac/store/folder_store.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "3172148d6b058b7b202cbbdd251ff80998ae324e9ba77b7b1cfa90a622ed649c",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/registry/apis/collections/legacy/sql.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "31ba1644354e187766117278e297dd0ee9f3d373b25e9fad40d6df80f108168d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/registry/apis/iam/legacy/user.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "3fd6138378a0845ddc80931715f69b8fb07e49e21b37cec33213b92d2ca68c30",
+              "classification": "true-positive",
+              "reason": "manual review confirms http-response-body-not-closed at scripts/build/release_publisher/publisher.go: HTTP response \"res\" body is not closed or transferred on every normally returning path"
+            },
+            {
+              "fingerprint": "41b06f3ed4dbc858bdfd084e4921ebdeefb9febc65aaa8c4d1c3a25d6fd6b593",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/storage/unified/resource/datastore_test.go: nil dereference in field selection"
+            },
+            {
+              "fingerprint": "498f8e3dfaeae4f8515b16113bbce46893a49858dc53b32235a08da04fcf7992",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/services/ngalert/writer/datasourcewriter.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "5128188a77fe825f42a8bcd1ca8400a9a263fe9b2d05153fbf524352f6ac10f8",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/services/authz/rbac/store/permission_store.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "55fd33388d462bcf590c11e85798f5b72c05cb8792c7b87d6b34c1d0a58fdfe2",
+              "classification": "true-positive",
+              "reason": "manual review confirms identical-branches at pkg/services/accesscontrol/resourcepermissions/api_test.go: this else branch is identical to the preceding if branch"
+            },
+            {
+              "fingerprint": "645f47fc1a769e612da043cf8c4a185fc69c399bec286e97306d2e33857e6758",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/expr/mathexp/exp.go: tautological condition: non-nil != nil"
+            },
+            {
+              "fingerprint": "6ed019663006b256a9db1e376dafd25a91ff4267ea3b1bde7457897649c04089",
+              "classification": "true-positive",
+              "reason": "manual review confirms http-response-body-not-closed at pkg/services/rendering/http_mode.go: HTTP response \"resp\" body is not closed or transferred on every normally returning path"
+            },
+            {
+              "fingerprint": "7b4a3c0e5919259cabf4a8edf664674c90f948185e319539d8446d288ae60f62",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/registry/apis/provisioning/resources/authorizer.go: tautological condition: non-nil != nil"
+            },
+            {
+              "fingerprint": "865bd8f0906878bc20544b5486108c4414503f232d70118306395c8d2ab24acb",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/registry/apis/iam/resourcepermission/sql.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "888bffd994062dc55afb61f10706b04ecd6fb0499d97ab73256f3798854e493d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/registry/apis/iam/legacy/user.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "9988862f6a0a9e01f5fb3f9fb68ebb55b579a19c6fea62ce995b881b56e9b4ae",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/registry/apis/iam/legacy/service_account.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "a4da29a1724aea0ff58e6dbe94e6a417cb00e76f0caa94114881b2a9d4e38026",
+              "classification": "true-positive",
+              "reason": "manual review confirms http-response-body-not-closed at pkg/tsdb/azuremonitor/azuremonitor.go: HTTP response \"res\" body is not closed or transferred on every normally returning path"
+            },
+            {
+              "fingerprint": "a8f756744eabeffe2c417f049a3ffdb4fa00da6d01a721e41f4cb04e592232e6",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at pkg/setting/setting_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "af1ff07df51ab0265520878c135657b073194f2130b5eca478df5c84466efcde",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/registry/apis/iam/resourcepermission/sql.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "cb89af8b28e7dcdb9cc6062422d0e05652566862e0ef00b6970a3a5dd7d1d643",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/expr/mathexp/exp.go: tautological condition: non-nil != nil"
+            },
+            {
+              "fingerprint": "ccc1bf950227cbd240854e442aa29e186dadfac17f2a98075f02a1878fb83686",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/services/ngalert/models/notifications.go: tautological condition: non-nil != nil"
+            },
+            {
+              "fingerprint": "d0d3849c3f1587e1c82fb88d6f7d5f06f3e825c940dbf7ead29e80c688dbde2d",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/util/xorm/session_update.go: tautological condition: non-nil != nil"
+            },
+            {
+              "fingerprint": "d32d1daed72a20f6f439b393311842573478dcd46fc5abc1f9ff33a27583d20a",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/registry/apis/iam/legacy/team_binding.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "d96789167a6848272b965c45b56450a915faf8ccb47f84d144e12503218dc7a2",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/registry/apis/iam/legacy/team_binding.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "da5d880b98029430c16d7cde388d1a5509e32caf24f768d258b919c1f5463964",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/registry/apis/iam/legacy/team.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "dd23cea0422bbf3c2aa08a5864f13207c32275efae83fae95c2c6b0d7d94c660",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/storage/unified/search/builders/document.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "dfe2ac796a6e654f5df7bf96154f2075f18da63fff3b9f3592e336bad7149a4a",
+              "classification": "duplicate-vet",
+              "reason": "Go vet reports the same source-version defect"
+            },
+            {
+              "fingerprint": "e0260786484081ade46cec491a7f7cf06cd6ed7c01c89ccd9fc1b7f3135b65d9",
+              "classification": "true-positive",
+              "reason": "manual review confirms http-response-body-not-closed at pkg/tsdb/azuremonitor/loganalytics/azure-log-analytics-datasource.go: HTTP response \"res\" body is not closed or transferred on every normally returning path"
+            },
+            {
+              "fingerprint": "e8c9621489bbf70347fb0bad28c77207cbe7d53333d099e4fbc8af850f67563d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/registry/apis/iam/legacy/service_account_token.go: rows.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "f71e44a4d67b15f57fa005059aad26713c431e39ee45301fe30a78cfdc9aa313",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/services/ngalert/store/deltas.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "ffe3dab09a6d28fd05915abfd8829970a5db52dfd5dec2167e0db75a188c71ea",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-rows-error at pkg/registry/apis/dashboard/legacy/sql_dashboards.go: rows.Err is not checked on every normally returning path after iteration"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "grpc-go",
+      "revision": "4793ad0474669eafbd5346c8a3d098fdfa542498",
+      "result_sha256": "c0e7e00ac804222ac11901aded11f95d43d4e0a1e9b83857e17638dbb4f208ff",
+      "incomplete_format": false,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "114e4533e2813c180f7c2d2f91f04755b1e3f19a80c6d1a12f9af25a6e7deb7b"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "147f6f19520fbc81cd560db96aa8ad7cc47a00ed0ef3e91fce847e69e7416834"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "e8735fa57266e4255b9382aa6d614474f96860b7bc995de0724654b2a6ce682c"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "352a024e2b8c65583e626c5da175497b0a584fb894c1648f3b8413288bc3b01b"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": [
+            {
+              "fingerprint": "0e6685bce93a58c76df8737919957992736f7a5c1d9ec3b35b0cb486ecf0ff71",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/end2end_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "380eac69e3c11d438374172521ef0882c515d7403bc536a7bff9371e82ebade4",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/end2end_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "6f0897adb015237bc674f89ca979e029528b4ec28e9ae659d7f215b45c351d24",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/end2end_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "885623a939dffe865879f80beb46ff85aca3bc89b0144de8b3b34a5a04babe52",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/end2end_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "cfad29e9f25a71891e05438c75b0c46e105052bd91a82e3d7e6ee4daa0891f26",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/end2end_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            }
+          ]
+        },
+        {
+          "profile": "recommended",
+          "findings": [
+            {
+              "fingerprint": "0527c7b80732108a3cf6094b85d8234dbca8db1cb2046fdb9e914e8c56ceb2a0",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/xds/balancer/outlierdetection/balancer_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "0e6685bce93a58c76df8737919957992736f7a5c1d9ec3b35b0cb486ecf0ff71",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/end2end_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "24512d773dabd717e206ca7a1b87db71443a361f7ac6007c4ebcf52a2123d87d",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/xds/xdsclient/tests/fallback/fallback_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "24dce9a21abb50112e16125fedd0270651fb4d7e0a48035303fc9ce79a668ebc",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/xds/xdsclient/tests/fallback/fallback_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "2631b1da3258abdf6a7b29a4c1ce4493d07bd3ebaac673fc86ec377df0179c09",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/credentials/spiffe/spiffe_test.go: tautological condition: non-nil != nil"
+            },
+            {
+              "fingerprint": "380eac69e3c11d438374172521ef0882c515d7403bc536a7bff9371e82ebade4",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/end2end_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "3c243052daf041f602fa54fb9eea1424b2a84a62411d14e7f7d53d2eed8f4d69",
+              "classification": "true-positive",
+              "reason": "manual review confirms suspicious-range at internal/xds/server/filter_chain_manager.go: this mutation changes only the range value copy"
+            },
+            {
+              "fingerprint": "4b5f780fc57523bbad59d288cf585b27740f5dde7ad0b99e1a80665c91a9b35f",
+              "classification": "true-positive",
+              "reason": "manual review confirms suspicious-range at internal/xds/server/filter_chain_manager.go: this mutation changes only the range value copy"
+            },
+            {
+              "fingerprint": "6f0897adb015237bc674f89ca979e029528b4ec28e9ae659d7f215b45c351d24",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/end2end_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "825533376f29dff0aebcd0ba9bf7a36eb515fa643f22c770d4e27d9369835abc",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/xds/xdsclient/tests/fallback/fallback_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "885623a939dffe865879f80beb46ff85aca3bc89b0144de8b3b34a5a04babe52",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/end2end_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "b28792aec0f8f583923525c5261d3f7f2f2a84fa7e23060f61919fe996e9ed19",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/xds/xdsclient/tests/fallback/fallback_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "bcdbb002a65cf396b77768abd8d7fd4885b4203b578cde7dbaca7185a0639218",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/xds/xdsclient/tests/fallback/fallback_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "cfad29e9f25a71891e05438c75b0c46e105052bd91a82e3d7e6ee4daa0891f26",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/end2end_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hugo",
+      "revision": "76a5e1880ab46688155b02e99bab9be2a6134492",
+      "result_sha256": "f538e8ed300bf68e11b2feb115e08e8e369ebdbdadfc769dcf6b936f4fe0e819",
+      "incomplete_format": false,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "04a39f064033394c126394f1249939678974eb7959b27c7186d1e6664e3d2fb2"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "87daa11877ab2145afc0611604d88a577666bb5d5acb51f559ff77fbb65b4b7e"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "7e850625de410defb9de2ca363a54876dbad349f1f19d0dae8b87a88df55eb78"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "e2295bcce6ac68eaa0dba5576ae28aa3ecebd5d182ce883800372381f4aa96d4"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": []
+        },
+        {
+          "profile": "recommended",
+          "findings": [
+            {
+              "fingerprint": "4e8aeed1ce59961118f51151dd6fd33645b6dcc078546c8b919ad1d4a63fca0c",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at modules/client.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "6d998356449d0bc1710f3baa1b411cb45a50969fff7e97caecb57542b4d7cf23",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at modules/collect.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "7d90bc4e1068b38d982ed68d78a6e6f10feaf922804fb5ce3d8a84243ad99ffe",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at resources/images/image.go: impossible condition: non-nil == nil"
+            },
+            {
+              "fingerprint": "8be0827709ad20c15a6cf3d50c4b4b83ebe88af1d6c8f253cb9b08ff079ec057",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at markup/asciidocext/internal/converter.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "adff06097c06ff4800e04a302df59a710e381a0428e419ea83bc46a19878c160",
+              "classification": "true-positive",
+              "reason": "manual review confirms overwritten-error at tpl/internal/go_templates/texttemplate/exec_test.go: this value of err is overwritten before its error is observed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kubernetes",
+      "revision": "e81f39c0e03ce8ed8e2660c9147b391edd9e262b",
+      "result_sha256": "0f70da335f3f3c4062948f2a67bfd0cb879e692a79938d040cf7b07ad3afe648",
+      "incomplete_format": false,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "7fa7bb2e417e46e3470390046daee9615d49dbdff2e813492305c913d4635e14"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "8182cd240e5adfc0a10ac663dbc3fef6f1ed56a7cd983fed23d87a19faea672f"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "068759bd55401a8fdbe1593df05c12b86661163518345deea62843450bb97743"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "0a43b24a71fc38bf38393c3889c11261ff690ec09b550aa0a4afca5fe1a035ae"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": [
+            {
+              "fingerprint": "006df45a7bca5b3a8845f46860f23979fa564e6bb825a9d638b90b57ed214afa",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "16850d8d7b066e40d0051bb13cc71f9c613748b0dfe727af29b126044009bc37",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "17d556bf0fb9b42188740059218df534fa4becfd1e7b4a15c212178922592229",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "18b4374f0ba609d286ffe5be2562f95f9dc69c3364313c10f7cadddc54beda79",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "1d51b3b5b9de7be8889bda08c4014279025ea64ea7d69bc199080fc36d6a3688",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "209c639680699ef101ada6fc6cba3ab0fb56d5f34261786bbec9142408de8769",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "21dbb7760711dc61ae6e70e33993c905fca9c96c01907165774d403911413d3b",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "23870f9a91209011a1c4a5e1e81e99cb125f272bf465f5057242065c61989844",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "2e27472f7de1551f9487f7b8eb18e2f396aa7b7ef7b58342656f53e95de4db35",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "37458ad673db5350af462b39ce82494cf07d7f26cd0d5781683d58268b1726fc",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "37ecf1655a1e81c037ffd6a90272f51d9fafd8a8f3b77dff0cc9adddca3da1c1",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "398147b9a3d5590fe70fd2c141c5c6b9783736b469369b5e00e7c4cedc74ef68",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "3de3291fb63501cdb0387e93ff20e62ea8b3049d30a98d7b43260860dd4ccac1",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/kubeadm/app/cmd/upgrade/plan.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "44416ee64be6fe3d3e41a76930409e155d61d769834749ebbc43f88d71d2fea9",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "44adc8e210d476932ff5564726a5d5aa290949c93d63ed6a41bc15ca3ca7ea59",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/conformance/image/go-runner/tar.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "5dbaaf9352611c6f76e07caf1efa21797520ece54f78dcbcd7b153ceb0ea2a73",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "6a3ca86c825d65a1f70609d5152d2d8dc601a3a2d7f419726aec305c211fc1f3",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "7d09a61eff7d1528e0051af81019b16703d636e0f4531fbacd0900f85e9dcc5a",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "7faa1e0c3b36b1b78922884ddc41fdcb380f32f7eb31d9282f34b62227313592",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "80cccd384fccf2be2d36524bd3c9e0478fd56ba2e43a56d6357531397c47bb1e",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "9748aeb0ff40ee092658a6c10caf4c57606f8c12b735e69df614a8890d38ac28",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "9f5e64723d25a786dde9602fae7c328d5861489dedfdb9088be5de38b50c234d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/e2e/apimachinery/garbage_collector.go: unreachable code"
+            },
+            {
+              "fingerprint": "a12969300cab77d12d0eb4c5df487a87fa774b523f43125b08d4ca37c0f9f119",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at pkg/kubelet/logs/container_log_manager.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "a4d90fabe6fbac9bfe8100b3052b8ab8fbd4f94044e36739a1e7df00fed71717",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "a6952415fea8c2fe464406afe5eb157db5271be674ace8ae7c5508ba4f2bdf88",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "a7c0bfe2b9fcb4d723123b9931df2f0aab53e18763835c9c4c28405f9b87fc73",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/kubeadm/app/cmd/upgrade/plan.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "aff5b051be0f6f0d51dc33a0776c751f3aeb7aec45f7c66c65f667e1d5b017f8",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/conformance/image/go-runner/tar.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "b730fca7594e765a5f2f589fa06591c3f58fb676752fba44a6d6daa93bfabed9",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at pkg/kubelet/logs/container_log_manager.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "b7f57d24dd91f2b0b0472b8246165d73042e73f5f8a2766e4d074d35cab783cc",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/kubeadm/app/preflight/checks.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "bd86fefb10524eff2d53ee184f31abc430b83f0bac7ac258b0c2625fb650014d",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "c28076739727ca426c460419ced8031eef18d41784f29a038479144a19d96a1e",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at pkg/kubelet/kubelet_server_journal.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "d220be6cd82737eeb33ab8494e8467d72a7ee7411f51e56d11bc2fa62a8b577a",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "d4c85befae2c492c503f1de3140ceff17fa9a26d86f815a6e1fe4387d6c3afad",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "d6721e4714316934cf386766db9af4c070c689e46c46bd2dbd5f7f73686b1919",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "ddb3976a3408c3782e5459960a09d4ac759d2fe5e2dd4423b4bcbd40f4b666cf",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/kubeadm/app/cmd/upgrade/plan.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "e4d4ed82ba0383924d42663bc44290740659e2f77454d98988c73f7ece864cd2",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "ebf0d970f3452ea6a4a67ed1a9122c6c1a6b7f79cc7e1f66a0665775b012a30c",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "f551e8e1c38f79992bdab672c8e1934f4394fbb4931ca4e98a752eacdd976a04",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "f5ea343c74c83def57aee879de964c009b6b32428b0a4b8a06ded83d6d05edb9",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "f6a6c0763b2e0d5ce7b98df7894deefc7bea9507d8b223dec85bfff7ea24f7fa",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "fa5f9d8ad999b6c506c04e8e3ed237a2685a3d0b5e2c581923a694a2a3adef16",
+              "classification": "true-positive",
+              "reason": "manual review confirms ineffective-break at pkg/kubelet/kuberuntime/kuberuntime_container.go: unlabeled break exits only the enclosing switch or select"
+            },
+            {
+              "fingerprint": "fd32787e10b278dad403ff20e429aa5711ddd3d6581f9f390c28134147a05ef9",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            }
+          ]
+        },
+        {
+          "profile": "recommended",
+          "findings": [
+            {
+              "fingerprint": "006df45a7bca5b3a8845f46860f23979fa564e6bb825a9d638b90b57ed214afa",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "05e3ea65c4d62cb56053772e5ed81b2dc2dce58165e78d75af4843e637be2477",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at test/e2e/framework/network/utils.go: tautological condition: non-nil != nil"
+            },
+            {
+              "fingerprint": "067d1021320ddea6d7c4b0c9be3f2cb3b553ca076bd8d346b0aaa861d776b1fc",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at test/e2e_node/image_list.go: impossible condition: non-nil == nil"
+            },
+            {
+              "fingerprint": "0ac83fb534683d4663f93a9f988739fd50c547ea6d984621badcccd5b9a99980",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/serviceaccount/claims.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "0e68c9f6ecafa2d5e2b19fdea350d8b73f7235042b4938c8c25c3bcc8b688c09",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at test/e2e_node/node_container_manager_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "16850d8d7b066e40d0051bb13cc71f9c613748b0dfe727af29b126044009bc37",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "17d556bf0fb9b42188740059218df534fa4becfd1e7b4a15c212178922592229",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "18b4374f0ba609d286ffe5be2562f95f9dc69c3364313c10f7cadddc54beda79",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "1d51b3b5b9de7be8889bda08c4014279025ea64ea7d69bc199080fc36d6a3688",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "209c639680699ef101ada6fc6cba3ab0fb56d5f34261786bbec9142408de8769",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "21dbb7760711dc61ae6e70e33993c905fca9c96c01907165774d403911413d3b",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "23870f9a91209011a1c4a5e1e81e99cb125f272bf465f5057242065c61989844",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "2afe310e9417b5dbdf5f0fb14cca2a4da8627c0491f78c49d7e8032c9d61a96f",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at cmd/kubeadm/app/cmd/upgrade/common.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "2e0ab1ee834964b01b510b9e9ddbf364849f4d6ae9dbb485275e0a32eea8bad6",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/controller/serviceaccount/serviceaccounts_controller.go: tautological condition: non-nil != nil"
+            },
+            {
+              "fingerprint": "2e27472f7de1551f9487f7b8eb18e2f396aa7b7ef7b58342656f53e95de4db35",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "37458ad673db5350af462b39ce82494cf07d7f26cd0d5781683d58268b1726fc",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "37ecf1655a1e81c037ffd6a90272f51d9fafd8a8f3b77dff0cc9adddca3da1c1",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "398147b9a3d5590fe70fd2c141c5c6b9783736b469369b5e00e7c4cedc74ef68",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "3c3d713ab8285ccafc9a39c6ae4e2c68086b499c18fc323f83dbd8407da47cba",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at pkg/volume/util/fsquota/quota_linux.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "3de3291fb63501cdb0387e93ff20e62ea8b3049d30a98d7b43260860dd4ccac1",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/kubeadm/app/cmd/upgrade/plan.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "3fb18f2c9152bd5741f9435f38e5f844fc3ac5566e3f6fdc416da2313e8b86a0",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at test/utils/localupcluster/cmd.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "420fd16d024145fa1219e484b1217e4d79d06c23385fe1530352f300945bdc64",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at test/e2e/framework/debug/resource_usage_gatherer.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "44416ee64be6fe3d3e41a76930409e155d61d769834749ebbc43f88d71d2fea9",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "44adc8e210d476932ff5564726a5d5aa290949c93d63ed6a41bc15ca3ca7ea59",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/conformance/image/go-runner/tar.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "4aeaec469743b7a092ef95f9ea6350391fde5e4cba060dd28df870283104f006",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at test/images/apparmor-loader/loader.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "4c9c173aa746f13fed9b5744579d4c839393d29ad1957403161e120e283654f8",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at test/e2e_node/remote/gce/gce_runner.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "4fd6e78fa03bf67c6c907d306b85a4e9b94776c854ad6aca7945b106d1ee5f76",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/registry/core/service/storage/storage_test.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "50501a406db3b33040b898105c5d0c9d32823f1c2344fd9f5ca918e3f954a405",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/controller/statefulset/stateful_pod_control.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "566ce5bf435139149d7bec20319c5cbf4a7fbfdc3e24a871e184c2268ae20e16",
+              "classification": "true-positive",
+              "reason": "manual review confirms nil-error-wrap at pkg/controller/storageversionmigrator/storageversionmigrator.go: fmt.Errorf wraps an error that is proven nil on this path"
+            },
+            {
+              "fingerprint": "58a67136e7e81535017a7f4de114c3be15fd5852f2b87aaf71541dbc56170ec5",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at test/integration/auth/dynamic_client_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "5dbaaf9352611c6f76e07caf1efa21797520ece54f78dcbcd7b153ceb0ea2a73",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "62f66378d9e1e4deccb54ce188e7278508dd083e95c2d41150f16fce5d4f8f33",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at pkg/util/iptables/iptables.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "67837886d990ffc86a19d9acbb6400f36edcc732f24382a112be7217e19e0e05",
+              "classification": "true-positive",
+              "reason": "manual review confirms http-response-body-not-closed at test/e2e_dra/upgradedowngrade_test.go: HTTP response \"resp\" body is not closed or transferred on every normally returning path"
+            },
+            {
+              "fingerprint": "6a3ca86c825d65a1f70609d5152d2d8dc601a3a2d7f419726aec305c211fc1f3",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "6b825faafaedecdf61a5097c15ec1db8f0df019578a5108909362baa1feb488a",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/controller/validatingadmissionpolicystatus/controller_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "6fff83960a937f182bc4f20a5d35d93d6228b8972de12c2c7a24f0ad4dd7802b",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/registry/core/service/storage/storage_test.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "70a17659c115ec9bfd758090fb94506b30b9c43fa45f81d855029b4c8146945d",
+              "classification": "true-positive",
+              "reason": "manual review confirms http-response-body-not-closed at test/images/agnhost/mtlsclient/client.go: HTTP response \"resp\" body is not closed or transferred on every normally returning path"
+            },
+            {
+              "fingerprint": "7458ad9fb51039a77ed883d8a0cd79c6c89b7d2c9cb09cac470830e03d8be606",
+              "classification": "true-positive",
+              "reason": "manual review confirms suspicious-range at pkg/apis/extensions/v1beta1/defaults.go: this mutation changes only the range value copy"
+            },
+            {
+              "fingerprint": "760d7c7b6b0603fc89218c001658b0a3906ca20bc0cc4c53aef27008d706431d",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/volume/util/fsquota/project.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "7d09a61eff7d1528e0051af81019b16703d636e0f4531fbacd0900f85e9dcc5a",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "7faa1e0c3b36b1b78922884ddc41fdcb380f32f7eb31d9282f34b62227313592",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "8079ea307ad337f5cc60770af05cf89108f307c2326a43db5ec293c0e4b65c94",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at pkg/volume/util/fsquota/project.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "80cccd384fccf2be2d36524bd3c9e0478fd56ba2e43a56d6357531397c47bb1e",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "83d9e681b1c91e5e9dcd79a67860a04f70f0eb5059de866ad22bcc52b33378d2",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at test/e2e/framework/statefulset/rest.go: nil dereference in field selection"
+            },
+            {
+              "fingerprint": "848f6a4f65e4db238fb7ac2226e21f5b5273dd7b4d74788dae1c84cc11957284",
+              "classification": "true-positive",
+              "reason": "manual review confirms http-response-body-not-closed at test/integration/scheduler/serving/endpoints_test.go: HTTP response \"r\" body is not closed or transferred on every normally returning path"
+            },
+            {
+              "fingerprint": "8f5e4cab8d07143f2d33f72024d36caa856a8d3245a9996da4ac93fa5acde261",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at test/e2e/network/service.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "8fd362518ccafa3f9646bc25371fd8b52015f98b83a402d2c3fd009a0cbfe098",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at test/e2e/storage/podlogs/podlogs.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "912dc2f4f50baa846081a362f5b48c1b5b9e31506294799f6f2ff78b1187fab5",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at cmd/kubeadm/app/phases/certs/certs_test.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "919d19b5cf0ba569e9d070651b82bdfe6e8660e0abd65a0f7f4ef42b9267ecc4",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/scheduler/framework/plugins/podtopologyspread/filtering.go: tautological condition: non-nil != nil"
+            },
+            {
+              "fingerprint": "94ded80eda035886417a7558243af60bbbe866a07d56e3f07325eecb7f9b9433",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at test/e2e_node/container_lifecycle_pod_construction.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "965ee148dbce5c91bb750e7080987f1324e8967b550b0f5c2e831a07756fdc2b",
+              "classification": "true-positive",
+              "reason": "manual review confirms suspicious-range at test/integration/apiserver/apply/apply_test.go: this mutation changes only the range value copy"
+            },
+            {
+              "fingerprint": "9748aeb0ff40ee092658a6c10caf4c57606f8c12b735e69df614a8890d38ac28",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "9dea2f55581b202e5b0b93a86ce441cfda51aafd83d7f615116582bcd131eb28",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at test/e2e_node/eviction_test.go: impossible condition: non-nil == nil"
+            },
+            {
+              "fingerprint": "9df6ea89dfa5ba77185194083e01114bd01a64326ec8d0d1c9234b45b4d1ca11",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/registry/core/service/storage/storage_test.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "9f5e64723d25a786dde9602fae7c328d5861489dedfdb9088be5de38b50c234d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/e2e/apimachinery/garbage_collector.go: unreachable code"
+            },
+            {
+              "fingerprint": "a12969300cab77d12d0eb4c5df487a87fa774b523f43125b08d4ca37c0f9f119",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at pkg/kubelet/logs/container_log_manager.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "a2bc8335b42f7cfea11d3db143de35bfe2e19fa7b385771932085860b3bad6e3",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/controller/resourceclaim/controller_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "a40a4f8b1b01a611f68865f6ce1d864957e257d69a0e317313355944995c8edf",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/volume/emptydir/empty_dir.go: impossible condition: non-nil == nil"
+            },
+            {
+              "fingerprint": "a4d90fabe6fbac9bfe8100b3052b8ab8fbd4f94044e36739a1e7df00fed71717",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "a6952415fea8c2fe464406afe5eb157db5271be674ace8ae7c5508ba4f2bdf88",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "a7c0bfe2b9fcb4d723123b9931df2f0aab53e18763835c9c4c28405f9b87fc73",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/kubeadm/app/cmd/upgrade/plan.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "a8a06e0f378112ce0865378b379559d595ba31a679d444de901dca49977ac76f",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at test/e2e/apimachinery/chunking.go: tautological condition: non-nil != nil"
+            },
+            {
+              "fingerprint": "afd6321dc929adb5c6ee06c8aa4b161a2cda02106533c8944f0733e97ee5144c",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/registry/core/service/storage/storage_test.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "aff5b051be0f6f0d51dc33a0776c751f3aeb7aec45f7c66c65f667e1d5b017f8",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/conformance/image/go-runner/tar.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "b5571f21ec7d71732ba0c789b4b1df8c6944f01c87d7828af54a5276a7947768",
+              "classification": "true-positive",
+              "reason": "manual review confirms nil-error-wrap at pkg/controller/storageversionmigrator/storageversionmigrator.go: fmt.Errorf wraps an error that is proven nil on this path"
+            },
+            {
+              "fingerprint": "b730fca7594e765a5f2f589fa06591c3f58fb676752fba44a6d6daa93bfabed9",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at pkg/kubelet/logs/container_log_manager.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "b785298aee394663d93ea44874954b3a916d8bc6f4d1392b438a4440bab4447a",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/volume/csi/csi_test.go: impossible condition: non-nil == nil"
+            },
+            {
+              "fingerprint": "b7f57d24dd91f2b0b0472b8246165d73042e73f5f8a2766e4d074d35cab783cc",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/kubeadm/app/preflight/checks.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "ba9bf1a1ca66167177ce35406aa3e98baa5a323eeb44463b0c5d9e49252a8f85",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at cmd/prune-junit-xml/prunexml.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "bb2a94bb6578d6121d1a7da5405da3376925becae9684a80f648ac850436dbaf",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at test/integration/apiserver/admissionwebhook/admission_test.go: nil dereference in dynamic method call"
+            },
+            {
+              "fingerprint": "bd86fefb10524eff2d53ee184f31abc430b83f0bac7ac258b0c2625fb650014d",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "c28076739727ca426c460419ced8031eef18d41784f29a038479144a19d96a1e",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at pkg/kubelet/kubelet_server_journal.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "c428c2429a79b95c37e11381821360b82a42b8ddea7cd5cb9790c691635c1814",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/registry/core/service/storage/storage_test.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "cc967df67e513a41ede99630c168b1199b36b45e251748149de8897158f5c1ed",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at hack/conformance/check_conformance_test_requirements.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "cf470950eba2a2e6fa09077d742e7bd9edd349d28d43aa621d25aff2fe64016c",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/kubelet/pleg/generic.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "d220be6cd82737eeb33ab8494e8467d72a7ee7411f51e56d11bc2fa62a8b577a",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "d4c85befae2c492c503f1de3140ceff17fa9a26d86f815a6e1fe4387d6c3afad",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "d6721e4714316934cf386766db9af4c070c689e46c46bd2dbd5f7f73686b1919",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "d8e7c0d915161a16f485640ffa0ec771c6153c3a0490a054620243015ed3a0c7",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at pkg/kubelet/cm/helpers_linux.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "ddb3976a3408c3782e5459960a09d4ac759d2fe5e2dd4423b4bcbd40f4b666cf",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/kubeadm/app/cmd/upgrade/plan.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "e379f7de0a3ea4809e1628cf1da356b660bcba56cce9c6bc24f7c889075bd9bd",
+              "classification": "true-positive",
+              "reason": "manual review confirms http-response-body-not-closed at test/e2e/reporters/progress.go: HTTP response \"resp\" body is not closed or transferred on every normally returning path"
+            },
+            {
+              "fingerprint": "e464e8b6a9c449d80919a4273367581787504b18a67897db87bae41734ce45ba",
+              "classification": "true-positive",
+              "reason": "manual review confirms suspicious-range at pkg/kubelet/kubelet_node_status_test.go: this mutation changes only the range value copy"
+            },
+            {
+              "fingerprint": "e4d4ed82ba0383924d42663bc44290740659e2f77454d98988c73f7ece864cd2",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "e4f5325d096200dba778123c0c992084f3ea5198a370b34fdbf3921e2ba23514",
+              "classification": "true-positive",
+              "reason": "manual review confirms nil-error-wrap at pkg/controller/storageversionmigrator/storageversionmigrator.go: fmt.Errorf wraps an error that is proven nil on this path"
+            },
+            {
+              "fingerprint": "e715fad984a5eb692bceba185c901ea2e895fb52881fb52a4b75cb542dc110f3",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at test/e2e_node/hugepages_reporting_test.go: impossible condition: non-nil == nil"
+            },
+            {
+              "fingerprint": "ebb9f5e57973aec549aca779e992cceeaf8d5dc791d00463d8f635e573144cb6",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/registry/core/service/storage/storage_test.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "ebf0d970f3452ea6a4a67ed1a9122c6c1a6b7f79cc7e1f66a0665775b012a30c",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "f22cd3a862c6c90313e2d5241a45d0c1bf0b946bd730956c6b2c5f11751212a1",
+              "classification": "true-positive",
+              "reason": "manual review confirms suspicious-range at pkg/kubelet/kubelet_node_status_test.go: this mutation changes only the range value copy"
+            },
+            {
+              "fingerprint": "f551e8e1c38f79992bdab672c8e1934f4394fbb4931ca4e98a752eacdd976a04",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "f5ea343c74c83def57aee879de964c009b6b32428b0a4b8a06ded83d6d05edb9",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "f6a6c0763b2e0d5ce7b98df7894deefc7bea9507d8b223dec85bfff7ea24f7fa",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at test/integration/pods/pods_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "fa538d6fa7c54bc7b3e0a7a2f6baaab4aefc4e67d755aa3f7e5deb76e429f287",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at pkg/volume/util/fsquota/common/quota_common_linux_impl.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "fa5f9d8ad999b6c506c04e8e3ed237a2685a3d0b5e2c581923a694a2a3adef16",
+              "classification": "true-positive",
+              "reason": "manual review confirms ineffective-break at pkg/kubelet/kuberuntime/kuberuntime_container.go: unlabeled break exits only the enclosing switch or select"
+            },
+            {
+              "fingerprint": "fb2e2f71e64ce8193f25f1b518003fcdb31f52d9348fcc3dff42191c3701beeb",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at test/e2e/framework/debug/resource_usage_gatherer.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "fc9017bc7ebb2776a5f0624066866da10312facb6db8063351b20e0ec2b0f0f6",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at plugin/pkg/admission/storage/storageobjectinuseprotection/admission.go: nil dereference in field selection"
+            },
+            {
+              "fingerprint": "fc9919974c1644e58d053620dc08b662f2d32d5ee756127443f79e1e3814189d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at cmd/kubeadm/app/phases/addons/proxy/proxy.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "fd32787e10b278dad403ff20e429aa5711ddd3d6581f9f390c28134147a05ef9",
+              "classification": "duplicate-staticcheck",
+              "reason": "Staticcheck SA4011 reports the exact ineffective-break source range"
+            },
+            {
+              "fingerprint": "fe359717949591734dbc7e4bab6e136bdec746a621b35bc1283b976cb07fdf9b",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/controller/volume/persistentvolume/pv_controller.go: nil dereference in field selection"
+            },
+            {
+              "fingerprint": "fff3fe77b184d72cab61c2c072ac4e3d3a0fa3ea8ecaed6da45b350cef35b915",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at pkg/volume/csi/csi_test.go: impossible condition: non-nil == nil"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "moby",
+      "revision": "b612274c5489b546ff8b4a4f93f25a0b8952713a",
+      "result_sha256": "c718e7ff61545c04207d3bc7a0c50dcb8b8a53578b0ea8b15c9d5e7808bee958",
+      "incomplete_format": true,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [
+        "default",
+        "recommended"
+      ],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "f356741b192026412f9ec5ba7c6f3d73c38a990d3667a62b840fc24049f75002"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "82ae02acb2fb25ca84d1110e57ef173f7316a857cd4a345dde7addfd00043aa3"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "a4d55cef04dbefdae52409109ce2bbca6a834ff1d807810351068be2758994cb"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "7c31b76c657e6a69b29eb772e9cef221fcf3f847f7f4aab2f07e836c6c43a69c"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": [
+            {
+              "fingerprint": "2c41007873112394933731973cbddec6a066efe9695b0d5aafde831da13470d2",
+              "classification": "true-positive",
+              "reason": "manual review confirms context-cancel-leak at daemon/pkg/plugin/backend_linux.go: the cancel function is not used on all paths (possible context leak)"
+            },
+            {
+              "fingerprint": "350b479fd66ecdfa7a654ea5925675644915cf56ff30c92568ebe98c8d0fcbfe",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at integration-cli/docker_cli_build_test.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "35ff1fcbb1e98ee61a880b3a76ae82e77289693604d93450b6c5dc21971b013a",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/builder/remotecontext/internal/tarsum/tarsum_test.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "43da91e5a9e006ea760914f87a3c5c203c0e4d396207dbc33eefa0a874ede6d7",
+              "classification": "true-positive",
+              "reason": "manual review confirms context-cancel-leak at daemon/pkg/plugin/backend_linux.go: the cancel function is not used on all paths (possible context leak)"
+            },
+            {
+              "fingerprint": "514f37a62e7a413576d8e4164e7ea401b29adf836aa4096026c08ad2b79d5687",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/server/router/container/copy.go: error returned by compress/flate.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "5a051f9f8bced331edc815be91ef38989adb9dd0dddfe38e70cc58462e1cde37",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/pkg/plugin/backend_linux.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "5f6bdbf678d95e76bcb06515639dde5b339c46d89c2d432599a5a47cabb497a8",
+              "classification": "true-positive",
+              "reason": "manual review confirms context-cancel-leak at daemon/pkg/plugin/backend_linux.go: the cancel function is not used on all paths (possible context leak)"
+            },
+            {
+              "fingerprint": "752cfed83f0e5d936077bd49b61f8f74d04924c8ef4a701034b62decd96c4a78",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/builder/remotecontext/internal/tarsum/tarsum_test.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "7706cb641c38e438e097301eb7d6ca4c891013001fdbb3e4df9aaa688e8757ea",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at integration-cli/docker_cli_build_test.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "7abf2dce7a93a9971ba6af2416adb1bb8768354c686a736babf93d83c68bb7cc",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/server/router/container/copy.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "889899c3b10dcf352d9afb1969ca0f46fc865cddb48d01894f837522c90057f1",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/logger/loggerutils/logfile.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "a897c3a1217ed924615f3bb40a3c09f33a494af146957b6ca9add49c72875d4d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/internal/layer/migration.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "ba85dfe40c2d79942ac12ecf05c25a437154504d8db9af9c2fe89bd45eeefd1d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at pkg/pools/pools.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "cbc6650d3de6c011beff1a8d92b2cf31480752416b84db5014d9d2cd20dcb0f3",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/builder/remotecontext/internal/tarsum/tarsum_test.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            }
+          ]
+        },
+        {
+          "profile": "recommended",
+          "findings": [
+            {
+              "fingerprint": "2c41007873112394933731973cbddec6a066efe9695b0d5aafde831da13470d2",
+              "classification": "true-positive",
+              "reason": "manual review confirms context-cancel-leak at daemon/pkg/plugin/backend_linux.go: the cancel function is not used on all paths (possible context leak)"
+            },
+            {
+              "fingerprint": "350b479fd66ecdfa7a654ea5925675644915cf56ff30c92568ebe98c8d0fcbfe",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at integration-cli/docker_cli_build_test.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "35ff1fcbb1e98ee61a880b3a76ae82e77289693604d93450b6c5dc21971b013a",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/builder/remotecontext/internal/tarsum/tarsum_test.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "3b67517b82fcb04fe58263bafa39b1528f74443b4206e010d55b2ad9f9647fe1",
+              "classification": "true-positive",
+              "reason": "manual review confirms http-response-body-not-closed at integration/networking/port_mapping_linux_test.go: HTTP response \"resp\" body is not closed or transferred on every normally returning path"
+            },
+            {
+              "fingerprint": "43da91e5a9e006ea760914f87a3c5c203c0e4d396207dbc33eefa0a874ede6d7",
+              "classification": "true-positive",
+              "reason": "manual review confirms context-cancel-leak at daemon/pkg/plugin/backend_linux.go: the cancel function is not used on all paths (possible context leak)"
+            },
+            {
+              "fingerprint": "4ed1e9943d8903124c74205dc026d6e3b7556ab90c7004f3f70aff21cc308546",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at integration-cli/docker_cli_stats_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "514f37a62e7a413576d8e4164e7ea401b29adf836aa4096026c08ad2b79d5687",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/server/router/container/copy.go: error returned by compress/flate.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "51639b1977535694abe71588c90b58f0132a7e55ebe97d601f6f6bacb0cddc28",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/testutil/fixtures/load/frozen.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "5a051f9f8bced331edc815be91ef38989adb9dd0dddfe38e70cc58462e1cde37",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/pkg/plugin/backend_linux.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "5f6bdbf678d95e76bcb06515639dde5b339c46d89c2d432599a5a47cabb497a8",
+              "classification": "true-positive",
+              "reason": "manual review confirms context-cancel-leak at daemon/pkg/plugin/backend_linux.go: the cancel function is not used on all paths (possible context leak)"
+            },
+            {
+              "fingerprint": "6029348e7a7f177e1a43cbab5d652ba3dd6eab280a9734bb17c43bcba68f5788",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at integration-cli/docker_cli_daemon_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "66ebf889a4211110d95bc00fc2abc223d9cdceddf1c200c1415d4f949359541e",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at pkg/tailfile/tailfile.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "752cfed83f0e5d936077bd49b61f8f74d04924c8ef4a701034b62decd96c4a78",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/builder/remotecontext/internal/tarsum/tarsum_test.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "7706cb641c38e438e097301eb7d6ca4c891013001fdbb3e4df9aaa688e8757ea",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at integration-cli/docker_cli_build_test.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "7abf2dce7a93a9971ba6af2416adb1bb8768354c686a736babf93d83c68bb7cc",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/server/router/container/copy.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "889899c3b10dcf352d9afb1969ca0f46fc865cddb48d01894f837522c90057f1",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/logger/loggerutils/logfile.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "9e664f15f62ddabffb442737a78524213a517bba5ea60d4722ff4ade6de153ae",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/testutil/fixtures/load/frozen.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "a897c3a1217ed924615f3bb40a3c09f33a494af146957b6ca9add49c72875d4d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/internal/layer/migration.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "ba85dfe40c2d79942ac12ecf05c25a437154504d8db9af9c2fe89bd45eeefd1d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at pkg/pools/pools.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "cbc6650d3de6c011beff1a8d92b2cf31480752416b84db5014d9d2cd20dcb0f3",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at daemon/builder/remotecontext/internal/tarsum/tarsum_test.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "d15dec16c3f1570f716f398a9722aa4b6697a5c9dc764fba6b8eeedc50c5ca1d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at integration/plugin/logging/logging_linux_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "f46891e44f9a6f04cabf81a3d07f75b170a3f16713d0797dab95c48ea5595ce7",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at integration/container/create_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "f5acdda1c65e6f7bb83f77a54fdccbbb2964ca9393af59a72bebc427e85301bd",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at integration-cli/docker_cli_build_unix_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "f6a45d39c8fc4427a53f17235c10b84c1ff1dd19cf8c48fc1d98d016fa5e977f",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at pkg/parsers/operatingsystem/operatingsystem_linux.go: scanner.Err is not checked on every normally returning path after iteration"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "nats-server",
+      "revision": "1787eee035cf0253c201fa0f05afad92b6f296dc",
+      "result_sha256": "2fa0e487b3c8a7d266b5a781e1c3b7919585b32ec4d726591f12fce5d349ba14",
+      "incomplete_format": false,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "70078ce3b2da49b013ac469bcd0a8d3f9245d54a60017d91fdd3f58bf41857f8"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "cd257515a5c9748f2444b9935406581175ffe1c127d0b362e39b728ce692d882"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "f10de49a286f722763820f822e99e3c74fc51fd96694e1dc3fb4244786eaecdf"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "95e4620714fa5d229fb43897dc5fe3b2d9e79eee5ce96c39276686d460ba1ecd"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": [
+            {
+              "fingerprint": "194f60a08da01514a96e729f8dae0825c85b49437803e7afdf1984bd9c8b566d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at server/websocket_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "20c88705c8e17200e25a2fbdc4ddbb5fcb41729557af51e60682c1a570d265e7",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/bench_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "2d7e4343a2f2ca92da019a8ffaf4a900581055535543c48f1f3bfc9d0c63411f",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at server/filestore.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "47d09ff5230f7f287dc833f381fac0da60c8a8f2f179e8bc5e9565349a4cc0e5",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/bench_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "499fda5daddc4864576f8ff073f5bbebafdb9fbb172fbd0e54b1864d1b39b0f2",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at server/mqtt_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "73c2c68a0f9555ccb4e6556d9b8022540758ffd2a28062aa979336489c81a694",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at server/mqtt_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "c47640457e35d7d4155a33e5cac62f87ae93a0e82de6ac4d590fd80d86b5262f",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/bench_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "ef37fef666e2b46ccad6a24523726b6c9dc331802e629a1f435a837582dfcfc4",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at server/norace_1_test.go: unreachable code"
+            }
+          ]
+        },
+        {
+          "profile": "recommended",
+          "findings": [
+            {
+              "fingerprint": "194f60a08da01514a96e729f8dae0825c85b49437803e7afdf1984bd9c8b566d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at server/websocket_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "20c88705c8e17200e25a2fbdc4ddbb5fcb41729557af51e60682c1a570d265e7",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/bench_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "2d7e4343a2f2ca92da019a8ffaf4a900581055535543c48f1f3bfc9d0c63411f",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at server/filestore.go: error returned by archive/tar.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "3fe696cb672ad66090eb3f23c1765cc8e35fc386add2d07f2490553f8fdbbf72",
+              "classification": "intentional",
+              "reason": "manual review confirms the condition at test/ping_test.go:183 is a deliberate loop postcondition: the loop exits only after c.Write returns a non-nil error, and the assertion documents the expected connection-close behavior"
+            },
+            {
+              "fingerprint": "47d09ff5230f7f287dc833f381fac0da60c8a8f2f179e8bc5e9565349a4cc0e5",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/bench_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "499fda5daddc4864576f8ff073f5bbebafdb9fbb172fbd0e54b1864d1b39b0f2",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at server/mqtt_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "51fb41c52aaa92e5fb1a8742a8bb854aae03770428da58aa21db076ce4104882",
+              "classification": "intentional",
+              "reason": "manual review confirms the condition at test/ping_test.go:137 is a deliberate loop postcondition: the loop exits only after c.Write returns a non-nil error, and the assertion documents the expected connection-close behavior"
+            },
+            {
+              "fingerprint": "53e0d519003fdb3bcf5e174f5c93ebb37d21fd2b6580822d04505496d0fe117a",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at server/jetstream_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "6099a590192c3897643bfb91209f0780b9164b7b5f594348a7e33feb2b24fa97",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at server/core_benchmarks_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "6857d1e93c6de0947ca5affa17e2948f250b10435dcf7d34f60afe9dd91080a5",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at server/jetstream_cluster_1_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "73c2c68a0f9555ccb4e6556d9b8022540758ffd2a28062aa979336489c81a694",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at server/mqtt_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "8a4ebe9c5ff3a797d7493bd4f3c7de7881cc3b56d3ebc4ccae4d197e17af4597",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at server/jetstream_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "95ce085dd217666298ede7a642a2ae322f58a1c56604ba6c3ed247716bd5c5ca",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at conf/parse_test.go: tautological condition: non-nil != nil"
+            },
+            {
+              "fingerprint": "99b919aa03e8908af647752a2622e5c8009bcfe11ba19a602ff4f3e0fc343e3d",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at server/jetstream_cluster_1_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "ab9b6e5988fc25b072aa4830942736d08accd0db245e799d09941fc8237b1864",
+              "classification": "intentional",
+              "reason": "manual review confirms the condition at test/ping_test.go:95 is a deliberate loop postcondition: the loop exits only after c.Write returns a non-nil error, and the assertion documents the expected connection-close behavior"
+            },
+            {
+              "fingerprint": "c47640457e35d7d4155a33e5cac62f87ae93a0e82de6ac4d590fd80d86b5262f",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at test/bench_test.go: error returned by bufio.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "ef37fef666e2b46ccad6a24523726b6c9dc331802e629a1f435a837582dfcfc4",
+              "classification": "true-positive",
+              "reason": "manual review confirms unreachable-code at server/norace_1_test.go: unreachable code"
+            },
+            {
+              "fingerprint": "f5248c2c425c203481a2973c77af0829423a54da12e256049c9aab2336a9723e",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at server/mqtt_test.go: impossible condition: nil != nil"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "opentelemetry-go",
+      "revision": "736a14fcdca28b8cf5237e6b9b166ec6ed832bf7",
+      "result_sha256": "c0008be0b940e634c5660c4f61e826e7c355204599ef7d72c5befc694d02acfb",
+      "incomplete_format": false,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "34bba49e5bbdbb854179535f2e7d01223f47fceb517d7135bb2bd9262d966edb"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "7cfb3e72e41b809046a968137e1b0fbe1ffbbc17b67b9106b6fcb5ec11d81833"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "db39b07d13b05b20055391dc19b562b3cdfa5204bd0f807939110d53ecc0690a"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "55cabfe7a944cabc3f5537144617f3ec75a277067d55ac21f7d646c86d4ee782"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": []
+        },
+        {
+          "profile": "recommended",
+          "findings": []
+        }
+      ]
+    },
+    {
+      "id": "prometheus",
+      "revision": "d15adb9ad7e5d9fbde3a9a8f30200593a5a14d86",
+      "result_sha256": "6cc77c762c620b4412010f2dd84a32bbdefddde3bba8b0a7e77830d515d4afd0",
+      "incomplete_format": false,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "1dbad2841b195c3f013e3fef3b01b4dc1539a8ec8e9fc762b871c57b688970e4"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "707fa9dd905d452fa2073607517ecc1f6eef845df3fc03d13d9ddf2c177e6d62"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "522d889ffb8836ded71a72eec5d0e68b2f6606d759c60c61210ee898fc2b8b35"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "9b6e73eb5fbef9ee516d26bcc121118f6d38de6195020776508e466f06425df9"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": [
+            {
+              "fingerprint": "1f31b536039b122881a60392b3a3415434d4e73a1d8c1d6e7e64a744f6b73076",
+              "classification": "true-positive",
+              "reason": "manual review confirms impossible-comparison at tsdb/index/index.go: comparison is always false for type uint32"
+            },
+            {
+              "fingerprint": "416567ef82008cc19bcae6976243e9ec8bb6ebaf459170a01e79262f2940bedb",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/promtool/tsdb.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "4f9da2e19723261ba15f7f94c4059403368185723483ca943bc962239f333922",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at scrape/scrape_test.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "66398cd71d0a2b87e6717d5155dbb10ab52982641281002e33718345bffe6588",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/promtool/main.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            }
+          ]
+        },
+        {
+          "profile": "recommended",
+          "findings": [
+            {
+              "fingerprint": "137ef30f3c87aea4b90fca8e954031838c29a7dd0aa1a4aaf74d5db78acb7efa",
+              "classification": "intentional",
+              "reason": "manual review confirms promql/engine_internal_test.go:51 deliberately indexes a nil slice to test deferred panic recovery; the source comment explicitly identifies the runtime panic as intended"
+            },
+            {
+              "fingerprint": "1f31b536039b122881a60392b3a3415434d4e73a1d8c1d6e7e64a744f6b73076",
+              "classification": "true-positive",
+              "reason": "manual review confirms impossible-comparison at tsdb/index/index.go: comparison is always false for type uint32"
+            },
+            {
+              "fingerprint": "416567ef82008cc19bcae6976243e9ec8bb6ebaf459170a01e79262f2940bedb",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/promtool/tsdb.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "4f9da2e19723261ba15f7f94c4059403368185723483ca943bc962239f333922",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at scrape/scrape_test.go: error returned by compress/gzip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "66398cd71d0a2b87e6717d5155dbb10ab52982641281002e33718345bffe6588",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at cmd/promtool/main.go: error returned by text/tabwriter.Writer.Flush is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "6f87672ad1f6ab2d46f8ad0b463eec030f1915de3091625b060f3fadc8e6b129",
+              "classification": "intentional",
+              "reason": "manual review confirms promql/parser/parse_test.go:6146 deliberately indexes a nil slice to test parser panic recovery; the source comment explicitly identifies the runtime panic as intended"
+            },
+            {
+              "fingerprint": "946dbf23d1b9299c6e8d09a379547508226cd45f02cea529036ada421881e538",
+              "classification": "true-positive",
+              "reason": "manual review confirms shadowed-error at cmd/promtool/rules.go: this err shadows the named error result updated by the deferred closure"
+            },
+            {
+              "fingerprint": "d16776b1341c861180a9ca5862e73d214123fca98870d1c9837961fd9ec552d1",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at cmd/prometheus/query_log_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "restic",
+      "revision": "a80be1478a4c537f8396e0db2b05120aa78f11e0",
+      "result_sha256": "bef3a244c38a71da462e97eb720f0bce6c87e8353975948de1159e97394c0ff6",
+      "incomplete_format": false,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "902c850077cb2dc5665435ee9b4cb60f69c78e095fa223fcbcb06379185a434f"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "889d7ef9c3151180bcd67fab0d6c95ac145d95b30969e503309035e8dd4450b5"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "de58853b0f72bc58e3054177bb81725021e3107af5be350a1b70d0fe0d7bfe84"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "20cc349e1d41ce7158d9bcb6f60a21165900af238b46550630a3ccabc4dc5955"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": []
+        },
+        {
+          "profile": "recommended",
+          "findings": [
+            {
+              "fingerprint": "0bc9feca3b4c27cb34a33b9d25e9a0ef358d6b9d4f95ad9c0ef438fc64272abd",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/filter/filter_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "1a2e8704312c2f9613ff5ef62304b53afac1ec74d3e42869bdb6c9f2ee83297d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at cmd/restic/cmd_diff_integration_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "1b17afeeb6edea560d5b79d688998d5c63b97c3c565219f88f3a6b17707a7dfd",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/backend/rclone/backend.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "23fcff099353d5b3073a189dd169d9ad6543ca46a9a74e93b4b35e3dffe39737",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at cmd/restic/cmd_key_integration_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "5bd2eee7f35e281d70746b8eaa0ebee2007d8c9041454a9d9850f8cb9d5c2556",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/selfupdate/download.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "857763c2e932e02c7a8e4881784427c215d736fbfecb5a50f85b34b78676da42",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/backend/sftp/sftp.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "86c618b90b2073837bb399167ba6c5b625234b2d50224e45d09d9341acfad47b",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at helpers/prepare-release/main.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "bf10d214cc5847d0fd3b02c6fb42b5757ee72733ebc63647c60ce4797d6fa619",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/data/find_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "de1a7f53c87cad9a6ad1926762113a7f364ad0a6e85405c7891b58ed205574c2",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at cmd/restic/cmd_list_integration_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "f4e6541b4c7e239f55c45d6e664ae6ad9b30f621b462fa922e330ba1da681a58",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/fs/fs_reader_command.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "fd8a061f0d23ca9e20c46e76f5d08d959106d9b3bb45fb53dcf5ac572ff0b7a6",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/terminal/foreground_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sqlc",
+      "revision": "99a7d7d0c7b913ded6a60a9d038ece99dcdf7892",
+      "result_sha256": "8fa4a8d03fc1180682216fe1734509eeb7c908329e2a88de45f88499ae00a13f",
+      "incomplete_format": false,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "3a2b019d023f9c409d15a48473ce9903d257ad21a0877c4713c22be6a798e08c"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "73a3eb16da9af697955b17f33ed6182e4b68a598849158756154c7c90207b847"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "def367ec8fefba4e06bc60c60e08d4bd977ad3065d947763925177e34c688e8a"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "85f8860831b11d1a09ecb932af7cf4d48395bd7899440976ea9f31f9751dc89a"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": []
+        },
+        {
+          "profile": "recommended",
+          "findings": [
+            {
+              "fingerprint": "088aa29ad6d52db10b8f86ee431876156ff865521f05afe5238f6fddbbdcaf94",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/cmd/cmd.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "3b6f8913d814b332e5a882aba6b2b4d15421b2fd4303a8084e727140e01ae490",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/migrations/migrations.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "88cf4a6daf0fa50e9e391f158b2f3507c00c45d2853528d88232fc33940086e7",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/migrations/migrations.go: scanner.Err is not checked on every normally returning path after iteration"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "terraform",
+      "revision": "883c7221ee2e0bc2fad6912fd4b3cc4b53a598a7",
+      "result_sha256": "849649a7039a6d0676ce3c6eedd3b37e16d1e07f197567afa8dc66aaef20c368",
+      "incomplete_format": false,
+      "incomplete_fix_preview": false,
+      "incomplete_profiles": [],
+      "incomplete_comparators": [],
+      "measurements": [
+        {
+          "profile": "default",
+          "statistics_sha256": "1ba437258b8a674968ff1bed5835841e76f4c978c5d35f742d5e10a9173ba33c"
+        },
+        {
+          "profile": "recommended",
+          "statistics_sha256": "0d4b8154172cb4caf14becb577bfffce29bdf542a6c9c6d420ce173868c55d0f"
+        },
+        {
+          "profile": "strict",
+          "statistics_sha256": "630a3f6294836d4aeaeb72228fb1649685961e4ab49152cc025b7f67262dac5c"
+        },
+        {
+          "profile": "pedantic",
+          "statistics_sha256": "1db547c75129135ed1d139bb51e1408de6b26aa921f84d080cb76d6eb1c2b45e"
+        }
+      ],
+      "profiles": [
+        {
+          "profile": "default",
+          "findings": [
+            {
+              "fingerprint": "4e92985561755b9fd1be4e8a4dd56c0a40f8349088577e06222c029829fcf055",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at internal/plans/planfile/writer.go: error returned by archive/zip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "863f1b2d32b5c908f9fbe0f260edeb2b39fcbe86170dd932ac82722c09c33b21",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at internal/command/junit/junit.go: error returned by encoding/xml.Encoder.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "d0769b0466ada4a8ce45147a2c964319f0bb5a814e5c212e2e060eb33dcbf60d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at internal/terraform/config_snapshot_test.go: error returned by archive/zip.Writer.Close is discarded; buffered output may be incomplete"
+            }
+          ]
+        },
+        {
+          "profile": "recommended",
+          "findings": [
+            {
+              "fingerprint": "04399f8f54d48b165c34d2eb8cd23e93960921228953e6c3245e8323fbb7a508",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/getproviders/reattach/reattach_test.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "13f5a5e095f6e4c20ccd4720b14d4d7009da9f187f14db92b80f6c4658e63e71",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/command/ui_input.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "1a5c9323ef6272a5526426bcb9759087f845457814fa01c10a8f7c0cd3eea32e",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/terraform/graph_dot_test.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "1cbecd5410189bbdd3bf69caa426895a141753f81aab071c4824cc40f19f6b70",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at tools/loggraphdiff/loggraphdiff.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "1d85038391b1a6872e1fab204abb4fe3be0602ad40fde42a6da35a53f82b63c9",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/configs/parser_config_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "2927c5656a2ad6d1335ea015b0aa9a5e982c4fb8a5ef964f796199d06531d077",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/stacks/stackmigrate/testing.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "3fd14263d737d51673d10799baf18f68e172178f8f425211fe5bb969b792b63b",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/command/format/diagnostic.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "47fae09d7e2a6a86126cabddd0fb6df7a62d02c960552f89f95eff8363f91be9",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/terraform/graph_dot_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "4d9e8fbf9b20f5693267a904fa95bf737e8a1aea034301490c34362b1b645f35",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/getproviders/package_authentication.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "4e92985561755b9fd1be4e8a4dd56c0a40f8349088577e06222c029829fcf055",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at internal/plans/planfile/writer.go: error returned by archive/zip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "59df7cb16beeaeee16e1bd5ec0fbefa84217121fffca293f59554008bb29626c",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/communicator/ssh/communicator.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "611202c2c57dd09e9d7e48fce85dc41a7c8d1d7a49f5bf56b718359ae843fbb9",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/states/statefile/version3_upgrade.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "6710d404b57a742306ae7f776bc06a769c67b5962f5da921871c606a02eeb48c",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/configs/parser_config_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "6df88109952ce21144068867ac0f886af512aec3ccf5e3552f66dfdffa38d623",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/command/views/hook_json.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "6e4ab647c778148101cc6329ff51ac7ecd95d4ec2a6a4c65bacac1ac2832c6b6",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/command/state_meta.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "836fde089ac679a81772f7d57dd4ac90de22f0f7bd4136a94f284775a771a33e",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/states/state_string.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "863f1b2d32b5c908f9fbe0f260edeb2b39fcbe86170dd932ac82722c09c33b21",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at internal/command/junit/junit.go: error returned by encoding/xml.Encoder.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "9ae58aef811c8494dcdc5a479462c75fb8b8e415678e1f82bd7e3071ca83bf75",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/backend/pluggable/pluggable_test.go: tautological condition: nil == nil"
+            },
+            {
+              "fingerprint": "a2563aa2ec77ec6d67a80e11dff30d45441234ae35f80f462e943c3550745d53",
+              "classification": "true-positive",
+              "reason": "manual review confirms nilness at internal/terraform/graph_dot_test.go: impossible condition: nil != nil"
+            },
+            {
+              "fingerprint": "d0769b0466ada4a8ce45147a2c964319f0bb5a814e5c212e2e060eb33dcbf60d",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-writer-error at internal/terraform/config_snapshot_test.go: error returned by archive/zip.Writer.Close is discarded; buffered output may be incomplete"
+            },
+            {
+              "fingerprint": "d222e9c6d7b8bc3acb9fe59d138729be87b3aca6b4b30d1253c57f0eba4a6105",
+              "classification": "true-positive",
+              "reason": "manual review confirms defer-before-error-check at internal/command/init.go: cleanup is deferred before the acquisition error is checked"
+            },
+            {
+              "fingerprint": "d527514be0db5c0b939bda314ec99bfe7d04acd29d28a7fb0cdce66823c5348e",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/terraform/context_test.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "dd33cc0c3625d7b836246cd5958031e4a6d7ab8a3c593d785f01b439b3e911db",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/command/views/hook_ui.go: scanner.Err is not checked on every normally returning path after iteration"
+            },
+            {
+              "fingerprint": "e31a84ad1d2b25be935702eaabe021edac35230c8328228ac13794783e8bd062",
+              "classification": "true-positive",
+              "reason": "manual review confirms unchecked-scanner-error at internal/command/console.go: scanner.Err is not checked on every normally returning path after iteration"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "gaps": [
+    {
+      "id": "cockroach-fixer-missing-embedded-teams",
+      "repository": "cockroach",
+      "source": "fixer",
+      "kind": "unsupported-construct",
+      "summary": "safe-fix preview cannot load the clean checkout without generated TEAMS.yaml",
+      "evidence": "analysis preflight reports pkg/internal/team/team.go:82 missing embedded TEAMS.yaml",
+      "disposition": "not-actionable",
+      "rule_id": "",
+      "reason": "requires an explicit digest-bound derivative-source policy before analysis or fixes"
+    },
+    {
+      "id": "cockroach-formatter-unsupported-go-version",
+      "repository": "cockroach",
+      "source": "formatter",
+      "kind": "unsupported-construct",
+      "summary": "recursive formatting refuses a nested module that selects unsupported Go 1.23 source",
+      "evidence": "formatter report records pkg/acceptance/compose/gss/psql/go.mod selecting Go 1.23 outside Glippy's Go 1.25 through Go 1.27 source window",
+      "disposition": "not-actionable",
+      "rule_id": "",
+      "reason": "the nested module is outside the documented supported source-language window"
+    },
+    {
+      "id": "cockroach-missing-embedded-teams",
+      "repository": "cockroach",
+      "source": "manual",
+      "kind": "unsupported-construct",
+      "summary": "clean checkout lacks generated package-local TEAMS.yaml",
+      "evidence": "pkg/internal/team/team.go:82 go:embed preflight failure",
+      "disposition": "not-actionable",
+      "rule_id": "",
+      "reason": "requires an explicit digest-bound derivative-source policy before analysis"
+    },
+    {
+      "id": "go-ethereum-fixer-unsupported-go-version",
+      "repository": "go-ethereum",
+      "source": "fixer",
+      "kind": "unsupported-construct",
+      "summary": "safe-fix preview refuses the repository Go 1.24 source version",
+      "evidence": "analysis preflight records the root go.mod source-version refusal",
+      "disposition": "not-actionable",
+      "rule_id": "",
+      "reason": "retain the accepted Go 1.25 through Go 1.27 source policy"
+    },
+    {
+      "id": "go-ethereum-formatter-unsupported-go-version",
+      "repository": "go-ethereum",
+      "source": "formatter",
+      "kind": "unsupported-construct",
+      "summary": "recursive formatting refuses the repository Go 1.24 source version",
+      "evidence": "formatter report records the root go.mod source-version refusal",
+      "disposition": "not-actionable",
+      "rule_id": "",
+      "reason": "retain the accepted Go 1.25 through Go 1.27 source policy"
+    },
+    {
+      "id": "go-ethereum-unsupported-go-version",
+      "repository": "go-ethereum",
+      "source": "manual",
+      "kind": "unsupported-construct",
+      "summary": "repository selects Go 1.24 outside the supported source range",
+      "evidence": "go-ethereum default diagnostics source-version refusal",
+      "disposition": "not-actionable",
+      "rule_id": "",
+      "reason": "retain the accepted Go 1.25 through Go 1.27 source policy"
+    },
+    {
+      "id": "go-sqlite3-fixer-unsupported-go-version",
+      "repository": "go-sqlite3",
+      "source": "fixer",
+      "kind": "unsupported-construct",
+      "summary": "safe-fix preview refuses the repository Go 1.21 source version",
+      "evidence": "fix preview records the root go.mod source-version refusal",
+      "disposition": "not-actionable",
+      "rule_id": "",
+      "reason": "retain the accepted Go 1.25 through Go 1.27 source policy"
+    },
+    {
+      "id": "go-sqlite3-formatter-unsupported-go-version",
+      "repository": "go-sqlite3",
+      "source": "formatter",
+      "kind": "unsupported-construct",
+      "summary": "recursive formatting refuses the repository Go 1.21 source version",
+      "evidence": "formatter report records the root go.mod source-version refusal",
+      "disposition": "not-actionable",
+      "rule_id": "",
+      "reason": "retain the accepted Go 1.25 through Go 1.27 source policy"
+    },
+    {
+      "id": "go-sqlite3-unsupported-go-version",
+      "repository": "go-sqlite3",
+      "source": "manual",
+      "kind": "unsupported-construct",
+      "summary": "repository selects Go 1.21 outside the supported source range",
+      "evidence": "go-sqlite3 default diagnostics source-version refusal",
+      "disposition": "not-actionable",
+      "rule_id": "",
+      "reason": "retain the accepted Go 1.25 through Go 1.27 source policy"
+    },
+    {
+      "id": "moby-cgo-typed-coverage",
+      "repository": "moby",
+      "source": "manual",
+      "kind": "unsupported-construct",
+      "summary": "typed analysis is unavailable for two cgo packages",
+      "evidence": "daemon graphdriver btrfs and quota package diagnostics",
+      "disposition": "not-actionable",
+      "rule_id": "",
+      "reason": "completed reporting does not prove complete rule coverage"
+    },
+    {
+      "id": "moby-formatter-unsupported-go-version",
+      "repository": "moby",
+      "source": "formatter",
+      "kind": "unsupported-construct",
+      "summary": "recursive formatting encounters a nested Go 1.24 module",
+      "evidence": "formatter report records api/go.mod outside the supported source range",
+      "disposition": "not-actionable",
+      "rule_id": "",
+      "reason": "retain the accepted Go 1.25 through Go 1.27 source policy without silently excluding nested modules"
+    }
+  ]
+}

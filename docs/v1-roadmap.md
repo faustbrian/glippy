@@ -75,9 +75,11 @@ integration, contract marketplace, hosted service, or upstream adoption work.
 
 Status: active. The formatter, rule, profile, configuration, CLI, completion,
 reporter, exit-code, and machine-schema contracts are frozen in executable v1
-fixtures. The tagless candidate reproduces those contracts and historical
-upgrade fixtures across all four supported native targets. Final exact-tree
-verification and the acceptance audit remain open.
+fixtures. Corpus run `33040254261` passed all 20 jobs with zero known default
+or recommended false positives and no changed finding fingerprint. The tagless
+candidate reproduces the frozen contracts and historical upgrade fixtures
+across all four supported native targets. Final exact-tree CI, native candidate
+reproduction, independent review, and the acceptance audit remain open.
 
 - Freeze formatter output, rule IDs, profiles, configuration, CLI behavior,
   exit codes, and machine schemas.

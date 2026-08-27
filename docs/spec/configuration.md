@@ -1,6 +1,6 @@
 # Configuration Contract
 
-This document defines the implemented pre-release schema version 1. Public
+This document defines stable configuration schema version 1. Public
 compatibility follows the [compatibility policy](../compatibility-policy.md);
 unknown schema versions and fields fail rather than receiving guessed meaning.
 
@@ -126,10 +126,9 @@ explicit rule policy applies.
 
 `lint.preset` remains a compatibility alias for selecting one group. A
 configuration MUST NOT specify both singular and plural fields. The `nursery`
-group MAY be selected explicitly. Before version 1.0 it is a prerelease
-validation surface; the first stable release freezes the IDs, membership,
-reporting boundaries, severities, and fix contracts that it ships. New
-post-v1 nursery rules and promotions follow the
+group MAY be selected explicitly. Version 1 freezes the IDs, membership,
+reporting boundaries, severities, and fix contracts that it ships. New nursery
+rules and promotions follow the
 [compatibility policy](../compatibility-policy.md#lint-rules-and-presets). A
 `restriction` rule MUST be enabled only through its exact ID in `lint.rules`;
 the restriction group MUST NOT be selected wholesale. The `migration` group

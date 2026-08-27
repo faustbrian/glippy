@@ -11,10 +11,10 @@ here.
 
 ## Release Support
 
-Gox v0.1.0 is the current stable release. Glippy branch heads, commits,
-locally built binaries, workflow artifacts, rehearsal archives, and prerelease
-plans are development artifacts and are not supported releases. Release
-support follows this table:
+Glippy v1.0.0 is the current stable release. Gox v0.1.0 is superseded and
+unsupported. Branch heads, untagged commits, locally built binaries, workflow
+artifacts, rehearsal archives, and prerelease plans are development artifacts
+and are not supported releases. Release support follows this table:
 
 | Release line | Support state |
 | --- | --- |

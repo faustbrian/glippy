@@ -1,8 +1,8 @@
 # Formatter Rules
 
-This document describes the current formatter dialect. Glippy is the selected
-development identity, but its final public name and formatter output are not
-yet covered by stable release compatibility promises.
+This document describes the stable Glippy v1 formatter dialect. Canonical
+formatter output follows the documented compatibility policy beginning with
+v1.0.0.
 
 The formatter changes whitespace and canonical layout only. It does not add or
 remove imports, rename identifiers, simplify expressions, or perform semantic

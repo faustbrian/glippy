@@ -6,15 +6,14 @@ does not rewrite source. Exit code 1 means actionable findings; exit codes 2
 through 6 and 130 are tool, source, configuration, filesystem, conflict, or
 cancellation outcomes rather than ordinary findings.
 
-Glippy is an unreleased development line. Provision one exact reviewed
-source revision and do not treat an untagged commit as a stable installation
-contract.
+Pin the stable `v1.0.0` release for reproducible automation. Untagged commits
+and branch heads remain development artifacts rather than supported
+installation contracts.
 
 ## GitHub Actions
 
-The following job checks out the project and a full, reviewed Glippy commit into
-separate directories. Replace `<full-glippy-commit-sha>` with a 40-character
-commit ID. Keeping the tool source outside the project checkout prevents
+The following job checks out the project and tagged Glippy source into separate
+directories. Keeping the tool source outside the project checkout prevents
 `./...` from selecting Glippy itself.
 
 ```yaml
@@ -38,11 +37,11 @@ jobs:
         with:
           path: project
           persist-credentials: false
-      - name: Check out pinned Glippy source
+      - name: Check out Glippy v1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: faustbrian/glippy
-          ref: <full-glippy-commit-sha>
+          ref: v1.0.0
           path: glippy-tool
           persist-credentials: false
       - name: Install the recorded Go toolchain
@@ -78,8 +77,9 @@ jobs:
         run: "$RUNNER_TEMP/glippy check ./..."
 ```
 
-The workflow intentionally pins action commits, the Go toolchain, and Glippy
-source. It grants no write permission and invokes no fix mode. If a repository
+The workflow intentionally pins action commits, the Go toolchain, and the
+stable Glippy tag. It grants no write permission and invokes no fix mode. If a
+repository
 needs machine diagnostics, replace the final command with:
 
 ```sh
@@ -111,8 +111,8 @@ the repository is clean enough to enforce all findings.
 ## Woodpecker
 
 The same source-pinned, non-mutating gate can run as one ordinary Woodpecker
-step. Replace `<full-glippy-commit-sha>` with the reviewed 40-character commit
-ID. This example deliberately uses no Glippy-specific plugin or hosted service:
+step. This example deliberately uses no Glippy-specific plugin or hosted
+service:
 
 ```yaml
 steps:
@@ -138,7 +138,7 @@ steps:
         trap 'exit 130' INT
         trap 'exit 143' TERM
         git clone --filter=blob:none https://github.com/faustbrian/glippy.git "$task_root/source"
-        git -C "$task_root/source" checkout --detach <full-glippy-commit-sha>
+        git -C "$task_root/source" checkout --detach v1.0.0
         GOCACHE="$task_root/cache" GOMODCACHE="$task_root/modcache" \
           GOENV=off GOTOOLCHAIN=local GOWORK=off \
           go build -C "$task_root/source" \
@@ -161,11 +161,11 @@ same on every supported runner:
 ```sh
 set -eu
 glippy_version=$(glippy version)
-test "$glippy_version" = "glippy <pinned-version>"
+test "$glippy_version" = "glippy v1.0.0"
 exec glippy check ./...
 ```
 
-Replace `<pinned-version>` with the reviewed release or candidate version. The
+Update the pinned version deliberately when adopting a later release. The
 explicit version assertion prevents an ambient or silently upgraded binary
 from deciding the repository policy. Exit 1 is an actionable formatting or
 lint finding; every other nonzero exit is a tool outcome and must fail the job

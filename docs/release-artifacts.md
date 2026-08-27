@@ -135,6 +135,8 @@ attestations, and creates one GitHub Release containing those files. Prerelease
 semantic versions create GitHub prereleases. The workflow uses pinned action
 commits, does not persist checkout credentials into the build tree, and retains
 an existing candidate for 14 days when attestation or publication fails.
+A tracked `docs/releases/<tag>.md` is the canonical GitHub Release body; tags
+without that file use GitHub's generated notes.
 
 GitHub artifact attestations are the accepted signing and provenance mechanism.
 The workflow receives a short-lived GitHub OIDC identity, produces signed SLSA

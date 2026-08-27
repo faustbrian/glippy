@@ -6,18 +6,14 @@ deterministic width-aware layout decisions. Its linter keeps correctness-focused
 defaults, pays only for the analysis tiers enabled rules require, and routes
 all source changes through an explicit conflict-safe transaction.
 
-Glippy is under development and is not tagged or published. The current
-catalog contains 129 rules, including 20 rules with safe, suggestion, or unsafe
-fixes. The current candidate is an unreleased engineering snapshot. Native
-macOS/Linux latency, aggregate-memory, and archive-reproducibility budgets are
-proven for the pinned campaign; the exact large-repository corpus remains an
-active release gate.
-The existing
-v0.1.0 release remains Gox under `github.com/faustbrian/gox`; its module tags,
+Glippy v1 is the first stable Glippy release line. The catalog contains 129
+rules, including 20 rules with safe, suggestion, or unsafe fixes. Official
+artifacts support macOS and Linux on amd64 and arm64; Windows is unsupported.
+The existing v0.1.0 release remains Gox under `github.com/faustbrian/gox`; its module tags,
 binary, archives, and attestations are immutable historical identities. The
 maintainer accepted the documented Glippy ecosystem-collision risk for the
-initial Glippy development line;
-that product decision is not legal clearance. Untagged commits and locally
+initial Glippy development line; that product decision is not legal clearance.
+Untagged commits and locally
 built binaries remain unsupported development artifacts.
 
 ## Why Glippy
@@ -228,8 +224,8 @@ schema-versioned machine contract.
 
 The `nursery` group is never included by `default`, `recommended`, `strict`,
 or `pedantic`. It contains opt-in rules still undergoing broad corpus
-validation. Before v1 it may change between prereleases; at v1 its shipped
-IDs, membership, severities, reporting boundaries, and fixes become stable.
+validation. Beginning with v1, its shipped IDs, membership, severities,
+reporting boundaries, and fixes follow the compatibility policy.
 Select it explicitly with `lint.presets = ["nursery"]`, `-Wnursery`, or
 `glippy rules --preset=nursery`.
 
@@ -320,45 +316,25 @@ wholesale.
 
 ## Installation
 
-No Glippy release is published yet. The historical Gox v0.1.0 release remains
-available from its
-[GitHub Release](https://github.com/faustbrian/gox/releases/tag/v0.1.0), but it
-does not provide the `glippy` command or current catalog. Its provenance can be
-verified with:
+Install the stable CLI from source with Go 1.27:
 
 ```sh
-gh attestation verify <downloaded-artifact> --repo faustbrian/gox
+go install github.com/faustbrian/glippy/cmd/glippy@v1.0.0
+glippy version
 ```
 
-The corresponding historical source installation is:
+Prebuilt macOS and Linux archives, manifests, and checksums are published on
+the [v1.0.0 GitHub Release](https://github.com/faustbrian/glippy/releases/tag/v1.0.0).
+Verify a downloaded file's GitHub provenance with:
 
 ```sh
-go install github.com/faustbrian/gox/cmd/gox@v0.1.0
-gox version
+gh attestation verify <downloaded-artifact> --repo faustbrian/glippy
 ```
 
-To evaluate an untagged checkout with Go 1.27, build a disposable development
-binary:
+Gox v0.1.0 remains an immutable historical release under its original module,
+binary, configuration, and artifact identities. It is superseded by Glippy v1.
 
-```sh
-(
-  task_root=$(mktemp -d "${TMPDIR:-/tmp}/glippy-eval.XXXXXX")
-  cleanup() {
-    trap - EXIT HUP INT TERM
-    find "$task_root" -mindepth 1 -delete
-    rmdir "$task_root"
-  }
-  trap cleanup EXIT
-  trap 'exit 129' HUP
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
-  GOCACHE="$task_root/cache" go build -o "$task_root/glippy" ./cmd/glippy
-  "$task_root/glippy" version
-  "$task_root/glippy" fmt --diff /absolute/path/to/project
-)
-```
-
-Pin the source revision used by every developer and CI job. Do not run another
+Pin the same stable version for every developer and CI job. Do not run another
 formatter after Glippy: documented width, import-order, literal, parentheses,
 alignment, and empty-statement choices are not universally gofmt fixed points.
 Use the [migration guide](docs/migration-from-go-formatters.md) before changing

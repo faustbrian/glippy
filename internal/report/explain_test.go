@@ -351,8 +351,8 @@ This catalog is rendered from the same immutable rule metadata used by the
 registry, scheduler, configuration decoder, and ` +
 		"`glippy explain`" +
 		`.
-Preset membership and defaults describe the current development binary and are
-not stable release promises.
+Preset membership and defaults are stable beginning with Glippy v1 and follow
+the documented compatibility policy.
 
 ## Rules
 

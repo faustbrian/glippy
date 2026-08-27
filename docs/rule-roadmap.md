@@ -6,12 +6,12 @@ cache, and fix foundations have passed their evidence gates. The
 foundation boundary. This roadmap therefore starts rule-growth planning; it
 does not reserve rule IDs, promise a rule count, or weaken the admission gate.
 
-The current catalog remains intentionally small. `correctness` is the default
+The v1 catalog remains deliberately curated. `correctness` is the default
 preset group. `suspicious`, `performance`, `complexity`, `style`, `pedantic`,
 and `nursery` are composable opt-in choices. Nursery holds rules that still
-need broad corpus validation and is excluded from every curated profile. The
-first stable release freezes the nursery IDs and rule contracts it ships;
-post-v1 validation status does not weaken ordinary compatibility guarantees.
+need broad corpus validation and is excluded from every curated profile. v1
+freezes the nursery IDs and rule contracts it ships; later validation status
+does not weaken ordinary compatibility guarantees.
 Restriction rules are enabled individually, and migration rules require an
 explicit target.
 

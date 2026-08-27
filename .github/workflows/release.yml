@@ -72,15 +72,20 @@ jobs:
         run: |
           set -euo pipefail
           release_flags=()
+          release_notes="docs/releases/$GITHUB_REF_NAME.md"
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then
             release_flags+=(--prerelease)
+          fi
+          if [[ -f "$release_notes" ]]; then
+            release_flags+=(--notes-file "$release_notes")
+          else
+            release_flags+=(--generate-notes)
           fi
           gh release create "$GITHUB_REF_NAME" \
             "$RUNNER_TEMP/glippy-release/"* \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "Glippy $GITHUB_REF_NAME" \
-            --generate-notes \
             "${release_flags[@]}"
       - name: Retain the release candidate
         if: ${{ always() }}

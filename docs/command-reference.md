@@ -1,9 +1,8 @@
 # Command Reference
 
-Glippy uses its intended product and binary identity. This reference
-documents the implemented command surface; it is not an installation contract
-or release announcement. No tag or release is authorized until the corrected
-candidate passes its complete verification and independent-review gates.
+Glippy uses its stable product and binary identity. This reference documents
+the v1 command surface; installation and release support are documented
+separately.
 
 ## Command Summary
 
