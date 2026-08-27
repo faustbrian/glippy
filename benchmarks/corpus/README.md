@@ -143,7 +143,11 @@ inventories, and the digested `go vet` and Staticcheck outputs. Reusing an
 adjudication with a different run or edited artifact is an error. All
 repository results must carry the same run ID and exact Glippy, Go, and
 Staticcheck version strings. The manual workflow derives that ID from the
-Glippy source revision and GitHub workflow run.
+Glippy source revision and GitHub workflow run. Failed-job reruns retain that
+identity across workflow attempts so recovered repository evidence can be
+combined with the successful evidence from the original attempt; the attempt
+number remains part of the combined review artifact name rather than the result
+identity.
 
 Record demonstrated omissions in the ordered `gaps` list. A gap names its
 repository and evidence, identifies `fixer`, `formatter`, `manual`, `vet`, or

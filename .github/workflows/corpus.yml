@@ -144,7 +144,7 @@ jobs:
           set -euo pipefail
           "$GLIPPY_CORPUS_TASK_ROOT/bin/corpus-runner" \
             --manifest benchmarks/corpus/manifest.json \
-            --run-id '${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}' \
+            --run-id '${{ github.sha }}-${{ github.run_id }}' \
             --checkouts "$GITHUB_WORKSPACE/checkouts" \
             --output "$GLIPPY_CORPUS_TASK_ROOT/results" \
             --cache "$GLIPPY_CORPUS_TASK_ROOT/cache" \
