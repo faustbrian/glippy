@@ -582,7 +582,7 @@ budget requires a new recorded campaign and rationale.
 ### Native Runner Campaign
 
 The manually dispatched `Release budget evidence` GitHub Actions workflow pins
-the corpus revision, Go 1.27.0, the 250-millisecond editor maximum, and the
+the corpus revision, Go 1.27.2, the 250-millisecond editor maximum, and the
 2-GiB formatter memory limit. Darwin amd64 uses a 180-second-p80 and
 360-second-hard formatter latency limit; the other supported targets use
 120-second-p80 and 240-second-hard limits. It runs on native GitHub-hosted

@@ -47,16 +47,31 @@ func TestResolveUsesWorkspaceWhenNoModuleOwnsPath(t *testing.T) {
 func TestResolveAcceptsNewestSupportedSourceVersion(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
-	mod := filepath.Join(root, "go.mod")
-	writeFile(t, mod, "module example.com/project\n\ngo 1.27.0\n")
+	for _, directive := range []string{"1.27.0", "1.27.2"} {
+		t.Run(
+			directive,
+			func(t *testing.T) {
+				t.Parallel()
+				root := t.TempDir()
+				mod := filepath.Join(root, "go.mod")
+				writeFile(
+					t,
+					mod,
+					"module example.com/project\n\ngo " + directive + "\n",
+				)
 
-	selection, err := goversion.Resolve(filepath.Join(root, "source.go"), root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if selection.Language != "go1.27" || selection.Path != mod {
-		t.Fatalf("Resolve() = %#v, want module Go 1.27", selection)
+				selection, err := goversion.Resolve(
+					filepath.Join(root, "source.go"),
+					root,
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if selection.Language != "go1.27" || selection.Path != mod {
+					t.Fatalf("Resolve() = %#v, want module Go 1.27", selection)
+				}
+			},
+		)
 	}
 }
 

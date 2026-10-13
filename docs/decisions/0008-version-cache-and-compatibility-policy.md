@@ -2,11 +2,11 @@
 
 - Status: accepted
 - Date: 2026-08-09
-- Refreshed: 2026-08-25
+- Refreshed: 2026-10-13
 
 ## Context And Evidence
 
-The current candidate is built with Go 1.27.0 and x/tools v0.49.0. Standard
+The current build toolchain is Go 1.27.2 with x/tools v0.50.0. Standard
 parser and printer behavior can drift with the build toolchain. Typed analysis
 also depends on module/workspace state, build selection, environment, dependency
 export data, and overlays. The implemented cache foundation proves canonical
@@ -41,10 +41,12 @@ the refreshed build.
 ## Decision
 
 Glippy supports Go 1.25 through Go 1.27 source. Release archives will be built
-with Go 1.27.0 and will have no external Go runtime dependency. Source
-installation uses the module's Go 1.27 toolchain requirement. Windows is
-intentionally
-unsupported; the admitted release targets are macOS and Linux on amd64 and
+with Go 1.27.2 and will have no external Go runtime dependency. Source
+installation retains the module's Go 1.27.0 minimum and recommends Go 1.27.2
+through its toolchain directive. The supported source-language range is
+unchanged; the [patch refresh audit](../research/go-frontend-audit.md#go-1272-toolchain-refresh)
+records the formatter impact. Windows is intentionally unsupported; the
+admitted release targets are macOS and Linux on amd64 and
 arm64.
 
 For each physical source path, Glippy selects the nearest containing `go.mod`

@@ -3,6 +3,7 @@ package analysis_test
 import (
 	"context"
 	"errors"
+	"go/types"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -73,6 +74,96 @@ func TestLoadPackagesProvidesOneCanonicalTypedModuleSnapshot(t *testing.T) {
 		file, found := result.Sources.Lookup(path)
 		if !found || file.Path() != path || !file.CanFormat() {
 			t.Fatalf("LoadPackages() source %q = %#v, %t", path, file, found)
+		}
+	}
+}
+
+func TestLoadPackagesImportsGo127MixedGenericMethods(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeLoadFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/imported\n\ngo 1.27.0\n",
+	)
+	writeLoadFixture(
+		t,
+		filepath.Join(root, "dependency", "dependency.go"),
+		`package dependency
+
+type Box[T any] struct { Value T }
+
+func (box Box[T]) Z() bool { return true }
+func (box Box[T]) Map[U any](fn func(T) U) U { return fn(box.Value) }
+func (box Box[T]) A() string { return "value" }
+`,
+	)
+	writeLoadFixture(
+		t,
+		filepath.Join(root, "consumer.go"),
+		`package consumer
+
+import "example.com/imported/dependency"
+
+var box dependency.Box[string]
+var Flag = box.Z()
+var Count = box.Map[int](func(value string) int { return len(value) })
+var Label = box.A()
+`,
+	)
+	loaded, err := analysis.LoadPackages(
+		context.Background(),
+		analysis.PackageLoadOptions{
+			Dir: root,
+			Patterns: []string{"."},
+			Requirement: rules.RequireTypes,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Diagnostics) != 0 {
+		t.Fatalf("compiled dependency import diagnostics = %#v", loaded.Diagnostics)
+	}
+	if len(loaded.Packages) != 1 || loaded.Packages[0].IllTyped {
+		t.Fatalf("consumer packages = %#v", loaded.Packages)
+	}
+	consumer := loaded.Packages[0]
+	dependency := consumer.Imports["example.com/imported/dependency"]
+	if dependency == nil || dependency.Types == nil || len(dependency.Syntax) != 0 {
+		t.Fatalf("dependency must use export data, not source syntax: %#v", dependency)
+	}
+	box, ok := dependency.Types.Scope().Lookup("Box").Type().(*types.Named)
+	if !ok || box.NumMethods() != 3 {
+		t.Fatalf("imported Box = %v, want three methods", box)
+	}
+	for index, name := range []string{"Z", "Map", "A"} {
+		method := box.Method(index)
+		wantTypeParameters := 0
+		if name == "Map" {
+			wantTypeParameters = 1
+		}
+		if method.Name() != name ||
+			method.Signature().TypeParams().Len() != wantTypeParameters {
+			t.Fatalf(
+				"imported method %d = %s, want %s with %d type parameters",
+				index,
+				method,
+				name,
+				wantTypeParameters,
+			)
+		}
+	}
+	for name, want := range
+		map[string]types.Type{
+			"Flag": types.Typ[types.Bool],
+			"Count": types.Typ[types.Int],
+			"Label": types.Typ[types.String],
+		} {
+		object := consumer.Types.Scope().Lookup(name)
+		if object == nil || !types.Identical(object.Type(), want) {
+			t.Fatalf("consumer %s = %v, want %v", name, object, want)
 		}
 	}
 }

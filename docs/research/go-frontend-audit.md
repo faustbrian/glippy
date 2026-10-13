@@ -69,6 +69,81 @@ contract tests and the refreshed Go vet compatibility inventory. No Go 1.27.0
 or x/tools v0.49.0 evidence requires replacing the standard frontend or
 expanding the external analyzer boundary.
 
+## Go 1.27.2 Toolchain Refresh
+
+Date: 2026-10-13
+
+The last supported frontend was Go 1.27.0, admitted in `bdda612`; Go 1.26.7
+was the preceding baseline. The latest stable Go 1.27 patch is
+[Go 1.27.2](https://go.dev/dl/), at
+[`022c863`](https://github.com/golang/go/commit/022c8636110ebac86a9b88724cda168ed713c21f).
+
+The complete [Go 1.27.0 to Go 1.27.2 comparison](https://github.com/golang/go/compare/go1.27.0...go1.27.2)
+contains no changes under `src/go/printer`, `src/go/format`, `src/cmd/gofmt`,
+`src/text/tabwriter`, `src/go/parser`, `src/go/scanner`, `src/go/ast`, or
+`src/go/token`. The patch update therefore requires no port of upstream
+formatter or concrete-source frontend logic.
+
+The preceding Go 1.26.7 to Go 1.27.0 printer comparison does contain changes:
+
+- Composite-literal key/value alignment uses deterministic `log2ish` and
+  `exp2ish` approximations instead of architecture-sensitive `math.Log` and
+  `math.Exp`. The [Go 1.27 release notes](https://go.dev/doc/go1.27#gofmt)
+  describe the resulting small whitespace changes. See the
+  [alignment decision](https://github.com/golang/go/blob/go1.27.0/src/go/printer/nodes.go)
+  and [approximation helpers](https://github.com/golang/go/blob/go1.27.0/src/go/printer/math.go).
+- Return-list indentation excludes composite literals and their address forms
+  when counting multiline elements, avoiding redundant indentation. This is
+  also implemented in `go/printer/nodes.go` and reflected in upstream
+  `testdata/statements.golden`.
+- Documentation-comment rewriting skips the next-token-identifier case in
+  [`go/printer/printer.go`](https://github.com/golang/go/blob/go1.27.0/src/go/printer/printer.go).
+- The gofmt command uses `parser.SkipObjectResolution` and always truncates the
+  output file after a successful write; see
+  [`cmd/gofmt/gofmt.go`](https://github.com/golang/go/blob/go1.27.0/src/cmd/gofmt/gofmt.go).
+- `go/format/format.go`, `go/printer/comment.go`, `go/printer/gobuild.go`, and
+  `text/tabwriter/tabwriter.go` are unchanged between those two tags.
+
+These changes do not require copying gofmt's layout into Glippy. The production
+formatter lowers syntax into its own document model, does not use go/format
+as a post-pass, emits structural indentation without tabular alignment, and
+preserves original comment text. The source parser already skips object
+resolution, and filesystem writes use Glippy's validated replacement boundary.
+The existing generic-method and promoted-field fixtures cover the Go 1.27
+syntax admitted during the earlier refresh.
+
+This refresh updates build, CI, corpus, fuzz, and release toolchain selection
+to Go 1.27.2 while retaining the Go 1.27.0 module minimum and Go 1.25 through
+Go 1.27 source range. Typed linting also requires an analysis dependency update:
+Go's [V5 export encoding change](https://github.com/golang/go/commit/359bec41aec1c7d2a58048a125cd8c8c206cf7b6)
+preserves the declaration order of generic and nongeneric methods. The old
+x/tools v0.49.0 reader rejects these exports before typed rules can run.
+The existing `TestRunTypesSharesTypedPackageAndExactSource` and
+`TestRunExposesBuiltInErrorsIsArgumentsThroughLintAndExplain` reproduce the
+failure with real standard-library imports; the latter reports a package
+prerequisite error instead of its expected `errors-is-arguments` finding.
+
+x/tools v0.50.0 at
+[`265dd1a`](https://github.com/golang/tools/commit/265dd1a6ecf0ee85548c7a8d1787d25fc5675e06)
+is the first subsequent tagged release with
+[V5 reader support](https://github.com/golang/tools/blob/v0.50.0/internal/pkgbits/version.go).
+Its required module closure updates x/mod to v0.41.0, x/sync to v0.23.0,
+and x/sys to v0.48.0. This is a compatibility repair rather than an unrelated
+upgrade of every dependency to its latest release.
+
+The adapted-analyzer changes include a guard for multi-valued hostport call
+arguments, Go-1.27-aware printf pointer diagnostics, and suppression of
+unused-result reports for direct `testing.B.Loop` body calls. The upstream
+[dependency comparison](https://github.com/golang/tools/compare/v0.49.0...v0.50.0)
+also contains SSA/importer fixes. These require the existing adapted-vet,
+fact-runner, typed, SSA, and CLI regressions, not a formatter-policy change.
+
+Historical release receipts retain their original toolchain. Existing
+formatter, source-fidelity, source-version, typed-analysis,
+CLI, release-builder, and gofmt compatibility tests are the local verification
+boundary; no aggregate external corpus campaign or native release matrix is
+implied by this source audit.
+
 ## Fidelity Matrix
 
 | Concern | Standard frontend | Required Glippy state |

@@ -104,7 +104,7 @@ An `all` run also collects the exact-run repository artifacts and initial
 adjudication template into one review bundle. The aggregate report is generated
 only after the required manual classifications and incomplete-run gaps have
 been recorded.
-The current corpus harness uses the recorded Go 1.27.0 release toolchain. Pinned
+The current corpus harness uses the recorded Go 1.27.2 release toolchain. Pinned
 repositories retain their own source-language directives; those directives are
 evidence metadata and do not select a different Glippy build toolchain.
 

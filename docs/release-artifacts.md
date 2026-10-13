@@ -130,7 +130,7 @@ in the
 GitHub Releases is the selected publication channel. A push of a canonical
 semantic-version tag invokes the repository's `Publish release` workflow. It
 checks out the exact tag, builds the complete deterministic target set with Go
-1.27.0, submits every archive, manifest, and checksum file to GitHub artifact
+1.27.2, submits every archive, manifest, and checksum file to GitHub artifact
 attestations, and creates one GitHub Release containing those files. Prerelease
 semantic versions create GitHub prereleases. The workflow uses pinned action
 commits, does not persist checkout credentials into the build tree, and retains

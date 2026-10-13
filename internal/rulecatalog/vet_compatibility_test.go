@@ -1133,6 +1133,121 @@ func shim() {
 	}
 }
 
+func TestUpdatedVetAnalyzersPreserveGo127Boundaries(t *testing.T) {
+	t.Parallel()
+
+	pointerInput := "package sample\nimport \"fmt\"\nfunc print(p *int) { fmt.Printf(\"%d\", p) }\n"
+	for _, test := range
+		[]struct {
+			name string
+			version string
+			rule string
+			input string
+			wantDiagnostics int
+		}{
+			{
+				name: "older pointer formatting",
+				version: "1.25",
+				rule: "printf-arguments",
+				input: pointerInput,
+			},
+			{
+				name: "previous pointer formatting",
+				version: "1.26",
+				rule: "printf-arguments",
+				input: pointerInput,
+			},
+			{
+				name: "current pointer formatting",
+				version: "1.27",
+				rule: "printf-arguments",
+				input: pointerInput,
+				wantDiagnostics: 1,
+			},
+			{
+				name: "current pointer verb",
+				version: "1.27",
+				rule: "printf-arguments",
+				input: strings.ReplaceAll(pointerInput, "%d", "%p"),
+			},
+			{
+				name: "current integer formatting",
+				version: "1.27",
+				rule: "printf-arguments",
+				input: strings.ReplaceAll(pointerInput, "*int", "int"),
+			},
+			{
+				name: "benchmark loop retains unused result",
+				version: "1.27",
+				rule: "unused-result",
+				input: "package sample\nimport (\"fmt\"; \"testing\")\nfunc run(b *testing.B) { for b.Loop() { fmt.Sprintf(\"%d\", 1) } }\n",
+			},
+			{
+				name: "ordinary call still reports unused result",
+				version: "1.27",
+				rule: "unused-result",
+				input: "package sample\nimport \"fmt\"\nfunc run() { fmt.Sprintf(\"%d\", 1) }\n",
+				wantDiagnostics: 1,
+			},
+			{
+				name: "multi-valued dial arguments do not panic",
+				version: "1.27",
+				rule: "unsafe-host-port",
+				input: "package sample\nimport \"net\"\nfunc address() (string, string) { return \"tcp\", \"localhost:80\" }\nfunc run() { _, _ = net.Dial(address()) }\n",
+			},
+			{
+				name: "ordinary unsafe address still reports",
+				version: "1.27",
+				rule: "unsafe-host-port",
+				input: "package sample\nimport (\"fmt\"; \"net\")\nfunc run(host string) { _, _ = net.Dial(\"tcp\", fmt.Sprintf(\"%s:%d\", host, 80)) }\n",
+				wantDiagnostics: 1,
+			},
+		} {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				result := runVetCompatibilityRulesForVersion(
+					t,
+					test.input,
+					[]string{test.rule},
+					test.version,
+				)
+				if len(result.LoadDiagnostics) != 0 ||
+					len(result.SourceProblems) != 0 ||
+					len(result.Files) != 1 {
+					t.Fatalf("analyzer prerequisites = %#v", result)
+				}
+				diagnostics := result.Files[0].Diagnostics
+				if len(diagnostics) != test.wantDiagnostics {
+					t.Fatalf(
+						"diagnostics = %#v, want %d",
+						diagnostics,
+						test.wantDiagnostics,
+					)
+				}
+				for _, diagnostic := range diagnostics {
+					if diagnostic.RuleID != test.rule ||
+						diagnostic.Range.End <= diagnostic.Range.Start {
+						t.Fatalf("unexpected diagnostic = %#v", diagnostic)
+					}
+					if test.rule == "printf-arguments" {
+						start := strings.Index(test.input, "%d")
+						if diagnostic.Range.Start != start ||
+							diagnostic.Range.End != start + 2 {
+							t.Fatalf(
+								"printf range = %#v, want %%d at %d",
+								diagnostic.Range,
+								start,
+							)
+						}
+					}
+				}
+			},
+		)
+	}
+}
+
 func TestRemainingVetCompatibilityPackReportsDefects(t *testing.T) {
 	t.Parallel()
 
@@ -2160,8 +2275,22 @@ func defects(data []byte, value uint8, number int, items []int, host string, sta
 
 func runVetCompatibilityRules(t *testing.T, input string, ruleIDs []string) analysis.PackageResult {
 	t.Helper()
+	return runVetCompatibilityRulesForVersion(t, input, ruleIDs, "1.25")
+}
+
+func runVetCompatibilityRulesForVersion(
+	t *testing.T,
+	input string,
+	ruleIDs []string,
+	version string,
+) analysis.PackageResult {
+	t.Helper()
 	root := t.TempDir()
-	writeFixture(t, filepath.Join(root, "go.mod"), "module example.com/vetpack\n\ngo 1.25.0\n")
+	writeFixture(
+		t,
+		filepath.Join(root, "go.mod"),
+		"module example.com/vetpack\n\ngo " + version + "\n",
+	)
 	writeFixture(t, filepath.Join(root, "sample.go"), input)
 	registry, err := rulecatalog.NewRegistry()
 	if err != nil {
@@ -2177,7 +2306,7 @@ func runVetCompatibilityRules(t *testing.T, input string, ruleIDs []string) anal
 		analysis.RunOptions{
 			Presets: []rules.Preset{},
 			Overrides: overrides,
-			SourceGoVersion: "go1.25",
+			SourceGoVersion: "go" + version,
 		},
 		analysis.PackageLoadOptions{
 			Dir: root,

@@ -25,10 +25,16 @@ minimum. The current built-in rules support Go 1.25 through Go 1.27.
 
 Gox v0.1.0 release archives were built with Go 1.26.5 for macOS and Linux on
 amd64 and arm64. They do not require a separately installed Go runtime.
-Installing the current Glippy source requires the toolchain selected by the
-module's `go 1.27.0` directive; the Go command may choose a newer compatible toolchain
-according to the user's toolchain policy. Windows and other operating systems
-are unsupported.
+The module retains `go 1.27.0` as its minimum and recommends Go 1.27.2 through
+`toolchain go1.27.2`. Current CI, corpus, fuzz, and release workflows pin Go
+1.27.2. The Go command may choose a newer compatible toolchain according to the
+user's toolchain policy; `GOTOOLCHAIN=local` disables automatic selection.
+Windows and other operating systems are unsupported.
+
+The [Go 1.27.2 formatting audit](research/go-frontend-audit.md#go-1272-toolchain-refresh)
+records upstream gofmt changes and their impact on Glippy's independent printer.
+The patch refresh does not change the supported source-language range or
+Glippy's formatting policy.
 
 Newer Go source is rejected until Glippy is rebuilt with a frontend that
 understands it and the formatter, lint, corpus, and compatibility gates for

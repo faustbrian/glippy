@@ -5,9 +5,17 @@ with one rule registry, preset model, suppression syntax, baseline format,
 deterministic reporter, and fix coordinator. It does **not** claim to replace
 the complete `go vet` command.
 
-This boundary was refreshed on 2026-08-25 against Go 1.27.0 and x/tools v0.49.0.
+This boundary was refreshed on 2026-10-13 against Go 1.27.2 and x/tools v0.50.0.
 It must be revisited when either dependency changes its analyzer catalog or
 behavior.
+
+The [toolchain refresh audit](research/go-frontend-audit.md#go-1272-toolchain-refresh)
+records the export-data V5 reader repair and adapted-analyzer changes. In
+particular, `printf-arguments` now rejects `%d` for pointer-address formatting
+in Go 1.27 source (use `%p`), while older source follows its previous semantics.
+`unused-result` excludes direct calls in a `testing.B.Loop` body, and
+`unsafe-host-port` safely handles multi-valued call arguments. Rule IDs, presets,
+and fix-safety classifications are unchanged.
 
 ## Directly Adapted Analyzers
 
@@ -57,7 +65,7 @@ differences rather than analyzer-equivalence claims.
 
 ## Unsupported Default Vet Analyzers
 
-Glippy does not currently run these Go 1.27.0 default analyzers:
+Glippy does not currently run these Go 1.27 default analyzers:
 
 - `asmdecl` and `framepointer`, which require Go assembly ownership;
 - `cgocall` and `unsafeptr`, whose unsafe and cgo boundaries need separate

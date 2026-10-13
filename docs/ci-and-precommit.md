@@ -47,7 +47,7 @@ jobs:
       - name: Install the recorded Go toolchain
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: 1.27.0
+          go-version: 1.27.2
           cache: false
       - name: Build pinned Glippy
         shell: bash
@@ -117,7 +117,7 @@ service:
 ```yaml
 steps:
   - name: glippy
-    image: golang:1.27.0-bookworm@sha256:1ef654ce42284b1dac209d21c6797f573ab98f2b7aff50267d171a90f967c8ed
+    image: golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61
     commands:
       - |
         set -eu
